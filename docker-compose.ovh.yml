@@ -36,6 +36,7 @@ services:
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?ALLOWED_SIGN_IN is required}
       API_URL: ${API_URL:?API_URL is required}
       APP_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_URL: ${API_URL:?API_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET is required}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -75,6 +76,7 @@ services:
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?ALLOWED_SIGN_IN is required}
       API_URL: ${API_URL:?API_URL is required}
       APP_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_URL: ${API_URL:?API_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
@@ -145,9 +147,7 @@ services:
       - -ec
       - >-
         while true; do
-          curl --fail --silent --show-error --max-time 60
-          -X POST -H "Authorization: Bearer $${CRON_SECRET}"
-          http://api:3001/internal/sync/google || true;
+          curl --fail --silent --show-error --max-time 60 -X POST -H "Authorization: Bearer $${CRON_SECRET}" http://api:3001/internal/sync/google || true;
           sleep 300;
         done
     environment:
