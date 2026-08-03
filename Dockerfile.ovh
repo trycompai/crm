@@ -15,6 +15,8 @@ COPY packages/db/package.json packages/db/package.json
 COPY packages/env/package.json packages/env/package.json
 COPY packages/typescript-config/package.json packages/typescript-config/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY apps/api/scripts/chmod-trpc-binary.mjs apps/api/scripts/chmod-trpc-binary.mjs
+COPY packages/db/prisma packages/db/prisma
 
 RUN bun install --frozen-lockfile
 
@@ -28,4 +30,3 @@ ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
 RUN bun run --filter=@crm/db db:generate \
 	&& bun run --filter=app build \
 	&& bun run --filter=agent build
-
