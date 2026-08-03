@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+!.env.example
+.next
+.turbo
+**/.DS_Store
+**/.eve
+**/.next
+**/.turbo
+**/dist
+**/node_modules
+node_modules
+

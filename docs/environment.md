@@ -209,6 +209,22 @@ works without any app running.
 
 ## What is not an env var
 
+## Product prospecting
+
+`HUNTER_API_KEY` enables B2B company discovery and professional contact
+sources; `BRAVE_SEARCH_API_KEY` adds current public-web qualification evidence.
+Both are optional capabilities of the agent.
+
+The three optional `PROSPECT_INGEST_BEAMDEPLOY_SECRET`,
+`PROSPECT_INGEST_PROPMARGIN_SECRET` and
+`PROSPECT_INGEST_ARQUIVO_FATURAS_SECRET` authenticate product forms
+independently. Generate each with `openssl rand -base64 32` and give a product
+only its own secret plus the complete
+`https://<crm>/integrations/v1/leads` URL. See
+[product prospecting](./prospecting.md).
+
+## What is not an env var
+
 - **Cache TTL default** — `DEFAULT_TTL_MS` (60s) is a constant in
   `apps/api/src/cache/cache.module.ts`. `CACHE_TTL_MS` only overrides it.
 - **Redis** — optional. Without `REDIS_URL` the cache falls back to a

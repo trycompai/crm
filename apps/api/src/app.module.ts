@@ -18,6 +18,7 @@ import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
+import { ProspectingModule } from "./prospecting/prospecting.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
 import { TrpcModule } from "./trpc/trpc.module";
@@ -49,6 +50,7 @@ import { UsersModule } from "./users/users.module";
 		GoogleModule,
 		SettingsModule,
 		BackfillModule,
+		ProspectingModule,
 	],
 })
 export class AppModule {}

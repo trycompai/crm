@@ -84,4 +84,51 @@ export class GmailClient {
 			format: "full",
 		});
 	}
+
+	async sendMessage(
+		accessToken: string,
+		input: {
+			to: string;
+			subject: string;
+			body: string;
+			threadId?: string | null;
+			inReplyTo?: string | null;
+		},
+	): Promise<GoogleResult<GmailMessage>> {
+		const raw = encodeMime(input);
+		return this.api.post<GmailMessage>(`${BASE}/messages/send`, accessToken, {
+			raw,
+			...(input.threadId ? { threadId: input.threadId } : {}),
+		});
+	}
+}
+
+function encodeMime(input: {
+	to: string;
+	subject: string;
+	body: string;
+	inReplyTo?: string | null;
+}): string {
+	if (/\r|\n/.test(input.to) || /\r|\n/.test(input.subject)) {
+		throw new Error("Email headers cannot contain line breaks.");
+	}
+	const subject = `=?UTF-8?B?${Buffer.from(input.subject).toString("base64")}?=`;
+	const body =
+		Buffer.from(input.body, "utf8")
+			.toString("base64")
+			.match(/.{1,76}/g)
+			?.join("\r\n") ?? "";
+	const mime = [
+		`To: ${input.to}`,
+		`Subject: ${subject}`,
+		...(input.inReplyTo
+			? [`In-Reply-To: ${input.inReplyTo}`, `References: ${input.inReplyTo}`]
+			: []),
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding: base64",
+		"",
+		body,
+	].join("\r\n");
+	return Buffer.from(mime).toString("base64url");
 }

@@ -91,6 +91,21 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	BLOB_READ_WRITE_TOKEN?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(32)
+	PROSPECT_INGEST_BEAMDEPLOY_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(32)
+	PROSPECT_INGEST_PROPMARGIN_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(32)
+	PROSPECT_INGEST_ARQUIVO_FATURAS_SECRET?: string;
 }
 
 export function validateEnv(

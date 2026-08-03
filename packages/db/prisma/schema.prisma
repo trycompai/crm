@@ -1,4 +1,3 @@
-
 datasource db {
   provider = "postgresql"
 }
@@ -23,13 +22,18 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  ownedCompanies Company[]     @relation("CompanyOwner")
-  ownedContacts  Contact[]     @relation("ContactOwner")
-  ownedDeals     Deal[]        @relation("DealOwner")
-  activities     Activity[]    @relation("ActivityAuthor")
-  mailboxSyncs   MailboxSync[]
-  factDecisions  ContactFact[] @relation("FactDecider")
-  conversations  AgentConversation[] @relation("ConversationOwner")
+  ownedCompanies    Company[]           @relation("CompanyOwner")
+  ownedContacts     Contact[]           @relation("ContactOwner")
+  ownedDeals        Deal[]              @relation("DealOwner")
+  activities        Activity[]          @relation("ActivityAuthor")
+  mailboxSyncs      MailboxSync[]
+  factDecisions     ContactFact[]       @relation("FactDecider")
+  conversations     AgentConversation[] @relation("ConversationOwner")
+  productsSentAs    Product[]           @relation("ProductSender")
+  reviewedProspects ProspectCandidate[] @relation("ProspectReviewer")
+  approvedOutreach  OutreachMessage[]   @relation("OutreachApprover")
+
+  outreachRole OutreachRole @default(VIEWER)
 
   @@unique([email])
   @@map("user")
@@ -126,6 +130,281 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  PROSPECTING
+  PRODUCT_FORM
+}
+
+enum ProductKey {
+  BEAMDEPLOY
+  PROPMARGIN
+  ARQUIVO_FATURAS
+}
+
+enum OutreachRole {
+  VIEWER
+  REVIEWER
+  ADMIN
+}
+
+enum ProspectKind {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum ProspectStatus {
+  DISCOVERED
+  ENRICHING
+  REVIEW
+  APPROVED
+  CONTACTED
+  REPLIED
+  QUALIFIED
+  CONVERTED
+  REJECTED
+  SUPPRESSED
+  EXPIRED
+}
+
+enum OutreachStep {
+  FIRST_TOUCH
+  FOLLOW_UP_ONE
+  FOLLOW_UP_TWO
+}
+
+enum OutreachStatus {
+  DRAFT
+  APPROVED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum ConsentStatus {
+  NOT_REQUIRED
+  GRANTED
+  DENIED
+  UNKNOWN
+}
+
+model Product {
+  id   ProductKey @id
+  name String
+
+  active            Boolean   @default(false)
+  discoveryDailyCap Int       @default(0)
+  outreachDailyCap  Int       @default(0)
+  offerName         String
+  offerPrice        String
+  offerUrl          String?
+  defaultLocale     String    @default("en")
+  senderUserId      String?
+  senderUser        User?     @relation("ProductSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  commercialReadyAt DateTime?
+  nextDiscoveryAt   DateTime?
+
+  candidates ProspectCandidate[]
+  runs       ProspectingRun[]
+  deals      Deal[]
+  tasks      AgentTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, nextDiscoveryAt])
+  @@map("product")
+}
+
+model ProspectCandidate {
+  id        String     @id @default(cuid())
+  productId ProductKey
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  kind   ProspectKind
+  status ProspectStatus @default(DISCOVERED)
+
+  name        String
+  companyName String?
+  domain      String?
+  website     String?
+  email       String?
+  emailHash   String?
+  countryCode String?
+  legalForm   String?
+  title       String?
+
+  source           String
+  sourceExternalId String?
+  sourceUrl        String?
+
+  consentStatus        ConsentStatus @default(UNKNOWN)
+  consentCapturedAt    DateTime?
+  consentPolicyVersion String?
+  consentSource        String?
+
+  fitScore            Int     @default(0)
+  intentScore         Int     @default(0)
+  contactabilityScore Int     @default(0)
+  totalScore          Int     @default(0)
+  scoreRationale      String?
+  eligibilityReason   String?
+
+  reviewedById String?
+  reviewedBy   User?     @relation("ProspectReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  contactedAt  DateTime?
+  repliedAt    DateTime?
+  qualifiedAt  DateTime?
+
+  convertedCompanyId String?
+  convertedContactId String?
+  convertedDealId    String? @unique
+
+  retentionExpiresAt DateTime?
+  lastResearchedAt   DateTime?
+
+  evidence      ProspectEvidence[]
+  messages      OutreachMessage[]
+  inboundEvents InboundLeadEvent[]
+  tasks         AgentTask[]
+  runs          ProspectRunCandidate[]
+  deal          Deal?                  @relation("SourceProspect", fields: [convertedDealId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, domain])
+  @@unique([productId, emailHash])
+  @@index([productId, status, totalScore])
+  @@index([status, retentionExpiresAt])
+  @@map("prospectCandidate")
+}
+
+model InboundLeadEvent {
+  id          String            @id @default(cuid())
+  productId   ProductKey
+  eventId     String
+  candidateId String
+  candidate   ProspectCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime
+  receivedAt  DateTime          @default(now())
+
+  @@unique([productId, eventId])
+  @@index([candidateId])
+  @@map("inboundLeadEvent")
+}
+
+model ProspectEvidence {
+  id          String            @id @default(cuid())
+  candidateId String
+  candidate   ProspectCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  kind       String
+  detail     String
+  sourceUrl  String
+  sourceName String
+  observedAt DateTime @default(now())
+
+  @@unique([candidateId, kind, sourceUrl])
+  @@index([candidateId, observedAt])
+  @@map("prospectEvidence")
+}
+
+model ProspectingRun {
+  id        String     @id @default(cuid())
+  productId ProductKey
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  source       String
+  status       String    @default("PENDING")
+  targetCount  Int
+  discovered   Int       @default(0)
+  qualified    Int       @default(0)
+  costCents    Int       @default(0)
+  error        String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  scheduledFor DateTime
+
+  candidates ProspectRunCandidate[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, source, scheduledFor])
+  @@index([status, scheduledFor])
+  @@map("prospectingRun")
+}
+
+model ProspectRunCandidate {
+  runId       String
+  run         ProspectingRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   ProspectCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@id([runId, candidateId])
+  @@index([candidateId])
+  @@map("prospectRunCandidate")
+}
+
+model OutreachMessage {
+  id          String            @id @default(cuid())
+  candidateId String
+  candidate   ProspectCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  step           OutreachStep
+  status         OutreachStatus @default(DRAFT)
+  recipientEmail String
+  subject        String
+  body           String
+  scheduledAt    DateTime?
+
+  approvedById String?
+  approvedBy   User?     @relation("OutreachApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  contentHash  String
+
+  idempotencyKey String    @unique
+  gmailMessageId String?
+  gmailThreadId  String?
+  rfcMessageId   String?
+  sentAt         DateTime?
+  failureReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([candidateId, step])
+  @@index([status, scheduledAt])
+  @@map("outreachMessage")
+}
+
+model SuppressionEntry {
+  id          String      @id @default(cuid())
+  productId   ProductKey?
+  fingerprint String      @unique
+  emailHash   String?
+  domain      String?
+  reason      String
+  source      String
+  createdAt   DateTime    @default(now())
+
+  @@index([productId, emailHash])
+  @@index([productId, domain])
+  @@map("suppressionEntry")
+}
+
+model ComplianceSnapshot {
+  id           String   @id @default(cuid())
+  jurisdiction String
+  source       String
+  checksum     String   @unique
+  effectiveAt  DateTime
+  importedAt   DateTime @default(now())
+  entryCount   Int
+  data         Json
+
+  @@index([jurisdiction, effectiveAt])
+  @@map("complianceSnapshot")
 }
 
 model Company {
@@ -162,7 +441,7 @@ model Company {
   primaryContactId String?  @unique
   primaryContact   Contact? @relation("PrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
 
-  enrichmentStatus EnrichmentStatus @default(PENDING)
+  enrichmentStatus EnrichmentStatus   @default(PENDING)
   enrichedAt       DateTime?
   enrichmentError  String?
   enrichment       CompanyEnrichment?
@@ -171,14 +450,14 @@ model Company {
 
   lastActivityAt DateTime?
 
-  contacts       Contact[]       @relation("CompanyContacts")
+  contacts       Contact[]           @relation("CompanyContacts")
   conversations  AgentConversation[]
   deals          Deal[]
   activities     Activity[]
   emailThreads   EmailThread[]
   calendarEvents CalendarEvent[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   @@index([ownerId])
   @@index([name])
@@ -197,10 +476,10 @@ model CompanyEnrichment {
 }
 
 model Contact {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   firstName   String
   lastName    String?
-  email       String?  @unique
+  email       String? @unique
   phone       String?
   title       String?
   linkedinUrl String?
@@ -218,11 +497,11 @@ model Contact {
   facts         ContactFact[]
   conversations AgentConversation[]
 
-  companyId   String?
-  company     Company? @relation("CompanyContacts", fields: [companyId], references: [id], onDelete: SetNull)
-  ownerId     String?
-  owner       User?    @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  primaryOf   Company? @relation("PrimaryContact")
+  companyId String?
+  company   Company? @relation("CompanyContacts", fields: [companyId], references: [id], onDelete: SetNull)
+  ownerId   String?
+  owner     User?    @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  primaryOf Company? @relation("PrimaryContact")
 
   source RecordSource @default(MANUAL)
 
@@ -291,7 +570,7 @@ model ContactBrief {
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   narrative String
-  sections Json
+  sections  Json
 
   score     Float
   sourceUrl String?
@@ -303,18 +582,22 @@ model ContactBrief {
 }
 
 model AgentTask {
-  id        String  @id @default(cuid())
-  contactId String?
-  companyId String?
+  id          String             @id @default(cuid())
+  contactId   String?
+  companyId   String?
+  productId   ProductKey?
+  product     Product?           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  candidateId String?
+  candidate   ProspectCandidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   kind   String
   reason String
 
   priority Int @default(0)
-  budget Int @default(4)
+  budget   Int @default(4)
   attempts Int @default(0)
 
-  dueAt DateTime
+  dueAt       DateTime
   leasedUntil DateTime?
 
   sessionId  String?
@@ -326,11 +609,13 @@ model AgentTask {
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
+  @@index([productId])
+  @@index([candidateId])
   @@map("agentTask")
 }
 
 model AgentEvent {
-  id        String @id
+  id        String  @id
   sessionId String
   contactId String?
   type      String
@@ -358,7 +643,7 @@ model AgentConversation {
 
   sessionId         String  @unique
   continuationToken String?
-  streamIndex Int @default(0)
+  streamIndex       Int     @default(0)
 
   title        String?
   messageCount Int     @default(0)
@@ -376,10 +661,14 @@ model Deal {
   id            String              @id @default(cuid())
   conversations AgentConversation[]
   name          String
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  ownerId   String
-  owner     User    @relation("DealOwner", fields: [ownerId], references: [id])
+  companyId     String?
+  company       Company?            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerId       String
+  owner         User                @relation("DealOwner", fields: [ownerId], references: [id])
+
+  productId       ProductKey?
+  product         Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  sourceCandidate ProspectCandidate? @relation("SourceProspect")
 
   stage             DealStage @default(DEMO_BOOKED)
   stageChangedAt    DateTime  @default(now())
@@ -401,6 +690,7 @@ model Deal {
   @@index([stage])
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
+  @@index([productId])
   @@map("deal")
 }
 
@@ -471,12 +761,12 @@ model MailboxSync {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   source String
 
-  status GoogleSyncStatus @default(IDLE)
-  cursor String?
+  status       GoogleSyncStatus @default(IDLE)
+  cursor       String?
   lastSyncedAt DateTime?
   lastError    String?
   retryAfter   DateTime?
-  autoCreate   Boolean   @default(false)
+  autoCreate   Boolean          @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -487,7 +777,7 @@ model MailboxSync {
 }
 
 model EmailThread {
-  id String @id @default(cuid())
+  id            String  @id @default(cuid())
   rootMessageId String  @unique
   subject       String?
 
@@ -516,18 +806,18 @@ model EmailMessage {
   threadId String
   thread   EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  rfcMessageId String @unique
+  rfcMessageId   String  @unique
   syncedByUserId String?
   gmailMessageId String?
 
-  direction EmailDirection
-  fromEmail String
-  fromName  String?
+  direction  EmailDirection
+  fromEmail  String
+  fromName   String?
   recipients Json
   subject    String?
   snippet    String?
-  body   String?
-  sentAt DateTime
+  body       String?
+  sentAt     DateTime
 
   createdAt DateTime @default(now())
 
@@ -536,10 +826,10 @@ model EmailMessage {
 }
 
 model CalendarEvent {
-  id String @id @default(cuid())
+  id                String   @id @default(cuid())
   iCalUid           String
   originalStartTime DateTime
-  recurringEventId String?
+  recurringEventId  String?
 
   title          String?
   description    String?
@@ -576,8 +866,8 @@ model CalendarAttendee {
   eventId String
   event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  email String
-  name  String?
+  email          String
+  name           String?
   responseStatus String?
   isOrganizer    Boolean  @default(false)
   contactId      String?

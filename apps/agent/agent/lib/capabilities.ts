@@ -12,6 +12,27 @@ export function capabilities(): readonly Capability[] {
 
 	return [
 		{
+			env: "HUNTER_API_KEY",
+			label: "B2B prospect data",
+			gives:
+				"company discovery plus sourced and verified professional email addresses",
+			enabled: set("HUNTER_API_KEY"),
+		},
+		{
+			env: "BRAVE_SEARCH_API_KEY",
+			label: "Prospecting web search",
+			gives:
+				"public company, hiring and technology signals from an independent web index",
+			enabled: set("BRAVE_SEARCH_API_KEY"),
+		},
+		{
+			env: "GITHUB_TOKEN",
+			label: "GitHub discovery",
+			gives:
+				"authenticated public repository and code search for mobile technology signals",
+			enabled: set("GITHUB_TOKEN"),
+		},
+		{
 			env: "RAPIDAPI_KEY",
 			label: "LinkedIn",
 			gives:

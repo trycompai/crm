@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import {
 	ActivityType,
 	type Db,
 	EmailDirection,
 	GoogleSyncStatus,
 	type MailboxSyncModel as MailboxSync,
+	OutreachStatus,
+	ProspectStatus,
 	RecordSource,
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
@@ -355,7 +358,74 @@ export class GmailSyncService {
 			contactId,
 		});
 
+		if (!outbound && message.threadId) {
+			await this.recordProspectReply(row.userId, message.threadId, parsed.body);
+		}
+
 		return true;
+	}
+
+	private async recordProspectReply(
+		userId: string,
+		gmailThreadId: string,
+		body: string,
+	) {
+		const outreach = await this.db.outreachMessage.findFirst({
+			where: {
+				gmailThreadId,
+				status: OutreachStatus.SENT,
+				candidate: { product: { senderUserId: userId } },
+			},
+			include: { candidate: true },
+			orderBy: { sentAt: "desc" },
+		});
+		if (!outreach) return;
+
+		const optedOut =
+			/\b(unsubscribe|remove me|não contactar|nao contactar|remover|não tenho interesse|nao tenho interesse)\b/i.test(
+				body,
+			);
+		await this.db.$transaction(async (tx) => {
+			await tx.prospectCandidate.update({
+				where: { id: outreach.candidateId },
+				data: {
+					status: optedOut ? ProspectStatus.SUPPRESSED : ProspectStatus.REPLIED,
+					repliedAt: new Date(),
+					eligibilityReason: optedOut
+						? "Recipient opted out by email."
+						: undefined,
+				},
+			});
+			await tx.outreachMessage.updateMany({
+				where: {
+					candidateId: outreach.candidateId,
+					status: { in: [OutreachStatus.DRAFT, OutreachStatus.APPROVED] },
+				},
+				data: { status: OutreachStatus.CANCELLED },
+			});
+			if (optedOut) {
+				const fingerprint = `${outreach.candidate.productId}:${outreach.candidate.emailHash ?? outreach.candidate.domain ?? outreach.candidateId}`;
+				await tx.suppressionEntry.upsert({
+					where: { fingerprint },
+					create: {
+						productId: outreach.candidate.productId,
+						fingerprint,
+						emailHash:
+							outreach.candidate.emailHash ??
+							createHash("sha256")
+								.update(outreach.recipientEmail)
+								.digest("hex"),
+						domain: outreach.candidate.domain,
+						reason: "Recipient opted out by email.",
+						source: "gmail-reply",
+					},
+					update: {
+						reason: "Recipient opted out by email.",
+						source: "gmail-reply",
+					},
+				});
+			}
+		});
 	}
 
 	private async hasOutboundInThread(

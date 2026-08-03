@@ -282,7 +282,7 @@ export type DealHistory = {
 		owner: string | null;
 		createdAt: string;
 	};
-	company: { id: string; name: string; domain: string | null };
+	company: { id: string; name: string; domain: string | null } | null;
 	people: {
 		id: string;
 		name: string;
@@ -345,15 +345,14 @@ export async function readDealHistory(
 
 	const contactIds = deal.contacts.map(({ contact }) => contact.id);
 
+	const relatedThreadConditions = [
+		...(contactIds.length > 0 ? [{ contactId: { in: contactIds } }] : []),
+		...(deal.company ? [{ companyId: deal.company.id }] : []),
+	];
 	const relatedThreads =
-		contactIds.length > 0
-			? {
-					OR: [
-						{ contactId: { in: contactIds } },
-						{ companyId: deal.company.id },
-					],
-				}
-			: { companyId: deal.company.id };
+		relatedThreadConditions.length > 0
+			? { OR: relatedThreadConditions }
+			: { id: "__unlinked_deal__" };
 
 	const [stageChanges, threads, meetings, notes, lastInbound] =
 		await Promise.all([
@@ -387,16 +386,17 @@ export async function readDealHistory(
 				},
 			}),
 			db.calendarEvent.findMany({
-				where:
-					contactIds.length > 0
-						? {
-								OR: [
+				where: {
+					OR: [
+						...(contactIds.length > 0
+							? [
 									{ contactId: { in: contactIds } },
 									{ attendees: { some: { contactId: { in: contactIds } } } },
-									{ companyId: deal.company.id },
-								],
-							}
-						: { companyId: deal.company.id },
+								]
+							: []),
+						...(deal.company ? [{ companyId: deal.company.id }] : []),
+					],
+				},
 				orderBy: { startsAt: "desc" },
 				take: 10,
 				select: {

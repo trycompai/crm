@@ -52,6 +52,41 @@ export class GoogleApiClient {
 		}
 	}
 
+	async post<T>(
+		url: string,
+		accessToken: string,
+		body: unknown,
+	): Promise<GoogleResult<T>> {
+		const target = new URL(url);
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+		try {
+			const response = await fetch(target, {
+				method: "POST",
+				headers: {
+					authorization: `Bearer ${accessToken}`,
+					"content-type": "application/json",
+				},
+				body: JSON.stringify(body),
+				signal: controller.signal,
+			});
+			return await this.interpret<T>(response, target.pathname);
+		} catch (error) {
+			const aborted = error instanceof Error && error.name === "AbortError";
+			return {
+				outcome: "failed",
+				reason: aborted
+					? `Timed out after ${DEFAULT_TIMEOUT_MS}ms.`
+					: error instanceof Error
+						? error.message
+						: String(error),
+				retryable: true,
+			};
+		} finally {
+			clearTimeout(timeout);
+		}
+	}
+
 	private async interpret<T>(
 		response: Response,
 		path: string,

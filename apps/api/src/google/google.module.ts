@@ -33,6 +33,11 @@ import { SyncStateService } from "./sync-state.service";
 		ConversationService,
 		GoogleRouter,
 	],
-	exports: [GoogleSyncService, GoogleConnectionService],
+	exports: [
+		GoogleSyncService,
+		GoogleConnectionService,
+		GoogleTokenService,
+		GmailClient,
+	],
 })
 export class GoogleModule {}

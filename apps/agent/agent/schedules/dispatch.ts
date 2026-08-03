@@ -6,6 +6,7 @@ import { runPortrait } from "../lib/portrait";
 import {
 	claimDue,
 	completeTask,
+	enqueueDueProspecting,
 	noteSession,
 	retireExhausted,
 } from "../lib/tasks";
@@ -17,6 +18,7 @@ export default defineSchedule({
 	async run({ receive, waitUntil, appAuth }) {
 		waitUntil(
 			(async () => {
+				await enqueueDueProspecting().catch(() => 0);
 				try {
 					for (const abandoned of await retireExhausted()) {
 						await settle(
@@ -66,6 +68,10 @@ export default defineSchedule({
 										budget: String(task.budget),
 										...(task.contactId ? { contactId: task.contactId } : {}),
 										...(task.companyId ? { companyId: task.companyId } : {}),
+										...(task.productId ? { productId: task.productId } : {}),
+										...(task.candidateId
+											? { candidateId: task.candidateId }
+											: {}),
 									},
 								},
 							});
@@ -91,6 +97,8 @@ function brief(task: {
 	reason: string;
 	contactId: string | null;
 	companyId: string | null;
+	productId: string | null;
+	candidateId: string | null;
 	attempts: number;
 }): string {
 	const again =
@@ -98,10 +106,10 @@ function brief(task: {
 			? `This is attempt ${task.attempts}; the earlier one did not finish. Carry on from what is already in this thread rather than starting again. `
 			: "";
 
-	return again + work(task.kind, task.reason);
+	return again + work(task.kind, task.reason, task.productId);
 }
 
-function work(kind: string, reason: string): string {
+function work(kind: string, reason: string, productId?: string | null): string {
 	switch (kind) {
 		case "identify":
 			return "Work out who this contact actually is, and record what you find. Read what we already have before spending anything.";
@@ -112,6 +120,10 @@ function work(kind: string, reason: string): string {
 			return "There is a meeting with this person soon. Make sure whoever is taking it opens the record knowing who they are dealing with.";
 		case "company-profile":
 			return "Fill in what we know about this company: brand, industry, location, links. Write a brief if there is something worth saying.";
+		case "prospect-discovery":
+			return `Run the daily prospect discovery for ${productId ?? "the configured product"}. Use discover_prospects once, report its counts and costs, and do not contact anybody.`;
+		case "prospect-draft":
+			return "Read the prospect and its evidence, then write one concise, specific first-touch email draft in the product's locale. Mention only supported facts, connect one real signal to the configured offer, and include a simple reply-to-opt-out sentence. Store it with write_prospect_draft. Never approve or send it.";
 		default:
 			return `Handle this: ${reason}`;
 	}

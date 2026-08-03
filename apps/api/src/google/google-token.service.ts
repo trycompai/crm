@@ -87,6 +87,36 @@ export class GoogleTokenService {
 		}
 	}
 
+	async accessTokenWithScope(
+		userId: string,
+		scope: string,
+		label: string,
+	): Promise<TokenResult> {
+		const scopes = await this.grantedScopes(userId);
+		if (!scopes.includes(scope)) {
+			return {
+				outcome: "not-connected",
+				reason: `The ${label} scope has not been granted.`,
+			};
+		}
+		try {
+			const { accessToken } = await auth.api.getAccessToken({
+				body: { providerId: GOOGLE_PROVIDER_ID, userId },
+			});
+			return accessToken
+				? { outcome: "ok", accessToken }
+				: {
+						outcome: "needs-reconnect",
+						reason: "Google returned no access token.",
+					};
+		} catch {
+			return {
+				outcome: "needs-reconnect",
+				reason: "Google would not refresh the access token.",
+			};
+		}
+	}
+
 	async revoke(userId: string): Promise<boolean> {
 		const account = await this.db.account.findFirst({
 			where: { userId, providerId: GOOGLE_PROVIDER_ID },

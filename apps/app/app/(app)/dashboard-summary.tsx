@@ -305,16 +305,16 @@ function DealCell({
 		iconUrl: string | null;
 		iconDarkUrl: string | null;
 		iconTone: string | null;
-	};
+	} | null;
 	meta?: string;
 }) {
 	return (
 		<span className="flex min-w-0 items-center gap-2">
 			<EntityLogo
-				src={company.iconUrl}
-				darkSrc={company.iconDarkUrl}
-				tone={company.iconTone as EntityLogoTone | null | undefined}
-				name={company.name}
+				src={company?.iconUrl}
+				darkSrc={company?.iconDarkUrl}
+				tone={company?.iconTone as EntityLogoTone | null | undefined}
+				name={company?.name ?? name}
 				size="sm"
 			/>
 			<span className="flex min-w-0 flex-col">
@@ -323,7 +323,11 @@ function DealCell({
 					className="truncate text-muted-foreground"
 					suppressHydrationWarning
 				>
-					{meta ? `${company.name} · ${meta}` : company.name}
+					{company
+						? meta
+							? `${company.name} · ${meta}`
+							: company.name
+						: (meta ?? "Direct lead")}
 				</span>
 			</span>
 		</span>
