@@ -122,6 +122,17 @@ function integrationSecret(product: string): string | undefined {
 }
 
 async function readBody(request: Request): Promise<string> {
+	if (Buffer.isBuffer(request.body)) {
+		if (request.body.length > MAX_BODY_BYTES)
+			throw new BadRequestException("Payload too large.");
+		return request.body.toString("utf8");
+	}
+	if (typeof request.body === "string") {
+		if (Buffer.byteLength(request.body) > MAX_BODY_BYTES)
+			throw new BadRequestException("Payload too large.");
+		return request.body;
+	}
+
 	const chunks: Buffer[] = [];
 	let size = 0;
 	for await (const chunk of request) {
