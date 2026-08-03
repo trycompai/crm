@@ -30,8 +30,7 @@ services:
       - sh
       - -ec
       - >-
-        bun packages/db/node_modules/prisma/build/index.js migrate deploy
-        --schema packages/db/prisma/schema.prisma
+        bun run --filter=@crm/db db:deploy
         && exec bun run --filter=api start
     environment:
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?ALLOWED_SIGN_IN is required}
