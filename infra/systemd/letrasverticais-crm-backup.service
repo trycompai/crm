@@ -1,0 +1,22 @@
+[Unit]
+Description=Verified Letras Verticais CRM database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=APP_ROOT=/srv/letrasverticais-crm
+Environment=ENV_FILE=/srv/letrasverticais-crm/shared/.env
+Environment=COMPOSE_FILE=/srv/letrasverticais-crm/current/docker-compose.ovh.yml
+Environment=BACKUP_DIR=/srv/letrasverticais-crm/backups
+ExecStart=/srv/letrasverticais-crm/current/scripts/ovh-backup.sh
+
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/letrasverticais-crm/backups
+
