@@ -45,10 +45,10 @@ const ITEMS: RailItem[] = [
 ];
 
 function isActive(item: RailItem, pathname: string): boolean {
-	return (
-		pathname === item.href ||
-		(item.match === "prefix" && pathname.startsWith(item.href))
-	);
+	if (item.match === "exact" || item.href === "/") {
+		return pathname === item.href;
+	}
+	return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 function RailLink({ item, active }: { item: RailItem; active: boolean }) {
@@ -68,7 +68,6 @@ function RailLink({ item, active }: { item: RailItem; active: boolean }) {
 					<Link
 						href={item.href}
 						aria-current={active ? "page" : undefined}
-						transitionTypes={["nav-lateral"]}
 					>
 						<Icon icon={item.icon} />
 						<span className="sr-only">{item.title}</span>
@@ -132,8 +131,8 @@ export function AppIconRail() {
 
 			<Sheet open={open} onOpenChange={setOpen}>
 				<SheetContent side="left" className="w-64 gap-0 p-0">
-					<SheetHeader>
-						<SheetTitle>Navigation</SheetTitle>
+					<SheetHeader className="border-b p-4 text-left">
+						<SheetTitle className="text-base font-semibold">Navigation</SheetTitle>
 					</SheetHeader>
 					<nav aria-label="Primary" className="flex flex-1 flex-col gap-1 p-2">
 						{ITEMS.map((item) => (
