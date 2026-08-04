@@ -1,5 +1,11 @@
 # Agent — Rules for working on `apps/agent`
 
+Product discovery is also agent-owned. Hunter, Brave and GitHub clients,
+deterministic scoring, evidence collection and provider-cost accounting live in
+`apps/agent/agent/lib/prospecting.ts`; the API only persists review decisions,
+external form events and approved Gmail actions. See
+[product prospecting](./prospecting.md).
+
 The research agent works out who the people in the CRM are. It is an
 [eve](https://eve.dev/docs) app, it is **its own deployment**, and it owns every
 piece of intelligence in this repo.

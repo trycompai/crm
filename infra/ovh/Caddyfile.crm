@@ -1,0 +1,35 @@
+(crm_security_headers) {
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+}
+
+crm.letrasverticais.com {
+	encode zstd gzip
+	import crm_security_headers
+
+	@workflow path /.well-known/workflow/*
+	handle @workflow {
+		reverse_proxy crm-agent:2000
+	}
+
+	@api path /api/* /health /integrations/* /internal/*
+	handle @api {
+		reverse_proxy crm-api:3001
+	}
+
+	handle {
+		reverse_proxy crm-app:3000
+	}
+
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}

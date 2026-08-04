@@ -16,10 +16,12 @@ export {
 export {
 	CALENDAR_SCOPE,
 	GMAIL_SCOPE,
+	GMAIL_SEND_SCOPE,
 	GOOGLE_PROVIDER_ID,
 	hasSyncScopes,
 	IDENTITY_SCOPES,
 	needsGoogleGrant,
+	OUTREACH_SCOPES,
 	parseScopes,
 	REQUIRED_SCOPES,
 	type SignInAccount,

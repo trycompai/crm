@@ -1,5 +1,11 @@
 # Design — Rules for AI Agents
 
+The `/prospecting` workspace uses the same page shell, data-table controls,
+cards, dialogs and responsive navigation as the CRM directories. Product
+activation schedules research; commercial readiness separately unlocks message
+approval. Candidate approval and message approval remain visibly distinct. See
+[product prospecting](./prospecting.md).
+
 - /packages/ui is the single source of truth for all UI.
 - Always use shared shadcn components from /packages/ui.
 - Do not override component styles with className.

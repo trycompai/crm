@@ -42,6 +42,24 @@ export function capabilitiesFrom(
 
 	return [
 		{
+			...fromEnv("HUNTER_API_KEY"),
+			label: "B2B prospect data",
+			gives:
+				"company discovery plus sourced and verified professional email addresses",
+		},
+		{
+			...fromEnv("BRAVE_SEARCH_API_KEY"),
+			label: "Prospecting web search",
+			gives:
+				"public company, hiring and technology signals from an independent web index",
+		},
+		{
+			...fromEnv("GITHUB_TOKEN"),
+			label: "GitHub discovery",
+			gives:
+				"authenticated public repository and code search for mobile technology signals",
+		},
+		{
 			...fromEnv("RAPIDAPI_KEY"),
 			label: "LinkedIn",
 			gives:

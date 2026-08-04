@@ -204,7 +204,7 @@ export class DealsService {
 					stageChangedAt: now,
 					closedAt: closed ? now : null,
 					amount: fromCents(input.amountCents),
-					currency: input.currency ?? "USD",
+					currency: input.currency ?? "EUR",
 					expectedCloseDate: parseDate(input.expectedCloseDate),
 				},
 				select: { id: true, name: true, companyId: true },

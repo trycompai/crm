@@ -1,0 +1,169 @@
+name: letrasverticais-crm
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_USER: ${POSTGRES_USER:-crm}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - private
+
+  api:
+    image: letrasverticais-crm:${CRM_RELEASE_SHA:?CRM_RELEASE_SHA is required}
+    build:
+      context: .
+      dockerfile: Dockerfile.ovh
+      args:
+        CRM_PUBLIC_URL: ${APP_URL:?APP_URL is required}
+    restart: unless-stopped
+    command:
+      - sh
+      - -ec
+      - >-
+        bun run --filter=@crm/db db:deploy
+        && exec bun run --filter=api start
+    environment:
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?ALLOWED_SIGN_IN is required}
+      API_URL: ${API_URL:?API_URL is required}
+      APP_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_URL: ${API_URL:?API_URL is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      NODE_ENV: production
+      PORT: "3001"
+      PROSPECT_INGEST_ARQUIVO_FATURAS_SECRET: ${PROSPECT_INGEST_ARQUIVO_FATURAS_SECRET:?Arquivo ingest secret is required}
+      PROSPECT_INGEST_BEAMDEPLOY_SECRET: ${PROSPECT_INGEST_BEAMDEPLOY_SECRET:?BeamDeploy ingest secret is required}
+      PROSPECT_INGEST_PROPMARGIN_SECRET: ${PROSPECT_INGEST_PROPMARGIN_SECRET:?PropMargin ingest secret is required}
+      REDIS_URL: ${REDIS_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      private: {}
+      platform-edge:
+        aliases: [crm-api]
+
+  app:
+    image: letrasverticais-crm:${CRM_RELEASE_SHA:?CRM_RELEASE_SHA is required}
+    restart: unless-stopped
+    command: ["bun", "run", "--filter=app", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+    environment:
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?AGENT_BRIDGE_SECRET is required}
+      AGENT_URL: http://agent:2000
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?ALLOWED_SIGN_IN is required}
+      API_URL: ${API_URL:?API_URL is required}
+      APP_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_URL: ${API_URL:?API_URL is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - fetch('http://127.0.0.1:3000/sign-in').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      private: {}
+      platform-edge:
+        aliases: [crm-app]
+
+  agent:
+    image: letrasverticais-crm:${CRM_RELEASE_SHA:?CRM_RELEASE_SHA is required}
+    restart: unless-stopped
+    command: ["bun", "run", "--filter=agent", "start", "--", "--host", "0.0.0.0"]
+    environment:
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?AGENT_BRIDGE_SECRET is required}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
+      BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
+      CONTEXT_DEV_API_KEY: ${CONTEXT_DEV_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      HUNTER_API_KEY: ${HUNTER_API_KEY:-}
+      NODE_ENV: production
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      PORT: "2000"
+      RAPIDAPI_KEY: ${RAPIDAPI_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - fetch('http://127.0.0.1:2000/eve/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - agent-workflows:/app/apps/agent/.eve
+    networks:
+      private: {}
+      platform-edge:
+        aliases: [crm-agent]
+
+  google-sync:
+    image: curlimages/curl:8.16.0
+    restart: unless-stopped
+    command:
+      - sh
+      - -ec
+      - >-
+        while true; do
+          curl --fail --silent --show-error --max-time 60 -X POST -H "Authorization: Bearer $${CRON_SECRET}" http://api:3001/internal/sync/google || true;
+          sleep 300;
+        done
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET is required}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - private
+
+networks:
+  private:
+    internal: true
+  platform-edge:
+    external: true
+
+volumes:
+  agent-workflows:
+  postgres-data:

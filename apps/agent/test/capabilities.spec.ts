@@ -8,6 +8,9 @@ import {
 } from "../agent/lib/capabilities";
 
 const KEYS = [
+	"HUNTER_API_KEY",
+	"BRAVE_SEARCH_API_KEY",
+	"GITHUB_TOKEN",
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",

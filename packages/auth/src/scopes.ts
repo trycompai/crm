@@ -3,12 +3,14 @@ export const GOOGLE_PROVIDER_ID = "google";
 export const IDENTITY_SCOPES = ["openid", "email", "profile"] as const;
 
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 export const CALENDAR_SCOPE =
 	"https://www.googleapis.com/auth/calendar.readonly";
 
 export const SYNC_SCOPES = [GMAIL_SCOPE, CALENDAR_SCOPE] as const;
 
 export const REQUIRED_SCOPES = [...IDENTITY_SCOPES, ...SYNC_SCOPES] as const;
+export const OUTREACH_SCOPES = [...SYNC_SCOPES, GMAIL_SEND_SCOPE] as const;
 
 export function hasSyncScopes(scope: string | null | undefined): boolean {
 	const granted = parseScopes(scope);

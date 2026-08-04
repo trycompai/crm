@@ -26,6 +26,7 @@
 	"devDependencies": {
 		"@crm/typescript-config": "workspace:*",
 		"@types/node": "^24.0.0",
+		"just-bash": "^3.0.0",
 		"microsandbox": "^0.6.8",
 		"typescript": "^5.9.2"
 	}

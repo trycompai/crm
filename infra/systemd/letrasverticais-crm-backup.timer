@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily verified Letras Verticais CRM database backup
+
+[Timer]
+OnCalendar=*-*-* 04:15:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+Unit=letrasverticais-crm-backup.service
+
+[Install]
+WantedBy=timers.target

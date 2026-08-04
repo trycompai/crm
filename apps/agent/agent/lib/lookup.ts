@@ -30,7 +30,7 @@ export type DealHit = {
 	stage: string;
 	amount: number | null;
 	currency: string;
-	company: { id: string; name: string };
+	company: { id: string; name: string } | null;
 };
 
 export type SearchHit = ContactHit | CompanyHit | DealHit;
@@ -207,7 +207,7 @@ async function searchDeals(
 
 	return rows
 		.map((row) => ({
-			score: score(term, [row.name, row.company.name]),
+			score: score(term, [row.name, row.company?.name ?? ""]),
 			hit: {
 				kind: "deal" as const,
 				id: row.id,

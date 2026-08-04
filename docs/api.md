@@ -1,6 +1,15 @@
 
 # API Rules - Always review when working on our API
 
+## Prospecting integration boundary
+
+The signed machine endpoints `POST /integrations/v1/leads` and
+`POST /integrations/v1/suppressions` are deliberate exceptions to the browser
+tRPC surface. They validate bounded strict payloads and authenticate the exact
+body with a per-product timestamped HMAC. Candidate review and outreach actions
+remain on the authenticated `prospecting` tRPC router. Vendor research and
+scoring remain in the agent. See [product prospecting](./prospecting.md).
+
 ## Logging: use the Nest logger, attach fields, never `console.log`
 
 Logging lives in `apps/api/src/logging`. `ContextLogger` extends Nest's

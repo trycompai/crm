@@ -66,6 +66,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 
 	const query = useQuery(trpc.deals.byId.queryOptions({ id: dealId }));
 	const deal = query.data;
+	const company = deal?.company ?? null;
 
 	const tabs: DetailSheetTab[] = deal
 		? [
@@ -100,23 +101,23 @@ export function DealSheet({ dealId }: { dealId: string }) {
 			error={query.error?.message ?? null}
 			title={deal?.name ?? "Deal"}
 			description={
-				deal ? (
+				company ? (
 					<button
 						type="button"
-						onClick={() => openRecord({ kind: "company", id: deal.company.id })}
+						onClick={() => openRecord({ kind: "company", id: company.id })}
 						className="text-foreground underline-offset-2 hover:underline"
 					>
-						{deal.company.name}
+						{company.name}
 					</button>
 				) : undefined
 			}
 			media={
-				deal ? (
+				company ? (
 					<EntityLogo
-						src={deal.company.iconUrl}
-						darkSrc={deal.company.iconDarkUrl}
-						tone={deal.company.iconTone as EntityLogoTone | null | undefined}
-						name={deal.company.name}
+						src={company.iconUrl}
+						darkSrc={company.iconDarkUrl}
+						tone={company.iconTone as EntityLogoTone | null | undefined}
+						name={company.name}
 						size="lg"
 					/>
 				) : null
@@ -132,7 +133,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 						<RecordActions
 							record={{ kind: "deal", id: deal.id }}
 							name={deal.name}
-							consequence={`Its stage history, notes and agent conversations go too. ${deal.company.name} and the ${deal.contacts.length === 1 ? "person" : "people"} on it stay in the CRM.`}
+							consequence={`Its stage history, notes and agent conversations go too. ${deal.company?.name ?? "The associated company"} and the ${deal.contacts.length === 1 ? "person" : "people"} on it stay in the CRM.`}
 						/>
 					</>
 				) : null
@@ -246,7 +247,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						saving={isSaving("currency")}
 						onSave={(currency) => {
 							if (currency.length !== 3) {
-								toast.error("Use a three-letter currency code, like USD.");
+								toast.error("Use a three-letter currency code, like EUR.");
 								return;
 							}
 							save({ currency: currency.toUpperCase() });
@@ -260,7 +261,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 					/>
 					<InlineSelectField
 						label="Company"
-						value={deal.company.id}
+						value={deal.company?.id ?? ""}
 						options={(companies.data ?? []).map((company) => ({
 							value: company.id,
 							label: company.name,
@@ -290,7 +291,11 @@ function DealContacts({ deal }: { deal: Deal }) {
 			<DetailSheetEmpty
 				icon={UserMultiple}
 				title="No contacts on this deal"
-				description={`Nobody from ${deal.company.name} is attached yet. Add people to the company, then bring them onto the deal.`}
+				description={
+					deal.company
+						? `Nobody from ${deal.company.name} is attached yet. Add people to the company, then bring them onto the deal.`
+						: "No contacts are attached to this direct lead yet."
+				}
 			/>
 		);
 	}

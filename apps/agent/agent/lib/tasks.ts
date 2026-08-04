@@ -1,9 +1,11 @@
-import { db, Prisma } from "@crm/db";
+import { db, Prisma, type ProductKey } from "@crm/db";
 
 export type LeasedTask = {
 	id: string;
 	contactId: string | null;
 	companyId: string | null;
+	productId: ProductKey | null;
+	candidateId: string | null;
 	kind: string;
 	reason: string;
 	budget: number;
@@ -56,7 +58,8 @@ export async function claimDue(
 		) AS due
 		WHERE t.id = due.id
 		RETURNING t.id, t."contactId", t."companyId", t.kind, t.reason,
-			t.budget, t.attempts, t.priority, t."dueAt";
+			t."productId", t."candidateId", t.budget, t.attempts,
+			t.priority, t."dueAt";
 	`;
 
 	return claimed.sort(
@@ -120,6 +123,8 @@ export async function noteSession(
 export async function scheduleTask(input: {
 	contactId?: string | null;
 	companyId?: string | null;
+	productId?: ProductKey | null;
+	candidateId?: string | null;
 	kind: string;
 	reason: string;
 	dueAt: Date;
@@ -132,6 +137,8 @@ export async function scheduleTask(input: {
 			finishedAt: null,
 			contactId: input.contactId ?? undefined,
 			companyId: input.companyId ?? undefined,
+			productId: input.productId ?? undefined,
+			candidateId: input.candidateId ?? undefined,
 		},
 		select: { id: true },
 	});
@@ -148,6 +155,8 @@ export async function scheduleTask(input: {
 		data: {
 			contactId: input.contactId ?? null,
 			companyId: input.companyId ?? null,
+			productId: input.productId ?? null,
+			candidateId: input.candidateId ?? null,
 			kind: input.kind,
 			reason: input.reason,
 			dueAt: input.dueAt,
@@ -156,6 +165,121 @@ export async function scheduleTask(input: {
 		},
 		select: { id: true },
 	});
+}
+
+export async function enqueueDueProspecting(): Promise<number> {
+	const now = new Date();
+	const products = await db.product.findMany({
+		where: { active: true, nextDiscoveryAt: { lte: now } },
+		select: {
+			id: true,
+			name: true,
+			discoveryDailyCap: true,
+			nextDiscoveryAt: true,
+		},
+	});
+
+	let queued = 0;
+	for (const product of products) {
+		const scheduledFor = product.nextDiscoveryAt ?? now;
+		await db.$transaction(async (tx) => {
+			const run = await tx.prospectingRun.upsert({
+				where: {
+					productId_source_scheduledFor: {
+						productId: product.id,
+						source: "hybrid",
+						scheduledFor,
+					},
+				},
+				create: {
+					productId: product.id,
+					source: "hybrid",
+					targetCount: product.discoveryDailyCap,
+					scheduledFor,
+				},
+				update: {},
+				select: { id: true },
+			});
+
+			const open = await tx.agentTask.findFirst({
+				where: {
+					kind: "prospect-discovery",
+					productId: product.id,
+					finishedAt: null,
+				},
+				select: { id: true },
+			});
+			if (!open) {
+				await tx.agentTask.create({
+					data: {
+						kind: "prospect-discovery",
+						productId: product.id,
+						reason: `Discover candidates for ${product.name}; pending run ${run.id}.`,
+						dueAt: now,
+						priority: 5,
+						budget: 12,
+					},
+				});
+				queued += 1;
+			}
+
+			await tx.product.update({
+				where: { id: product.id },
+				data: { nextDiscoveryAt: nextLisbonBusinessMorning(now) },
+			});
+		});
+	}
+	return queued;
+}
+
+export function nextLisbonBusinessMorning(after: Date): Date {
+	const local = localDateParts(after);
+	for (let add = 0; add < 8; add += 1) {
+		const calendar = new Date(
+			Date.UTC(local.year, local.month - 1, local.day + add),
+		);
+		const year = calendar.getUTCFullYear();
+		const month = calendar.getUTCMonth() + 1;
+		const day = calendar.getUTCDate();
+		const candidate = zonedDate(year, month, day, 8, "Europe/Lisbon");
+		const weekday = calendar.getUTCDay();
+		if (weekday !== 0 && weekday !== 6 && candidate > after) return candidate;
+	}
+	throw new Error("Could not calculate the next Lisbon business morning.");
+}
+
+function localDateParts(date: Date) {
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: "Europe/Lisbon",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(date);
+	const value = (type: Intl.DateTimeFormatPartTypes) =>
+		Number(parts.find((part) => part.type === type)?.value);
+	return { year: value("year"), month: value("month"), day: value("day") };
+}
+
+function zonedDate(
+	year: number,
+	month: number,
+	day: number,
+	hour: number,
+	timeZone: string,
+) {
+	const guess = new Date(Date.UTC(year, month - 1, day, hour));
+	const name =
+		new Intl.DateTimeFormat("en-US", {
+			timeZone,
+			timeZoneName: "longOffset",
+		})
+			.formatToParts(guess)
+			.find((part) => part.type === "timeZoneName")?.value ?? "GMT+00:00";
+	const match = name.match(/GMT([+-])(\d{2}):(\d{2})/);
+	const offset = match
+		? (match[1] === "+" ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3]))
+		: 0;
+	return new Date(guess.getTime() - offset * 60_000);
 }
 
 export async function lastDecision(contactId: string) {
