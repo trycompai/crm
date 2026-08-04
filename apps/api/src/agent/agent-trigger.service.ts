@@ -1,4 +1,4 @@
-import type { Db } from "@crm/db";
+import type { Db, DealStage } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -98,7 +98,7 @@ export class AgentTriggerService {
 
 	async dealStageChanged(
 		companyId: string,
-		stage: string,
+		stage: DealStage,
 		reason = "Deal stage changed",
 	): Promise<void> {
 		await this.enqueue({

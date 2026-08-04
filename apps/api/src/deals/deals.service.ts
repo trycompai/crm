@@ -11,13 +11,13 @@ import {
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
+import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	ActivityStampService,
 	type StampTargets,
 } from "../crm/activity-stamp.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
-import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -196,8 +196,8 @@ export class DealsService {
 		const closed = isClosedStage(stage);
 		const now = new Date();
 
-		try {
-			const deal = await this.db.deal.create({
+		const deal = await this.db.deal
+			.create({
 				data: {
 					name: input.name.trim(),
 					companyId: input.companyId,
@@ -210,19 +210,19 @@ export class DealsService {
 					expectedCloseDate: parseDate(input.expectedCloseDate),
 				},
 				select: { id: true, name: true, companyId: true },
+			})
+			.catch((error) => {
+				throw this.translateRelations(error);
 			});
 
-			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
+		this.logger.log({ message: "Deal created", dealId: deal.id, stage });
 
-			await this.agent.dealCreated(
-				deal.companyId,
-				"A new deal was added to this account",
-			);
+		await this.agent.dealCreated(
+			deal.companyId,
+			"A new deal was added to this account",
+		);
 
-			return deal;
-		} catch (error) {
-			throw this.translateRelations(error);
-		}
+		return deal;
 	}
 
 	async update(id: string, input: DealUpdateInput) {

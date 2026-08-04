@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
@@ -8,14 +8,23 @@ const reasonPrefix = `agent-trigger-spec (${suffix})`;
 
 const service = new AgentTriggerService(db);
 
-beforeEach(async () => {
-	await db.agentTask.deleteMany({
+const cleanup = () =>
+	db.agentTask.deleteMany({
 		where: {
-			reason: {
-				contains: reasonPrefix,
-			},
+			OR: [
+				{ reason: { contains: reasonPrefix } },
+				{ contactId: { startsWith: `contact-${suffix}-` } },
+				{ companyId: { startsWith: `company-${suffix}-` } },
+			],
 		},
 	});
+
+beforeEach(async () => {
+	await cleanup();
+});
+
+afterAll(async () => {
+	await cleanup();
 });
 
 describe("AgentTriggerService", () => {
