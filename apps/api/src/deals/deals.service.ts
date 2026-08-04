@@ -17,6 +17,7 @@ import {
 } from "../crm/activity-stamp.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -79,6 +80,7 @@ export class DealsService {
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
+		private readonly agent: AgentTriggerService,
 		private readonly stamp: ActivityStampService,
 	) {}
 
@@ -212,6 +214,11 @@ export class DealsService {
 
 			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
 
+			await this.agent.dealCreated(
+				deal.companyId,
+				"A new deal was added to this account",
+			);
+
 			return deal;
 		} catch (error) {
 			throw this.translateRelations(error);
@@ -336,6 +343,12 @@ export class DealsService {
 			from: deal.stage,
 			to: input.stage,
 		});
+
+		await this.agent.dealStageChanged(
+			deal.companyId,
+			input.stage,
+			"Deal stage moved",
+		);
 
 		return { ...updated, changed: true };
 	}

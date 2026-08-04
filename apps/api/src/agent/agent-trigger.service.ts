@@ -70,6 +70,46 @@ export class AgentTriggerService {
 		});
 	}
 
+	async contactUpdated(
+		contactId: string,
+		reason = "A rep updated this contact",
+	): Promise<void> {
+		await this.enqueue({
+			contactId,
+			kind: "profile",
+			reason,
+			priority: PRIORITY.requested,
+			budget: 6,
+		});
+	}
+
+	async dealCreated(
+		companyId: string,
+		reason = "A new deal was created",
+	): Promise<void> {
+		await this.enqueue({
+			companyId,
+			kind: "company-profile",
+			reason,
+			priority: PRIORITY.requested,
+			budget: 8,
+		});
+	}
+
+	async dealStageChanged(
+		companyId: string,
+		stage: string,
+		reason = "Deal stage changed",
+	): Promise<void> {
+		await this.enqueue({
+			companyId,
+			kind: "company-profile",
+			reason: `${reason} (${stage})`,
+			priority: PRIORITY.requested,
+			budget: 6,
+		});
+	}
+
 	async meetingSoon(contactId: string, when: Date): Promise<void> {
 		await this.enqueue({
 			contactId,

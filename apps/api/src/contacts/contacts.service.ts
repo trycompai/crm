@@ -391,7 +391,7 @@ export class ContactsService {
 		}
 
 		try {
-			return await this.db.$transaction(async (tx) => {
+			const updated = await this.db.$transaction(async (tx) => {
 				const updated = await tx.contact.update({
 					where: { id },
 					data,
@@ -404,6 +404,15 @@ export class ContactsService {
 
 				return updated;
 			});
+
+			if (Object.keys(data).length > 0) {
+				await this.agent.contactUpdated(
+					updated.id,
+					"A rep changed contact details",
+				);
+			}
+
+			return updated;
 		} catch (error) {
 			throw this.translate(error, id);
 		}
