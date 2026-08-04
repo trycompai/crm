@@ -239,7 +239,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						saving={isSaving("currency")}
 						onSave={(currency) => {
 							if (currency.length !== 3) {
-								toast.error("Use a three-letter currency code, like USD.");
+								toast.error("Use a three-letter currency code, like EUR.");
 								return;
 							}
 							save({ currency: currency.toUpperCase() });

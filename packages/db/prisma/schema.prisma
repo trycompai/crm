@@ -673,7 +673,7 @@ model Deal {
   stage             DealStage @default(DEMO_BOOKED)
   stageChangedAt    DateTime  @default(now())
   amount            Decimal?  @db.Decimal(14, 2)
-  currency          String    @default("USD")
+  currency          String    @default("EUR")
   expectedCloseDate DateTime?
   closedAt          DateTime?
   closedReason      String?

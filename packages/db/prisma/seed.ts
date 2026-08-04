@@ -500,7 +500,7 @@ async function seedDeals(
 					stage,
 					stageChangedAt,
 					amount: integer(6, 90) * 1000,
-					currency: "USD",
+					currency: "EUR",
 					expectedCloseDate: daysFromNow(
 						closedDaysAgo === null
 							? integer(-10, 75)

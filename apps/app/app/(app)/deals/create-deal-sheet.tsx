@@ -184,7 +184,7 @@ export function CreateDealSheet({ companyId }: { companyId?: string }) {
 						</Field>
 
 						<Field>
-							<FieldLabel htmlFor={amountId}>Amount (USD)</FieldLabel>
+							<FieldLabel htmlFor={amountId}>Amount (EUR)</FieldLabel>
 							<Input
 								id={amountId}
 								value={amount}

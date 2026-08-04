@@ -7,10 +7,10 @@ const WELL_FORMED_CURRENCY_CODE = /^[A-Za-z]{3}$/;
 function displayCurrencyCode(currency: string): string {
 	return WELL_FORMED_CURRENCY_CODE.test(currency)
 		? currency.toUpperCase()
-		: "USD";
+		: "EUR";
 }
 
-export function formatMoney(cents: number, currency = "usd"): string {
+export function formatMoney(cents: number, currency = "eur"): string {
 	return new Intl.NumberFormat(undefined, {
 		style: "currency",
 		currency: displayCurrencyCode(currency),
@@ -18,7 +18,7 @@ export function formatMoney(cents: number, currency = "usd"): string {
 	}).format(cents / 100);
 }
 
-export function formatMoneyCompact(cents: number, currency = "usd"): string {
+export function formatMoneyCompact(cents: number, currency = "eur"): string {
 	return new Intl.NumberFormat(undefined, {
 		style: "currency",
 		currency: displayCurrencyCode(currency),
