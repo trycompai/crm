@@ -16,6 +16,7 @@ import { DatabaseModule } from "./database/database.module";
 import { DealsModule } from "./deals/deals.module";
 import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { SearchModule } from "./search/search.module";
@@ -39,6 +40,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		BetterAuthModule.forRoot({ auth, middleware: logAuthRoute }),
 		AuthModule,
 		HealthModule,
+		IntegrationsModule,
 		TrpcModule,
 		UsersModule,
 		CompaniesModule,

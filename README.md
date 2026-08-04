@@ -297,6 +297,7 @@ short version:
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
 | `REDIS_URL` | A shared cache. Without it, per-instance and in-memory. |
 | `CRON_SECRET` | Guards the Gmail/Calendar sync route. Required to use it. |
+| `CLAY_WEBHOOK_SECRET` / `CLAAP_WEBHOOK_SECRET` | Enable the [Clay and Claap webhooks](./docs/integrations.md). |
 
 ## Tasks
 

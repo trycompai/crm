@@ -133,6 +133,25 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  CLAY
+}
+
+enum IntegrationProvider {
+  CLAY
+  CLAAP
+}
+
+model IntegrationEvent {
+  id         String              @id @default(cuid())
+  provider   IntegrationProvider
+  externalId String
+  payload    Json
+  result     Json
+  createdAt  DateTime            @default(now())
+
+  @@unique([provider, externalId])
+  @@index([createdAt])
+  @@map("integrationEvent")
 }
 
 model Company {

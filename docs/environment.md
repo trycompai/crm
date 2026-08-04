@@ -346,6 +346,17 @@ Two things to do in Google Cloud before this works:
 The cron is declared in `apps/api/vercel.json` at `*/5 * * * *`. Minute-level
 schedules need a Pro plan; on Hobby it silently becomes daily.
 
+## Clay and Claap webhooks
+
+`CLAY_WEBHOOK_SECRET` and `CLAAP_WEBHOOK_SECRET` independently enable the two
+inbound integration routes. Each is optional; an unset secret makes only its route
+return `503`, and the rest of the CRM continues to work. Both must be at least 16
+characters.
+
+Clay sends the secret as a bearer token. Claap sends its configured secret in
+`X-Claap-Webhook-Secret`. Payloads, setup and exact matching rules are documented in
+[`docs/integrations.md`](./integrations.md).
+
 ## Database
 
 Prisma is driven through turbo from the repo root: `db:generate`, `db:migrate`,

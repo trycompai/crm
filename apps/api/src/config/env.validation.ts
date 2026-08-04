@@ -102,6 +102,20 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	AGENT_BRIDGE_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "CLAY_WEBHOOK_SECRET must be at least 16 characters.",
+	})
+	CLAY_WEBHOOK_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "CLAAP_WEBHOOK_SECRET must be at least 16 characters.",
+	})
+	CLAAP_WEBHOOK_SECRET?: string;
 }
 
 export function validateEnv(
