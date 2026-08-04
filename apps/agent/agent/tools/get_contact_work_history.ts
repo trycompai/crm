@@ -11,7 +11,7 @@ export default defineTool({
 		contactId: z.string(),
 	}),
 	async execute({ contactId }) {
-		if (!enabled("RAPIDAPI_KEY")) {
+		if (!(await enabled("RAPIDAPI_KEY"))) {
 			return { found: false as const, ...unavailable("RAPIDAPI_KEY") };
 		}
 

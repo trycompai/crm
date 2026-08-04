@@ -5,13 +5,15 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./agent-tasks": "./src/agent-tasks.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./enums": "./src/generated/prisma/enums.ts",
 		"./favicon": "./src/favicon.ts",
 		"./images": "./src/images.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
-		"./settings": "./src/settings.ts"
+		"./settings": "./src/settings.ts",
+		"./workspace": "./src/workspace.ts"
 	},
 	"scripts": {
 		"build": "prisma generate",

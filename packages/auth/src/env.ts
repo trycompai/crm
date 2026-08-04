@@ -44,4 +44,8 @@ export const env = {
 	isProduction: process.env.NODE_ENV === "production",
 } as const;
 
+export function isGoogleConfigured(): boolean {
+	return env.google !== undefined;
+}
+
 export { apiUrl, appUrl };

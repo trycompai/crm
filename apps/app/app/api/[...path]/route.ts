@@ -42,7 +42,21 @@ async function handler(request: Request): Promise<Response> {
 		init.duplex = "half";
 	}
 
-	const upstream = await fetch(target, init);
+	let upstream: Response;
+
+	try {
+		upstream = await fetch(target, init);
+	} catch (error) {
+		console.error(
+			`API proxy: ${API_URL} is not reachable for ${request.method} ${url.pathname}.`,
+			error,
+		);
+
+		return Response.json(
+			{ error: `The API at ${API_URL} is not reachable.` },
+			{ status: 502 },
+		);
+	}
 
 	const responseHeaders = new Headers(upstream.headers);
 	for (const header of [

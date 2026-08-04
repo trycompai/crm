@@ -46,19 +46,35 @@ frames away as a missing variable. `packages/env/test/root.spec.ts` pins this.
 
 ## What is required
 
-Five values, and the API refuses to start without them.
+Three values, and the API refuses to start without them.
 
 | Variable | Why it has no default |
 | --- | --- |
 | `DATABASE_URL` | `docker compose up -d` starts a Postgres that matches `.env.example` exactly |
 | `BETTER_AUTH_SECRET` | Signs session cookies. `openssl rand -base64 32` |
 | `ALLOWED_SIGN_IN` | The entire authorisation model — see below |
-| `GOOGLE_CLIENT_ID` | Google is the only sign-in method |
-| `GOOGLE_CLIENT_SECRET` | |
 
 Everything else has a working localhost default or is genuinely optional. That
 is the difference between a clone that runs and a clone that makes you read a
 table of variables first.
+
+### Google is the fourth value, and it is a pair
+
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are what a clone starts with, and
+almost every install wants them: they are both the sign-in button and the Gmail
+and Calendar sync. They are nonetheless **optional**, because an install that
+signs in through [its own identity provider](./api.md#sso-is-a-row-not-a-deployment)
+should not have to create a Google Cloud project to do it.
+
+- **They are set together or not at all.** `packages/auth/src/env.ts` throws on
+  one without the other, because half a client is a sign-in button that fails at
+  Google with an error the reader cannot act on.
+- **Neither Google nor a provider is a state the sign-in page reports**, naming
+  the two variables — see [the SSO rules](./api.md#sso-is-a-row-not-a-deployment).
+  It is the one configuration mistake whose audience is the person who can fix
+  it, so it must not present as a blank page.
+- **Without them, Gmail sync is a capability the install does not have**, and
+  Settings → Connections says so rather than offering a button that cannot work.
 
 ### `ALLOWED_SIGN_IN`
 
@@ -106,9 +122,39 @@ Live in `packages/auth/src/workspace.ts`.
 - **`AUTH_COOKIE_DOMAIN`** only when the API and the app are on different
   subdomains of one parent — then `.example.com`, so one cookie covers both. On
   localhost the shared cookie already works, because cookies ignore ports.
-- **`AGENT_URL`** is the research agent, which is its own deployment. Only the
-  app reads it, and only server-side: the browser never learns the agent has an
-  origin of its own. See [the agent bridge](./agent.md#the-bridge).
+
+### The session cookie is named after this app, not after the library
+
+`AUTH_COOKIE_PREFIX` in [`@crm/auth/cookies`](../packages/auth/src/cookies.ts)
+is the literal string `crm`, so the session cookie is
+`__Secure-crm.session_token` rather than Better Auth's default
+`__Secure-better-auth.session_token`.
+
+The default is a hazard for any install whose app shares a parent domain with
+something else — `crm.example.com` beside an existing `app.example.com`. A
+cookie set with `Domain=.example.com` by the neighbour is sent to *us* too,
+under a name identical to ours, and `parseCookies` keeps one value per name. The
+failure is silent and reads as a deployment problem rather than a naming one:
+sign-in completes, the `session` row is written with a week's expiry, the
+browser holds a cookie, and then every reader — the API that minted it and the
+app alike — resolves it to `null` and bounces to `/sign-in`. Nothing logs an
+error, because nothing has errored.
+
+Two things follow. It is set on the **server config and the proxy's read**
+together: `advanced.cookiePrefix` in `auth.ts` names the cookie and
+`getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX })` in
+`apps/app/proxy.ts` looks for it, and a prefix changed in one place only is a
+gate that redirects every signed-in request. And **changing it signs everybody
+out** — the old cookies stop matching. That is a one-time cost paid on deploy,
+not a loop: a stale `better-auth`-prefixed cookie no longer matches, so the
+proxy sends the reader to `/sign-in`, which is where they need to be.
+- **`AGENT_URL`** is the research agent, which is its own deployment. The app
+  reads it to proxy the bridge and the API reads it to poke the dispatcher, both
+  server-side only: the browser never learns the agent has an origin of its own.
+  It must be a whole URL including the scheme, and the API validates that at
+  boot — `new URL("/internal/crm/dispatch", base)` throws on `127.0.0.1:2000`,
+  and it would throw at the moment a task is queued rather than at startup. See
+  [the agent bridge](./agent.md#the-bridge).
 
 ## Typed, validated env
 
@@ -131,11 +177,14 @@ Two sharp edges:
 Every outside source the agent can reach is optional, and it is designed to run
 with none of them. A missing key removes a place to look; it is never an error.
 
+The company research key is the exception and it is **not in this table**,
+because it is not a variable at all — see
+[the next section](#the-context-key-is-asked-for-not-configured).
+
 | Variable | What it adds |
 | --- | --- |
 | `PERPLEXITY_API_KEY` | Open-web research with citations, and the search that finds a LinkedIn slug |
 | `RAPIDAPI_KEY` | LinkedIn profiles via LinkDAPI — name, title, employer, tenure |
-| `CONTEXT_DEV_API_KEY` | Company logo, industry, location and socials from a domain |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour when matching profiles |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors every logo and profile picture into Vercel Blob rather than linking them. Read by the API and the seed too — see below |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel, where OIDC handles it |
@@ -147,6 +196,81 @@ agent plans around what it actually has, and gives the tools a shared
 "not configured, and retrying will not help" result — checked *before* the
 research budget is charged, so an install without a key does not pay for the
 discovery on every contact.
+
+### The Context key is asked for, not configured
+
+**`CONTEXT_DEV_API_KEY` is not a variable in this repo, and adding one back
+would be a second answer to a question that already has one.** Nothing reads it
+— not `.env.example`, not `env.validation.ts`, not any `turbo.json`. The key
+lives in `AppSetting` beside the agent's model, it is asked for at
+`/onboarding/research`, and **Settings → General** changes it afterwards.
+
+Same reason as [SSO](./api.md#sso-is-a-row-not-a-deployment): an admin who
+cannot redeploy cannot set an environment variable. It goes further than SSO
+does, because this is not a key an install can sensibly do without — it decides
+whether a company arrives as itself or as a grey square with its initials in
+it — so [the proxy asks for it](./api.md#the-gate-is-proxyts-and-it-is-answered-once-per-browser)
+rather than leaving it to be discovered on a settings page nobody visits.
+
+- **An install that had the variable set is asked for the key again, and that
+  is the intended upgrade.** Nothing adopts the old value — no boot-time
+  migration, no fallback — so the first navigation after deploying lands
+  everyone on `/onboarding/research`, where they paste the key they already
+  have. It is one interruption, once, in exchange for the answer living in one
+  place rather than two — and it cannot be dismissed, because a dismissed gate
+  is an install quietly filling up with companies that have no logo.
+- **Nothing is lost in the meantime, and the wait is not a queue.** A `brand`
+  task with nowhere to look is consumed and marked done — but it settles
+  `SKIPPED` *before* anything marks the row `RUNNING`, and `settle` only writes
+  over a `RUNNING` row, so the company stays `PENDING`. `PENDING` is exactly
+  what the sign-in sweep re-queues, so the work is recovered from the record
+  rather than held in the queue. `test/keyless-brand.integration.spec.ts` pins
+  it, because a `settle` that wrote unconditionally would strand every company
+  added before the key with nothing to say so.
+- **Saving the key picks that work up immediately.**
+  `settings.setResearchKey` runs the company sweep itself rather than leaving it
+  to the next sign-in, because the person who just fixed it is standing there.
+  It is fire-and-forget: a sweep that fails logs and the sign-in one still
+  catches up. Contacts are not swept here — only one of the three portrait
+  sources is Context — and they are picked up on the next sign-in as before.
+- **`readContextDevKey` in [`@crm/db/settings`](../packages/db/src/settings.ts)
+  is the only reader**, and it reads one column. Everything downstream —
+  `contextDevKey()` in the agent's `capabilities.ts`, the client in
+  `lib/context-dev.ts`, the API's `settings.researchKey` — goes through it, so
+  there is exactly one place that knows where the key is kept.
+- **It is read live, not at boot.** There is no cache in front of it, so a key
+  pasted into the settings page applies to the very next vendor call rather than
+  to the next deployment. Each read is one indexed row in front of a lookup that
+  is about to make an HTTP request anyway.
+- **A database that cannot be read is a capability that is off**, not an
+  exception. `contextDevKey()` logs and returns null, because a missing source
+  must never throw — the rule at the top of this section, and the reason the
+  agent keeps running against everything else it has.
+- **The key is never read back.** The API returns whether one is set and its
+  last four characters, and nothing returns the key itself. Same rule as an SSO
+  client secret.
+- **A wrong key is refused at the point it is typed, and the agent is what
+  checks it.** Checking means calling Context, and [a vendor client in the API
+  is a bug](./api.md#intelligence-never-lives-in-the-api) — so
+  `settings.setResearchKey` asks the agent over the bridge
+  (`POST /internal/crm/verify-key`) and only writes the row if the answer is not
+  *invalid*. The agent already owns the client, the error classification and the
+  key, so nothing about Context.dev is learned twice.
+  - **The probe costs nothing.** A brand lookup only bills when it resolves a
+    brand, and a free-provider address is refused with a documented `422`
+    before any resolution — so `key-check@gmail.com` reaches Context, proves
+    the key authenticates, and is never billed. Measured at about half a second.
+  - **`401` is the only answer that means the key is wrong.** A `403` about the
+    plan, a `422` refusing the probe, a `429`, a `500` — all of those were
+    served *after* the key authenticated, so the key is good and only the probe
+    was refused. `classifyKey` in `lib/context-dev.ts` holds that rule and
+    `test/verify-key.spec.ts` pins every branch of it.
+  - **A check that cannot be made is not a failed check.** No
+    `AGENT_BRIDGE_SECRET`, an agent that is down, a timeout — all return
+    `unknown`, and an unknown answer *saves the key* and logs that it went in
+    unverified. The alternative is an install whose agent is not up yet being
+    unable to finish onboarding, which is a worse failure than an unchecked
+    key: the key is still checked by the first task that uses it.
 
 `BLOB_READ_WRITE_TOKEN` is the one entry in that table the agent does not own
 alone, which is why it is also declared in `apps/api/src/config/env.validation.ts`
@@ -163,10 +287,32 @@ Always on. Same OAuth client, same callback — the two read-only scopes are add
 to the existing Google provider rather than to a second one, so there is no
 extra redirect URI to register.
 
-The scopes are requested **at sign-in** and are a condition of using the CRM:
-`requireGoogleAccess()` gates the app shell on what Google actually granted,
-because granular consent lets a user untick a scope and still complete sign-in.
-Anyone missing either scope is sent to `/grant-access` to re-consent.
+The scopes are requested **at sign-in** and are a condition of using the CRM
+*for the person who signed in with Google*: `requireGoogleAccess()` gates the
+app shell on what Google actually granted, because granular consent lets a user
+untick a scope and still complete sign-in. Anyone missing either scope is sent
+to `/grant-access` to re-consent.
+
+**Someone who signed in through an identity provider is not gated**, and the
+distinction is the whole of `needsGoogleGrant` in
+[`@crm/auth`](../packages/auth/src/scopes.ts): the wall applies to an account
+whose only sign-in row is `google`. Two reasons it cannot be "does this person
+have the scopes".
+
+- **An SSO rep has no Google account to grant them on.** Sending them to
+  `/grant-access` is sending them to a page whose only other button is *sign
+  out* — a locked door with a sign on it, on an install that may have no Google
+  client at all.
+- **Linking Gmail must not become a trap.** An SSO rep who connects Google and
+  later revokes it would, under a scopes-only rule, be locked out of the CRM by
+  having tried the optional feature. `revoke()` clears the tokens and keeps the
+  `account` row, so that row is exactly what a scopes-only rule would trip over.
+
+They connect it from **Settings → Connections** instead, which posts the same
+`linkSocial` call `/grant-access` does — one write path, two doors. The card
+tells the three states apart, because they need three different sentences: no
+Google client on the install, a client but no linked account, and a linked
+account that has stopped working.
 
 **Sync is forward-only.** Nothing from before a mailbox was first seen is
 imported: Gmail records the current `historyId` on its first pass and imports
@@ -230,7 +376,10 @@ only its own secret plus the complete
 - **Redis** — optional. Without `REDIS_URL` the cache falls back to a
   per-instance in-memory store, which is fine for local work and wrong for any
   multi-instance deploy (see `docs/api.md`).
-- **Sign-in method** — Google-only, in code, not configurable.
+- **Sign-in method** — Google is the built-in one and it is in code. An
+  install that wants its own identity provider adds one on the SSO settings
+  page, and that is a row rather than a variable — see
+  [SSO](./api.md#sso-is-a-row-not-a-deployment).
 
 ## `vercel env pull` writes to `.env.local`, which wins
 

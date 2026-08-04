@@ -13,7 +13,7 @@ export default defineTool({
 		companyName: z.string().describe("The company the CRM has them at."),
 	}),
 	async execute({ email, companyName }) {
-		if (!enabled("PERPLEXITY_API_KEY")) {
+		if (!(await enabled("PERPLEXITY_API_KEY"))) {
 			return { candidateSlugs: [], ...unavailable("PERPLEXITY_API_KEY") };
 		}
 

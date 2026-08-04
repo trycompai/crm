@@ -4,6 +4,9 @@ You should always check and see if there are any relevant skill files you should
 
 Please check below, if you're working on anything related review the rules and let the user know you've read them:
 
+## Code Comments
+Do not add code comments to the code you write, ever.
+
 ## Design
 Read @docs/design.md
 
@@ -31,11 +34,3 @@ what it does — and if the API reads it, declare it in
 Anything a self-hoster might not have is optional, and the code must work
 without it: a missing key removes a capability, it never throws. See
 `apps/agent/agent/lib/capabilities.ts` for the pattern.
-
-## Contributing / licence
-
-This repository is public and MIT-licensed. Before writing anything that ships:
-no real customer names, addresses or company data in fixtures, tests,
-screenshots or docs — the seed in `packages/db/prisma/seed.ts` is the source of
-demo data. See @CONTRIBUTING.md and @SECURITY.md.
-

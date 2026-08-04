@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { domainFromEmail, normalizeDomain } from "../src/companies/domain";
+import {
+	domainFromEmail,
+	isMachineDomain,
+	normalizeDomain,
+} from "../src/companies/domain";
 
 describe("normalizeDomain", () => {
 	it("reduces anything a human might type to the bare host", () => {
@@ -48,5 +52,24 @@ describe("domainFromEmail", () => {
 		]) {
 			expect(domainFromEmail(email)).toBeNull();
 		}
+	});
+
+	it("never derives a company from infrastructure", () => {
+		for (const email of [
+			"c_f5ecd6a22aea945a2d5c6ac9b8b2b16b@group.calendar.google.com",
+			"list@googlegroups.com",
+			"reply@em1234.amazonses.com",
+		]) {
+			expect(domainFromEmail(email)).toBeNull();
+		}
+	});
+});
+
+describe("isMachineDomain", () => {
+	it("is false for a real host and for nothing", () => {
+		expect(isMachineDomain("stripe.com")).toBe(false);
+		expect(isMachineDomain("calendar.acme.com")).toBe(false);
+		expect(isMachineDomain(null)).toBe(false);
+		expect(isMachineDomain("")).toBe(false);
 	});
 });

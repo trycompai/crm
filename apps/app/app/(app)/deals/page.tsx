@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { SearchParams } from "nuqs/server";
-import { ListSearch } from "@/components/data-table/list-search";
 import {
 	PageShell,
 	PageShellActions,
@@ -50,7 +49,6 @@ export default async function DealsPage({
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
-					<ListSearch placeholder="Search deals by name or company…" />
 					<CreateDealSheet />
 				</PageShellActions>
 			</PageShellHeader>

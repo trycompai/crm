@@ -1,0 +1,31 @@
+{
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+	"packages": {
+		".": {
+			"release-type": "node",
+			"changelog-path": "CHANGELOG.md",
+			"bump-minor-pre-major": true,
+			"draft": false,
+			"prerelease": false,
+			"include-component-in-tag": false,
+			"changelog-sections": [
+				{ "type": "feat", "section": "Features" },
+				{ "type": "fix", "section": "Fixes" },
+				{ "type": "perf", "section": "Performance" },
+				{ "type": "refactor", "section": "Refactors" },
+				{ "type": "docs", "section": "Documentation" },
+				{ "type": "revert", "section": "Reverts" },
+				{ "type": "deps", "section": "Dependencies" },
+				{ "type": "chore", "hidden": true },
+				{ "type": "test", "hidden": true },
+				{ "type": "ci", "hidden": true },
+				{ "type": "build", "hidden": true },
+				{ "type": "style", "hidden": true }
+			]
+		}
+	},
+	"bootstrap-sha": "64f154b086cbad6cac232357dc21c954543ef217",
+	"separate-pull-requests": false,
+	"pull-request-title-pattern": "chore(release): ${version}",
+	"pull-request-header": "The changelog below is what will be published as the release notes. Edit the commit subjects, not this PR body — the body is regenerated on every push to main."
+}

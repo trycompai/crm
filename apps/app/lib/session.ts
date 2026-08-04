@@ -1,4 +1,4 @@
-import { auth, hasSyncScopes, type Session } from "@crm/auth";
+import { auth, needsGoogleGrant, type Session } from "@crm/auth";
 import { db } from "@crm/db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,19 +19,17 @@ export async function requireSession(): Promise<Session> {
 	return session;
 }
 
-const grantedScope = cache(async (userId: string): Promise<string | null> => {
-	const account = await db.account.findFirst({
-		where: { userId, providerId: "google" },
-		select: { scope: true },
-	});
-
-	return account?.scope ?? null;
-});
+export const signInAccounts = cache(async (userId: string) =>
+	db.account.findMany({
+		where: { userId },
+		select: { providerId: true, scope: true },
+	}),
+);
 
 export async function requireGoogleAccess(): Promise<Session> {
 	const session = await requireSession();
 
-	if (!hasSyncScopes(await grantedScope(session.user.id))) {
+	if (needsGoogleGrant(await signInAccounts(session.user.id))) {
 		redirect("/grant-access");
 	}
 

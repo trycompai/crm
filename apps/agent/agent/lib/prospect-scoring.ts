@@ -71,7 +71,7 @@ export function scoreProspect(input: ProspectObservation): ProspectScore {
 		const technologies = matches(text, BEAM_TECH);
 		const signals = matches(text, BEAM_INTENT);
 		fit = clamp(technologies * 10 + (input.domain ? 5 : 0), 0, 50);
-		intent = clamp(signals * 6, 0, 30);
+		intent = clamp(signals * 7, 0, 30);
 		if (technologies)
 			reasons.push(`${technologies} mobile technology signal(s)`);
 		if (signals) reasons.push(`${signals} delivery or hiring signal(s)`);

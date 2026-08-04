@@ -18,15 +18,20 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import Logo from "@crm/ui/components/logo";
 import { Separator } from "@crm/ui/components/separator";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { useMobileNav } from "@/components/mobile-nav";
+import { useTRPC } from "@/lib/trpc/client";
 
 type User = { name: string; email: string; image: string | null };
 
 export function AppHeader({ user }: { user: User }) {
 	const { setOpen: setMobileNavOpen } = useMobileNav();
+	const trpc = useTRPC();
+	const workspace = useQuery(trpc.workspace.get.queryOptions());
+	const name = workspace.data?.name;
 
 	async function handleSignOut() {
 		const { error } = await signOut();
@@ -59,7 +64,9 @@ export function AppHeader({ user }: { user: User }) {
 					<Logo className="size-5" />
 				</Link>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
-				<span className="font-medium text-sm">Comp AI CRM</span>
+				<span className="min-w-0 truncate font-medium text-sm">
+					{name ? `${name} CRM` : "CRM"}
+				</span>
 			</div>
 
 			<div className="ml-auto flex shrink-0 items-center gap-1.5">

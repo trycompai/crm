@@ -47,6 +47,11 @@ export class ContactsRouter {
 	}
 
 	@Mutation({ input: contactIdInput })
+	async delete(@Input("id") id: string) {
+		return this.contacts.delete(id);
+	}
+
+	@Mutation({ input: contactIdInput })
 	async enrich(@Input("id") id: string) {
 		return this.contacts.enrich(id);
 	}

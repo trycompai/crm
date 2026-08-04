@@ -14,6 +14,7 @@ import { contactName } from "@/components/crm/contact-name";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -153,6 +154,7 @@ export function ContactsTable() {
 	return (
 		<DataTable
 			query={query}
+			search={<ListSearch placeholder="Search by name, email or company…" />}
 			columns={COLUMNS}
 			rows={contacts.data?.rows ?? []}
 			total={contacts.data?.total ?? 0}

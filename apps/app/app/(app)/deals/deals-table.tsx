@@ -15,6 +15,7 @@ import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { DealStageMenu } from "@/components/crm/stage-change";
+import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -162,6 +163,7 @@ export function DealsTable() {
 	return (
 		<DataTable
 			query={query}
+			search={<ListSearch placeholder="Search deals by name or company…" />}
 			columns={COLUMNS}
 			rows={deals.data?.rows ?? []}
 			total={deals.data?.total ?? 0}

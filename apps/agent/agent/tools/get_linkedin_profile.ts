@@ -33,7 +33,7 @@ export default defineTool({
 		includeHistory,
 		contactId,
 	}) {
-		if (!enabled("RAPIDAPI_KEY")) {
+		if (!(await enabled("RAPIDAPI_KEY"))) {
 			return { found: false as const, ...unavailable("RAPIDAPI_KEY") };
 		}
 

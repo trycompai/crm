@@ -3,7 +3,9 @@
 	"extends": "@crm/typescript-config/internal-package.json",
 	"compilerOptions": {
 		"jsx": "react-jsx",
-		"types": ["node"]
+		"types": ["node"],
+		"declaration": false,
+		"declarationMap": false
 	},
 	"include": ["src/**/*.ts", "src/**/*.tsx"],
 	"exclude": ["node_modules"]

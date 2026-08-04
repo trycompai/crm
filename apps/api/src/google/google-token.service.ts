@@ -1,4 +1,4 @@
-import { auth } from "@crm/auth";
+import { auth, type SignInAccount } from "@crm/auth";
 import { type Db } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -37,6 +37,13 @@ export class GoogleTokenService {
 	async isConnected(userId: string, source: SyncSource): Promise<boolean> {
 		const scopes = await this.grantedScopes(userId);
 		return scopes.includes(SCOPE_FOR_SOURCE[source]);
+	}
+
+	async signInAccounts(userId: string): Promise<SignInAccount[]> {
+		return this.db.account.findMany({
+			where: { userId },
+			select: { providerId: true, scope: true },
+		});
 	}
 
 	async hasRefreshToken(userId: string): Promise<boolean> {

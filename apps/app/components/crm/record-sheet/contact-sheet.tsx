@@ -58,6 +58,7 @@ import {
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { RecordActions } from "./record-actions";
 import { DealAmount, MetaLine, RecordSheetFrame } from "./record-parts";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
@@ -197,6 +198,11 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								<span className="hidden sm:inline">Make primary</span>
 							</Button>
 						) : null}
+						<RecordActions
+							record={{ kind: "contact", id: contact.id }}
+							name={contactName(contact)}
+							consequence={`Their notes, agent conversations and everything the agent found go too; emails and meetings stay filed against the company.${contact.email ? ` The sync will not bring ${contact.email} back — only adding them yourself will.` : ""}`}
+						/>
 					</>
 				) : null
 			}

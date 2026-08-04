@@ -1,4 +1,4 @@
-import { domainFromEmail } from "../companies/domain";
+import { domainFromEmail, isMachineDomain } from "../companies/domain";
 
 export type Participant = {
 	email: string;
@@ -104,6 +104,21 @@ export function isAutomatedAddress(email: string): boolean {
 	);
 }
 
+const OPAQUE_LOCAL_PARTS = [
+	/^(c_)?[0-9a-f]{24,}$/,
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+];
+
+export function isMachineAddress(email: string): boolean {
+	const at = email.lastIndexOf("@");
+	if (at < 1) return true;
+
+	if (isMachineDomain(email.slice(at + 1))) return true;
+
+	const local = email.slice(0, at).toLowerCase();
+	return OPAQUE_LOCAL_PARTS.some((pattern) => pattern.test(local));
+}
+
 export function isDerivedName(
 	email: string,
 	firstName: string,
@@ -123,6 +138,7 @@ export type ExternalFilterOptions = {
 	ourDomains: ReadonlySet<string>;
 	ourAddresses: ReadonlySet<string>;
 	suppressedDomains: ReadonlySet<string>;
+	suppressedEmails: ReadonlySet<string>;
 };
 
 export function externalParticipants(
@@ -131,6 +147,8 @@ export function externalParticipants(
 ): Participant[] {
 	return participants.filter((participant) => {
 		if (options.ourAddresses.has(participant.email)) return false;
+		if (options.suppressedEmails.has(participant.email)) return false;
+		if (isMachineAddress(participant.email)) return false;
 
 		const domain = workDomain(participant.email);
 		if (!domain) return false;

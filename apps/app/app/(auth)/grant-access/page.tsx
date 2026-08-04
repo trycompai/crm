@@ -1,9 +1,8 @@
-import { hasSyncScopes } from "@crm/auth";
-import { db } from "@crm/db";
+import { needsGoogleGrant } from "@crm/auth";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
-import { requireSession } from "@/lib/session";
+import { requireSession, signInAccounts } from "@/lib/session";
 import { GrantAccess } from "./grant-access";
 
 export const metadata: Metadata = {
@@ -13,12 +12,7 @@ export const metadata: Metadata = {
 export default async function GrantAccessPage() {
 	const { user } = await requireSession();
 
-	const account = await db.account.findFirst({
-		where: { userId: user.id, providerId: "google" },
-		select: { scope: true },
-	});
-
-	if (hasSyncScopes(account?.scope)) {
+	if (!needsGoogleGrant(await signInAccounts(user.id))) {
 		redirect("/");
 	}
 
@@ -26,7 +20,7 @@ export default async function GrantAccessPage() {
 		<AuthShell>
 			<AuthHeading
 				title="One more step"
-				description="Comp AI CRM reads your Gmail and Calendar so meetings and email threads show up on the right company. It is read-only — nothing is ever sent on your behalf."
+				description="This CRM reads your Gmail and Calendar so meetings and email threads show up on the right company. It is read-only — nothing is ever sent on your behalf."
 			/>
 
 			<GrantAccess />

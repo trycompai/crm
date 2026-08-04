@@ -91,6 +91,7 @@ export type DataTableProps<TRow, TSub> = {
 	expandable?: DataTableExpandable<TRow, TSub>;
 	actions?: ReactNode;
 	leadingActions?: ReactNode;
+	search?: ReactNode;
 	meta?: ReactNode;
 	empty?: ReactNode;
 	className?: string;
@@ -151,6 +152,7 @@ export function DataTable<TRow, TSub = unknown>({
 	expandable,
 	actions,
 	leadingActions,
+	search,
 	meta,
 	empty,
 	className,
@@ -211,7 +213,8 @@ export function DataTable<TRow, TSub = unknown>({
 
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
-			<div className="flex flex-col gap-3">
+			<div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+				{search}
 				{hasFilterControls && (
 					<Button
 						type="button"
@@ -239,10 +242,13 @@ export function DataTable<TRow, TSub = unknown>({
 						/>
 					</Button>
 				)}
+				{/* `lg:contents` so the controls join the search on one row on desktop
+				    while staying a group the Filters button can collapse on mobile —
+				    search itself must never be inside that collapse. */}
 				<div
 					id={filtersId}
 					className={cn(
-						"flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between",
+						"flex-col gap-2 lg:contents",
 						filtersOpen ? "flex" : "hidden sm:flex",
 					)}
 				>

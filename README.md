@@ -1,3 +1,12 @@
+<p align="center">
+  <a href="https://link.context.dev/crm">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./docs/images/powered-by-context-dark.png">
+      <img alt="Powered by Context" height="23" src="./docs/images/powered-by-context.png">
+    </picture>
+  </a>
+</p>
+
 <h1 align="center">CRM</h1>
 
 <p align="center">
@@ -132,8 +141,16 @@ failed call at a time, and it prints the list at startup:
 ```
 [agent] on   LinkedIn (RAPIDAPI_KEY)
 [agent] off  Web research (PERPLEXITY_API_KEY)
-[agent] off  Company brand data (CONTEXT_DEV_API_KEY)
+[agent] off  Company brand data (Settings → General)
 ```
+
+**Company brand data is [Context](https://link.context.dev/crm)** — the logo, the
+colours, the industry and the real name behind a domain, which is the difference
+between an account that arrives as itself and one that arrives as a grey square with
+its initials in it. It is the one key that is asked for rather than configured: it
+lives in a row, the onboarding asks for it, and **Settings → General** changes it
+afterwards, because a self-hoster's admin cannot redeploy to set an environment
+variable.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
 a shell — the difference between a tool-caller and something that can keep a dossier,
@@ -208,10 +225,10 @@ You need [Bun](https://bun.com) and Docker.
 
 ```sh
 git clone https://github.com/trycompai/crm.git && cd crm
+cp .env.example .env          # then fill in the four values below
 bun install
 
 docker compose up -d          # Postgres on :5432
-cp .env.example .env          # then fill in the four values below
 
 bun run db:deploy             # apply migrations
 bun run db:seed               # optional: a believable pipeline to look at
@@ -229,7 +246,7 @@ Open `.env` and set these. Everything else in the file is optional and commented
 | ------------------------------------------ | -------------------------------------------------------------------- |
 | `BETTER_AUTH_SECRET`                       | `openssl rand -base64 32`                                             |
 | `ALLOWED_SIGN_IN`                          | Your email domain, e.g. `acme.com`. Or one address, e.g. `you@gmail.com`. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below.                             |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below. Both or neither.             |
 
 `DATABASE_URL` already matches the `docker compose` Postgres, so leave it alone unless
 you brought your own.
@@ -242,9 +259,13 @@ you brought your own.
 3. Enable the [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com) and the [Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) for the project.
 4. Copy the client ID and secret into `.env`.
 
-Google sign-in is the only way in, so the API will not start without these. If your
-account is on a Google Workspace domain, set the consent screen to **Internal** and
-nobody outside your org can even reach the prompt.
+Google is the sign-in method a clone starts with, and the same client reads Gmail and
+Calendar — so almost every install wants it. It is nonetheless the one of the four that
+the API will still boot without: an install that signs in through its own identity
+provider, added on **Settings → SSO**, leaves both empty and gets no Google button and
+no mail sync. Set them together or not at all; half a pair is a button that fails at
+Google. If your account is on a Google Workspace domain, set the consent screen to
+**Internal** and nobody outside your org can even reach the prompt.
 
 </details>
 
@@ -264,7 +285,7 @@ ALLOWED_SIGN_IN="you@gmail.com"                  # a one-person install
 environment variables always win, so on a hosting platform you configure it there and
 the file is purely a local convenience.
 
-Beyond the four required values, everything is optional and the app runs without any
+Beyond the four values above, everything is optional and the app runs without any
 of it. [`.env.example`](./.env.example) is the full list with a note on each; the
 short version:
 
@@ -273,7 +294,6 @@ short version:
 | `API_URL` / `APP_URL` | Where the two halves are served. Only needed off localhost. |
 | `PERPLEXITY_API_KEY` | Lets the agent search the open web, with citations. |
 | `RAPIDAPI_KEY` | Lets the agent read LinkedIn profiles for identity. |
-| `CONTEXT_DEV_API_KEY` | Company logo, industry and socials from a domain. |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
 | `REDIS_URL` | A shared cache. Without it, per-instance and in-memory. |
 | `CRON_SECRET` | Guards the Gmail/Calendar sync route. Required to use it. |

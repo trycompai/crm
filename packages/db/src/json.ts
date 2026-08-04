@@ -4,6 +4,12 @@ export type FactEvidence = {
 	sourceUrl?: string;
 };
 
+export type WorkspaceProfileSections = {
+	sells?: string;
+	sellsTo?: string;
+	edge?: string;
+};
+
 export type ContactBriefSections = {
 	currentRole?: string;
 	tenure?: string;

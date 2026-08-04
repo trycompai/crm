@@ -11,7 +11,10 @@ import {
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
-import { ActivityStampService } from "../crm/activity-stamp.service";
+import {
+	ActivityStampService,
+	type StampTargets,
+} from "../crm/activity-stamp.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import {
@@ -242,6 +245,35 @@ export class DealsService {
 		} catch (error) {
 			throw this.translate(error, id);
 		}
+	}
+
+	async delete(id: string): Promise<{ id: string; name: string }> {
+		let deleted: { targets: StampTargets; name: string };
+
+		try {
+			deleted = await this.db.$transaction(async (tx) => {
+				const targets = await this.stamp.targetsOf({ dealId: id }, tx);
+
+				const deal = await tx.deal.delete({
+					where: { id },
+					select: { name: true },
+				});
+
+				return { targets, name: deal.name };
+			});
+		} catch (error) {
+			throw this.translate(error, id);
+		}
+
+		await this.stamp.recomputeAfterDelete(deleted.targets, { dealId: id });
+
+		this.logger.log({
+			message: "Deal deleted",
+			dealId: id,
+			name: deleted.name,
+		});
+
+		return { id, name: deleted.name };
 	}
 
 	async setStage(input: SetStageInput, actingUserId: string) {

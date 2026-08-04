@@ -35,6 +35,11 @@ model User {
 
   outreachRole OutreachRole @default(VIEWER)
 
+  members     Member[]
+  invitations Invitation[]
+
+  ssoproviders SsoProvider[]
+
   @@unique([email])
   @@map("user")
 }
@@ -49,6 +54,8 @@ model Session {
   userAgent String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activeOrganizationId String?
 
   @@unique([token])
   @@index([userId])
@@ -886,6 +893,14 @@ model SuppressedDomain {
   @@map("suppressedDomain")
 }
 
+model SuppressedContact {
+  email     String   @id
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@map("suppressedContact")
+}
+
 model AppSetting {
   id String @id
 
@@ -893,7 +908,86 @@ model AppSetting {
 
   agentModelContextWindow Int?
 
+  contextDevApiKey String?
+
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+model Organization {
+  id          String       @id
+  name        String
+  slug        String
+  logo        String?
+  createdAt   DateTime
+  metadata    String?
+  website     String?
+  members     Member[]
+  invitations Invitation[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model WorkspaceProfile {
+  id String @id
+
+  website   String
+  narrative String
+  sections  Json
+
+  sourceUrl String?
+  sessionId String?
+
+  refreshedAt DateTime @default(now())
+
+  @@map("workspaceProfile")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+model SsoProvider {
+  id             String  @id
+  issuer         String
+  oidcConfig     String?
+  samlConfig     String?
+  userId         String?
+  user           User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerId     String
+  organizationId String?
+  domain         String
+
+  @@unique([providerId])
+  @@map("ssoProvider")
 }

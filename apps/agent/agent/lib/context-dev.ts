@@ -1,5 +1,6 @@
 import ContextDev from "context.dev";
 import { APIError } from "context.dev/core/error";
+import { contextDevKey } from "./capabilities";
 
 export type Brand = {
 	domain?: string | null;
@@ -47,18 +48,81 @@ export type SearchResult = {
 
 const TIMEOUT_MS = 60_000;
 
-let client: ContextDev | null | undefined;
+let client: { key: string; api: ContextDev } | null = null;
 
-function contextDev(): ContextDev | null {
-	if (client === undefined) {
-		const apiKey = process.env.CONTEXT_DEV_API_KEY;
-		client = apiKey ? new ContextDev({ apiKey }) : null;
+async function contextDev(): Promise<ContextDev | null> {
+	const key = await contextDevKey();
+
+	if (!key) {
+		client = null;
+		return null;
 	}
-	return client;
+
+	if (client?.key !== key) {
+		client = { key, api: new ContextDev({ apiKey: key }) };
+	}
+
+	return client.api;
 }
 
-export function contextDevEnabled(): boolean {
-	return contextDev() !== null;
+export async function contextDevEnabled(): Promise<boolean> {
+	return (await contextDevKey()) !== null;
+}
+
+export type KeyCheck =
+	| { outcome: "valid" }
+	| { outcome: "invalid"; reason: string }
+	| { outcome: "unknown"; reason: string };
+
+/**
+ * A free-provider address is refused with a documented 422 before any brand is
+ * resolved, and a lookup that resolves nothing is not billed — so this proves
+ * the key authenticates without spending a credit.
+ */
+const PROBE_EMAIL = "key-check@gmail.com";
+
+const VERIFY_TIMEOUT_MS = 15_000;
+
+export async function verifyKey(key: string): Promise<KeyCheck> {
+	const api = new ContextDev({ apiKey: key });
+
+	try {
+		await api.brand.retrieve({
+			type: "by_email",
+			email: PROBE_EMAIL,
+			timeoutMS: VERIFY_TIMEOUT_MS,
+		});
+
+		return { outcome: "valid" };
+	} catch (error) {
+		return classifyKey(error);
+	}
+}
+
+/**
+ * 401 is the only answer that means *this key is wrong*. Everything else that
+ * came back from Context.dev — a 422 refusing the probe address, a 403 about
+ * the plan, a 429, a 500 — was served *after* the key authenticated, so the
+ * key is good and only the probe was refused. Anything that never reached them
+ * says nothing about the key at all.
+ */
+export function classifyKey(error: unknown): KeyCheck {
+	if (!(error instanceof APIError)) {
+		return { outcome: "unknown", reason: describe(error) };
+	}
+
+	if (error.status === 401) {
+		return {
+			outcome: "invalid",
+			reason: "Context did not recognise that API key.",
+		};
+	}
+
+	if (error.status === undefined) {
+		return { outcome: "unknown", reason: describe(error) };
+	}
+
+	return { outcome: "valid" };
 }
 
 export async function brandByDomain(
@@ -78,7 +142,7 @@ export async function brandByEmail(email: string): Promise<LookupResult> {
 }
 
 export async function prefetch(domain: string): Promise<void> {
-	const api = contextDev();
+	const api = await contextDev();
 	if (!api) return;
 
 	try {
@@ -93,7 +157,7 @@ export async function extract(
 ): Promise<
 	{ outcome: "found"; data: unknown } | { outcome: "failed"; reason: string }
 > {
-	const api = contextDev();
+	const api = await contextDev();
 	if (!api) {
 		return { outcome: "failed", reason: "Context.dev is not configured." };
 	}
@@ -119,7 +183,7 @@ export async function search(
 	| { outcome: "found"; results: SearchResult[] }
 	| { outcome: "failed"; reason: string }
 > {
-	const api = contextDev();
+	const api = await contextDev();
 	if (!api) {
 		return { outcome: "failed", reason: "Context.dev is not configured." };
 	}
@@ -153,7 +217,7 @@ export async function search(
 async function lookup(
 	params: Parameters<ContextDev["brand"]["retrieve"]>[0],
 ): Promise<LookupResult> {
-	const api = contextDev();
+	const api = await contextDev();
 	if (!api) {
 		return { outcome: "skipped", reason: "Context.dev is not configured." };
 	}

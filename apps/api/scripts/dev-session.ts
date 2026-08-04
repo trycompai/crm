@@ -1,6 +1,7 @@
+import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { db } from "@crm/db";
 
-const COOKIE_NAME = "better-auth.session_token";
+const COOKIE_NAME = `${AUTH_COOKIE_PREFIX}.session_token`;
 const SESSION_DAYS = 7;
 
 if (process.env.NODE_ENV === "production") {

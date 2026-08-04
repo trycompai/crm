@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
+		"./cookies": "./src/cookies.ts",
 		"./scopes": "./src/scopes.ts",
 		"./workspace": "./src/workspace.ts"
 	},
@@ -17,6 +18,7 @@
 		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
+		"@better-auth/sso": "1.6.25",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"better-auth": "^1.6.25"

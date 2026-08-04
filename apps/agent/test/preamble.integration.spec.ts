@@ -2,11 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DealStage, db } from "@crm/db";
 import {
 	companyPreamble,
+	composeClosing,
 	contactPreamble,
 	dealPreamble,
 	noRecordPreamble,
 	sessionPreamble,
+	workspacePreamble,
 } from "../agent/lib/preamble";
+import { identity } from "../agent/lib/workspace";
 
 const suffix = process.env.TEST_RUN_ID ?? "preamble-spec";
 const domain = `fernhill-${suffix}.test`;
@@ -206,7 +209,65 @@ describe("sessionPreamble", () => {
 	it("tells a session with no record that the CRM is searchable", async () => {
 		const { markdown } = await sessionPreamble({}, rep);
 
-		expect(markdown).toBe(noRecordPreamble().markdown);
+		expect(markdown).toBe((await noRecordPreamble()).markdown);
 		expect(markdown).toContain("`search_crm`");
+	});
+});
+
+describe("every session is told who we are", () => {
+	it("ends each preamble with the same account of us", async () => {
+		const expected = await composeClosing(await identity());
+
+		for (const { markdown } of [
+			await contactPreamble(paulaId, rep),
+			await companyPreamble(companyId, rep),
+			await dealPreamble(dealId, rep),
+			await noRecordPreamble(),
+		]) {
+			expect(markdown.endsWith(expected)).toBe(true);
+		}
+	});
+});
+
+describe("the workspace profile session", () => {
+	it("is routed by the task kind, with no record of its own", async () => {
+		const { markdown, focus } = await sessionPreamble(
+			{},
+			{ dispatched: true, kind: "workspace-profile" },
+		);
+
+		expect(focus).toEqual({});
+		expect(markdown).toContain("the company you work for");
+		expect(markdown).not.toContain("`search_crm` finds any contact");
+	});
+
+	it("sends the session to our own site, and holds it to a size", async () => {
+		const { markdown } = await workspacePreamble({
+			name: "Comp AI",
+			website: "trycomp.ai",
+			profile: null,
+		});
+
+		expect(markdown).toContain("https://trycomp.ai");
+		expect(markdown).toContain("`write_workspace_profile`");
+		expect(markdown).toContain("320 characters");
+	});
+
+	it("refuses to guess when nobody has said what our website is", async () => {
+		const { markdown } = await workspacePreamble(null);
+
+		expect(markdown).toContain("do not guess");
+		expect(markdown).not.toContain("`write_workspace_profile`");
+	});
+
+	it("stops rather than sending the session at something unfetchable", async () => {
+		const { markdown } = await workspacePreamble({
+			name: "Comp AI",
+			website: "httpx://trycomp.ai",
+			profile: null,
+		});
+
+		expect(markdown).toContain("do not guess");
+		expect(markdown).not.toContain("`web_fetch`");
 	});
 });

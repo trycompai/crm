@@ -24,8 +24,7 @@ version exactly:
 apps/agent/node_modules/eve/docs/README.md
 ```
 
-Read the relevant guide there before writing eve code. Guessing at this API is
-expensive in a specific way: it typechecks, builds, and then behaves differently
+Read the relevant guide there before writing eve code and then check your eve skill knowledge-base shipped in .agents/skills/eve. Guessing at this API is expensive in a specific way: it typechecks, builds, and then behaves differently
 from what you assumed — see the note on principal mapping under [the
 bridge](#the-bridge).
 
@@ -146,20 +145,135 @@ months.
   `isSamePerson`, in code, rather than asking the model to remember a follow-up
   call.
 
-### A portrait is not a research session
+### Two lanes: what a rep sees, and what a rep asks for
 
-`schedules/dispatch.ts` runs `portrait` rows **directly, without `receive`**.
-This is the one kind that skips the model, and it is worth knowing why: the work
-is three reads keyed on identifiers already on the record and a byte copy, with
-nothing in it to decide.
+`schedules/dispatch.ts` drains the queue in **two independent lanes**, and which
+lane a row lands in is decided by one list — `DIRECT_KINDS` in
+[`@crm/db/agent-tasks`](../packages/db/src/agent-tasks.ts).
 
-Routed through a session it also did not work. Seven queued faces sat behind
-sixty LLM sessions at five a minute and had not landed twenty five minutes
-later, each one waiting to pay for a context window in order to make no
-decisions with it.
+| | Kinds | How it runs | Per tick |
+| --- | --- | --- | --- |
+| **Visible** | `brand`, `portrait` | Directly, no `receive`, no model | 60, six at a time |
+| **Research** | everything else | One eve session per row | 12 |
+
+**Neither kind in the visible lane has anything in it to decide.** A portrait is
+three reads keyed on identifiers already on the record and a byte copy. A brand
+is a domain in, Context.dev out, map, mirror, write — `lib/brand.ts`, and there
+is not one judgement in the whole path. Routing either through a session buys a
+context window in order to make no decisions with it.
+
+Routed through a session it also did not work, twice, the same way. Seven queued
+faces sat behind sixty LLM sessions at five a minute and had not landed twenty
+five minutes later. Then `company-profile` — which is how a logo used to get
+fetched — sat at the *bottom* of one shared queue at priority 10, behind every
+contact task, so `stripe.com` showed as `stripe.com` in a grey square while the
+agent wrote paragraphs about people who worked there.
+
+Lanes are why that cannot recur. A logo does not queue behind research, because
+it is not in that queue. `test/lanes.integration.spec.ts` pins it: thirty
+`identify` rows do not delay one `brand` row.
 
 The schedule still decides nothing, which is the rule it has to keep. The row
-says what the work is; the branch only says whether it needs a conversation.
+says what the work is; the lane only says whether it needs a conversation.
+
+### Priority is what a rep sees first
+
+One table, in `@crm/db/agent-tasks` because the API writes these and the agent
+reads them, and two copies of an ordering is two orderings.
+
+| | | |
+| --- | --- | --- |
+| `brand` | 900 | the logo and the real name, on every row of the list |
+| `portrait` | 800 | the face |
+| `workspace` | 500 | who *we* are — every later session opens with it |
+| `requested` | 300 | a rep pressed Research |
+| `meeting` | 200 | a meeting is coming |
+| `identify` | 100 | a new contact |
+| `sweep` | 50 | the sign-in backfill |
+| `companyProfile` | 40 | the written brief |
+| `recheck` | 0 | come back in ninety days |
+
+The top two are the highest on purpose: they are what a rep reads *before*
+deciding whether to open anything, they cost one vendor call each, and they
+finish in seconds. Everything below is worth a wait; a grey square with initials
+in it is not.
+
+`claimDue` sorts what it claims. Postgres does **not** order an `UPDATE …
+RETURNING` by the `ORDER BY` of its own sub-select — it returns rows in whatever
+order it touched them — so the priority that chose the batch would otherwise be
+thrown away at the point the batch is handed to a concurrency-limited pool.
+
+### Starting now instead of on the minute
+
+`POST /internal/crm/dispatch` on the crm channel drains **both lanes** on demand,
+and `AgentTriggerService.poke()` calls it after writing *any* `AgentTask` row.
+Add a company and its logo appears; add a contact and the research starts. You do
+not wait out the cron.
+
+The poke is **fire-and-forget and never awaited**: the `AgentTask` row is still
+the message, exactly as [`api.md`](./api.md) requires, and the cron still claims
+anything the poke missed. An agent that is down, redeploying or unreachable costs
+sixty seconds, not the work.
+
+It used to run the visible lane only, on the reasoning that a lane needing no
+`receive` and no session auth keeps eve's principal plumbing out of the route.
+That was true and it cost more than it saved, because it made the two lanes
+behave differently in the one environment where the cron does not exist. Under
+`eve dev` the visible lane ran on every poke and the research lane ran *never* —
+so a fresh clone showed every logo resolving within seconds while twenty
+`identify` rows sat at `attempts = 0` and `AgentEvent` stayed empty. Nothing
+errored. A dead lane is very hard to tell from a slow one when the lane beside it
+is visibly working.
+
+So the route starts sessions too. It calls the channel's own `send` rather than
+`receive`, since it is already *on* the crm channel — `receive` is for handing
+work to a different one. The principal comes from `APP_AUTH` in
+[`lib/app-auth.ts`](../apps/agent/agent/lib/app-auth.ts), which is the one copy of
+eve's app principal in this repo: `lib/approval.ts` already hard-coded those three
+strings to decide whether a turn may write unattended, and eve does not export
+`SCHEDULE_APP_AUTH` publicly. `taskAuth()` builds the attributes both callers
+need, so the schedule and the route cannot drift on what a session is told about
+its task. The schedule still passes eve's own `appAuth` where it has it.
+
+**Both callers go through `drainAll`, and it collapses.** The cron ran alone once
+a minute, so overlap was never a question it had to answer; the poke fires per
+enqueued row, and a sync creating forty contacts calls it forty times in a few
+seconds. `claimDue` hands each caller a *disjoint* batch, so without a guard that
+is forty research sessions at once instead of the twelve a minute the cron
+allows — a cost and rate-limit spike triggered by nothing more than a busy inbox.
+`collapsing()` in [`lib/pool.ts`](../apps/agent/agent/lib/pool.ts) keeps one drain
+in flight and folds everything that arrives during it into a single trailing run,
+so work queued mid-drain is still picked up immediately rather than waiting out
+the next tick. It is per-process: cross-process overlap stays the job of leases
+and `FOR UPDATE SKIP LOCKED`, which already handle it.
+
+`AGENT_BRIDGE_SECRET` authorises it, and **unset means the route refuses rather
+than opens**, the same rule the rep bridge follows.
+
+### Checking a key belongs to the person who typed it
+
+`POST /internal/crm/verify-key` is the crm channel's second internal route, and
+it exists because the API is not allowed to call Context.dev and this agent
+already does. It takes a candidate key, probes with it, and answers `valid`,
+`invalid` or `unknown` — no session, no model, no task row, because there is
+nothing here to decide.
+
+- **The probe is free and it is chosen to be.** A brand lookup only bills when
+  it resolves a brand, and a free-provider address is refused with a documented
+  `422` first, so `key-check@gmail.com` authenticates without buying anything.
+  Do not "improve" this to a real domain: that is ten credits every time
+  somebody saves a key, including every time they correct a typo.
+- **`classifyKey` rejects on `401` and nothing else.** Every other status came
+  back *after* the key was accepted, so it says something about the plan, the
+  quota or Context's afternoon — not about the key. Treating a `429` as a bad
+  key would refuse a perfectly good one at the worst possible moment.
+- **It is the candidate key, never the stored one.** `verifyKey` builds a
+  throwaway client from the argument, so checking a new key cannot be confused
+  with exercising the one already saved.
+
+The API's half is `ResearchKeyService`, and an `unknown` answer there saves the
+key anyway — see
+[the environment rules](./environment.md#the-context-key-is-asked-for-not-configured).
 
 ### Catching up what was missed
 
@@ -213,6 +327,17 @@ API's side of the line in [`api.md`](./api.md); whether a given company is worth
 the credits stays the agent's call. Each pass is capped at 500 rows and the
 leftover is logged rather than rounded away.
 
+**The cap is on the pass, not on each query inside it.** A company sweep has two
+sets of candidates — never successfully looked up, and still missing its
+artwork — and it used to take 500 of each and hand the union to `backfill`, so
+one sign-in could enqueue a thousand `brand` rows at priority 900 and fill the
+[direct lane](#two-lanes-what-a-rep-sees-and-what-a-rep-asks-for) with twice the
+declared budget. The union is deduplicated and cut to 500 before it is queued,
+and `remaining` is counted against the union in one query — the two sets overlap
+heavily, since a company that was never looked up rarely has a logo — so the
+figure the log prints is the work actually left rather than the leftover of one
+of the two halves.
+
 The script is the cheap half: it re-derives from the `CompanyEnrichment.raw`
 payloads already on disk, which is what keeping them was for. Reach for it when
 the records are fine and only the images are missing.
@@ -247,6 +372,21 @@ help" result — checked **before** the research budget is charged.
 
 A missing key removes a place to look. It is never an error, and it must never
 throw.
+
+**Not all of them are environment variables, which is why `capabilities()` is
+async.** The Context.dev key is a row a rep can set on Settings → General — see
+[the environment rules](./environment.md#the-context-key-is-asked-for-not-configured)
+— so the answer to *what can I use here* now involves a read, and `enabled()`
+and `capabilitiesMarkdown()` are awaited with it. `capabilitiesFrom()` and
+`markdownFor()` are the pure halves, which is what keeps
+`test/capabilities.spec.ts` a unit test rather than something that reports a
+different answer depending on what the developer happens to have saved locally.
+
+`contextDevKey()` is the only resolver, and `lib/context-dev.ts` builds its
+client from it rather than from `process.env` — memoised on the key string, so
+replacing the key swaps the client and nothing else does. There is no cache in
+front of the read: a key saved in the browser applies to the next vendor call,
+not the next deploy.
 
 ## Budget, and deciding what to do next
 
@@ -323,6 +463,61 @@ which the audit hook files a session's events against nothing.
 Adding a fourth record kind is an entry in `sessionPreamble`, a read beside the
 other three, and a line in `TOOL_VERBS` (`apps/app/lib/agent-transcript.ts`),
 which a test enforces so no tool ever shows a rep a bare slug.
+
+### Every session also knows who *we* are
+
+A research agent that knows everything about the person and nothing about the
+company employing it writes a dossier, not a briefing. Asked about a contact
+before a call it returned six accurate paragraphs on him and could not say what
+any of it meant for us, because nothing had ever told it what we sell.
+
+So `composeClosing()` puts a **Who we are** block in front of the capabilities
+in *every* preamble — contact, company, deal, and the record-less one — and
+`lib/workspace.ts` is the only thing that renders it.
+
+- **It is deliberately tiny**, and the write path enforces that rather than the
+  prompt asking nicely: 320 characters of narrative and one short line each for
+  what we sell, who we sell to, and what we are picked over (`MAX_NARRATIVE` and
+  `MAX_LINE` in [`@crm/db/workspace`](../packages/db/src/workspace.ts)). It rides
+  in front of every question a rep asks, so a page of it would crowd out the
+  record they are actually asking about — and it is prompt-cached, so it is paid
+  for once and then read on every turn forever.
+- **It says what the context is for.** "Say what this record means for us — a
+  fit, a competitor, a partner, or nothing worth saying — and never write a
+  pitch: the rep already knows what we sell." Without that line the model has
+  the facts and no instruction, and starts selling our own product back to us.
+- **A workspace with no profile still gets the name line**, followed by *do not
+  guess at what we sell*. The failure mode of the alternative is a confident
+  invention drawn from our customers' industries.
+- **The profile belongs to a website, and dies with it.**
+  `readWorkspaceIdentity` returns the profile only when its `website` still
+  matches the workspace's. Change the website and the block silently drops to
+  the name line until the new one is researched, rather than describing the
+  company we used to be.
+- **It is not a `Company` row.** A self company would need excluding from every
+  list, facet, sweep and join in the app — the always-the-same-`organizationId`
+  trap from [`api.md`](./api.md) wearing a different hat. It is one row in
+  `WorkspaceProfile`, keyed on `WORKSPACE_ID`, which is why that constant now
+  lives in `@crm/db` and `@crm/auth` re-exports it: the agent has no dependency
+  on the auth package and there must not be a second copy of the string.
+
+The research pass is a `workspace-profile` task with no `contactId` and no
+`companyId`, dispatched like everything else. Its preamble sends the session to
+our own site with `web_fetch` — no vendor credits — and `write_workspace_profile`
+is the only way to file the result. `WorkspaceService.update` queues it when the
+website changes, and the sign-in sweep queues it when a website has no profile
+behind it, which covers the install that filled the settings page in before any
+of this existed and the one whose first attempt failed.
+
+**A finished attempt stands the sweep down for seven days**, the same shape as
+the portrait stand-down above and for the same reason. There is one workspace,
+so a website that cannot be read into a profile — a holding page, a site that
+blocks the fetch — was a `workspace-profile` session queued on *every* sign-in
+sweep for the life of the install, at the highest research priority there is,
+never getting a different answer. Changing the website still queues one
+immediately through `WorkspaceService.update`, so the stand-down only paces the
+retry of a failure, and it is shorter than a contact's thirty days because this
+one row rides in front of every question a rep asks.
 
 ## What the agent may read, and what may leave
 
@@ -549,6 +744,144 @@ curl -s -H 'Host: agent.example.com' \
 `GET /eve/v1/info` is the whole inventory — tools, skills, schedules, channels,
 sandbox, and a `diagnostics` count that is the fastest way to find a file eve
 silently ignored.
+
+## Watching it work
+
+`eve dev` shows every tool call, every result and every token — but only in its
+interactive TUI, and under `bun run dev` that TUI is unreadable. Turbo gives each
+task a pty, so eve believes it owns a terminal and paints a full-screen UI into a
+pane that turbo is also drawing; the two redraws interleave and what a rep of the
+agent's work actually looks like is `Building your agent compiling
+agent[agent] on  LinkedIn (RAPIDAPI_KEY)`. The prompt at the bottom is real and
+you cannot type at it usefully either.
+
+So **`dev` is `eve dev --no-ui`**, and `dev:tui` keeps the interactive one for
+when you run the agent on its own and want to talk to it. `--no-ui` changes
+nothing about the server — same port, same routes, same watcher — it only stops
+eve taking over the terminal, which is the whole of the problem.
+
+That leaves nothing narrating the session, and `hooks/activity.ts` is that
+narration: a line per tool call with its arguments, a line per result with how
+long it took, the finish reason and token spend of each step, and any failure
+with its code.
+
+- **The lines go to stderr, not stdout.** The TUI's default log mode is `stderr`
+  and it keeps stdout buffered and hidden, so a `console.log` here would be
+  invisible in the mode it exists to serve. Written to stderr the same lines show
+  under `--no-ui`, under the TUI, and in `eve logs`.
+- **Contents print outside production; the shape prints everywhere.** Which tool
+  ran, whether it worked, what it cost — none of that is anybody's data, so it
+  logs wherever the agent runs. Arguments and replies carry names, addresses and
+  whatever a rep typed, which is the "nothing sensitive logged" rule above, so
+  they are gated on `NODE_ENV`. In production the durable record is an
+  `AgentEvent` row, not a log drain.
+- **It is not the audit trail.** `hooks/audit.ts` writes every event to
+  `AgentEvent` whatever this prints, and the panel's transcript is read back from
+  there. A change to one is not a change to the other.
+- **A call is timed by remembering it, because the result event does not carry
+  the tool name or a duration.** The map of in-flight calls is bounded rather
+  than trusted: a turn that dies between request and result would otherwise leak
+  an entry per call, forever, in a process that stays up for days.
+
+`eve logs` reads the full record back, but only for an **interactive** `eve dev`
+— that is the process that writes `.eve/logs/`. Under `--no-ui` the pane is the
+record, so keep the turbo scrollback rather than going looking for a file that
+was never written.
+
+Two consequences of running headless, both worth recognising rather than
+debugging:
+
+- **A second `bun run dev` fails the whole turbo run.** An interactive `eve dev`
+  reconnects to a local server that is already up; a headless one rejects it and
+  exits non-zero, and turbo then tears down the other tasks in *that*
+  invocation — the first one keeps running untouched. `A dev server is already
+  running for this eve agent` means exactly what it says: you already have one.
+  Use the terminal it is in, or stop it before starting another.
+- **An orphaned agent holds the port.** If turbo dies without reaping its child,
+  nothing on screen says so and every later `bun run dev` fails the same way.
+  `lsof -nP -iTCP:2000 -sTCP:LISTEN` names the process to kill.
+
+### Nothing is researching, and the queue only grows
+
+**`eve dev` never fires schedules on their cron cadence.** It is one line in
+eve's own [schedules guide](../apps/agent/node_modules/eve/docs/schedules.mdx),
+and it used to be the single most confusing thing about working on this agent,
+because every visible part of the loop worked: the Research button wrote its
+`AgentTask` row, the sheet said *Queued*, the toast promised the page would
+update — and `schedules/dispatch.ts`, the only thing that turns a row into a
+session, was never called. Twenty rows sat with `attempts = 0` and `AgentEvent`
+was empty. Nothing was broken and nothing reported a problem, because nothing
+ran.
+
+**The poke is what makes dev behave like production now**, which is most of why
+it was widened to both lanes — see [starting now](#starting-now-instead-of-on-the-minute).
+A row written by the API is dispatched immediately whatever the clock is doing,
+so the schedule is a backstop rather than the only door.
+
+**It only does that when `AGENT_BRIDGE_SECRET` is set**, and that variable is
+optional: `poke()` reads it first and returns without sending anything when it is
+unset. So an install that has not set it is back at the paragraph above with no
+cron behind it either — rows queue, nothing dispatches, and the queue looks
+exactly like a slow agent. Set it, or run the dispatch below by hand.
+
+That leaves two cases where the clock's absence bites even with the poke
+working, and both look identical to the above: **a task the API did not
+write** — `schedule_recheck`,
+which books its own `dueAt` weeks out — and **anything queued while the agent was
+down**, since a missed poke is not retried. For those, the dev server mounts a
+one-shot route that runs the exact dispatch path production cron uses:
+
+```sh
+bun run --filter=agent dispatch
+# {"scheduleId":"dispatch","sessionIds":["wrun_01KZ…", …]}
+```
+
+It drains **both lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
+`brand` and `portrait` rows six at a time, handled in the process with no session
+at all, and `RESEARCH_BATCH` (12) research rows, one session each. So the
+`sessionIds` it prints are the research rows only — a run that resolved forty
+logos prints an empty list and was not idle. Either way it spends real credits, a
+vendor call per visible row and a model session per research one; that is the
+point of it, and the reason it is a command you run rather than a ticker somebody
+leaves on. Watch the agent pane; the session ids it returns are also streamable at
+`GET /eve/v1/session/:id/stream`.
+
+`eve start` on a built app *does* run the schedule, and so does Vercel, where
+each `defineSchedule` becomes a Cron Job. Dev is the only place the clock is
+missing.
+
+### The continuation token you write is not the one you read
+
+**eve namespaces a continuation token with the channel's name.** `channels/crm.ts`
+mints `task:<id>`; by the time `session.waiting` hands it back on the channel
+context it is `crm:task:<id>`. The `eve` channel's own sessions read back as
+`eve:<uuid>` for the same reason.
+
+This is worth stating because of how it failed, which was silently and
+completely. `taskToken()` used to mint `crm:task:<id>` itself, so the handler was
+matching `startsWith("crm:task:")` against `crm:crm:task:<id>`, getting `null`,
+and returning before `completeTask`. Nothing errored. The research ran, facts
+were written, briefs were saved, and the agent pane showed a clean session — but
+**no task ever reached `finishedAt`**, so every contact sat on "Researching"
+forever and the sweep re-queued work that had already been done. Twenty-eight
+tasks, zero finished.
+
+Two things made it survive a reading:
+
+- **The event data and the channel accessor disagree.** `session.waiting`'s
+  `data.continuationToken` carries the token *as stored* — un-namespaced — while
+  `channel.continuationToken` carries it namespaced. Debugging from the archived
+  event says the token is fine, because from that angle it is.
+- **Nothing downstream depends on settling.** The record's status is the only
+  thing that notices, and "still researching" is indistinguishable from
+  "researching slowly" until you look at `attempts` in the table.
+
+So `taskFromToken` keys on the `task:` marker rather than a fixed prefix, which
+reads correctly whoever namespaced it and still settles sessions parked before
+the fix. `test/crm-token.spec.ts` pins all three forms.
+
+The general rule: **a channel handler must not assume the token it receives is
+byte-identical to the one it sent.** Parse for your own marker.
 
 ## Tests
 

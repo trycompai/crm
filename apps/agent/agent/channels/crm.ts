@@ -1,24 +1,73 @@
 import { EnrichmentStatus } from "@crm/db";
 import { defineChannel, POST } from "eve/channels";
+import { verifyKey } from "../lib/context-dev";
+import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
 import { completeTask, taskSubject } from "../lib/tasks";
 
-function taskToken(taskId: string): string {
-	return `crm:task:${taskId}`;
+const TASK_MARKER = "task:";
+
+function authorised(request: Request): boolean {
+	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
+	if (!secret) return false;
+
+	return request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-function taskFromToken(token: string | undefined): string | null {
+export function taskToken(taskId: string): string {
+	return `${TASK_MARKER}${taskId}`;
+}
+
+export function taskFromToken(token: string | undefined): string | null {
 	if (!token) return null;
-	const prefix = "crm:task:";
-	return token.startsWith(prefix) ? token.slice(prefix.length) : null;
+
+	const marker = token.lastIndexOf(TASK_MARKER);
+	if (marker === -1) return null;
+
+	const id = token.slice(marker + TASK_MARKER.length);
+	return id.length > 0 ? id : null;
 }
 
 export default defineChannel({
 	routes: [
-		POST(
-			"/internal/crm/dispatch-only",
-			async () => new Response("Not found", { status: 404 }),
-		),
+		POST("/internal/crm/dispatch", async (request, { send, waitUntil }) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			waitUntil(
+				drainAll((task) =>
+					send(brief(task), {
+						auth: taskAuth(task),
+						continuationToken: taskToken(task.id),
+					}),
+				),
+			);
+
+			return new Response(null, { status: 202 });
+		}),
+
+		POST("/internal/crm/verify-key", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const body = (await request.json().catch(() => null)) as {
+				apiKey?: unknown;
+			} | null;
+
+			const apiKey =
+				typeof body?.apiKey === "string" ? body.apiKey.trim() : null;
+
+			if (!apiKey) {
+				return Response.json(
+					{ outcome: "invalid", reason: "No API key was sent." },
+					{ status: 400 },
+				);
+			}
+
+			return Response.json(await verifyKey(apiKey));
+		}),
 	],
 
 	events: {

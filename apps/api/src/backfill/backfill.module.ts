@@ -7,5 +7,6 @@ import { ImageMirrorService } from "./image-mirror.service";
 @Module({
 	imports: [AgentModule, CompaniesModule],
 	providers: [BackfillService, ImageMirrorService],
+	exports: [BackfillService],
 })
 export class BackfillModule {}

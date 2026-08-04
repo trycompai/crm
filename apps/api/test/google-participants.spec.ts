@@ -4,6 +4,7 @@ import {
 	externalParticipants,
 	isAutomatedAddress,
 	isDerivedName,
+	isMachineAddress,
 	type Participant,
 	parseAddress,
 	parseAddressList,
@@ -80,6 +81,53 @@ describe("isAutomatedAddress", () => {
 	});
 });
 
+describe("isMachineAddress", () => {
+	it("catches the calendars Google invites as though they were people", () => {
+		for (const email of [
+			"c_f5ecd6a22aea945a2d5c6ac9b8b2b16b@group.calendar.google.com",
+			"acme.com_38dhs2@resource.calendar.google.com",
+			"en.uk#holiday@group.v.calendar.google.com",
+			"feed@import.calendar.google.com",
+		]) {
+			expect(isMachineAddress(email)).toBe(true);
+		}
+	});
+
+	it("catches sending infrastructure and reserved hosts", () => {
+		for (const email of [
+			"list@googlegroups.com",
+			"0100018f@bounce.acme.bounces.google.com",
+			"reply@em1234.amazonses.com",
+			"room@zoomcrc.com",
+			"someone@build.local",
+		]) {
+			expect(isMachineAddress(email)).toBe(true);
+		}
+	});
+
+	it("catches an address that is an opaque identifier", () => {
+		for (const email of [
+			"c_f5ecd6a22aea945a2d5c6ac9b8b2b16b@acme.com",
+			"4f9c2b1a8e7d6c5b4a3f2e1d0c9b8a77@acme.com",
+			"1f2e3d4c-5b6a-7988-9a0b-1c2d3e4f5a6b@acme.com",
+		]) {
+			expect(isMachineAddress(email)).toBe(true);
+		}
+	});
+
+	it("leaves real people and real companies alone", () => {
+		for (const email of [
+			"jane@acme.com",
+			"ada@google.com",
+			"dave@calendar.acme.com",
+			"deb@sendgrid.com",
+			"bob@testing.com",
+		]) {
+			expect(isMachineAddress(email)).toBe(false);
+		}
+	});
+});
+
 describe("workDomain", () => {
 	it("rejects the free hosts", () => {
 		expect(workDomain("someone@gmail.com")).toBeNull();
@@ -96,6 +144,7 @@ describe("externalParticipants", () => {
 		ourDomains: new Set(["trycomp.ai"]),
 		ourAddresses: new Set(["lewis@trycomp.ai"]),
 		suppressedDomains: new Set(["greenhouse.io"]),
+		suppressedEmails: new Set(["deleted@acme.com"]),
 	};
 
 	it("keeps only the other side of the conversation", () => {
@@ -125,9 +174,42 @@ describe("externalParticipants", () => {
 		expect(result).toEqual([person("jane@acme.com")]);
 	});
 
+	it("never files a shared calendar as a person at a company", () => {
+		const result = externalParticipants(
+			[
+				person(
+					"c_f5ecd6a22aea945a2d5c6ac9b8b2b16b@group.calendar.google.com",
+					"Interviews scheduled",
+				),
+				person("jane@acme.com"),
+			],
+			options,
+		);
+
+		expect(result).toEqual([person("jane@acme.com")]);
+	});
+
 	it("returns nothing for a wholly internal thread", () => {
 		expect(
 			externalParticipants([person("colleague@trycomp.ai")], options),
+		).toEqual([]);
+	});
+
+	it("never brings back a contact a rep deleted", () => {
+		const result = externalParticipants(
+			[person("deleted@acme.com", "Deleted Person"), person("jane@acme.com")],
+			options,
+		);
+
+		expect(result).toEqual([person("jane@acme.com")]);
+	});
+
+	it("leaves nothing to file when the deleted contact is the only outsider", () => {
+		expect(
+			externalParticipants(
+				[person("lewis@trycomp.ai"), person("deleted@acme.com")],
+				options,
+			),
 		).toEqual([]);
 	});
 });

@@ -26,7 +26,20 @@ export function domainFromEmail(
 	const at = email?.trim().toLowerCase().lastIndexOf("@") ?? -1;
 	if (at < 1) return null;
 	const domain = normalizeDomain(email?.slice(at + 1));
-	return domain && !FREE_EMAIL_DOMAINS.has(domain) ? domain : null;
+	if (!domain) return null;
+	return FREE_EMAIL_DOMAINS.has(domain) || isMachineDomain(domain)
+		? null
+		: domain;
+}
+
+export function isMachineDomain(input: string | null | undefined): boolean {
+	const domain = normalizeDomain(input);
+	if (!domain) return false;
+
+	return (
+		MACHINE_DOMAINS.has(domain) ||
+		MACHINE_SUFFIXES.some((suffix) => domain.endsWith(suffix))
+	);
 }
 
 const FREE_EMAIL_DOMAINS = new Set([
@@ -52,3 +65,25 @@ const FREE_EMAIL_DOMAINS = new Set([
 	"qq.com",
 	"163.com",
 ]);
+
+const MACHINE_DOMAINS = new Set([
+	"calendar.google.com",
+	"googlegroups.com",
+	"docs.google.com",
+	"drive.google.com",
+	"appspotmail.com",
+	"amazonses.com",
+	"sendgrid.net",
+	"zoomcrc.com",
+]);
+
+const MACHINE_SUFFIXES = [
+	".calendar.google.com",
+	".bounces.google.com",
+	".appspotmail.com",
+	".amazonses.com",
+	".sendgrid.net",
+	".invalid",
+	".local",
+	".localhost",
+];

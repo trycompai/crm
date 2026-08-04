@@ -226,15 +226,17 @@ export class GmailSyncService {
 
 		if (batch.length === 0) return { written: 0, remaining };
 
-		const [internal, suppressedDomains] = await Promise.all([
+		const [internal, suppressedDomains, suppressedEmails] = await Promise.all([
 			this.match.internalIdentity(),
 			this.match.suppressedDomains(),
+			this.match.suppressedEmails(),
 		]);
 
 		const context = {
 			ourAddresses: internal.addresses,
 			ourDomains: internal.domains,
 			suppressedDomains,
+			suppressedEmails,
 		};
 
 		let written = 0;

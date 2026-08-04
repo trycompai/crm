@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	brandToUpdate,
 	type CompanySnapshot,
+	stillFillable,
 } from "../agent/lib/brand-mapping";
 import type { Brand } from "../agent/lib/context-dev";
 
@@ -140,5 +141,52 @@ describe("brandToUpdate", () => {
 			emptyCompany(),
 		);
 		expect(update.description).toBe("Payments, simplified.");
+	});
+});
+
+describe("stillFillable", () => {
+	it("drops a field a rep typed while the lookup was in flight", () => {
+		const update = brandToUpdate(
+			{
+				description: "Payments infrastructure for the internet.",
+				phone: "+1 888 963 8955",
+			},
+			emptyCompany(),
+		);
+
+		const data = stillFillable(
+			update,
+			emptyCompany({ description: "Our biggest account — handle with care." }),
+		);
+
+		expect(data.description).toBeUndefined();
+		expect(data.phone).toBe("+1 888 963 8955");
+	});
+
+	it("keeps the icon, which the agent owns rather than shares", () => {
+		const update = brandToUpdate(
+			{ logos: [{ url: "https://cdn/icon.svg", mode: "light", type: "icon" }] },
+			emptyCompany(),
+		);
+
+		const data = stillFillable(
+			update,
+			emptyCompany({ iconUrl: "https://acme.test/favicon.ico" }),
+		);
+
+		expect(data.iconUrl).toBe("https://cdn/icon.svg");
+	});
+
+	it("drops the name once the placeholder has been answered", () => {
+		const update = brandToUpdate(
+			{ title: "Stripe" },
+			emptyCompany({ name: "stripe.com", nameIsPlaceholder: true }),
+		);
+
+		expect(update.name).toBe("Stripe");
+
+		expect(
+			stillFillable(update, emptyCompany({ name: "Stripe Inc" })).name,
+		).toBeUndefined();
 	});
 });

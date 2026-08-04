@@ -1,5 +1,7 @@
 import { onSignedIn } from "@crm/auth";
 import { type Db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { PRIORITY } from "@crm/db/agent-tasks";
+import { readWorkspaceIdentity } from "@crm/db/workspace";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { Cache } from "cache-manager";
@@ -38,6 +40,10 @@ const AUTO_EVERY_MS = 5 * 60_000;
  */
 const RECHECK_PHOTO_AFTER_MS = 30 * 24 * 60 * 60_000;
 
+const RECHECK_BRAND_AFTER_MS = 30 * 24 * 60 * 60_000;
+
+const RECHECK_WORKSPACE_AFTER_MS = 7 * 24 * 60 * 60_000;
+
 @Injectable()
 export class BackfillService implements OnModuleInit {
 	private readonly logger = new Logger(BackfillService.name);
@@ -62,6 +68,8 @@ export class BackfillService implements OnModuleInit {
 
 		void (async () => {
 			try {
+				await this.sweepWorkspace();
+
 				const companies = await this.runCompanies(false);
 				const contacts = await this.runContacts();
 
@@ -85,6 +93,27 @@ export class BackfillService implements OnModuleInit {
 		return { started: true };
 	}
 
+	private async sweepWorkspace(): Promise<void> {
+		const us = await readWorkspaceIdentity(this.db);
+
+		if (!us?.website || us.profile) return;
+
+		const attempted = await this.db.agentTask.findFirst({
+			where: {
+				kind: "workspace-profile",
+				finishedAt: { gte: new Date(Date.now() - RECHECK_WORKSPACE_AFTER_MS) },
+			},
+			select: { id: true },
+		});
+
+		if (attempted) return;
+
+		await this.agent.workspaceChanged(
+			us.website,
+			"We still have no profile of the company using this CRM",
+		);
+	}
+
 	async run(scope: BackfillScope): Promise<BackfillResult> {
 		if (scope === "contacts") return this.runContacts();
 
@@ -92,32 +121,62 @@ export class BackfillService implements OnModuleInit {
 	}
 
 	private async runCompanies(dealsOnly: boolean): Promise<BackfillResult> {
-		const where: Prisma.CompanyWhereInput = {
-			...this.companiesNeedingBrand(),
-			...(dealsOnly ? { deals: { some: {} } } : {}),
-		};
+		const onDeals: Prisma.CompanyWhereInput = dealsOnly
+			? { deals: { some: {} } }
+			: {};
 
-		const [total, rows] = await Promise.all([
-			this.db.company.count({ where }),
+		const needsBrand = this.companiesNeedingBrand();
+		const needsArtwork = await this.companiesNeedingArtwork();
+
+		const [total, rows, artworkRows] = await Promise.all([
+			this.db.company.count({
+				where: { ...onDeals, OR: [needsBrand, needsArtwork] },
+			}),
 			this.db.company.findMany({
-				where,
+				where: { ...needsBrand, ...onDeals },
+				orderBy: { createdAt: "asc" },
+				take: MAX_PER_RUN,
+				select: { id: true },
+			}),
+			this.db.company.findMany({
+				where: { ...needsArtwork, ...onDeals },
 				orderBy: { createdAt: "asc" },
 				take: MAX_PER_RUN,
 				select: { id: true },
 			}),
 		]);
 
-		const queued = await this.agent.backfill({
+		const companyIds = [
+			...new Set([
+				...rows.map((row) => row.id),
+				...artworkRows.map((row) => row.id),
+			]),
+		].slice(0, MAX_PER_RUN);
+
+		const brand = await this.agent.backfill({
+			kind: "brand",
+			reason: "Backfill — this company has no logo or icon",
+			companyIds,
+			budget: 2,
+			priority: PRIORITY.brand,
+		});
+
+		const profile = await this.agent.backfill({
 			kind: "company-profile",
 			reason: "Backfill — this company was never successfully looked up",
 			companyIds: rows.map((row) => row.id),
 		});
 
+		const queued = {
+			queued: brand.queued + profile.queued,
+			alreadyQueued: brand.alreadyQueued + profile.alreadyQueued,
+		};
+
 		const iconsResolving = dealsOnly ? 0 : await this.sweepFavicons();
 
 		return {
 			...queued,
-			remaining: Math.max(0, total - rows.length),
+			remaining: Math.max(0, total - companyIds.length),
 			iconsResolving,
 		};
 	}
@@ -140,6 +199,7 @@ export class BackfillService implements OnModuleInit {
 			reason: "Backfill — somewhere to look for a picture, and no picture",
 			contactIds: photoRows.map((row) => row.id),
 			budget: 1,
+			priority: PRIORITY.portrait,
 		});
 
 		const headroom = MAX_PER_RUN - photoRows.length;
@@ -199,6 +259,26 @@ export class BackfillService implements OnModuleInit {
 
 	private companiesNeedingBrand(): Prisma.CompanyWhereInput {
 		return { domain: { not: null }, enrichmentStatus: NEVER_SUCCEEDED };
+	}
+
+	private async companiesNeedingArtwork(): Promise<Prisma.CompanyWhereInput> {
+		const since = new Date(Date.now() - RECHECK_BRAND_AFTER_MS);
+
+		const checked = await this.db.agentTask.findMany({
+			where: { kind: "brand", finishedAt: { gte: since } },
+			select: { companyId: true },
+		});
+
+		const recentlyChecked = checked
+			.map((row) => row.companyId)
+			.filter((id): id is string => id !== null);
+
+		return {
+			domain: { not: null },
+			logoUrl: null,
+			iconUrl: null,
+			...(recentlyChecked.length > 0 ? { id: { notIn: recentlyChecked } } : {}),
+		};
 	}
 
 	/**

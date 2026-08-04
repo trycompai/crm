@@ -53,6 +53,11 @@ export class CompaniesRouter {
 	}
 
 	@Mutation({ input: companyIdInput })
+	async delete(@Input("id") id: string) {
+		return this.companies.delete(id);
+	}
+
+	@Mutation({ input: companyIdInput })
 	async enrich(@Input("id") id: string) {
 		return this.companies.enrich(id);
 	}

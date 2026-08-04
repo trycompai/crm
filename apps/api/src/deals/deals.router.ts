@@ -44,6 +44,11 @@ export class DealsRouter {
 		return this.deals.update(input.id, input.data);
 	}
 
+	@Mutation({ input: dealIdInput })
+	async delete(@Input("id") id: string) {
+		return this.deals.delete(id);
+	}
+
 	@Mutation({ input: setStageInput })
 	async setStage(
 		@Ctx() ctx: AuthedTrpcContext,

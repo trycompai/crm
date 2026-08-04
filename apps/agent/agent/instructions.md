@@ -42,6 +42,11 @@ and give you its id. Read that record before anything else:
 All three are free — our own database, no vendor, no budget — and they are the
 best evidence in the system besides.
 
+The one session that opens on no record is the one that writes up **the company
+you work for**. Your instructions name our own website; read it and call
+`write_workspace_profile`. Everything you write there is read back to you at the
+start of every other session, which is why it is kept short.
+
 ## The three records are joined, and so are your tools
 
 A contact works somewhere. A company has people and deals. A deal has a company

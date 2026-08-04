@@ -9,14 +9,19 @@ type Options = {
 	settle?: Settle;
 };
 
+type RemovedRecord = { kind: "company" | "contact" | "deal"; id: string };
+
 export type CrmCache = {
 	company(id?: string, options?: Options): Promise<void>;
 	contact(id?: string, options?: Options): Promise<void>;
 	deal(id?: string, options?: Options): Promise<void>;
+	removed(record: RemovedRecord): Promise<void>;
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
 	prospecting(id?: string, options?: Options): Promise<void>;
+	workspace(options?: Options): Promise<void>;
+	sso(options?: Options): Promise<void>;
 	everything(): Promise<void>;
 };
 
@@ -98,6 +103,37 @@ export function useCrmCache(): CrmCache {
 				options,
 			),
 
+		removed: ({ kind, id }) => {
+			const goneKey = {
+				company: trpc.companies.byId,
+				contact: trpc.contacts.byId,
+				deal: trpc.deals.byId,
+			}[kind].queryKey({ id });
+			const gone = JSON.stringify(goneKey);
+
+			for (const record of [
+				trpc.companies.byId,
+				trpc.contacts.byId,
+				trpc.deals.byId,
+			]) {
+				void queryClient.invalidateQueries({
+					queryKey: record.queryKey(),
+					predicate: (query) => JSON.stringify(query.queryKey) !== gone,
+				});
+			}
+
+			void queryClient.invalidateQueries({
+				queryKey: goneKey,
+				exact: true,
+				refetchType: "none",
+			});
+
+			return run(
+				[...listKeys(), ...activityKeys(), trpc.dashboard.summary.queryKey()],
+				[],
+			);
+		},
+
 		activity: (options) =>
 			run(
 				activityKeys(),
@@ -125,7 +161,28 @@ export function useCrmCache(): CrmCache {
 			),
 
 		settings: (options) =>
-			run([trpc.settings.agentModel.queryKey()], [], options),
+			run(
+				[
+					trpc.settings.agentModel.queryKey(),
+					trpc.settings.researchKey.queryKey(),
+				],
+				[],
+				options,
+			),
+
+		workspace: (options) =>
+			run(
+				[trpc.workspace.get.queryKey(), trpc.workspace.members.queryKey()],
+				[],
+				options,
+			),
+
+		sso: (options) =>
+			run(
+				[trpc.sso.list.pathKey()],
+				[trpc.sso.settings.queryKey(), trpc.sso.signInOptions.queryKey()],
+				options,
+			),
 
 		prospecting: (id, options) =>
 			run(

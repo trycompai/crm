@@ -67,6 +67,7 @@ describe("internal addresses never become leads", () => {
 		ourDomains: new Set(["acme.com"]),
 		ourAddresses: new Set<string>(),
 		suppressedDomains: new Set<string>(),
+		suppressedEmails: new Set<string>(),
 	};
 
 	it("drops colleagues even when they are not users", () => {

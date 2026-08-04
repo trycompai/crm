@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { SearchParams } from "nuqs/server";
-import { ListSearch } from "@/components/data-table/list-search";
 import {
 	PageShell,
 	PageShellActions,
@@ -48,7 +47,6 @@ export default async function ContactsPage({
 					<PageShellDescription>Everyone in the pipeline.</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
-					<ListSearch placeholder="Search by name, email or company…" />
 					<CreateContactSheet />
 				</PageShellActions>
 			</PageShellHeader>

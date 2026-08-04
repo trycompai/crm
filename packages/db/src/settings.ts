@@ -46,3 +46,31 @@ export async function writeAgentModel(
 		update: fields,
 	});
 }
+
+export const CONTEXT_DEV_SIGNUP_URL = "https://link.context.dev/crm";
+
+export const CONTEXT_DEV_DISCOUNT_CODE = "CRM";
+
+export async function readContextDevKey(db: Db): Promise<string | null> {
+	const row = await db.appSetting.findUnique({
+		where: { id: SETTINGS_ID },
+		select: { contextDevApiKey: true },
+	});
+
+	return row?.contextDevApiKey?.trim() || null;
+}
+
+export async function writeContextDevKey(db: Db, key: string): Promise<void> {
+	const contextDevApiKey = key.trim();
+
+	await db.appSetting.upsert({
+		where: { id: SETTINGS_ID },
+		create: { id: SETTINGS_ID, contextDevApiKey },
+		update: { contextDevApiKey },
+	});
+}
+
+export function maskKey(key: string): string {
+	const trimmed = key.trim();
+	return trimmed.length > 4 ? `••••${trimmed.slice(-4)}` : "••••";
+}

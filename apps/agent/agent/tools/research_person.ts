@@ -19,7 +19,7 @@ export default defineTool({
 			.describe("Reason over more sources. Slower, better for prep briefs."),
 	}),
 	async execute({ question, deep }) {
-		if (!enabled("PERPLEXITY_API_KEY"))
+		if (!(await enabled("PERPLEXITY_API_KEY")))
 			return unavailable("PERPLEXITY_API_KEY");
 
 		const charge = spend(deep ? 2 : 1);

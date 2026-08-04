@@ -24,9 +24,9 @@ issue.
 Everything you need is in the [README](./README.md#quick-start). Short version:
 
 ```sh
+cp .env.example .env      # fill in ALLOWED_SIGN_IN and the two Google values
 bun install
 docker compose up -d
-cp .env.example .env      # fill in ALLOWED_SIGN_IN and the two Google values
 bun run db:deploy && bun run db:seed
 bun run dev
 ```
@@ -50,6 +50,43 @@ A few things that trip people up:
 - **New environment variables need a home.** Add them to `.env.example` and, if the API reads them,
   to `apps/api/src/config/env.validation.ts`. A variable that only exists in someone's shell is a
   variable that breaks the next person's clone.
+
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please), so **your commit
+subject is the release note**. Write it for somebody reading the changelog six months from now, not
+for the diff.
+
+Subjects follow [Conventional Commits](https://www.conventionalcommits.org/), which the history
+already does — `feat(api):`, `fix(db):`, `refactor(agent):`. The type decides both the version bump
+and the heading it appears under:
+
+| Subject | Bump | Appears under |
+| --- | --- | --- |
+| `feat(app): …` | minor | Features |
+| `fix(db): …` | patch | Fixes |
+| `perf:`, `refactor:`, `docs:`, `revert:` | patch | their own heading |
+| `chore:`, `ci:`, `test:`, `build:`, `style:` | none | nothing — deliberately invisible |
+
+Nothing is released by the merge itself. Merging to `main` opens or updates a single
+`chore(release): 0.2.0` pull request that accumulates the changelog and bumps the version; **merging
+that PR** is what tags `v0.2.0` and publishes the GitHub Release. So the notes are reviewable before
+they are public, and a stack of merges is one release rather than five.
+
+Two consequences worth knowing:
+
+- **A release PR with nothing in it is not a bug.** A run of `chore:` and `test:` commits bumps
+  nothing, so no PR appears. That is the type doing its job.
+- **The release PR does not run CI.** A PR opened by `GITHUB_TOKEN` cannot trigger workflows — that
+  is GitHub's own loop guard, not something to work around. It is safe because the PR only ever
+  touches `CHANGELOG.md`, the root `version`, and the release manifest, and because CI runs again on
+  `main` after it lands. Setting a `RELEASE_PLEASE_TOKEN` secret (a PAT or a GitHub App token) makes
+  the PR run CI like any other; the workflow already prefers it and falls back to `GITHUB_TOKEN`, so
+  it is an upgrade rather than a requirement.
+
+`main` is expected to be green when a tag is cut, and the thing that guarantees that is **branch
+protection requiring the `check-types, lint, test` check** — not the release workflow, which cannot
+wait on a run in another workflow.
 
 ## House style
 

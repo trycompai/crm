@@ -28,6 +28,7 @@ export type MatchContext = {
 	ourAddresses: ReadonlySet<string>;
 	ourDomains: ReadonlySet<string>;
 	suppressedDomains: ReadonlySet<string>;
+	suppressedEmails: ReadonlySet<string>;
 };
 
 export type MatchRequest = {
@@ -75,6 +76,13 @@ export class GoogleMatchService {
 		return new Set(rows.map((row) => row.domain));
 	}
 
+	async suppressedEmails(): Promise<Set<string>> {
+		const rows = await this.db.suppressedContact.findMany({
+			select: { email: true },
+		});
+		return new Set(rows.map((row) => row.email.toLowerCase()));
+	}
+
 	async resolve(
 		request: MatchRequest,
 		context: MatchContext,
@@ -83,6 +91,7 @@ export class GoogleMatchService {
 			ourDomains: context.ourDomains,
 			ourAddresses: context.ourAddresses,
 			suppressedDomains: context.suppressedDomains,
+			suppressedEmails: context.suppressedEmails,
 		});
 
 		if (external.length === 0) {

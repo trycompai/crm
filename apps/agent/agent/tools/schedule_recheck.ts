@@ -1,3 +1,4 @@
+import { PRIORITY } from "@crm/db/agent-tasks";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { scheduleTask } from "../lib/tasks";
@@ -41,7 +42,7 @@ export default defineTool({
 			reason,
 			dueAt,
 			budget,
-			priority: 0,
+			priority: PRIORITY.recheck,
 		});
 
 		return { scheduled: true as const, dueAt: dueAt.toISOString(), reason };

@@ -58,6 +58,7 @@ import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { QuickAddContact, QuickAddDeal } from "./quick-add";
+import { RecordActions } from "./record-actions";
 import {
 	DealAmount,
 	DomainLink,
@@ -77,6 +78,23 @@ function pendingFields(company: Company): string[] {
 	if (!company.description) missing.push("description");
 	if (!hasCompanyLinks(company)) missing.push("social links");
 	return missing;
+}
+
+function companyConsequence(company: Company): string {
+	const deals = company.deals.length;
+	const contacts = company.contacts.length;
+
+	const gone =
+		deals > 0
+			? `${deals === 1 ? "Its one deal" : `All ${deals} of its deals`} and everything filed against the account go too.`
+			: "Everything filed against the account goes too.";
+
+	const kept =
+		contacts > 0
+			? ` ${contacts === 1 ? "The one person" : `The ${contacts} people`} who work there stay in the CRM, without a company.`
+			: "";
+
+	return gone + kept;
 }
 
 const CONTACT_COLUMNS = [
@@ -265,10 +283,17 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 			}
 			actions={
 				company ? (
-					<EnrichmentActions
-						companyId={company.id}
-						hasDomain={company.domain !== null}
-					/>
+					<>
+						<EnrichmentActions
+							companyId={company.id}
+							hasDomain={company.domain !== null}
+						/>
+						<RecordActions
+							record={{ kind: "company", id: company.id }}
+							name={company.name}
+							consequence={companyConsequence(company)}
+						/>
+					</>
 				) : null
 			}
 			stats={

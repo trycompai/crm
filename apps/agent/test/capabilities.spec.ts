@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-	capabilities,
-	capabilitiesMarkdown,
+	CONTEXT_DEV,
+	capabilitiesFrom,
 	enabled,
+	markdownFor,
 	unavailable,
 } from "../agent/lib/capabilities";
 
 const KEYS = [
+	"HUNTER_API_KEY",
+	"BRAVE_SEARCH_API_KEY",
+	"GITHUB_TOKEN",
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
-	"CONTEXT_DEV_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
 ] as const;
 
@@ -30,33 +33,58 @@ afterEach(() => {
 });
 
 describe("capabilities", () => {
-	it("reports everything off on a bare install", () => {
-		expect(capabilities().every((c) => !c.enabled)).toBe(true);
-		expect(enabled("RAPIDAPI_KEY")).toBe(false);
+	it("reports everything off on a bare install", async () => {
+		expect(capabilitiesFrom(null).every((c) => !c.enabled)).toBe(true);
+		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
 	});
 
-	it("turns one on without turning on the others", () => {
+	it("turns one on without turning on the others", async () => {
 		process.env.PERPLEXITY_API_KEY = "pplx-test";
 
-		expect(enabled("PERPLEXITY_API_KEY")).toBe(true);
-		expect(enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
+		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
 	});
 
-	it("treats blank and whitespace as unset", () => {
+	it("treats blank and whitespace as unset", async () => {
 		process.env.RAPIDAPI_KEY = "   ";
-		expect(enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
 	});
 
-	it("is read live, so a late-configured process is not stuck off", () => {
-		expect(enabled("RAPIDAPI_KEY")).toBe(false);
+	it("is read live, so a late-configured process is not stuck off", async () => {
+		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
 		process.env.RAPIDAPI_KEY = "key";
-		expect(enabled("RAPIDAPI_KEY")).toBe(true);
+		expect(await enabled("RAPIDAPI_KEY")).toBe(true);
 	});
 
-	it("is unknown for a variable that is not a capability", () => {
+	it("is unknown for a variable that is not a capability", async () => {
 		process.env.SOMETHING_ELSE = "x";
-		expect(enabled("SOMETHING_ELSE")).toBe(false);
+		expect(await enabled("SOMETHING_ELSE")).toBe(false);
 		delete process.env.SOMETHING_ELSE;
+	});
+});
+
+describe("the Context key is a setting, never a variable", () => {
+	const contextDev = (stored: string | null) =>
+		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV);
+
+	it("is on when a key is stored", () => {
+		expect(contextDev("ctx-from-the-settings-page")?.enabled).toBe(true);
+	});
+
+	it("is off when nothing has been stored", () => {
+		expect(contextDev(null)?.enabled).toBe(false);
+	});
+
+	it("is not turned on by an environment variable", () => {
+		process.env.CONTEXT_DEV_API_KEY = "a-variable-nothing-reads";
+
+		expect(contextDev(null)?.enabled).toBe(false);
+
+		delete process.env.CONTEXT_DEV_API_KEY;
+	});
+
+	it("points at the settings page rather than a variable name", () => {
+		expect(contextDev(null)?.from).toBe("Settings → General");
 	});
 });
 
@@ -73,7 +101,7 @@ describe("the unavailable result", () => {
 
 describe("the capability briefing", () => {
 	it("tells a bare install to work from the CRM alone", () => {
-		const markdown = capabilitiesMarkdown();
+		const markdown = markdownFor(capabilitiesFrom(null));
 
 		expect(markdown).toContain("No outside sources are configured");
 		expect(markdown).toContain("read_crm_history");
@@ -81,7 +109,7 @@ describe("the capability briefing", () => {
 
 	it("lists what is on and what is off, separately", () => {
 		process.env.RAPIDAPI_KEY = "key";
-		const markdown = capabilitiesMarkdown();
+		const markdown = markdownFor(capabilitiesFrom(null));
 
 		expect(markdown).toContain("Available:");
 		expect(markdown).toContain("LinkedIn");
@@ -89,9 +117,22 @@ describe("the capability briefing", () => {
 		expect(markdown).toContain("Web research");
 	});
 
+	it("counts a stored Context key as configured", () => {
+		process.env.RAPIDAPI_KEY = "key";
+
+		const markdown = markdownFor(capabilitiesFrom("ctx"));
+
+		expect(markdown).toContain("Company brand data");
+		expect(markdown.indexOf("Company brand data")).toBeLessThan(
+			markdown.indexOf("Not configured here"),
+		);
+	});
+
 	it("does not warn about missing sources when everything is on", () => {
 		for (const key of KEYS) process.env[key] = "key";
 
-		expect(capabilitiesMarkdown()).not.toContain("Not configured here");
+		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
+			"Not configured here",
+		);
 	});
 });

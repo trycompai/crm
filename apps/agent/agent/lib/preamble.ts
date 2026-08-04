@@ -1,5 +1,7 @@
 import { db } from "@crm/db";
+import { websiteUrl } from "@crm/db/workspace";
 import { capabilitiesMarkdown } from "./capabilities";
+import { identity, usMarkdown, type WorkspaceIdentity } from "./workspace";
 
 export type Opened = {
 	dispatched: boolean;
@@ -21,10 +23,23 @@ export async function sessionPreamble(
 	},
 	opened: Opened,
 ): Promise<Preamble> {
+	if (opened.kind === "workspace-profile") return workspacePreamble();
 	if (record.contactId) return contactPreamble(record.contactId, opened);
 	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
 	return noRecordPreamble();
+}
+
+export async function composeClosing(
+	us: WorkspaceIdentity | null,
+): Promise<string> {
+	return [usMarkdown(us), await capabilitiesMarkdown()]
+		.filter(Boolean)
+		.join("\n\n");
+}
+
+async function closing(): Promise<string> {
+	return composeClosing(await identity());
 }
 
 function opening(opened: Opened, questions: string): string {
@@ -70,7 +85,7 @@ export async function contactPreamble(
 	});
 
 	if (!contact) {
-		return { markdown: capabilitiesMarkdown(), focus: { contactId } };
+		return { markdown: await closing(), focus: { contactId } };
 	}
 
 	const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
@@ -118,7 +133,7 @@ export async function contactPreamble(
 		"",
 		"Start with `read_crm_history` on this contact id.",
 		"",
-		capabilitiesMarkdown(),
+		await closing(),
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -155,7 +170,7 @@ export async function companyPreamble(
 	});
 
 	if (!company) {
-		return { markdown: capabilitiesMarkdown(), focus: { companyId } };
+		return { markdown: await closing(), focus: { companyId } };
 	}
 
 	const people = company.contacts
@@ -199,7 +214,7 @@ export async function companyPreamble(
 		"",
 		"Start with `read_company_history` on this company id — it returns the people, the deals, the correspondence and the notes in one free call.",
 		"",
-		capabilitiesMarkdown(),
+		await closing(),
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -232,7 +247,7 @@ export async function dealPreamble(
 		},
 	});
 
-	if (!deal) return { markdown: capabilitiesMarkdown(), focus: {} };
+	if (!deal) return { markdown: await closing(), focus: {} };
 
 	const people = deal.contacts
 		.map(({ role, contact }) => {
@@ -276,13 +291,13 @@ export async function dealPreamble(
 		"",
 		"You can research the people and the company behind it with the usual tools — a deal itself has no fields to enrich, so anything you learn is recorded against them.",
 		"",
-		capabilitiesMarkdown(),
+		await closing(),
 	].join("\n");
 
 	return { markdown, focus: { companyId: deal.company?.id ?? null } };
 }
 
-export function noRecordPreamble(): Preamble {
+export async function noRecordPreamble(): Promise<Preamble> {
 	return {
 		markdown: [
 			"## This session",
@@ -292,8 +307,56 @@ export function noRecordPreamble(): Preamble {
 			"`search_crm` finds any contact, company or deal by name, email address or",
 			"domain. Look the record up rather than asking for an id.",
 			"",
-			capabilitiesMarkdown(),
+			await closing(),
 		].join("\n"),
 		focus: {},
 	};
+}
+
+export async function workspacePreamble(
+	known?: WorkspaceIdentity | null,
+): Promise<Preamble> {
+	const us = known === undefined ? await identity() : known;
+	const site = websiteUrl(us?.website);
+
+	if (!us || !site) {
+		return {
+			markdown: [
+				"## This session",
+				"",
+				"You were asked to write the profile of the company you work for, and",
+				"this install has no web address on record — nobody gave one, or what is",
+				"stored is not one. There is nothing to read. Stop — do not guess at it",
+				"from the email addresses in the CRM.",
+			].join("\n"),
+			focus: {},
+		};
+	}
+
+	const markdown = [
+		"## This session",
+		"",
+		`You are writing the profile of **the company you work for** — ${us.name} (${us.website}).`,
+		us.profile
+			? `One already exists, written ${us.profile.refreshedAt.toDateString()}. Replace it only if the site now says something different.`
+			: "There is no profile of us yet.",
+		"",
+		`Read ${site} with \`web_fetch\` — the home page, and the pricing or product`,
+		"page if there is one — and search the web only if the site does not say who",
+		"the customer is. Then call `write_workspace_profile`.",
+		"",
+		"**Every other session opens with what you write here**, in front of the",
+		"record a rep is asking about, so it has to be short and it has to be",
+		"substance. The tool enforces that: 320 characters of narrative and one",
+		"short line each for what we sell, who we sell to, and what we are picked",
+		"over. Leave a line out rather than padding it. No marketing adjectives —",
+		'"leading", "innovative" and "best-in-class" say nothing a rep can use.',
+		"",
+		"You are describing us to a colleague who has just joined, not writing our",
+		"home page back to us.",
+		"",
+		await capabilitiesMarkdown(),
+	].join("\n");
+
+	return { markdown, focus: {} };
 }

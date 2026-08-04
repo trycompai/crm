@@ -14,6 +14,10 @@ import {
 } from "@nestjs/common";
 import { AgentQueueService } from "../agent/agent-queue.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
+import {
+	ActivityStampService,
+	type StampTargets,
+} from "../crm/activity-stamp.service";
 import { blankToNull, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
@@ -89,6 +93,7 @@ export class CompaniesService {
 		private readonly agent: AgentTriggerService,
 		private readonly queue: AgentQueueService,
 		private readonly favicon: FaviconService,
+		private readonly stamp: ActivityStampService,
 	) {}
 
 	async list(input: CompanyListInput): Promise<ListResult<CompanyRow>> {
@@ -363,6 +368,40 @@ export class CompaniesService {
 		} catch (error) {
 			throw this.translate(error, id);
 		}
+	}
+
+	async delete(id: string): Promise<{ id: string; name: string }> {
+		let deleted: { targets: StampTargets; name: string };
+
+		try {
+			deleted = await this.db.$transaction(async (tx) => {
+				const targets = await this.stamp.targetsOf(
+					{ OR: [{ companyId: id }, { deal: { companyId: id } }] },
+					tx,
+				);
+
+				await tx.agentTask.deleteMany({ where: { companyId: id } });
+
+				const company = await tx.company.delete({
+					where: { id },
+					select: { name: true },
+				});
+
+				return { targets, name: company.name };
+			});
+		} catch (error) {
+			throw this.translate(error, id);
+		}
+
+		await this.stamp.recomputeAfterDelete(deleted.targets, { companyId: id });
+
+		this.logger.log({
+			message: "Company deleted",
+			companyId: id,
+			name: deleted.name,
+		});
+
+		return { id, name: deleted.name };
 	}
 
 	async enrich(id: string): Promise<{ id: string; queued: boolean }> {

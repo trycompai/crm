@@ -2,6 +2,8 @@
 
 import Launch from "@carbon/icons-react/es/Launch";
 import Warning from "@carbon/icons-react/es/Warning";
+import { authClient } from "@crm/auth/client";
+import { SYNC_SCOPES } from "@crm/auth/scopes";
 import {
 	Alert,
 	AlertAction,
@@ -19,6 +21,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@crm/ui/components/alert-dialog";
+import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import { Button } from "@crm/ui/components/button";
 import {
 	Card,
@@ -31,6 +34,7 @@ import {
 } from "@crm/ui/components/card";
 import { Icon } from "@crm/ui/components/icon";
 import { Label } from "@crm/ui/components/label";
+import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
@@ -98,7 +102,97 @@ function failureSignature(
 		.join("|");
 }
 
-export function GoogleConnection() {
+function GoogleUnavailable() {
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Google</CardTitle>
+				<CardDescription>
+					Gmail and Calendar sync needs a Google OAuth client, and this install
+					does not have one. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in
+					the root .env file and restart.
+				</CardDescription>
+
+				<CardAction>
+					<StatusIndicator size="sm" tone="neutral" label="Not configured" />
+				</CardAction>
+			</CardHeader>
+		</Card>
+	);
+}
+
+const CONNECT_ERRORS: Record<string, string> = {
+	"email_doesn't_match":
+		"That Google account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Google account that matches your sign-in address.",
+};
+
+function ConnectGoogle({ connectError }: { connectError?: string }) {
+	const [pending, setPending] = useState(false);
+
+	async function handleConnect() {
+		setPending(true);
+
+		const origin = window.location.origin;
+
+		const { error } = await authClient.linkSocial({
+			provider: "google",
+			scopes: [...SYNC_SCOPES],
+			callbackURL: `${origin}/settings/connections`,
+			errorCallbackURL: `${origin}/settings/connections`,
+		});
+
+		if (error) {
+			toast.error(error.message ?? "Could not reach Google.");
+			setPending(false);
+		}
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Google</CardTitle>
+				<CardDescription>
+					Connect Gmail and Calendar, and new meetings and email threads are
+					added to the matching company as they happen. It is read-only —
+					nothing is ever sent on your behalf.
+				</CardDescription>
+
+				<CardAction>
+					<StatusIndicator size="sm" tone="neutral" label="Not connected" />
+				</CardAction>
+			</CardHeader>
+
+			<CardContent>
+				{connectError ? (
+					<Alert variant="destructive">
+						<Icon icon={Warning} />
+						<AlertTitle>Google did not finish connecting</AlertTitle>
+						<AlertDescription>
+							{CONNECT_ERRORS[connectError] ??
+								"Google returned an error before the connection was made. Try again."}
+						</AlertDescription>
+					</Alert>
+				) : null}
+
+				<Button disabled={pending} onClick={handleConnect} type="button">
+					{pending ? (
+						<Spinner data-icon="inline-start" />
+					) : (
+						<GoogleLogo data-icon="inline-start" className="size-4" />
+					)}
+					Connect Google
+				</Button>
+
+				<p className="text-muted-foreground text-xs">
+					Only conversations with companies in the CRM are stored. Personal mail
+					is discarded without being saved.
+				</p>
+			</CardContent>
+		</Card>
+	);
+}
+
+export function GoogleConnection({ connectError }: { connectError?: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const queryClient = useQueryClient();
@@ -123,7 +217,10 @@ export function GoogleConnection() {
 
 	const revoke = useMutation(
 		trpc.google.revokeAccess.mutationOptions({
-			onSuccess: () => window.location.assign("/"),
+			onSuccess: () =>
+				window.location.assign(
+					status.data?.required ? "/" : "/settings/connections",
+				),
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -156,7 +253,11 @@ export function GoogleConnection() {
 
 	if (!status.data) return null;
 
-	const { sources, hasRefreshToken } = status.data;
+	const { sources, hasRefreshToken, configured, linked, required } =
+		status.data;
+
+	if (!configured) return <GoogleUnavailable />;
+	if (!linked) return <ConnectGoogle connectError={connectError} />;
 
 	const failing = sources.filter(
 		(source) => source.status === "NEEDS_RECONNECT" || source.lastError,
@@ -314,8 +415,9 @@ export function GoogleConnection() {
 								<AlertDialogHeader>
 									<AlertDialogTitle>Revoke Google access?</AlertDialogTitle>
 									<AlertDialogDescription>
-										You will be signed out, and you cannot use the CRM again
-										until you grant access.
+										{required
+											? "You will be signed out, and you cannot use the CRM again until you grant access."
+											: "New email and meetings stop arriving. Everything already synced stays, and you can connect Google again from this page."}
 									</AlertDialogDescription>
 								</AlertDialogHeader>
 

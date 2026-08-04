@@ -98,6 +98,12 @@ function clean(value: string | null | undefined): string | null {
 	return trimmed ? trimmed : null;
 }
 
+function fillable(key: string, current: CompanySnapshot): boolean {
+	if (key === "iconUrl") return true;
+	if (key === "name") return current.nameIsPlaceholder;
+	return current[key as keyof CompanySnapshot] === null;
+}
+
 export function brandToUpdate(
 	brand: Brand,
 	current: CompanySnapshot,
@@ -108,23 +114,19 @@ export function brandToUpdate(
 		key: K,
 		value: string | null,
 	) => {
-		if (value && current[key as keyof CompanySnapshot] === null) {
+		if (value && fillable(key, current)) {
 			(update as Record<string, unknown>)[key] = value;
 		}
 	};
 
-	const title = clean(brand.title);
-	if (title && current.nameIsPlaceholder) {
-		update.name = title;
-	}
+	fill("name", clean(brand.title));
 
 	fill("description", clean(brand.description) ?? clean(brand.slogan));
 
 	fill("logoUrl", pickLogo(brand.logos, "logo", "light"));
 	fill("logoDarkUrl", pickLogo(brand.logos, "logo", "dark"));
 
-	const icon = pickIcon(brand.logos)?.url ?? null;
-	if (icon) update.iconUrl = icon;
+	fill("iconUrl", pickIcon(brand.logos)?.url ?? null);
 
 	fill("iconDarkUrl", pickLogo(brand.logos, "icon", "dark"));
 	fill("iconTone", iconTone(brand.logos));
@@ -154,6 +156,21 @@ export function brandToUpdate(
 	fill("careersUrl", clean(brand.links?.careers));
 
 	return update;
+}
+
+export function stillFillable(
+	update: BrandUpdate,
+	current: CompanySnapshot,
+): BrandUpdate {
+	const next: BrandUpdate = {};
+
+	for (const [key, value] of Object.entries(update)) {
+		if (fillable(key, current)) {
+			(next as Record<string, unknown>)[key] = value;
+		}
+	}
+
+	return next;
 }
 
 export function filledFields(update: BrandUpdate): string[] {

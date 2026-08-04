@@ -48,16 +48,13 @@ export class EnvironmentVariables {
 	})
 	ALLOWED_SIGN_IN!: string;
 
+	@IsOptional()
 	@IsString()
-	@MinLength(1, {
-		message:
-			"GOOGLE_CLIENT_ID is required — Google is the only sign-in method. Create an OAuth client ID (web) in the Google Cloud console.",
-	})
-	GOOGLE_CLIENT_ID!: string;
+	GOOGLE_CLIENT_ID?: string;
 
+	@IsOptional()
 	@IsString()
-	@MinLength(1, { message: "GOOGLE_CLIENT_SECRET is required." })
-	GOOGLE_CLIENT_SECRET!: string;
+	GOOGLE_CLIENT_SECRET?: string;
 
 	@IsOptional()
 	@IsUrl({ require_tld: false })
@@ -106,6 +103,20 @@ export class EnvironmentVariables {
 	@IsString()
 	@MinLength(32)
 	PROSPECT_INGEST_ARQUIVO_FATURAS_SECRET?: string;
+
+	@IsOptional()
+	@IsUrl(
+		{ require_tld: false, require_protocol: true },
+		{
+			message:
+				"AGENT_URL must be a full URL with a scheme, like http://127.0.0.1:2000.",
+		},
+	)
+	AGENT_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	AGENT_BRIDGE_SECRET?: string;
 }
 
 export function validateEnv(

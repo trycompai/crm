@@ -1,70 +1,95 @@
 import "@crm/env/load";
 
+import { db } from "@crm/db";
+import { readContextDevKey } from "@crm/db/settings";
+
+export const CONTEXT_DEV = "CONTEXT_DEV";
+
 export type Capability = {
-	readonly env: string;
+	readonly id: string;
 	readonly label: string;
 	readonly gives: string;
 	readonly enabled: boolean;
+	readonly from: string;
 };
 
-export function capabilities(): readonly Capability[] {
-	const set = (key: string) => Boolean(process.env[key]?.trim());
+export async function contextDevKey(): Promise<string | null> {
+	try {
+		return await readContextDevKey(db);
+	} catch (error) {
+		console.error(
+			`[agent] could not read the Context.dev key from the database: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+
+		return null;
+	}
+}
+
+export async function capabilities(): Promise<readonly Capability[]> {
+	return capabilitiesFrom(await contextDevKey());
+}
+
+export function capabilitiesFrom(
+	contextDev: string | null,
+): readonly Capability[] {
+	const fromEnv = (id: string) => ({
+		id,
+		from: id,
+		enabled: Boolean(process.env[id]?.trim()),
+	});
 
 	return [
 		{
-			env: "HUNTER_API_KEY",
+			...fromEnv("HUNTER_API_KEY"),
 			label: "B2B prospect data",
 			gives:
 				"company discovery plus sourced and verified professional email addresses",
-			enabled: set("HUNTER_API_KEY"),
 		},
 		{
-			env: "BRAVE_SEARCH_API_KEY",
+			...fromEnv("BRAVE_SEARCH_API_KEY"),
 			label: "Prospecting web search",
 			gives:
 				"public company, hiring and technology signals from an independent web index",
-			enabled: set("BRAVE_SEARCH_API_KEY"),
 		},
 		{
-			env: "GITHUB_TOKEN",
+			...fromEnv("GITHUB_TOKEN"),
 			label: "GitHub discovery",
 			gives:
 				"authenticated public repository and code search for mobile technology signals",
-			enabled: set("GITHUB_TOKEN"),
 		},
 		{
-			env: "RAPIDAPI_KEY",
+			...fromEnv("RAPIDAPI_KEY"),
 			label: "LinkedIn",
 			gives:
 				"a person's real name, current title, employer and tenure, self-reported, and so authoritative on identity",
-			enabled: set("RAPIDAPI_KEY"),
 		},
 		{
-			env: "PERPLEXITY_API_KEY",
+			...fromEnv("PERPLEXITY_API_KEY"),
 			label: "Web research",
 			gives:
 				"open-web context with citations, and the search that finds a LinkedIn slug in the first place",
-			enabled: set("PERPLEXITY_API_KEY"),
 		},
 		{
-			env: "CONTEXT_DEV_API_KEY",
+			id: CONTEXT_DEV,
+			from: "Settings → General",
 			label: "Company brand data",
 			gives: "a company's logo, industry, location and socials from its domain",
-			enabled: set("CONTEXT_DEV_API_KEY"),
+			enabled: contextDev !== null,
 		},
 		{
-			env: "BLOB_READ_WRITE_TOKEN",
+			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:
 				"somewhere to keep a logo or a profile photo. Without it a record has no picture at all, because the URLs these sources hand back expire and are never stored as they are",
-			enabled: set("BLOB_READ_WRITE_TOKEN"),
 		},
 	];
 }
 
-export function enabled(env: string): boolean {
-	return capabilities().some(
-		(capability) => capability.env === env && capability.enabled,
+export async function enabled(id: string): Promise<boolean> {
+	return (await capabilities()).some(
+		(capability) => capability.id === id && capability.enabled,
 	);
 }
 
@@ -82,8 +107,19 @@ export function unavailable(env: string): {
 	};
 }
 
-export function capabilitiesMarkdown(): string {
-	const all = capabilities();
+export async function logCapabilities(): Promise<void> {
+	for (const capability of await capabilities()) {
+		console.log(
+			`[agent] ${capability.enabled ? "on " : "off"}  ${capability.label} (${capability.from})`,
+		);
+	}
+}
+
+export async function capabilitiesMarkdown(): Promise<string> {
+	return markdownFor(await capabilities());
+}
+
+export function markdownFor(all: readonly Capability[]): string {
 	const on = all.filter((capability) => capability.enabled);
 	const off = all.filter((capability) => !capability.enabled);
 

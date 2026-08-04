@@ -40,6 +40,7 @@ import {
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { RecordActions } from "./record-actions";
 import { RecordSheetFrame } from "./record-parts";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
@@ -123,11 +124,18 @@ export function DealSheet({ dealId }: { dealId: string }) {
 			}
 			actions={
 				deal ? (
-					<DealStageMenu
-						dealId={deal.id}
-						stage={deal.stage}
-						variant="control"
-					/>
+					<>
+						<DealStageMenu
+							dealId={deal.id}
+							stage={deal.stage}
+							variant="control"
+						/>
+						<RecordActions
+							record={{ kind: "deal", id: deal.id }}
+							name={deal.name}
+							consequence={`Its stage history, notes and agent conversations go too. ${deal.company?.name ?? "The associated company"} and the ${deal.contacts.length === 1 ? "person" : "people"} on it stay in the CRM.`}
+						/>
+					</>
 				) : null
 			}
 			stats={

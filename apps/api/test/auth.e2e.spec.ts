@@ -54,4 +54,20 @@ describe("Auth (e2e)", () => {
 
 		expect(response.status).not.toBe(404);
 	});
+
+	it("lets the sign-in page read what it may offer", async () => {
+		const response = await request(app.getHttpServer())
+			.get("/api/trpc/sso.signInOptions")
+			.expect(200);
+
+		expect(response.body.result.data).toEqual({ google: true, providers: [] });
+	});
+
+	it("keeps the SSO configuration itself behind the session", async () => {
+		const response = await request(app.getHttpServer()).get(
+			"/api/trpc/sso.settings",
+		);
+
+		expect(response.status).toBe(401);
+	});
 });
