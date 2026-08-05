@@ -66,8 +66,11 @@ export class GoogleRouter {
 	}
 
 	@Mutation({ input: suppressDomainInput })
-	async suppressDomain(@Input() input: z.infer<typeof suppressDomainInput>) {
-		return this.connection.suppressDomain(input.domain, {
+	async suppressDomain(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof suppressDomainInput>,
+	) {
+		return this.connection.suppressDomain(ctx.user.id, input.domain, {
 			reason: input.reason,
 			purge: input.purge,
 		});
