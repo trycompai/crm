@@ -10,6 +10,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
 import { GmailClient, type GmailMessage } from "./gmail.client";
+import type { GoogleResult } from "./google-api.client";
 import { GoogleMatchService, type MatchContext } from "./google-match.service";
 import { GoogleTokenService } from "./google-token.service";
 import {
@@ -169,7 +170,7 @@ export class GmailSyncService {
 			}
 		}
 
-		const { written, remaining } = await this.ingest(
+		const { written, remaining, deferred } = await this.ingest(
 			row,
 			accessToken,
 			mailbox,
@@ -178,18 +179,19 @@ export class GmailSyncService {
 
 		await this.state.settle(row.id, {
 			cursor:
-				remaining > 0
+				remaining > 0 || deferred > 0
 					? startHistoryId
 					: (history.data.historyId ?? startHistoryId),
 			status: GoogleSyncStatus.RUNNING,
 		});
 
-		if (written > 0 || remaining > 0) {
+		if (written > 0 || remaining > 0 || deferred > 0) {
 			this.logger.log({
 				message: "Gmail incremental sync",
 				userId: row.userId,
 				messagesWritten: written,
 				remaining,
+				deferred,
 			});
 		}
 
@@ -206,8 +208,8 @@ export class GmailSyncService {
 		accessToken: string,
 		mailbox: string,
 		ids: readonly string[],
-	): Promise<{ written: number; remaining: number }> {
-		if (ids.length === 0) return { written: 0, remaining: 0 };
+	): Promise<{ written: number; remaining: number; deferred: number }> {
+		if (ids.length === 0) return { written: 0, remaining: 0, deferred: 0 };
 
 		const alreadyHave = await this.db.emailMessage.findMany({
 			where: { gmailMessageId: { in: [...ids] } },
@@ -221,7 +223,7 @@ export class GmailSyncService {
 		const batch = pending.slice(0, MAX_MESSAGES_PER_TICK);
 		const remaining = pending.length - batch.length;
 
-		if (batch.length === 0) return { written: 0, remaining };
+		if (batch.length === 0) return { written: 0, remaining, deferred: 0 };
 
 		const [internal, suppressedDomains, suppressedEmails] = await Promise.all([
 			this.match.internalIdentity(),
@@ -237,16 +239,20 @@ export class GmailSyncService {
 		};
 
 		let written = 0;
+		let deferred = 0;
 
 		for (const id of batch) {
 			const message = await this.gmail.getMessage(accessToken, id);
-			if (message.outcome !== "ok") continue;
+			if (message.outcome !== "ok") {
+				if (isRetryable(message)) deferred += 1;
+				continue;
+			}
 
 			const stored = await this.store(row, mailbox, message.data, context);
 			if (stored) written += 1;
 		}
 
-		return { written, remaining };
+		return { written, remaining, deferred };
 	}
 
 	private async store(
@@ -501,4 +507,11 @@ export class GmailSyncService {
 			reason: result.reason,
 		};
 	}
+}
+
+function isRetryable(
+	result: GoogleResult<unknown>,
+): result is Extract<GoogleResult<unknown>, { outcome: "failed" }> {
+	if (result.outcome === "failed") return result.retryable;
+	return result.outcome === "rate-limited" || result.outcome === "unauthorized";
 }
