@@ -25,7 +25,7 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseAsBoolean, useQueryState } from "nuqs";
-import { Suspense, useId, useState } from "react";
+import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -33,9 +33,9 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const NONE = "none";
 
-function AddButton({ disabled }: { disabled?: boolean }) {
+function AddButton(props: ComponentProps<typeof Button>) {
 	return (
-		<Button disabled={disabled}>
+		<Button {...props}>
 			<Icon icon={Add} data-icon="inline-start" />
 			New contact
 		</Button>
