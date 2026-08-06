@@ -65,6 +65,7 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 import { AgentCodeWorkspace } from "./agent-code-workspace";
 import { AgentComposer, type BuilderPrompt } from "./agent-composer";
+import { AgentScopeBadges } from "./agent-scope-badges";
 import {
 	ChatAttachmentChip,
 	ChatCommandChip,
@@ -1063,8 +1064,7 @@ function ReviewAgentCard({
 	return (
 		<div className="flex flex-col gap-5">
 			<p className="max-w-[640px] text-pretty text-sm leading-5">
-				I’ve drafted the agent. Review its details while it stays private to
-				you.
+				Your private draft is ready to review.
 			</p>
 			<div className="overflow-hidden rounded-lg border bg-card">
 				<div className="border-b px-4 py-3 sm:px-5 sm:py-4">
@@ -1080,16 +1080,19 @@ function ReviewAgentCard({
 				<ReviewRow label="Trigger" value={manifest.trigger} />
 				<ReviewRow label="Looks at" value={manifest.looksAt} />
 				<ReviewRow label="Action" value={manifest.action} />
-				<ReviewRow label="Access" value={manifest.access} />
+				<ReviewRow label="Access">
+					<AgentScopeBadges
+						scopes={manifest.access}
+						fallback="Bounded CRM read access"
+					/>
+				</ReviewRow>
 				<p className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5">
-					The sandbox has no network access. CRM and connected data are
-					available only through the listed tools, and credentials stay in the
-					app runtime.
+					Runs in an isolated sandbox. CRM access is limited to the scopes
+					above, and credentials never enter the sandbox.
 				</p>
 				<div className="flex min-h-14 flex-col items-stretch gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
 					<p className="text-pretty text-muted-foreground text-xs">
-						Inspect this version, scope, and its listed actions before making it
-						available to the team.
+						Review the draft before sharing it with your team.
 					</p>
 					<div className="sm:shrink-0">
 						<Button asChild>
@@ -1108,15 +1111,23 @@ function ReviewAgentCard({
 	);
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
+function ReviewRow({
+	label,
+	value,
+	children,
+}: {
+	label: string;
+	value?: string;
+	children?: ReactNode;
+}) {
 	return (
 		<div className="flex min-h-8 flex-col items-start gap-0.5 border-b px-4 py-2 last:border-b-0 sm:flex-row sm:items-center sm:gap-4 sm:px-5 sm:py-1.5">
 			<span className="text-muted-foreground text-xs sm:w-[104px] sm:shrink-0">
 				{label}
 			</span>
-			<span className="min-w-0 flex-1 wrap-break-word font-medium text-sm">
-				{value}
-			</span>
+			<div className="min-w-0 flex-1 wrap-break-word font-medium text-sm">
+				{children ?? value}
+			</div>
 		</div>
 	);
 }
@@ -1410,11 +1421,21 @@ function manifestOf(value: unknown) {
 			typeof manifest.description === "string" && manifest.description.trim()
 				? manifest.description.trim()
 				: null,
-		trigger: textOf(trigger.summary, "Manual or configured schedule"),
+		trigger:
+			trigger.type === "MANUAL"
+				? "On demand"
+				: compactSummary(trigger.summary, "On schedule"),
 		looksAt: textOf(dataScope.summary, "CRM records in the approved scope"),
-		action: textOf(actions[0]?.summary, "Perform the requested team action"),
-		access: access.length > 0 ? access.join(" · ") : "Bounded CRM read access",
+		action: compactSummary(
+			actions[0]?.summary,
+			"Perform the requested team action",
+		),
+		access,
 	};
+}
+
+function compactSummary(value: unknown, fallback: string): string {
+	return textOf(value, fallback).replace(/\s+\([^()]+\)\s*\.?$/, "");
 }
 
 function recordOf(value: unknown): Record<string, unknown> {

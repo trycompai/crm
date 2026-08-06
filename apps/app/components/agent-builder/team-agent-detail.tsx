@@ -32,7 +32,7 @@ import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import {
 	PageShell,
@@ -46,6 +46,7 @@ import {
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import { AgentScopeBadges } from "./agent-scope-badges";
 
 type AgentTab = "overview" | "runs" | "activity";
 type AgentDetail = RouterOutputs["agents"]["byId"];
@@ -631,21 +632,26 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 			/>
 			<DetailRow
 				label="Access"
-				value={access.join(" · ") || "Bounded CRM read access"}
+				value={
+					<AgentScopeBadges
+						scopes={access}
+						fallback="Bounded CRM read access"
+					/>
+				}
 			/>
 		</div>
 	);
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 	return (
 		<div className="flex min-h-11 flex-col items-start gap-1 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-2">
 			<span className="text-muted-foreground text-xs sm:w-36 sm:shrink-0">
 				{label}
 			</span>
-			<span className="min-w-0 max-w-full flex-1 wrap-break-word text-sm">
+			<div className="min-w-0 max-w-full flex-1 wrap-break-word text-sm">
 				{value}
-			</span>
+			</div>
 		</div>
 	);
 }

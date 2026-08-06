@@ -1,5 +1,13 @@
 import Close from "@carbon/icons-react/es/Close";
 import Document from "@carbon/icons-react/es/Document";
+import {
+	Attachment,
+	AttachmentAction,
+	AttachmentActions,
+	AttachmentContent,
+	AttachmentMedia,
+	AttachmentTitle,
+} from "@crm/ui/components/attachment";
 import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
 import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
 import Image from "next/image";
@@ -31,8 +39,12 @@ export function ChatReferenceChip({
 	onRemove?: () => void;
 }) {
 	return (
-		<span className="flex min-w-0 max-w-full items-center gap-2 rounded-md border bg-background py-1 pr-2 pl-1 text-left shadow-xs">
-			<ChatReferenceIdentity resource={resource} icon={icon} />
+		<span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border bg-background py-0.5 pr-1 pl-0.5 text-left">
+			<ChatReferenceIdentity
+				resource={resource}
+				icon={icon}
+				showDetail={false}
+			/>
 			{onRemove ? (
 				<button
 					type="button"
@@ -50,9 +62,11 @@ export function ChatReferenceChip({
 export function ChatReferenceIdentity({
 	resource,
 	icon,
+	showDetail = true,
 }: {
 	resource: ChatChipResource;
 	icon: CarbonIcon;
+	showDetail?: boolean;
 }) {
 	return (
 		<>
@@ -68,7 +82,7 @@ export function ChatReferenceIdentity({
 				<span className="block truncate font-medium text-xs">
 					{resource.label}
 				</span>
-				{resource.detail ? (
+				{showDetail && resource.detail ? (
 					<span className="block truncate text-[11px] text-muted-foreground">
 						{resource.detail}
 					</span>
@@ -93,40 +107,38 @@ export function ChatAttachmentChip({
 		: null;
 
 	return (
-		<span className="flex min-w-0 max-w-full items-center gap-2 rounded-md border bg-background py-1 pr-2 pl-1 text-left shadow-xs">
-			<span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-muted text-muted-foreground">
+		<Attachment size="compact" state="done">
+			<AttachmentMedia variant={image ? "image" : "icon"}>
 				{image ? (
 					<Image
 						src={image}
 						alt=""
-						width={24}
-						height={24}
+						width={20}
+						height={20}
 						unoptimized
 						className="size-full object-cover"
 					/>
 				) : (
-					<Icon icon={Document} className="size-3.5" />
+					<Icon icon={Document} />
 				)}
-			</span>
-			<span className="min-w-0 max-w-48">
-				<span className="block truncate font-medium text-xs">
-					{attachment.name}
-				</span>
-				<span className="block text-[11px] text-muted-foreground">
-					{formatBytes(attachment.size)}
-				</span>
-			</span>
+			</AttachmentMedia>
+			<AttachmentContent>
+				<AttachmentTitle title={attachment.name}>
+					{attachment.name} · {formatBytes(attachment.size)}
+				</AttachmentTitle>
+			</AttachmentContent>
 			{onRemove ? (
-				<button
-					type="button"
-					aria-label={`Remove ${attachment.name}`}
-					onClick={onRemove}
-					className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-				>
-					<Icon icon={Close} className="size-3" />
-				</button>
+				<AttachmentActions>
+					<AttachmentAction
+						type="button"
+						aria-label={`Remove ${attachment.name}`}
+						onClick={onRemove}
+					>
+						<Icon icon={Close} />
+					</AttachmentAction>
+				</AttachmentActions>
 			) : null}
-		</span>
+		</Attachment>
 	);
 }
 
