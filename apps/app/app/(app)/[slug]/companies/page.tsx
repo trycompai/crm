@@ -56,10 +56,12 @@ async function Companies({
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
-	await queryClient.prefetchQuery(
-		trpc.companies.list.queryOptions(companiesSearchParams.toInput(values)),
-	);
-	void queryClient.prefetchQuery(trpc.users.list.queryOptions());
+	await Promise.all([
+		queryClient.prefetchQuery(
+			trpc.companies.list.queryOptions(companiesSearchParams.toInput(values)),
+		),
+		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
+	]);
 
 	return (
 		<HydrateClient>

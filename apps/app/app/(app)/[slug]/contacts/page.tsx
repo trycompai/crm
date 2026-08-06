@@ -54,13 +54,13 @@ async function Contacts({
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
-	await queryClient.prefetchQuery(
-		trpc.contacts.list.queryOptions(contactsSearchParams.toInput(values)),
-	);
-	void queryClient.prefetchQuery(trpc.users.list.queryOptions());
-	void queryClient.prefetchQuery(
-		trpc.companies.options.queryOptions({ q: "" }),
-	);
+	await Promise.all([
+		queryClient.prefetchQuery(
+			trpc.contacts.list.queryOptions(contactsSearchParams.toInput(values)),
+		),
+		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
+		queryClient.prefetchQuery(trpc.companies.options.queryOptions({ q: "" })),
+	]);
 
 	return (
 		<HydrateClient>

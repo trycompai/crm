@@ -56,13 +56,13 @@ async function Deals({
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
-	await queryClient.prefetchQuery(
-		trpc.deals.list.queryOptions(dealsSearchParams.toInput(values)),
-	);
-	void queryClient.prefetchQuery(trpc.users.list.queryOptions());
-	void queryClient.prefetchQuery(
-		trpc.companies.options.queryOptions({ q: "" }),
-	);
+	await Promise.all([
+		queryClient.prefetchQuery(
+			trpc.deals.list.queryOptions(dealsSearchParams.toInput(values)),
+		),
+		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
+		queryClient.prefetchQuery(trpc.companies.options.queryOptions({ q: "" })),
+	]);
 
 	return (
 		<HydrateClient>
