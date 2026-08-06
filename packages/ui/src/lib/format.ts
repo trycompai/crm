@@ -4,6 +4,14 @@ export function formatCount(count: number, noun: string): string {
 
 const WELL_FORMED_CURRENCY_CODE = /^[A-Za-z]{3}$/;
 
+/**
+ * What to assume when a caller has no single deal to read a currency from —
+ * the KPI tiles, the stage donut, the table footers. Set
+ * `DEFAULT_CURRENCY` in `.env`; `next.config.ts` publishes it to the bundle.
+ */
+const DEFAULT_CURRENCY =
+	process.env.NEXT_PUBLIC_DEFAULT_CURRENCY?.trim() || "usd";
+
 function displayCurrencyCode(currency: string): string {
 	return WELL_FORMED_CURRENCY_CODE.test(currency)
 		? currency.toUpperCase()
@@ -26,7 +34,10 @@ function fractionDigits(code: string): number {
 	return digits;
 }
 
-export function formatMoney(cents: number, currency = "usd"): string {
+export function formatMoney(
+	cents: number,
+	currency = DEFAULT_CURRENCY,
+): string {
 	const code = displayCurrencyCode(currency);
 	const whole = cents % 100 === 0;
 	const digits = fractionDigits(code);
@@ -39,7 +50,10 @@ export function formatMoney(cents: number, currency = "usd"): string {
 	}).format(cents / 100);
 }
 
-export function formatMoneyCompact(cents: number, currency = "usd"): string {
+export function formatMoneyCompact(
+	cents: number,
+	currency = DEFAULT_CURRENCY,
+): string {
 	return new Intl.NumberFormat(undefined, {
 		style: "currency",
 		currency: displayCurrencyCode(currency),
