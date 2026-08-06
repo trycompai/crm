@@ -88,6 +88,20 @@ export class AgentDefinitionsService {
 						deployedAt: true,
 					},
 				},
+				versions: {
+					where: { status: { in: ["DRAFT", "READY"] } },
+					orderBy: { number: "desc" },
+					take: 1,
+					select: {
+						id: true,
+						number: true,
+						status: true,
+						manifest: true,
+						modelId: true,
+						sandboxPolicy: true,
+						sourceConversationId: true,
+					},
+				},
 				triggers: {
 					orderBy: { createdAt: "asc" },
 					select: {
@@ -105,25 +119,27 @@ export class AgentDefinitionsService {
 		});
 
 		if (!row) throw new NotFoundException(`No agent with id ${id}.`);
+		const { versions, ...agent } = row;
 
 		return {
-			...row,
-			canManage: row.createdById === userId || (await this.canAdmin(userId)),
-			createdAt: row.createdAt.toISOString(),
-			updatedAt: row.updatedAt.toISOString(),
-			currentVersion: row.currentVersion
+			...agent,
+			canManage: agent.createdById === userId || (await this.canAdmin(userId)),
+			createdAt: agent.createdAt.toISOString(),
+			updatedAt: agent.updatedAt.toISOString(),
+			currentVersion: agent.currentVersion
 				? {
-						...row.currentVersion,
-						approvedAt: row.currentVersion.approvedAt?.toISOString() ?? null,
-						deployedAt: row.currentVersion.deployedAt?.toISOString() ?? null,
+						...agent.currentVersion,
+						approvedAt: agent.currentVersion.approvedAt?.toISOString() ?? null,
+						deployedAt: agent.currentVersion.deployedAt?.toISOString() ?? null,
 					}
 				: null,
-			triggers: row.triggers.map((trigger) => ({
+			reviewVersion: agent.status === "DRAFT" ? (versions[0] ?? null) : null,
+			triggers: agent.triggers.map((trigger) => ({
 				...trigger,
 				nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
 				lastRunAt: trigger.lastRunAt?.toISOString() ?? null,
 			})),
-			runCount: row._count.runs,
+			runCount: agent._count.runs,
 		};
 	}
 

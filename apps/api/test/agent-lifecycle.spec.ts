@@ -260,7 +260,14 @@ describe("agent lifecycle", () => {
 			description: null,
 			status: "DRAFT",
 		});
-		expect((await agents.byId(agentId, userId)).canManage).toBe(true);
+		expect(await agents.byId(agentId, userId)).toMatchObject({
+			canManage: true,
+			reviewVersion: {
+				id: versionId,
+				number: 1,
+				status: "READY",
+			},
+		});
 		expect(
 			(await agents.list(userId)).some((agent) => agent.id === agentId),
 		).toBe(false);

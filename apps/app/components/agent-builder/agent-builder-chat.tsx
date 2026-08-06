@@ -1052,40 +1052,20 @@ function ReviewAgentCard({
 	conversation: Conversation;
 	versionId: string;
 }) {
-	const trpc = useTRPC();
-	const queryClient = useQueryClient();
+	const workspaceUrl = useWorkspaceUrl();
 	const version = conversation.createdVersions.find(
 		(candidate) => candidate.id === versionId,
 	) as DraftVersion | undefined;
 	const agent = conversation.agent;
 	const manifest = manifestOf(version?.manifest);
-	const deploy = useMutation(
-		trpc.agents.deploy.mutationOptions({
-			onSuccess: async () => {
-				await Promise.all([
-					queryClient.invalidateQueries({
-						queryKey: trpc.conversations.builderById.pathKey(),
-					}),
-					queryClient.invalidateQueries({
-						queryKey: trpc.conversations.builderList.pathKey(),
-					}),
-					queryClient.invalidateQueries({
-						queryKey: trpc.agents.list.pathKey(),
-					}),
-				]);
-				toast.success("Agent deployed to the team.");
-			},
-			onError: (error) => toast.error(error.message),
-		}),
-	);
 
 	if (!version || !agent) return null;
 
 	return (
 		<div className="flex flex-col gap-5">
 			<p className="max-w-[640px] text-pretty text-sm leading-5">
-				I’ve drafted the agent. Its files and configuration stay private to you
-				until you deploy it.
+				I’ve drafted the agent. Review its details while it stays private to
+				you.
 			</p>
 			<div className="overflow-hidden rounded-lg border bg-card">
 				<div className="border-b px-4 py-3 sm:px-5 sm:py-4">
@@ -1109,49 +1089,18 @@ function ReviewAgentCard({
 				</p>
 				<div className="flex min-h-14 flex-col items-stretch gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
 					<p className="text-pretty text-muted-foreground text-xs">
-						Deploying approves this version, scope, and its listed actions for
-						the whole team.
+						Inspect this version, scope, and its listed actions before making it
+						available to the team.
 					</p>
-					<div className="flex flex-wrap justify-end gap-1 sm:shrink-0">
-						<Button
-							variant="ghost"
-							onClick={() =>
-								document
-									.querySelector<HTMLTextAreaElement>(
-										'textarea[aria-label="Message the agent builder"]',
-									)
-									?.focus()
-							}
-						>
-							Change details
-						</Button>
-						<Button
-							disabled={deploy.isPending}
-							aria-busy={deploy.isPending}
-							onClick={() =>
-								deploy.mutate({
-									id: agent.id,
-									versionId: version.id,
-									clientRequestId: crypto.randomUUID(),
-								})
-							}
-						>
-							<AsyncButtonContent
-								status={
-									deploy.isPending
-										? "pending"
-										: deploy.isError
-											? "error"
-											: deploy.isSuccess
-												? "success"
-												: "idle"
-								}
-								pendingLabel="Deploying"
-								successLabel="Deployed"
-								errorLabel="Try again"
+					<div className="sm:shrink-0">
+						<Button asChild>
+							<Link
+								href={workspaceUrl(`/agents/${agent.id}`)}
+								transitionTypes={["nav-forward"]}
 							>
-								Deploy agent
-							</AsyncButtonContent>
+								View agent details
+								<Icon icon={ArrowRight} data-icon="inline-end" />
+							</Link>
 						</Button>
 					</div>
 				</div>
@@ -1354,7 +1303,7 @@ function ChatLoading() {
 				</div>
 			</div>
 			<span role="status" className="sr-only">
-				Loading chat
+				Loading chat…
 			</span>
 		</main>
 	);

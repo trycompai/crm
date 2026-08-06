@@ -28,9 +28,9 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
-import { Skeleton } from "@crm/ui/components/skeleton";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -49,6 +49,7 @@ import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 type AgentTab = "overview" | "runs" | "activity";
 type AgentDetail = RouterOutputs["agents"]["byId"];
+type ReviewVersion = AgentDetail["reviewVersion"];
 type Runs = RouterOutputs["agents"]["history"];
 type Activity = RouterOutputs["agents"]["activity"];
 type RunRow = Omit<Runs[number], "events"> & {
@@ -93,7 +94,9 @@ export function TeamAgentDetail({
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
-	const [tab, setTab] = useState<AgentTab>("runs");
+	const [tab, setTab] = useState<AgentTab>(() =>
+		initialAgent.status === "DRAFT" ? "overview" : "runs",
+	);
 	const agent = useQuery({
 		...trpc.agents.byId.queryOptions({ id: agentId }),
 		initialData: initialAgent,
@@ -161,26 +164,6 @@ export function TeamAgentDetail({
 		action: () => resume.mutateAsync({ id: agentId }),
 	});
 
-	if (agent.isPending) {
-		return (
-			<PageShell className="min-h-0" aria-busy="true">
-				<PageShellHeader>
-					<PageShellHeading>
-						<Skeleton className="h-8 w-72 max-w-full" />
-						<Skeleton className="h-4 w-[520px] max-w-full" />
-					</PageShellHeading>
-				</PageShellHeader>
-				<PageShellContent>
-					<Skeleton className="h-9 w-full" />
-					<Skeleton className="h-56 w-full" />
-				</PageShellContent>
-				<span role="status" className="sr-only">
-					Loading agent
-				</span>
-			</PageShell>
-		);
-	}
-
 	if (agent.isError) {
 		return (
 			<PageShell>
@@ -194,7 +177,26 @@ export function TeamAgentDetail({
 		);
 	}
 
-	const data = agent.data;
+	const data = agent.data ?? initialAgent;
+	const isDraft = data.status === "DRAFT";
+	const reviewManifest = recordOf(
+		(
+			data.reviewVersion as unknown as {
+				manifest: unknown;
+			} | null
+		)?.manifest,
+	);
+	const displayedName = isDraft
+		? textOf(reviewManifest.name, data.name)
+		: data.name;
+	const displayedDescription = isDraft
+		? textOf(
+				reviewManifest.description,
+				data.description ?? "A durable team automation.",
+			)
+		: (data.description ?? "A durable team automation.");
+	const displayedVersionNumber =
+		data.currentVersion?.number ?? data.reviewVersion?.number;
 	const nextRun = data.triggers.find((trigger) => trigger.enabled)?.nextRunAt;
 
 	return (
@@ -202,42 +204,55 @@ export function TeamAgentDetail({
 			<PageShellHeader className="[&>div]:grid-cols-1 sm:[&>div]:grid-cols-[minmax(0,1fr)_auto]">
 				<PageShellHeading>
 					<PageShellTitle className="wrap-break-word">
-						{data.name}
+						{displayedName}
 					</PageShellTitle>
 					<PageShellDescription className="wrap-break-word leading-6">
-						<span className="block">
-							{data.description ?? "A durable team automation."}
-						</span>
+						<span className="block">{displayedDescription}</span>
 						<span className="mt-2 block text-xs">
-							Created by {data.createdBy.name} · Team agent · Version{" "}
-							{data.currentVersion?.number ?? "—"}
+							Created by {data.createdBy.name} ·{" "}
+							{isDraft ? "Private draft" : "Team agent"} · Version{" "}
+							{displayedVersionNumber ?? "—"}
 						</span>
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions className="col-start-1 row-start-3 justify-self-start sm:col-start-2 sm:row-start-1 sm:justify-self-end">
 					<div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
-						<span className="text-muted-foreground text-xs">Next run</span>
+						<span className="text-muted-foreground text-xs">
+							{isDraft ? "Visibility" : "Next run"}
+						</span>
 						<span className="font-mono text-sm">
-							{nextRun ? formatDate(nextRun) : "Manual only"}
+							{isDraft
+								? "Private draft"
+								: nextRun
+									? formatDate(nextRun)
+									: "Manual only"}
 						</span>
 						<div className="mt-1 flex flex-wrap gap-2">
-							<Button
-								variant="outline"
-								disabled={data.status !== "LIVE" || runAction.pending}
-								aria-busy={runAction.pending}
-								onClick={() => runAction.run()}
-							>
-								<AsyncButtonContent
-									status={runAction.status}
-									pendingLabel="Queueing"
-									successLabel="Queued"
-									errorLabel="Try again"
+							{isDraft && data.canManage ? (
+								<DraftAgentActions
+									agentId={data.id}
+									name={displayedName}
+									version={data.reviewVersion}
+								/>
+							) : (
+								<Button
+									variant="outline"
+									disabled={data.status !== "LIVE" || runAction.pending}
+									aria-busy={runAction.pending}
+									onClick={() => runAction.run()}
 								>
-									<Icon icon={Play} data-icon="inline-start" />
-									Run now
-								</AsyncButtonContent>
-							</Button>
-							{data.canManage && data.status === "LIVE" ? (
+									<AsyncButtonContent
+										status={runAction.status}
+										pendingLabel="Queueing"
+										successLabel="Queued"
+										errorLabel="Try again"
+									>
+										<Icon icon={Play} data-icon="inline-start" />
+										Run now
+									</AsyncButtonContent>
+								</Button>
+							)}
+							{!isDraft && data.canManage && data.status === "LIVE" ? (
 								<Button
 									variant="outline"
 									disabled={pauseAction.pending}
@@ -255,7 +270,7 @@ export function TeamAgentDetail({
 									</AsyncButtonContent>
 								</Button>
 							) : null}
-							{data.canManage && data.status === "PAUSED" ? (
+							{!isDraft && data.canManage && data.status === "PAUSED" ? (
 								<Button
 									variant="outline"
 									disabled={resumeAction.pending}
@@ -273,7 +288,7 @@ export function TeamAgentDetail({
 									</AsyncButtonContent>
 								</Button>
 							) : null}
-							{data.canManage ? (
+							{!isDraft && data.canManage ? (
 								<DeleteAgentAction agentId={data.id} name={data.name} />
 							) : null}
 						</div>
@@ -345,6 +360,82 @@ export function TeamAgentDetail({
 				) : null}
 			</PageShellContent>
 		</PageShell>
+	);
+}
+
+function DraftAgentActions({
+	agentId,
+	name,
+	version,
+}: {
+	agentId: string;
+	name: string;
+	version: ReviewVersion;
+}) {
+	const trpc = useTRPC();
+	const queryClient = useQueryClient();
+	const workspaceUrl = useWorkspaceUrl();
+	const deploy = useMutation(
+		trpc.agents.deploy.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.byId.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.list.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversations.builderById.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversations.builderList.pathKey(),
+					}),
+				]);
+				toast.success("Agent deployed to the team.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const deployAction = useAsyncAction({
+		action: async () => {
+			if (!version) return;
+			await deploy.mutateAsync({
+				id: agentId,
+				versionId: version.id,
+				clientRequestId: crypto.randomUUID(),
+			});
+		},
+	});
+
+	return (
+		<>
+			{version?.sourceConversationId ? (
+				<Button variant="outline" asChild>
+					<Link
+						href={workspaceUrl(`/chat/${version.sourceConversationId}`)}
+						transitionTypes={["nav-back"]}
+					>
+						Change details
+					</Link>
+				</Button>
+			) : null}
+			<Button
+				disabled={!version || deployAction.pending}
+				aria-busy={deployAction.pending}
+				onClick={() => deployAction.run()}
+			>
+				<AsyncButtonContent
+					status={deployAction.status}
+					pendingLabel="Deploying"
+					successLabel="Deployed"
+					errorLabel="Try again"
+				>
+					Deploy agent
+				</AsyncButtonContent>
+			</Button>
+			<DeleteAgentAction agentId={agentId} name={name} />
+		</>
 	);
 }
 
@@ -479,18 +570,33 @@ function TabButton({
 }
 
 function AgentOverview({ agent }: { agent: AgentDetail }) {
-	const version = agent.currentVersion as {
-		manifest: unknown;
-		sandboxPolicy: unknown;
-		modelId: string;
-	} | null;
-	const manifest = recordOf(version?.manifest);
-	const sandbox = recordOf(version?.sandboxPolicy);
+	const agentVersions = agent as unknown as {
+		currentVersion: unknown;
+		reviewVersion: unknown;
+	};
+	const version = recordOf(
+		agentVersions.currentVersion ?? agentVersions.reviewVersion,
+	);
+	const manifest = recordOf(version.manifest);
+	const sandbox = recordOf(version.sandboxPolicy);
+	const trigger = recordOf(manifest.trigger);
+	const actions = Array.isArray(manifest.actions)
+		? manifest.actions.map(recordOf)
+		: [];
+	const actionSummaries = actions
+		.map((action) => textOf(action.summary, ""))
+		.filter(Boolean);
+	const access = Array.isArray(manifest.access)
+		? manifest.access.filter(
+				(item): item is string =>
+					typeof item === "string" && Boolean(item.trim()),
+			)
+		: [];
 
 	return (
 		<div className="overflow-hidden rounded-lg border bg-card">
 			<DetailRow label="Status" value={agent.status} />
-			<DetailRow label="Model" value={version?.modelId ?? "—"} />
+			<DetailRow label="Model" value={textOf(version.modelId, "—")} />
 			<DetailRow
 				label="Execution"
 				value={textOf(
@@ -509,8 +615,16 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 				label="Triggers"
 				value={
 					agent.triggers.map((trigger) => trigger.name).join(" · ") ||
-					"Manual only"
+					textOf(trigger.summary, "Manual only")
 				}
+			/>
+			<DetailRow
+				label="Actions"
+				value={actionSummaries.join(" · ") || "No external actions"}
+			/>
+			<DetailRow
+				label="Access"
+				value={access.join(" · ") || "Bounded CRM read access"}
 			/>
 		</div>
 	);
