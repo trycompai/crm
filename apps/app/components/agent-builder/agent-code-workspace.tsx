@@ -10,6 +10,7 @@ import {
 	useFileTree,
 	useFileTreeSelection,
 } from "@pierre/trees/react";
+import { useTheme } from "next-themes";
 import { useState } from "react";
 import { latestBuilderArtifacts } from "@/lib/agent-builder-state";
 
@@ -60,6 +61,8 @@ function AgentCodeWorkspaceSurface({
 	working: boolean;
 }) {
 	const [mode, setMode] = useState<"code" | "changes">("code");
+	const { resolvedTheme } = useTheme();
+	const themeType = resolvedTheme === "dark" ? "dark" : "light";
 	const { model } = useFileTree({
 		paths,
 		initialExpansion: "open",
@@ -138,7 +141,7 @@ function AgentCodeWorkspaceSurface({
 					<FileTree
 						model={model}
 						aria-label="Agent files"
-						style={{ height: "100%", width: "100%" }}
+						style={{ colorScheme: themeType, height: "100%", width: "100%" }}
 					/>
 				</div>
 				<div className="h-80 min-w-0 overflow-auto bg-background md:h-[360px]">
@@ -154,14 +157,14 @@ function AgentCodeWorkspaceSurface({
 							options={{
 								diffStyle: "unified",
 								overflow: "wrap",
-								themeType: "system",
+								themeType,
 							}}
 							disableWorkerPool
 						/>
 					) : (
 						<File
 							file={file}
-							options={{ overflow: "wrap", themeType: "system" }}
+							options={{ overflow: "wrap", themeType }}
 							disableWorkerPool
 						/>
 					)}
