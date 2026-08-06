@@ -1,0 +1,1 @@
+representatives richest conversations happen in meetings, and the CRM currently sees only that a meeting occurred, not what was said. add an optional Fireflies capability (keyed by FIREFLIES_API_KEY) so the agent can fetch the transcript for a synced calendar event and feed it through the existing evidence pipeline. if unset, nothing changes. 
