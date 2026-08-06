@@ -1,0 +1,70 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, ready_for_review, synchronize]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  conventional:
+    name: conventional commit
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        id: lint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            revert
+            deps
+            chore
+            test
+            ci
+            build
+            style
+          requireScope: false
+          subjectPattern: ^(?![A-Z][a-z]).+[^.]$
+          subjectPatternError: >-
+            The subject "{subject}" of "{title}" reads like a sentence, not a
+            changelog line. Start it lowercase and in the imperative, and drop
+            the trailing full stop — "add bulk archive to the deals table",
+            not "Added bulk archive."
+
+      - uses: marocchino/sticky-pull-request-comment@v2
+        if: always()
+        continue-on-error: true
+        with:
+          header: pr-title
+          delete: ${{ steps.lint.outputs.error_message == null }}
+          message: |
+            **This pull request's title is not a Conventional Commit.**
+
+            It is squashed onto `main` as-is, so the title is the commit subject and the line that shows up in the changelog and the release notes.
+
+            ```
+            ${{ steps.lint.outputs.error_message }}
+            ```
+
+            | Title | Bump | Changelog heading |
+            | --- | --- | --- |
+            | `feat(app): add bulk archive to the deals table` | minor | Features |
+            | `fix(api): stop double-counting installs` | patch | Fixes |
+            | `feat(db)!: drop the legacy contacts table` | major | Features, flagged breaking |
+            | `chore(deps): bump turbo to 2.11` | none | hidden |
+
+            Edit the title and this check re-runs on its own.

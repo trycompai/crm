@@ -1,0 +1,67 @@
+name: Auto PR
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - release
+      - "release-please--**"
+      - "gh-readonly-queue/**"
+      - "dependabot/**"
+
+concurrency:
+  group: auto-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open:
+    name: Open a draft pull request into main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          existing=$(gh pr list --head "$BRANCH" --state all --limit 1 --json number,state --jq '.[0] | select(.) | "#\(.number) (\(.state))"')
+          if [ -n "$existing" ]; then
+            echo "\`$BRANCH\` already has pull request $existing — leaving it alone." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$(git rev-list --count "origin/main..origin/$BRANCH")" = "0" ]; then
+            echo "\`$BRANCH\` has nothing \`main\` does not already have." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          subject=$(git log "origin/main..origin/$BRANCH" --no-merges --reverse --format=%s | head -1)
+
+          if printf '%s' "$subject" | grep -Eq '^(feat|fix|perf|refactor|docs|revert|deps|chore|test|ci|build|style)(\([^)]+\))?!?: .+'; then
+            title="$subject"
+          else
+            title=$(printf '%s' "${BRANCH#*/}" | tr '_' ' ' | tr '-' ' ')
+          fi
+
+          body=$(cat <<EOF
+          Opened automatically when \`$BRANCH\` was pushed.
+
+          This pull request is squashed onto \`main\`, so **its title becomes the commit subject and the changelog line**. Make it a [Conventional Commit](https://www.conventionalcommits.org/) — \`feat(app): …\`, \`fix(api): …\` — before marking it ready for review, which is when the title is checked.
+
+          The type decides the version bump: \`feat\` is a minor, \`fix\` / \`perf\` / \`refactor\` / \`docs\` are a patch, a trailing \`!\` is a major, and \`chore\` / \`ci\` / \`test\` / \`build\` / \`style\` release nothing at all.
+          EOF
+          )
+
+          gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body"
+
+          echo "Opened a draft pull request for \`$BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
