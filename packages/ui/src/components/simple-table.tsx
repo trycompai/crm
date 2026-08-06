@@ -15,6 +15,7 @@ import { cn } from "@crm/ui/lib/utils";
 import type { ComponentProps, ReactNode } from "react";
 
 export type SimpleTableColumn = {
+	id: string;
 	header?: ReactNode;
 	srLabel?: string;
 	width?: string;
@@ -74,9 +75,9 @@ export function SimpleTable({
 				)}
 			>
 				<TableRow className={cn("hover:bg-transparent", headerRowClassName)}>
-					{columns.map((column, index) => (
+					{columns.map((column) => (
 						<TableHead
-							key={index}
+							key={column.id}
 							aria-label={column.header ? undefined : column.srLabel}
 							className={cn(
 								headerHeight ?? "h-9",

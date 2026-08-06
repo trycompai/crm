@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 
 type MobileNavContextValue = {
 	open: boolean;
@@ -11,8 +11,9 @@ const MobileNavContext = createContext<MobileNavContextValue | null>(null);
 
 export function MobileNavProvider({ children }: { children: React.ReactNode }) {
 	const [open, setOpen] = useState(false);
+	const value = useMemo(() => ({ open, setOpen }), [open]);
 	return (
-		<MobileNavContext.Provider value={{ open, setOpen }}>
+		<MobileNavContext.Provider value={value}>
 			{children}
 		</MobileNavContext.Provider>
 	);

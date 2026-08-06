@@ -45,7 +45,7 @@ export function CompanySheet() {
 	);
 }
 
-export function SheetHeader({ compact }: { compact?: boolean }) {
+function SheetHeader({ compact }: { compact?: boolean }) {
 	return (
 		<div
 			className={cn(
@@ -93,7 +93,7 @@ export function SheetHeader({ compact }: { compact?: boolean }) {
 	);
 }
 
-export function SheetStats({ compact }: { compact?: boolean }) {
+function SheetStats({ compact }: { compact?: boolean }) {
 	if (compact) {
 		return (
 			<div className="grid shrink-0 grid-cols-2 border-border border-b bg-muted/40">
@@ -165,7 +165,7 @@ function Stat({
 	);
 }
 
-export function SheetTabs({ compact }: { compact?: boolean }) {
+function SheetTabs({ compact }: { compact?: boolean }) {
 	return (
 		<div
 			className={cn(
@@ -192,7 +192,7 @@ export function SheetTabs({ compact }: { compact?: boolean }) {
 	);
 }
 
-export function AgentEmptyState({ compact }: { compact?: boolean }) {
+function AgentEmptyState({ compact }: { compact?: boolean }) {
 	return (
 		<div
 			className={cn(
@@ -231,7 +231,7 @@ export function AgentEmptyState({ compact }: { compact?: boolean }) {
 	);
 }
 
-export function SheetComposer({ compact }: { compact?: boolean }) {
+function SheetComposer({ compact }: { compact?: boolean }) {
 	return (
 		<div
 			className={cn(

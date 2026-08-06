@@ -2,24 +2,23 @@
 
 import { AttendeeList } from "@crm/ui/components/attendee-list";
 import { useQuery } from "@tanstack/react-query";
+import {
+	LocalDateTime,
+	LocalDateTimeRange,
+} from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 
-const rangeFormat = new Intl.DateTimeFormat(undefined, {
+const RANGE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	hour: "numeric",
 	minute: "2-digit",
-});
+};
 
-const timeOnly = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-
-const dayOnly = new Intl.DateTimeFormat(undefined, {
+const DAY_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
-});
+};
 
 export function MeetingEntry({
 	eventId,
@@ -46,7 +45,17 @@ export function MeetingEntry({
 	return (
 		<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
 			<span className="text-muted-foreground text-xs">
-				{formatRange(startsAt, endsAt, isAllDay)}
+				{isAllDay ? (
+					<>
+						<LocalDateTime date={startsAt} options={DAY_OPTIONS} /> · All day
+					</>
+				) : (
+					<LocalDateTimeRange
+						start={startsAt}
+						end={endsAt}
+						options={RANGE_OPTIONS}
+					/>
+				)}
 			</span>
 
 			{event.data?.attendees && event.data.attendees.length > 0 ? (
@@ -65,21 +74,4 @@ export function MeetingEntry({
 			) : null}
 		</div>
 	);
-}
-
-function formatRange(
-	startsAt: string,
-	endsAt: string,
-	isAllDay: boolean,
-): string {
-	const start = new Date(startsAt);
-	const end = new Date(endsAt);
-
-	if (isAllDay) return `${dayOnly.format(start)} · All day`;
-
-	const sameDay = start.toDateString() === end.toDateString();
-
-	return sameDay
-		? `${rangeFormat.format(start)} – ${timeOnly.format(end)}`
-		: `${rangeFormat.format(start)} – ${rangeFormat.format(end)}`;
 }

@@ -49,9 +49,10 @@ export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
 async function Summary({
 	searchParams,
 }: Pick<PageProps<"/[slug]">, "searchParams">) {
-	await requireSession();
-
-	const { scope } = await loadOverviewSearchParams(searchParams);
+	const [, { scope }] = await Promise.all([
+		requireSession(),
+		loadOverviewSearchParams(searchParams),
+	]);
 
 	const queryClient = getServerQueryClient();
 	await queryClient.prefetchQuery(

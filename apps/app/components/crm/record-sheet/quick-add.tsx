@@ -37,10 +37,7 @@ function QuickAddForm({
 	return (
 		<form
 			className="flex shrink-0 flex-col gap-4 border-b px-5 py-4"
-			onSubmit={(event) => {
-				event.preventDefault();
-				onSubmit();
-			}}
+			action={onSubmit}
 		>
 			<div className="grid gap-4 sm:grid-cols-2">{children}</div>
 			<div className="flex items-center justify-end gap-2">

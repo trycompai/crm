@@ -17,8 +17,8 @@ import {
 } from "@crm/ui/lib/format";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { dealStageColor, dealStageLabel } from "@/components/crm/deal-stage";
 import { AreaTrend, DonutStat } from "@/components/dashboard-charts";
+import { dealStageColor, dealStageLabel } from "@/lib/deal-stage";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
@@ -66,15 +66,19 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 
-	const stageSlices = pipeline.stages
-		.map((stage) => ({
-			key: stage.stage,
-			label: dealStageLabel(stage.stage),
-			value: stage.valueCents,
-			color: dealStageColor(stage.stage),
-			count: stage.count,
-		}))
-		.filter((slice) => slice.value > 0);
+	const stageSlices = pipeline.stages.flatMap((stage) =>
+		stage.valueCents > 0
+			? [
+					{
+						key: stage.stage,
+						label: dealStageLabel(stage.stage),
+						value: stage.valueCents,
+						color: dealStageColor(stage.stage),
+						count: stage.count,
+					},
+				]
+			: [],
+	);
 
 	return (
 		<div className="flex flex-col gap-6">

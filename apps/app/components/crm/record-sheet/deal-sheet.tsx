@@ -20,11 +20,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@crm/ui/components/tooltip";
-import {
-	formatDay,
-	formatMoney,
-	relativeTimeFromIso,
-} from "@crm/ui/lib/format";
+import { formatMoney } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
@@ -36,7 +32,6 @@ import {
 	InlineSelectField,
 	InlineTextArea,
 	InlineTextCell,
-	savingField,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -53,6 +48,12 @@ import {
 	DetailSheetStats,
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
+import {
+	LocalDateTime,
+	LocalDay,
+	LocalRelativeTime,
+} from "@/components/local-date-time";
+import { savingField } from "@/lib/pending-field";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -105,18 +106,18 @@ function ReportedValue({ deal }: { deal: Deal }) {
 }
 
 const CONTACT_COLUMNS = [
-	{ header: "Name", width: "w-[28%]", className: "pl-5" },
-	{ header: "Role", width: "w-[20%]" },
-	{ header: "Title", width: "w-[22%]" },
-	{ header: "Email", width: "w-[22%]" },
-	{ srLabel: "Remove", width: "w-10" },
+	{ id: "name", header: "Name", width: "w-[28%]", className: "pl-5" },
+	{ id: "role", header: "Role", width: "w-[20%]" },
+	{ id: "title", header: "Title", width: "w-[22%]" },
+	{ id: "email", header: "Email", width: "w-[22%]" },
+	{ id: "remove", srLabel: "Remove", width: "w-10" },
 ];
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	year: "numeric",
-});
+};
 
 export function DealSheet({ dealId }: { dealId: string }) {
 	const trpc = useTRPC();
@@ -222,13 +223,13 @@ export function DealSheet({ dealId }: { dealId: string }) {
 						</DetailSheetStat>
 						<DetailSheetStat label="Expected close">
 							{deal.expectedCloseDate ? (
-								formatDay(deal.expectedCloseDate)
+								<LocalDay date={deal.expectedCloseDate} />
 							) : (
 								<EmptyCellValue />
 							)}
 						</DetailSheetStat>
 						<DetailSheetStat label="In stage">
-							{relativeTimeFromIso(deal.stageChangedAt)}
+							<LocalRelativeTime date={deal.stageChangedAt} />
 						</DetailSheetStat>
 						<DetailSheetStat label="Owner">
 							<OwnerCell owner={deal.owner} />
@@ -273,6 +274,21 @@ function DealOverview({ deal }: { deal: Deal }) {
 		<DetailSheetBody>
 			<DetailSheetSection title="Stage">
 				<StageStepper dealId={deal.id} stage={deal.stage} />
+
+				{deal.closedReason ? (
+					<DetailSheetProperties>
+						<DetailSheetProperty label="Closed">
+							{deal.closedAt ? (
+								<LocalDateTime date={deal.closedAt} options={DATE_OPTIONS} />
+							) : (
+								<EmptyCellValue />
+							)}
+						</DetailSheetProperty>
+						<DetailSheetProperty label="Reason" wide>
+							{deal.closedReason}
+						</DetailSheetProperty>
+					</DetailSheetProperties>
+				) : null}
 			</DetailSheetSection>
 
 			<DetailSheetSection title="Details" action={<FieldsCog kind="deal" />}>
@@ -364,16 +380,16 @@ function WhereItStands({ deal }: { deal: Deal }) {
 		<DetailSheetSection title="Where it stands">
 			<DetailSheetProperties>
 				<DetailSheetProperty label="Opened">
-					{dateFormat.format(new Date(deal.createdAt))}
+					<LocalDateTime date={deal.createdAt} options={DATE_OPTIONS} />
 				</DetailSheetProperty>
 
 				<DetailSheetProperty label="In stage since">
-					{dateFormat.format(new Date(deal.stageChangedAt))}
+					<LocalDateTime date={deal.stageChangedAt} options={DATE_OPTIONS} />
 				</DetailSheetProperty>
 
 				{deal.closedAt ? (
 					<DetailSheetProperty label="Closed">
-						{dateFormat.format(new Date(deal.closedAt))}
+						<LocalDateTime date={deal.closedAt} options={DATE_OPTIONS} />
 					</DetailSheetProperty>
 				) : null}
 

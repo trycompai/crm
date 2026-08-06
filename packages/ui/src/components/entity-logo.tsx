@@ -106,10 +106,13 @@ function Artwork({
 		className,
 	} as const;
 
-	return isOptimizable(src) ? (
-		<Image src={src} width={px} height={px} {...shared} />
-	) : (
-		// biome-ignore lint/performance/noImgElement: the optimizer may not serve this — see `isOptimizable`.
-		<img src={src} {...shared} />
+	return (
+		<Image
+			src={src}
+			width={px}
+			height={px}
+			unoptimized={!isOptimizable(src)}
+			{...shared}
+		/>
 	);
 }

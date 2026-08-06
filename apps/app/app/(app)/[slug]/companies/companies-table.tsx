@@ -11,21 +11,21 @@ import {
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
-import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import {
-	ENRICHMENT_FACET_OPTIONS,
-	ENRICHMENT_POLL_MS,
-	EnrichmentIndicator,
-	isEnriching,
-} from "@/components/crm/enrichment-status";
+import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
+import { LocalRelativeTime } from "@/components/local-date-time";
+import {
+	ENRICHMENT_FACET_OPTIONS,
+	ENRICHMENT_POLL_MS,
+	isEnriching,
+} from "@/lib/enrichment-status";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { CompaniesBulkActions } from "./companies-bulk-actions";
@@ -113,8 +113,8 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		width: "w-[10%]",
 		defaultHidden: true,
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.createdAt)}
+			<span className="text-muted-foreground">
+				<LocalRelativeTime date={row.createdAt} />
 			</span>
 		),
 	},
@@ -126,8 +126,12 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		width: "w-[12%]",
 		hideBelow: "sm",
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.lastActivityAt)}
+			<span className="text-muted-foreground">
+				{row.lastActivityAt ? (
+					<LocalRelativeTime date={row.lastActivityAt} />
+				) : (
+					<EmptyCellValue />
+				)}
 			</span>
 		),
 	},

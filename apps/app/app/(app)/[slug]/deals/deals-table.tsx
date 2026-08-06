@@ -7,12 +7,11 @@ import {
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
-import { formatMoney, relativeTimeFromIso } from "@crm/ui/lib/format";
+import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
-import { DEAL_STAGE_OPTIONS } from "@/components/crm/deal-stage";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
@@ -20,18 +19,14 @@ import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
+import { LocalDay, LocalRelativeTime } from "@/components/local-date-time";
+import { DEAL_STAGE_OPTIONS } from "@/lib/deal-stage";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { DealsBulkActions } from "./deals-bulk-actions";
 import { dealsSearchParams } from "./deals-search-params";
 
 type DealRow = RouterOutputs["deals"]["list"]["rows"][number];
-
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-	month: "short",
-	day: "numeric",
-	year: "numeric",
-});
 
 const COLUMNS: DataTableColumn<DealRow>[] = [
 	{
@@ -89,7 +84,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		cell: (row) =>
 			row.expectedCloseDate ? (
 				<span className="text-muted-foreground">
-					{dateFormat.format(new Date(row.expectedCloseDate))}
+					<LocalDay date={row.expectedCloseDate} />
 				</span>
 			) : (
 				<EmptyCellValue />
@@ -104,8 +99,8 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		width: "w-[10%]",
 		defaultHidden: true,
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.createdAt)}
+			<span className="text-muted-foreground">
+				<LocalRelativeTime date={row.createdAt} />
 			</span>
 		),
 	},
@@ -117,8 +112,12 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		width: "w-[12%]",
 		hideBelow: "lg",
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.lastActivityAt)}
+			<span className="text-muted-foreground">
+				{row.lastActivityAt ? (
+					<LocalRelativeTime date={row.lastActivityAt} />
+				) : (
+					<EmptyCellValue />
+				)}
 			</span>
 		),
 	},
@@ -147,9 +146,11 @@ export function DealsTable() {
 		{
 			id: "owner",
 			label: "Owner",
-			options: (users.data ?? [])
-				.map((user) => ({ value: user.id, label: user.name }))
-				.filter((option) => (facetCounts?.owner?.[option.value] ?? 0) > 0),
+			options: (users.data ?? []).flatMap((user) =>
+				(facetCounts?.owner?.[user.id] ?? 0) > 0
+					? [{ value: user.id, label: user.name }]
+					: [],
+			),
 		},
 		{
 			id: "stage",
@@ -161,9 +162,11 @@ export function DealsTable() {
 		{
 			id: "closing",
 			label: "Closing",
-			options: CLOSING_OPTIONS.filter(
-				(option) => (facetCounts?.closing?.[option.value] ?? 0) > 0,
-			).map((option) => ({ value: option.value, label: option.label })),
+			options: CLOSING_OPTIONS.flatMap((option) =>
+				(facetCounts?.closing?.[option.value] ?? 0) > 0
+					? [{ value: option.value, label: option.label }]
+					: [],
+			),
 		},
 	];
 

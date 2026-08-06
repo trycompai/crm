@@ -10,14 +10,15 @@ import { Skeleton } from "@crm/ui/components/skeleton";
 import { ThreadMessage } from "@crm/ui/components/thread-message";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { LocalDateTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 
-const timeFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	hour: "numeric",
 	minute: "2-digit",
-});
+};
 
 export function EmailThreadEntry({
 	threadId,
@@ -65,7 +66,12 @@ export function EmailThreadEntry({
 									from={message.fromName ?? message.fromEmail}
 									fromEmail={message.fromEmail}
 									fromImageUrl={message.fromImageUrl}
-									sentAt={timeFormat.format(new Date(message.sentAt))}
+									sentAt={
+										<LocalDateTime
+											date={message.sentAt}
+											options={DATE_OPTIONS}
+										/>
+									}
 									direction={message.direction}
 									body={message.body}
 									action={

@@ -34,7 +34,7 @@ export function Provenance({
 }: {
 	claim: string;
 	reasons: string[];
-	observedAt?: string;
+	observedAt?: React.ReactNode;
 	sourceUrl?: string | null;
 }) {
 	return (

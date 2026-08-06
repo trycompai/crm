@@ -23,6 +23,7 @@ export type CrmCache = {
 	fieldCoverage(id?: string, options?: Options): Promise<void>;
 	removed(record: RemovedRecord): Promise<void>;
 	removedMany(records: RemovedRecords): Promise<void>;
+	conversationRemoved(id: string): Promise<void>;
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
@@ -183,6 +184,22 @@ export function useCrmCache(): CrmCache {
 		removed: ({ kind, id }) => removeRecords(kind, [id]),
 
 		removedMany: ({ kind, ids }) => removeRecords(kind, ids),
+
+		conversationRemoved: (id) => {
+			for (const queryKey of [
+				trpc.conversations.builderById.queryKey({ id }),
+				trpc.conversations.events.queryKey({ id, limit: 5000 }),
+				trpc.conversations.shareStatus.queryKey({ id }),
+			]) {
+				void queryClient.invalidateQueries({
+					queryKey,
+					exact: true,
+					refetchType: "none",
+				});
+			}
+
+			return run([trpc.conversations.builderList.pathKey()], []);
+		},
 
 		activity: (options) =>
 			run(

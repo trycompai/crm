@@ -2,16 +2,17 @@
 
 import { Checkbox } from "@crm/ui/components/checkbox";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
-import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { dealStageLabel } from "@/components/crm/deal-stage";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
+import { LocalDateTime, LocalRelativeTime } from "@/components/local-date-time";
+import { activityLabel } from "@/lib/activity-presentation";
+import { dealStageLabel } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
-import { ActivityIcon, activityLabel } from "./activity-icon";
+import { ActivityIcon } from "./activity-icon";
 import { EmailThreadEntry } from "./email-thread-entry";
 import { MeetingEntry } from "./meeting-entry";
 import type { TimelineAnchor } from "./timeline";
@@ -19,10 +20,10 @@ import type { TimelineAnchor } from "./timeline";
 export type TimelineEntryData =
 	RouterOutputs["activities"]["timeline"]["entries"][number];
 
-const timeFormat = new Intl.DateTimeFormat(undefined, {
+const TIME_OPTIONS: Intl.DateTimeFormatOptions = {
 	hour: "numeric",
 	minute: "2-digit",
-});
+};
 
 function stageChange(meta: Record<string, unknown> | null) {
 	const from = typeof meta?.from === "string" ? meta.from : null;
@@ -138,7 +139,7 @@ export function TimelineEntry({
 					<span className="shrink-0 text-muted-foreground">
 						<span className="hidden sm:inline">{author} · </span>
 						<span className="tabular-nums">
-							{timeFormat.format(new Date(when))}
+							<LocalDateTime date={when} options={TIME_OPTIONS} />
 						</span>
 					</span>
 				</div>
@@ -163,15 +164,15 @@ export function TimelineEntry({
 
 				{footnotes ? (
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-						{overdue ? (
+						{isTask && !done && entry.dueAt ? (
 							<StatusIndicator
-								tone="error"
-								label={`Overdue ${relativeTimeFromIso(entry.dueAt)}`}
-							/>
-						) : isTask && !done && entry.dueAt ? (
-							<StatusIndicator
-								tone="info"
-								label={`Due ${relativeTimeFromIso(entry.dueAt)}`}
+								tone={overdue ? "error" : "info"}
+								label={
+									<>
+										{overdue ? "Overdue" : "Due"}{" "}
+										<LocalRelativeTime date={entry.dueAt} />
+									</>
+								}
 							/>
 						) : null}
 

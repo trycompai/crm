@@ -16,7 +16,7 @@ function ThreadMessage({
 	from: string;
 	fromEmail: string;
 	fromImageUrl?: string | null;
-	sentAt: string;
+	sentAt: React.ReactNode;
 	direction: "INBOUND" | "OUTBOUND";
 	body: string | null;
 	action?: React.ReactNode;

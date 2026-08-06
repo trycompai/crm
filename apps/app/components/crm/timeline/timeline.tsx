@@ -83,24 +83,23 @@ const EMPTY_ICONS: Record<TimelineTab, CarbonIcon> = {
 	done: Checkmark,
 };
 
-const dayFormat = new Intl.DateTimeFormat(undefined, {
+const dayFormat = new Intl.DateTimeFormat("en-US", {
 	weekday: "short",
 	month: "short",
 	day: "numeric",
 	year: "numeric",
+	timeZone: "UTC",
 });
 
-function dayLabel(at: Date): string {
-	const midnight = (date: Date) =>
-		new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+function dayLabel(day: string): string {
+	const today = new Date().toISOString().slice(0, 10);
+	const yesterday = new Date(Date.now() - 86_400_000)
+		.toISOString()
+		.slice(0, 10);
 
-	const days = Math.round(
-		(midnight(new Date()) - midnight(at)) / (1000 * 60 * 60 * 24),
-	);
-
-	if (days === 0) return "Today";
-	if (days === 1) return "Yesterday";
-	return dayFormat.format(at);
+	if (day === today) return "Today";
+	if (day === yesterday) return "Yesterday";
+	return dayFormat.format(new Date(`${day}T00:00:00.000Z`));
 }
 
 function byDay(entries: TimelineEntryData[]) {
@@ -110,14 +109,13 @@ function byDay(entries: TimelineEntryData[]) {
 	>();
 
 	for (const entry of entries) {
-		const at = new Date(entry.occurredAt ?? entry.createdAt);
-		const day = at.toDateString();
+		const day = (entry.occurredAt ?? entry.createdAt).slice(0, 10);
 
 		const group = groups.get(day);
 		if (group) {
 			group.entries.push(entry);
 		} else {
-			groups.set(day, { day, label: dayLabel(at), entries: [entry] });
+			groups.set(day, { day, label: dayLabel(day), entries: [entry] });
 		}
 	}
 

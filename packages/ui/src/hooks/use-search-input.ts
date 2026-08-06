@@ -8,22 +8,20 @@ export function useSearchInput(
 	delayMs = 250,
 ) {
 	const [value, setValue] = useState(committed);
+	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const commitRef = useRef(commit);
-	commitRef.current = commit;
+	useEffect(
+		() => () => {
+			if (timer.current) clearTimeout(timer.current);
+		},
+		[],
+	);
 
-	const committedRef = useRef(committed);
-	committedRef.current = committed;
+	const change = (next: string) => {
+		setValue(next);
+		if (timer.current) clearTimeout(timer.current);
+		timer.current = setTimeout(() => commit(next), delayMs);
+	};
 
-	useEffect(() => {
-		setValue(committed);
-	}, [committed]);
-
-	useEffect(() => {
-		if (value === committedRef.current) return;
-		const timer = setTimeout(() => commitRef.current(value), delayMs);
-		return () => clearTimeout(timer);
-	}, [value, delayMs]);
-
-	return [value, setValue] as const;
+	return [value, change] as const;
 }
