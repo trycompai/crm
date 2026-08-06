@@ -40,7 +40,7 @@
 
 ---
 
-## What this is
+## What is this
 
 Most CRMs are a database with a form in front of it. The AI ones bolt a chat box onto
 the side of that form. Both leave the actual work — finding out what is true, and
