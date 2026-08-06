@@ -8,22 +8,9 @@ function TokenField({ className, ...props }: React.ComponentProps<"div">) {
 			data-slot="token-field"
 			role="group"
 			className={cn(
-				"flex min-h-6 w-full min-w-0 flex-wrap items-start gap-1",
+				"max-h-40 min-h-6 w-full min-w-0 cursor-text overflow-y-auto whitespace-pre-wrap break-words px-1 text-base leading-6 outline-none data-[empty=true]:before:pointer-events-none data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)] aria-disabled:cursor-not-allowed aria-disabled:opacity-60 sm:text-[15px] md:text-xs [&>[contenteditable]]:outline-none",
 				className,
 			)}
-			{...props}
-		/>
-	);
-}
-
-function TokenFieldControl({
-	className,
-	...props
-}: React.ComponentProps<"div">) {
-	return (
-		<div
-			data-slot="token-field-control"
-			className={cn("relative grid min-w-32 flex-1 basis-40", className)}
 			{...props}
 		/>
 	);
@@ -37,7 +24,7 @@ function TokenFieldItem({
 		<span
 			data-slot="token-field-item"
 			className={cn(
-				"flex h-6 min-w-0 max-w-full shrink-0 items-center gap-1 rounded-lg bg-tag py-0 pr-0.5 pl-0.5 text-left text-tag-foreground text-xs",
+				"inline-flex h-6 min-w-0 max-w-full shrink-0 items-center gap-1 rounded-lg bg-tag py-0 pr-0.5 pl-0.5 align-middle text-left text-tag-foreground text-xs",
 				className,
 			)}
 			{...props}
@@ -60,4 +47,4 @@ function TokenFieldAction({
 	);
 }
 
-export { TokenField, TokenFieldAction, TokenFieldControl, TokenFieldItem };
+export { TokenField, TokenFieldAction, TokenFieldItem };

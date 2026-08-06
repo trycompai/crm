@@ -28,11 +28,11 @@ import {
 } from "@crm/ui/components/popover";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { SkeletonSwap } from "@crm/ui/components/skeleton-swap";
-import { Textarea } from "@crm/ui/components/textarea";
-import { TokenField, TokenFieldControl } from "@crm/ui/components/token-field";
+import { TokenField } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useReducer, useRef } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import {
 	type BuilderCommandType,
@@ -91,6 +91,12 @@ const CREATE_AGENT_COMMAND = {
 
 type ComposerCommand = typeof CREATE_AGENT_COMMAND;
 
+type ComposerAnchor = {
+	key: string;
+	offset: number;
+	order: number;
+};
+
 type ComposerState = {
 	draft: string;
 	command: ComposerCommand | null;
@@ -101,30 +107,95 @@ type ComposerState = {
 	resources: BuilderResource[];
 	attachments: BuilderUploadAttachment[];
 	attachmentsReading: boolean;
+	anchors: ComposerAnchor[];
+	nextAnchorOrder: number;
 };
 
 type ComposerAction =
-	| { type: "draft.changed"; value: string }
-	| { type: "command.selected" }
-	| { type: "command.removed" }
+	| { type: "editor.changed"; value: string; anchors: ComposerAnchor[] }
+	| { type: "command.selected"; offset: number }
+	| { type: "context.removed"; key: string }
 	| { type: "command.open.changed"; open: boolean }
 	| { type: "resource.open.changed"; open: boolean }
 	| { type: "resource.query.changed"; value: string }
-	| { type: "resource.added"; resource: BuilderResource }
-	| { type: "resource.removed"; resource: BuilderResource }
-	| { type: "attachments.added"; attachments: BuilderUploadAttachment[] }
-	| { type: "attachment.removed"; attachment: BuilderUploadAttachment }
+	| { type: "resource.added"; resource: BuilderResource; offset: number }
+	| {
+			type: "attachments.added";
+			attachments: BuilderUploadAttachment[];
+			offset: number;
+	  }
 	| { type: "attachments.reading.started" }
 	| { type: "attachments.reading.finished" }
 	| { type: "submitted" };
+
+const COMMAND_CONTEXT_KEY = "command:create-agent";
+const EDITOR_SENTINEL = "\u200B";
+
+function resourceContextKey(resource: BuilderResource): string {
+	return `resource:${resource.kind}:${resource.id}`;
+}
+
+function attachmentContextKey(attachment: ChatChipAttachment): string {
+	return `attachment:${attachmentKey(attachment)}`;
+}
+
+function clampAnchor(anchor: ComposerAnchor, length: number): ComposerAnchor {
+	return { ...anchor, offset: Math.max(0, Math.min(anchor.offset, length)) };
+}
+
+function withAnchor(
+	state: ComposerState,
+	key: string,
+	offset: number,
+): Pick<ComposerState, "anchors" | "nextAnchorOrder"> {
+	if (state.anchors.some((anchor) => anchor.key === key)) {
+		return {
+			anchors: state.anchors,
+			nextAnchorOrder: state.nextAnchorOrder,
+		};
+	}
+	return {
+		anchors: [
+			...state.anchors,
+			clampAnchor(
+				{ key, offset, order: state.nextAnchorOrder },
+				state.draft.length,
+			),
+		],
+		nextAnchorOrder: state.nextAnchorOrder + 1,
+	};
+}
+
+function withoutContext(state: ComposerState, key: string): ComposerState {
+	return {
+		...state,
+		command: key === COMMAND_CONTEXT_KEY ? null : state.command,
+		detectedCommandLabel:
+			key === COMMAND_CONTEXT_KEY ? null : state.detectedCommandLabel,
+		resources: state.resources.filter(
+			(resource) => resourceContextKey(resource) !== key,
+		),
+		attachments: state.attachments.filter(
+			(attachment) => attachmentContextKey(attachment) !== key,
+		),
+		anchors: state.anchors.filter((anchor) => anchor.key !== key),
+	};
+}
 
 function initialComposerState(initialPrompt: string): ComposerState {
 	const explicitCommand = consumeBuilderCommand(initialPrompt);
 	const detectedIntent = explicitCommand
 		? null
 		: consumeBuilderIntent(initialPrompt);
+	const draft = explicitCommand?.body ?? initialPrompt;
+	const commandOffset = explicitCommand
+		? 0
+		: detectedIntent
+			? initialPrompt.indexOf(detectedIntent.invocation) +
+				detectedIntent.invocation.length
+			: null;
 	return {
-		draft: explicitCommand?.body ?? initialPrompt,
+		draft,
 		command: explicitCommand || detectedIntent ? CREATE_AGENT_COMMAND : null,
 		detectedCommandLabel: detectedIntent?.invocation ?? null,
 		commandOpen: false,
@@ -133,6 +204,17 @@ function initialComposerState(initialPrompt: string): ComposerState {
 		resources: [],
 		attachments: [],
 		attachmentsReading: false,
+		anchors:
+			commandOffset === null
+				? []
+				: [
+						{
+							key: COMMAND_CONTEXT_KEY,
+							offset: Math.max(0, commandOffset),
+							order: 0,
+						},
+					],
+		nextAnchorOrder: commandOffset === null ? 0 : 1,
 	};
 }
 
@@ -141,71 +223,128 @@ function composerReducer(
 	action: ComposerAction,
 ): ComposerState {
 	switch (action.type) {
-		case "draft.changed": {
+		case "editor.changed": {
+			const presentKeys = new Set(action.anchors.map((anchor) => anchor.key));
+			const retainedCommand =
+				state.command && presentKeys.has(COMMAND_CONTEXT_KEY)
+					? state.command
+					: null;
+			const retainedResources = state.resources.filter((resource) =>
+				presentKeys.has(resourceContextKey(resource)),
+			);
+			const retainedAttachments = state.attachments.filter((attachment) =>
+				presentKeys.has(attachmentContextKey(attachment)),
+			);
+			const anchors = action.anchors.map((anchor) =>
+				clampAnchor(anchor, action.value.length),
+			);
 			const explicitCommand = consumeBuilderCommand(action.value);
-			if (explicitCommand) {
+			if (!retainedCommand && explicitCommand) {
+				const bodyStart = action.value.length - explicitCommand.body.length;
+				const shiftedAnchors = anchors.map((anchor) =>
+					clampAnchor(
+						{ ...anchor, offset: anchor.offset - bodyStart },
+						explicitCommand.body.length,
+					),
+				);
 				return {
 					...state,
 					draft: explicitCommand.body,
 					command: CREATE_AGENT_COMMAND,
 					detectedCommandLabel: null,
 					commandOpen: false,
+					resources: retainedResources,
+					attachments: retainedAttachments,
+					anchors: [
+						...shiftedAnchors,
+						{
+							key: COMMAND_CONTEXT_KEY,
+							offset: 0,
+							order: state.nextAnchorOrder,
+						},
+					],
+					nextAnchorOrder: state.nextAnchorOrder + 1,
 				};
 			}
-			const detectedIntent = state.command
+			const detectedIntent = retainedCommand
 				? null
 				: consumeBuilderIntent(action.value);
 			if (detectedIntent) {
+				const intentStart = action.value.indexOf(detectedIntent.invocation);
 				return {
 					...state,
 					draft: action.value,
 					command: CREATE_AGENT_COMMAND,
 					detectedCommandLabel: detectedIntent.invocation,
 					commandOpen: false,
+					resources: retainedResources,
+					attachments: retainedAttachments,
+					anchors: [
+						...anchors,
+						{
+							key: COMMAND_CONTEXT_KEY,
+							offset: Math.max(
+								0,
+								intentStart + detectedIntent.invocation.length,
+							),
+							order: state.nextAnchorOrder,
+						},
+					],
+					nextAnchorOrder: state.nextAnchorOrder + 1,
 				};
 			}
 			return {
 				...state,
 				draft: action.value,
-				commandOpen: !state.command && action.value.trimStart().startsWith("/"),
+				command: retainedCommand,
+				detectedCommandLabel: retainedCommand
+					? state.detectedCommandLabel
+					: null,
+				commandOpen:
+					!retainedCommand && action.value.trimStart().startsWith("/"),
+				resources: retainedResources,
+				attachments: retainedAttachments,
+				anchors,
 			};
 		}
-		case "command.selected":
+		case "command.selected": {
+			const clearsSlash = state.draft.trimStart().startsWith("/");
+			const draft = clearsSlash ? "" : state.draft;
+			const anchorState = withAnchor(
+				{ ...state, draft },
+				COMMAND_CONTEXT_KEY,
+				clearsSlash ? 0 : action.offset,
+			);
 			return {
 				...state,
+				...anchorState,
 				command: CREATE_AGENT_COMMAND,
 				detectedCommandLabel: null,
 				commandOpen: false,
-				draft: state.draft.trimStart().startsWith("/") ? "" : state.draft,
+				draft,
 			};
-		case "command.removed":
-			return {
-				...state,
-				command: null,
-				detectedCommandLabel: null,
-			};
+		}
+		case "context.removed":
+			return withoutContext(state, action.key);
 		case "command.open.changed":
 			return { ...state, commandOpen: action.open };
 		case "resource.open.changed":
 			return { ...state, resourceOpen: action.open };
 		case "resource.query.changed":
 			return { ...state, resourceQuery: action.value };
-		case "resource.added":
+		case "resource.added": {
+			const key = resourceContextKey(action.resource);
 			return state.resources.some(
 				(item) =>
 					item.kind === action.resource.kind && item.id === action.resource.id,
 			)
 				? state
-				: { ...state, resources: [...state.resources, action.resource] };
-		case "resource.removed":
-			return {
-				...state,
-				resources: state.resources.filter(
-					(item) =>
-						item.kind !== action.resource.kind ||
-						item.id !== action.resource.id,
-				),
-			};
+				: {
+						...state,
+						...withAnchor(state, key, action.offset),
+						resources: [...state.resources, action.resource],
+					};
+		}
 		case "attachments.added": {
 			const keys = new Set(state.attachments.map(attachmentKey));
 			const added = action.attachments.filter((attachment) => {
@@ -215,18 +354,19 @@ function composerReducer(
 				return true;
 			});
 			if (added.length === 0) return state;
+			const accepted = added.slice(0, 5 - state.attachments.length);
+			const addedAnchors = accepted.map((attachment, index) => ({
+				key: attachmentContextKey(attachment),
+				offset: Math.max(0, Math.min(action.offset, state.draft.length)),
+				order: state.nextAnchorOrder + index,
+			}));
 			return {
 				...state,
-				attachments: [...state.attachments, ...added].slice(0, 5),
+				attachments: [...state.attachments, ...accepted],
+				anchors: [...state.anchors, ...addedAnchors],
+				nextAnchorOrder: state.nextAnchorOrder + accepted.length,
 			};
 		}
-		case "attachment.removed":
-			return {
-				...state,
-				attachments: state.attachments.filter(
-					(item) => item !== action.attachment,
-				),
-			};
 		case "attachments.reading.started":
 			return { ...state, attachmentsReading: true };
 		case "attachments.reading.finished":
@@ -243,6 +383,8 @@ function composerReducer(
 				resources: [],
 				attachments: [],
 				attachmentsReading: false,
+				anchors: [],
+				nextAnchorOrder: 0,
 			};
 	}
 }
@@ -274,7 +416,9 @@ export function AgentComposer({
 }) {
 	const trpc = useTRPC();
 	const pendingSubmission = useRef<PendingSubmission | null>(null);
-	const textarea = useRef<HTMLTextAreaElement>(null);
+	const editor = useRef<HTMLDivElement>(null);
+	const selectionOffset = useRef(initialPrompt.length);
+	const composing = useRef(false);
 	const [state, dispatch] = useReducer(
 		composerReducer,
 		initialPrompt,
@@ -321,26 +465,34 @@ export function AgentComposer({
 	const connectedGoogle = (google.data?.sources ?? []).filter(
 		(source) => source.connected,
 	);
-	const focusComposer = () => {
-		requestAnimationFrame(() => textarea.current?.focus());
+	const focusAfterContext = (key: string) => {
+		let attempts = 0;
+		const focus = () => {
+			const offset = focusEditorAfterContext(editor.current, key);
+			if (offset !== null) {
+				selectionOffset.current = offset;
+				return;
+			}
+			attempts += 1;
+			if (attempts < 3) requestAnimationFrame(focus);
+		};
+		requestAnimationFrame(focus);
 	};
-	const removeLastContext = () => {
-		const attachment = state.attachments.at(-1);
-		if (attachment) {
-			dispatch({ type: "attachment.removed", attachment });
-			return;
-		}
-		const resource = state.resources.at(-1);
-		if (resource) {
-			dispatch({ type: "resource.removed", resource });
-			return;
-		}
-		if (state.command) dispatch({ type: "command.removed" });
+	const updateEditor = (snapshot: ComposerEditorSnapshot) => {
+		flushSync(() => {
+			dispatch({
+				type: "editor.changed",
+				value: snapshot.value,
+				anchors: snapshot.anchors,
+			});
+		});
+		selectionOffset.current = snapshot.selectionOffset;
+		focusEditorAtOffset(editor.current, snapshot.selectionOffset);
 	};
-	const hasContext =
-		state.command !== null ||
-		state.resources.length > 0 ||
-		state.attachments.length > 0;
+	const removeContext = (key: string) => {
+		flushSync(() => dispatch({ type: "context.removed", key }));
+		focusEditorAtOffset(editor.current, selectionOffset.current);
+	};
 
 	return (
 		<div
@@ -349,28 +501,19 @@ export function AgentComposer({
 				mode === "home" ? "min-h-24" : "min-h-[78px]",
 			)}
 		>
-			<TokenField>
-				<ComposerContext
-					command={state.command}
-					resources={state.resources}
-					attachments={state.attachments}
-					disabled={locked}
-					dispatch={dispatch}
-					onChanged={focusComposer}
-				/>
-
-				<ComposerTextarea
-					textareaRef={textarea}
-					mode={mode}
-					value={state.draft}
-					detectedIntent={state.detectedCommandLabel}
-					onChange={(value) => dispatch({ type: "draft.changed", value })}
-					disabled={locked}
-					hasContext={hasContext}
-					onRemoveLastContext={removeLastContext}
-					onSubmit={submit}
-				/>
-			</TokenField>
+			<ComposerEditor
+				editorRef={editor}
+				composingRef={composing}
+				mode={mode}
+				state={state}
+				disabled={locked}
+				onChanged={updateEditor}
+				onSelectionChanged={(offset) => {
+					selectionOffset.current = offset;
+				}}
+				onRemoveContext={removeContext}
+				onSubmit={submit}
+			/>
 
 			<div className="flex h-7 items-center justify-between">
 				<ComposerTools
@@ -382,7 +525,8 @@ export function AgentComposer({
 					disabled={locked}
 					attachmentsReading={state.attachmentsReading}
 					dispatch={dispatch}
-					onContextAdded={focusComposer}
+					getInsertionOffset={() => selectionOffset.current}
+					onContextAdded={focusAfterContext}
 				/>
 
 				<Button
@@ -414,157 +558,600 @@ export function AgentComposer({
 	);
 }
 
-function ComposerTextarea({
-	textareaRef,
+type ComposerEditorSnapshot = {
+	value: string;
+	anchors: ComposerAnchor[];
+	selectionOffset: number;
+};
+
+type ComposerEditorPart =
+	| { type: "text"; key: string; start: number; value: string }
+	| { type: "context"; anchor: ComposerAnchor };
+
+function ComposerEditor({
+	editorRef,
+	composingRef,
 	mode,
-	value,
-	detectedIntent,
+	state,
 	disabled,
-	hasContext,
-	onChange,
-	onRemoveLastContext,
+	onChanged,
+	onSelectionChanged,
+	onRemoveContext,
 	onSubmit,
 }: {
-	textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+	editorRef: React.RefObject<HTMLDivElement | null>;
+	composingRef: React.RefObject<boolean>;
 	mode: "home" | "chat";
-	value: string;
-	detectedIntent: string | null;
+	state: ComposerState;
 	disabled: boolean;
-	hasContext: boolean;
-	onChange: (value: string) => void;
-	onRemoveLastContext: () => void;
+	onChanged: (snapshot: ComposerEditorSnapshot) => void;
+	onSelectionChanged: (offset: number) => void;
+	onRemoveContext: (key: string) => void;
 	onSubmit: () => void;
 }) {
-	const emphasis = useRef<HTMLDivElement>(null);
-	const intentStart = detectedIntent ? value.indexOf(detectedIntent) : -1;
-	const showEmphasis = detectedIntent !== null && intentStart >= 0;
+	const parts = composerEditorParts(state);
+	const placeholder =
+		mode === "home"
+			? "Ask about your CRM or automate a task…"
+			: "Send a message";
+	const commit = () => {
+		const root = editorRef.current;
+		if (!root || composingRef.current) return;
+		onChanged(readComposerEditor(root, state.draft.length));
+	};
+	const captureSelection = () => {
+		const root = editorRef.current;
+		if (!root) return;
+		onSelectionChanged(composerEditorOffset(root, state.draft.length));
+	};
 
 	return (
-		<TokenFieldControl>
-			{showEmphasis ? (
-				<div
-					ref={emphasis}
-					data-intent-overlay
-					aria-hidden
-					className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border border-transparent px-1 py-0 text-base leading-6 sm:text-[15px] md:text-xs"
-				>
-					<span>{value.slice(0, intentStart)}</span>
+		<TokenField
+			ref={editorRef}
+			role="textbox"
+			tabIndex={disabled ? -1 : 0}
+			aria-label="Message the agent builder"
+			aria-multiline="true"
+			aria-disabled={disabled}
+			data-empty={state.draft.length === 0 && state.anchors.length === 0}
+			data-placeholder={placeholder}
+			spellCheck
+			onFocus={(event) => {
+				if (event.target !== event.currentTarget) return;
+				focusEditorAtOffset(event.currentTarget, state.draft.length);
+			}}
+			onPointerDown={(event) => {
+				if (event.target !== event.currentTarget) return;
+				event.preventDefault();
+				onSelectionChanged(state.draft.length);
+				focusEditorAtOffset(event.currentTarget, state.draft.length);
+			}}
+			onBeforeInput={(event) =>
+				ensureComposerEditorSelection(event.currentTarget, state.draft.length)
+			}
+			onInput={commit}
+			onBlur={captureSelection}
+			onKeyUp={captureSelection}
+			onPointerUp={captureSelection}
+			onCompositionStart={() => {
+				composingRef.current = true;
+			}}
+			onCompositionEnd={() => {
+				composingRef.current = false;
+				commit();
+			}}
+			onPaste={(event) => {
+				event.preventDefault();
+				insertEditorText(
+					event.currentTarget,
+					event.clipboardData.getData("text/plain"),
+				);
+				commit();
+			}}
+			onDrop={(event) => event.preventDefault()}
+			onKeyDown={(event) => {
+				if (event.nativeEvent.isComposing || composingRef.current) return;
+				if (event.key === "Enter") {
+					event.preventDefault();
+					if (event.shiftKey) {
+						insertEditorText(event.currentTarget, "\n");
+						commit();
+					} else {
+						onSubmit();
+					}
+					return;
+				}
+				if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+					const offset = moveComposerCaretAcrossContext(
+						event.currentTarget,
+						event.key === "ArrowLeft" ? "previous" : "next",
+					);
+					if (offset !== null) {
+						event.preventDefault();
+						onSelectionChanged(offset);
+					}
+					return;
+				}
+				if (event.key === "Backspace") {
+					const key = previousComposerContextKey(event.currentTarget);
+					if (!key) return;
+					event.preventDefault();
+					onSelectionChanged(
+						composerEditorOffset(event.currentTarget, state.draft.length),
+					);
+					onRemoveContext(key);
+				}
+			}}
+		>
+			{parts.map((part) =>
+				part.type === "text" ? (
+					<ComposerEditorText
+						key={part.key}
+						start={part.start}
+						value={part.value}
+						disabled={disabled}
+						detectedIntent={state.detectedCommandLabel}
+						intentStart={
+							state.detectedCommandLabel
+								? state.draft.indexOf(state.detectedCommandLabel)
+								: -1
+						}
+					/>
+				) : (
+					<ComposerContextToken
+						key={part.anchor.key}
+						anchor={part.anchor}
+						state={state}
+						disabled={disabled}
+						onRemove={onRemoveContext}
+					/>
+				),
+			)}
+		</TokenField>
+	);
+}
+
+function ComposerEditorText({
+	start,
+	value,
+	disabled,
+	detectedIntent,
+	intentStart,
+}: {
+	start: number;
+	value: string;
+	disabled: boolean;
+	detectedIntent: string | null;
+	intentStart: number;
+}) {
+	const localIntentStart = intentStart - start;
+	const showsIntent =
+		detectedIntent !== null &&
+		localIntentStart >= 0 &&
+		localIntentStart + detectedIntent.length <= value.length;
+
+	return (
+		<span
+			contentEditable={!disabled}
+			suppressContentEditableWarning
+			tabIndex={-1}
+			role="none"
+			data-composer-text
+			data-composer-text-start={start}
+		>
+			{showsIntent ? (
+				<>
+					{value.slice(0, localIntentStart)}
 					<span data-intent-trigger className="relative">
 						{detectedIntent}
 						<span
+							contentEditable={false}
 							data-intent-accent
 							className="absolute inset-x-0 bottom-0 h-px origin-left animate-in bg-primary duration-200 ease-out zoom-in-0 motion-reduce:animate-none"
 						/>
 					</span>
-					<span>{value.slice(intentStart + detectedIntent.length)}</span>
-				</div>
-			) : null}
-			<Textarea
-				ref={textareaRef}
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
-				onScroll={(event) => {
-					if (!emphasis.current) return;
-					emphasis.current.style.translate = `${-event.currentTarget.scrollLeft}px ${-event.currentTarget.scrollTop}px`;
-				}}
-				onKeyDown={(event) => {
-					if (event.nativeEvent.isComposing) return;
-					if (
-						event.key === "Backspace" &&
-						hasContext &&
-						event.currentTarget.selectionStart === 0 &&
-						event.currentTarget.selectionEnd === 0
-					) {
-						event.preventDefault();
-						onRemoveLastContext();
-						return;
-					}
-					if (event.key === "Enter" && !event.shiftKey) {
-						event.preventDefault();
-						onSubmit();
-					}
-				}}
-				disabled={disabled}
-				rows={mode === "home" ? 2 : 1}
-				variant="composer"
-				size="composer"
-				placeholder={
-					mode === "home"
-						? "Ask about your CRM or automate a task…"
-						: "Send a message"
-				}
-				aria-label="Message the agent builder"
-				className={cn(
-					"relative",
-					showEmphasis && "text-transparent caret-foreground",
-				)}
-			/>
-		</TokenFieldControl>
+					{value.slice(localIntentStart + detectedIntent.length)}
+				</>
+			) : (
+				value || EDITOR_SENTINEL
+			)}
+		</span>
 	);
 }
 
-function ComposerContext({
-	command,
-	resources,
-	attachments,
+function ComposerContextToken({
+	anchor,
+	state,
 	disabled,
-	dispatch,
-	onChanged,
+	onRemove,
 }: {
-	command: ComposerCommand | null;
-	resources: BuilderResource[];
-	attachments: BuilderUploadAttachment[];
+	anchor: ComposerAnchor;
+	state: ComposerState;
 	disabled: boolean;
-	dispatch: React.Dispatch<ComposerAction>;
-	onChanged: () => void;
+	onRemove: (key: string) => void;
 }) {
-	if (!command && resources.length === 0 && attachments.length === 0) {
-		return null;
-	}
-	const remove = (action: ComposerAction) => {
-		dispatch(action);
-		onChanged();
-	};
-
-	return (
-		<>
-			{command ? (
-				<ChatCommandChip
-					label={command.label}
-					icon={Application}
-					variant="composer"
-					onRemove={
-						disabled ? undefined : () => remove({ type: "command.removed" })
-					}
-				/>
-			) : null}
-			{resources.map((resource) => (
+	const remove = disabled ? undefined : () => onRemove(anchor.key);
+	let content: React.ReactNode = null;
+	if (anchor.key === COMMAND_CONTEXT_KEY && state.command) {
+		content = (
+			<ChatCommandChip
+				label={state.command.label}
+				icon={Application}
+				variant="composer"
+				onRemove={remove}
+			/>
+		);
+	} else {
+		const resource = state.resources.find(
+			(item) => resourceContextKey(item) === anchor.key,
+		);
+		if (resource) {
+			content = (
 				<ChatReferenceChip
-					key={`${resource.kind}:${resource.id}`}
 					resource={resource}
 					icon={RESOURCE_ICONS[resource.kind]}
 					variant="composer"
-					onRemove={
-						disabled
-							? undefined
-							: () => remove({ type: "resource.removed", resource })
-					}
+					onRemove={remove}
 				/>
-			))}
-			{attachments.map((attachment) => (
-				<ChatAttachmentChip
-					key={attachmentKey(attachment)}
-					attachment={attachment}
-					variant="composer"
-					onRemove={
-						disabled
-							? undefined
-							: () => remove({ type: "attachment.removed", attachment })
-					}
-				/>
-			))}
-		</>
+			);
+		} else {
+			const attachment = state.attachments.find(
+				(item) => attachmentContextKey(item) === anchor.key,
+			);
+			if (attachment) {
+				content = (
+					<ChatAttachmentChip
+						attachment={attachment}
+						variant="composer"
+						onRemove={remove}
+					/>
+				);
+			}
+		}
+	}
+	if (!content) return null;
+
+	return (
+		<span
+			contentEditable={false}
+			data-composer-token-key={anchor.key}
+			data-composer-token-order={anchor.order}
+			className="inline-flex align-middle"
+		>
+			{content}
+		</span>
 	);
+}
+
+function composerEditorParts(state: ComposerState): ComposerEditorPart[] {
+	const activeKeys = new Set<string>();
+	if (state.command) activeKeys.add(COMMAND_CONTEXT_KEY);
+	for (const resource of state.resources) {
+		activeKeys.add(resourceContextKey(resource));
+	}
+	for (const attachment of state.attachments) {
+		activeKeys.add(attachmentContextKey(attachment));
+	}
+	const anchors = state.anchors
+		.filter((anchor) => activeKeys.has(anchor.key))
+		.map((anchor) => clampAnchor(anchor, state.draft.length))
+		.sort(
+			(left, right) => left.offset - right.offset || left.order - right.order,
+		);
+	const parts: ComposerEditorPart[] = [];
+	let cursor = 0;
+	let previousKey = "start";
+	for (const anchor of anchors) {
+		parts.push({
+			type: "text",
+			key: `text-after:${previousKey}`,
+			start: cursor,
+			value: state.draft.slice(cursor, anchor.offset),
+		});
+		parts.push({ type: "context", anchor });
+		cursor = anchor.offset;
+		previousKey = anchor.key;
+	}
+	parts.push({
+		type: "text",
+		key: `text-after:${previousKey}`,
+		start: cursor,
+		value: state.draft.slice(cursor),
+	});
+	return parts;
+}
+
+function readComposerEditor(
+	root: HTMLDivElement,
+	fallbackOffset: number,
+): ComposerEditorSnapshot {
+	const selectionOffset = composerEditorOffset(root, fallbackOffset);
+	const anchors: ComposerAnchor[] = [];
+	let value = "";
+	for (const node of Array.from(root.childNodes)) {
+		if (node instanceof HTMLElement && node.dataset.composerTokenKey) {
+			anchors.push({
+				key: node.dataset.composerTokenKey,
+				offset: value.length,
+				order: Number(node.dataset.composerTokenOrder ?? anchors.length),
+			});
+			continue;
+		}
+		value += composerEditableText(node);
+	}
+	return { value, anchors, selectionOffset };
+}
+
+function composerEditorOffset(
+	root: HTMLDivElement,
+	fallbackOffset: number,
+): number {
+	const selection = root.ownerDocument.defaultView?.getSelection();
+	const focusNode = selection?.focusNode;
+	if (!selection || !focusNode || !root.contains(focusNode)) {
+		return Math.max(
+			0,
+			Math.min(fallbackOffset, composerEditableText(root).length),
+		);
+	}
+	if (focusNode === root) {
+		let offset = 0;
+		for (const node of Array.from(root.childNodes).slice(
+			0,
+			selection.focusOffset,
+		)) {
+			offset += composerEditableText(node).length;
+		}
+		return offset;
+	}
+
+	let offset = 0;
+	for (const node of Array.from(root.childNodes)) {
+		if (node === focusNode || node.contains?.(focusNode)) {
+			return (
+				offset + composerOffsetWithin(node, focusNode, selection.focusOffset)
+			);
+		}
+		offset += composerEditableText(node).length;
+	}
+	return Math.max(0, Math.min(fallbackOffset, offset));
+}
+
+function composerOffsetWithin(
+	container: Node,
+	target: Node,
+	targetOffset: number,
+): number {
+	const range = container.ownerDocument?.createRange();
+	if (!range) return 0;
+	try {
+		range.selectNodeContents(container);
+		range.setEnd(target, targetOffset);
+		return composerEditableText(range.cloneContents()).length;
+	} catch {
+		return 0;
+	}
+}
+
+function composerEditableText(node: Node): string {
+	if (node.nodeType === Node.TEXT_NODE) {
+		return (node.textContent ?? "").replaceAll(EDITOR_SENTINEL, "");
+	}
+	if (node instanceof HTMLElement) {
+		if (
+			node.dataset.composerTokenKey ||
+			node.dataset.intentAccent !== undefined
+		) {
+			return "";
+		}
+		if (
+			node.dataset.composerText !== undefined &&
+			node.childNodes.length === 1 &&
+			node.firstChild instanceof HTMLBRElement
+		) {
+			return "";
+		}
+		if (node.tagName === "BR") return "\n";
+	}
+	let value = "";
+	for (const child of Array.from(node.childNodes)) {
+		value += composerEditableText(child);
+	}
+	return value;
+}
+
+function previousComposerContextKey(root: HTMLDivElement): string | null {
+	const selection = root.ownerDocument.defaultView?.getSelection();
+	const focusNode = selection?.focusNode;
+	if (!selection?.isCollapsed || !focusNode || !root.contains(focusNode)) {
+		return null;
+	}
+	const parent =
+		focusNode instanceof HTMLElement ? focusNode : focusNode.parentElement;
+	const text = parent?.closest<HTMLElement>("[data-composer-text]");
+	if (text && root.contains(text)) {
+		if (composerOffsetWithin(text, focusNode, selection.focusOffset) !== 0) {
+			return null;
+		}
+		return text.previousElementSibling instanceof HTMLElement
+			? (text.previousElementSibling.dataset.composerTokenKey ?? null)
+			: null;
+	}
+	if (focusNode === root && selection.focusOffset > 0) {
+		const previous = root.childNodes.item(selection.focusOffset - 1);
+		return previous instanceof HTMLElement
+			? (previous.dataset.composerTokenKey ?? null)
+			: null;
+	}
+	return null;
+}
+
+function moveComposerCaretAcrossContext(
+	root: HTMLDivElement,
+	direction: "previous" | "next",
+): number | null {
+	const selection = root.ownerDocument.defaultView?.getSelection();
+	const focusNode = selection?.focusNode;
+	if (!selection?.isCollapsed || !focusNode || !root.contains(focusNode)) {
+		return null;
+	}
+	const parent =
+		focusNode instanceof HTMLElement ? focusNode : focusNode.parentElement;
+	const text = parent?.closest<HTMLElement>("[data-composer-text]");
+	if (!text) return null;
+	const localOffset = composerOffsetWithin(
+		text,
+		focusNode,
+		selection.focusOffset,
+	);
+	const textLength = composerEditableText(text).length;
+	if (direction === "previous" && localOffset === 0) {
+		const token = text.previousElementSibling;
+		const previous = token?.previousElementSibling;
+		if (
+			!(token instanceof HTMLElement) ||
+			!token.dataset.composerTokenKey ||
+			!(previous instanceof HTMLElement) ||
+			previous.dataset.composerText === undefined
+		) {
+			return null;
+		}
+		setComposerCaret(previous, composerEditableText(previous).length);
+		return Number(text.dataset.composerTextStart ?? 0);
+	}
+	if (direction === "next" && localOffset === textLength) {
+		const token = text.nextElementSibling;
+		const next = token?.nextElementSibling;
+		if (
+			!(token instanceof HTMLElement) ||
+			!token.dataset.composerTokenKey ||
+			!(next instanceof HTMLElement) ||
+			next.dataset.composerText === undefined
+		) {
+			return null;
+		}
+		setComposerCaret(next, 0);
+		return Number(next.dataset.composerTextStart ?? 0);
+	}
+	return null;
+}
+
+function insertEditorText(root: HTMLDivElement, value: string): void {
+	let selection = root.ownerDocument.defaultView?.getSelection();
+	if (
+		!selection?.rangeCount ||
+		!selection.focusNode ||
+		!root.contains(selection.focusNode)
+	) {
+		focusEditorAtOffset(root, composerEditableText(root).length);
+		selection = root.ownerDocument.defaultView?.getSelection();
+	}
+	if (!selection?.rangeCount) return;
+	const range = selection.getRangeAt(0);
+	range.deleteContents();
+	const text = root.ownerDocument.createTextNode(value);
+	range.insertNode(text);
+	range.setStartAfter(text);
+	range.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
+function ensureComposerEditorSelection(
+	root: HTMLDivElement,
+	fallbackOffset: number,
+): void {
+	const selection = root.ownerDocument.defaultView?.getSelection();
+	const focusNode = selection?.focusNode;
+	const parent =
+		focusNode instanceof HTMLElement ? focusNode : focusNode?.parentElement;
+	if (parent?.closest("[data-composer-text]")) return;
+	focusEditorAtOffset(root, composerEditorOffset(root, fallbackOffset));
+}
+
+function focusEditorAtOffset(
+	root: HTMLDivElement | null,
+	offset: number,
+): void {
+	if (!root) return;
+	root.focus();
+	const textParts = Array.from(
+		root.querySelectorAll<HTMLElement>("[data-composer-text]"),
+	);
+	let target = textParts.at(-1) ?? null;
+	for (const part of textParts) {
+		const start = Number(part.dataset.composerTextStart ?? 0);
+		const end = start + composerEditableText(part).length;
+		if (start <= offset && offset <= end) target = part;
+	}
+	if (!target) return;
+	const start = Number(target.dataset.composerTextStart ?? 0);
+	setComposerCaret(target, Math.max(0, offset - start));
+}
+
+function focusEditorAfterContext(
+	root: HTMLDivElement | null,
+	key: string,
+): number | null {
+	if (!root) return null;
+	const token = Array.from(
+		root.querySelectorAll<HTMLElement>("[data-composer-token-key]"),
+	).find((item) => item.dataset.composerTokenKey === key);
+	const text = token?.nextElementSibling;
+	if (!(text instanceof HTMLElement) || !text.dataset.composerText) return null;
+	root.focus();
+	setComposerCaret(text, 0);
+	return Number(text.dataset.composerTextStart ?? 0);
+}
+
+function setComposerCaret(container: HTMLElement, offset: number): void {
+	container.focus();
+	const textNodes: Text[] = [];
+	const collect = (node: Node) => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			textNodes.push(node as Text);
+			return;
+		}
+		if (
+			node instanceof HTMLElement &&
+			(node.contentEditable === "false" ||
+				node.dataset.composerTokenKey ||
+				node.dataset.intentAccent !== undefined)
+		) {
+			return;
+		}
+		for (const child of Array.from(node.childNodes)) collect(child);
+	};
+	collect(container);
+	const range = container.ownerDocument.createRange();
+	let remaining = offset;
+	for (const text of textNodes) {
+		const logicalLength = text.data.replaceAll(EDITOR_SENTINEL, "").length;
+		if (remaining <= logicalLength) {
+			range.setStart(text, composerDomOffset(text.data, remaining));
+			range.collapse(true);
+			const selection = container.ownerDocument.defaultView?.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			return;
+		}
+		remaining -= logicalLength;
+	}
+	range.selectNodeContents(container);
+	range.collapse(false);
+	const selection = container.ownerDocument.defaultView?.getSelection();
+	selection?.removeAllRanges();
+	selection?.addRange(range);
+}
+
+function composerDomOffset(value: string, logicalOffset: number): number {
+	if (logicalOffset === 0) return 0;
+	let logical = 0;
+	for (let index = 0; index < value.length; index += 1) {
+		if (value[index] !== EDITOR_SENTINEL) logical += 1;
+		if (logical === logicalOffset) return index + 1;
+	}
+	return value.length;
 }
 
 function ComposerTools({
@@ -576,6 +1163,7 @@ function ComposerTools({
 	disabled,
 	attachmentsReading,
 	dispatch,
+	getInsertionOffset,
 	onContextAdded,
 }: {
 	state: ComposerState;
@@ -586,7 +1174,8 @@ function ComposerTools({
 	disabled: boolean;
 	attachmentsReading: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
-	onContextAdded: () => void;
+	getInsertionOffset: () => number;
+	onContextAdded: (key: string) => void;
 }) {
 	return (
 		<div className="flex items-center gap-0.5">
@@ -599,17 +1188,23 @@ function ComposerTools({
 				connectedGoogle={connectedGoogle}
 				disabled={disabled}
 				dispatch={dispatch}
+				getInsertionOffset={getInsertionOffset}
 				onPicked={onContextAdded}
 			/>
 			<AttachmentPicker
-				disabled={disabled || attachmentsReading}
+				disabled={
+					disabled || attachmentsReading || state.attachments.length >= 5
+				}
+				remaining={Math.max(0, 5 - state.attachments.length)}
 				dispatch={dispatch}
+				getInsertionOffset={getInsertionOffset}
 				onPicked={onContextAdded}
 			/>
 			<CommandPicker
 				open={state.commandOpen}
 				disabled={disabled}
 				dispatch={dispatch}
+				getInsertionOffset={getInsertionOffset}
 				onPicked={onContextAdded}
 			/>
 		</div>
@@ -625,6 +1220,7 @@ function ResourcePicker({
 	connectedGoogle,
 	disabled,
 	dispatch,
+	getInsertionOffset,
 	onPicked,
 }: {
 	open: boolean;
@@ -635,12 +1231,17 @@ function ResourcePicker({
 	connectedGoogle: Array<{ source: string }>;
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
-	onPicked: () => void;
+	getInsertionOffset: () => number;
+	onPicked: (key: string) => void;
 }) {
 	const add = (resource: BuilderResource) => {
-		dispatch({ type: "resource.added", resource });
+		dispatch({
+			type: "resource.added",
+			resource,
+			offset: getInsertionOffset(),
+		});
 		dispatch({ type: "resource.open.changed", open: false });
-		onPicked();
+		onPicked(resourceContextKey(resource));
 	};
 
 	return (
@@ -731,12 +1332,16 @@ function ResourcePicker({
 
 function AttachmentPicker({
 	disabled,
+	remaining,
 	dispatch,
+	getInsertionOffset,
 	onPicked,
 }: {
 	disabled: boolean;
+	remaining: number;
 	dispatch: React.Dispatch<ComposerAction>;
-	onPicked: () => void;
+	getInsertionOffset: () => number;
+	onPicked: (key: string) => void;
 }) {
 	const input = useRef<HTMLInputElement>(null);
 	const addFiles = async (files: FileList | null) => {
@@ -744,9 +1349,15 @@ function AttachmentPicker({
 		dispatch({ type: "attachments.reading.started" });
 		try {
 			const attachments = await readFiles(files);
-			if (attachments.length > 0) {
-				dispatch({ type: "attachments.added", attachments });
-				onPicked();
+			const accepted = attachments.slice(0, remaining);
+			const lastAccepted = accepted.at(-1);
+			if (lastAccepted) {
+				dispatch({
+					type: "attachments.added",
+					attachments: accepted,
+					offset: getInsertionOffset(),
+				});
+				onPicked(attachmentContextKey(lastAccepted));
 			}
 		} catch {
 			toast.error("Those files could not be attached. Try again.");
@@ -785,12 +1396,14 @@ function CommandPicker({
 	open,
 	disabled,
 	dispatch,
+	getInsertionOffset,
 	onPicked,
 }: {
 	open: boolean;
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
-	onPicked: () => void;
+	getInsertionOffset: () => number;
+	onPicked: (key: string) => void;
 }) {
 	return (
 		<Popover
@@ -814,8 +1427,11 @@ function CommandPicker({
 				<button
 					type="button"
 					onClick={() => {
-						dispatch({ type: "command.selected" });
-						onPicked();
+						dispatch({
+							type: "command.selected",
+							offset: getInsertionOffset(),
+						});
+						onPicked(COMMAND_CONTEXT_KEY);
 					}}
 					className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:bg-muted"
 					disabled={disabled}
