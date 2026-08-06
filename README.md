@@ -269,7 +269,7 @@ short version:
 
 | Command | |
 | --- | --- |
-| `bun run dev` | Everything, in watch mode |
+| `bun run dev` | Prepare the local database, then run everything in dependency-aware watch mode |
 | `bun run build` | Build all apps and packages |
 | `bun run test` | Run the test suite |
 | `bun run check-types` | `tsc --noEmit` everywhere |

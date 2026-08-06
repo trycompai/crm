@@ -1,14 +1,28 @@
-import type { EveMessage, EveMessagePart } from "eve/react";
+import type { MessageStreamEvent } from "eve/client";
+import {
+	defaultMessageReducer,
+	type EveMessage,
+	type EveMessageInputRequest,
+	type EveMessagePart,
+} from "eve/react";
 
 export type TranscriptItem =
 	| { kind: "said"; id: string; mine: boolean; text: string }
+	| { kind: "reasoned"; id: string; streaming: boolean; text: string }
+	| {
+			kind: "asked";
+			id: string;
+			question: EveMessageInputRequest;
+	  }
 	| {
 			kind: "did";
 			id: string;
 			label: string;
+			output: unknown;
 			tone: Tone;
 			pending: boolean;
 			sources: Source[];
+			tool: string;
 	  };
 
 export type Tone = "neutral" | "success" | "warning";
@@ -17,6 +31,16 @@ export type Source = {
 	url: string;
 	title: string;
 	network: "linkedin" | "github" | "web";
+};
+
+export type AgentTurnFailure = {
+	code: string;
+	kind: "rate-limit" | "restricted" | "credits" | "unknown";
+};
+
+type AgentStreamEvent = {
+	type: string;
+	data?: unknown;
 };
 
 const VERBS: Record<string, string> = {
@@ -46,6 +70,8 @@ const VERBS: Record<string, string> = {
 	set_field_value: "Filled in a custom field",
 	manage_fields: "Changed what the CRM tracks",
 	archive_field: "Asked to retire a field",
+	list_deals: "Reviewed the deal pipeline",
+	set_chat_title: "Named this chat",
 
 	load_skill: "Read its instructions for this",
 	web_search: "Searched the web",
@@ -72,11 +98,109 @@ export type TranscriptMessage = {
 	items: TranscriptItem[];
 };
 
+export type ConversationTimelineItem<
+	TSubmission extends { id: string; createdAt: string },
+> =
+	| { kind: "submission"; id: string; submission: TSubmission }
+	| { kind: "assistant"; id: string; message: EveMessage };
+
+export function messagesFromEvents(
+	events: readonly MessageStreamEvent[],
+): readonly EveMessage[] {
+	const reducer = defaultMessageReducer();
+	let data = reducer.initial();
+
+	for (const event of events) data = reducer.reduce(data, event);
+
+	return data.messages;
+}
+
+const SETTLED_EVENT_TYPES = new Set([
+	"input.requested",
+	"session.completed",
+	"session.failed",
+	"session.waiting",
+	"turn.cancelled",
+]);
+
+export function eventStreamSettled(
+	events: readonly { type: string }[],
+): boolean {
+	const last = events.at(-1);
+	return Boolean(last && SETTLED_EVENT_TYPES.has(last.type));
+}
+
+export function conversationTimeline<
+	TSubmission extends { id: string; createdAt: string },
+>(
+	submissions: readonly TSubmission[],
+	events: readonly MessageStreamEvent[],
+	messages: readonly EveMessage[],
+): ConversationTimelineItem<TSubmission>[] {
+	const turnTimes = new Map<string, number>();
+
+	for (const event of events) {
+		const turnId = stringOf(
+			recordOf("data" in event ? event.data : undefined).turnId,
+		);
+		if (!turnId || turnTimes.has(turnId)) continue;
+		turnTimes.set(turnId, timestampOf(event.meta.at));
+	}
+
+	const assistantRows: Array<{
+		kind: "assistant";
+		id: string;
+		message: EveMessage;
+		at: number;
+		index: number;
+	}> = [];
+	for (const [index, message] of messages.entries()) {
+		if (message.role !== "assistant") continue;
+		assistantRows.push({
+			kind: "assistant",
+			id: `assistant:${message.id}`,
+			message,
+			at:
+				turnTimes.get(stringOf(recordOf(message.metadata).turnId) ?? "") ??
+				Number.POSITIVE_INFINITY,
+			index,
+		});
+	}
+
+	const rows = [
+		...submissions.map((submission, index) => ({
+			kind: "submission" as const,
+			id: `submission:${submission.id}`,
+			submission,
+			at: timestampOf(submission.createdAt),
+			index,
+		})),
+		...assistantRows,
+	];
+
+	rows.sort((a, b) =>
+		a.at !== b.at
+			? a.at - b.at
+			: a.kind === b.kind
+				? a.index - b.index
+				: a.kind === "submission"
+					? -1
+					: 1,
+	);
+
+	return rows.map((row) =>
+		row.kind === "submission"
+			? { kind: row.kind, id: row.id, submission: row.submission }
+			: { kind: row.kind, id: row.id, message: row.message },
+	);
+}
+
 export function toTranscript(
 	messages: readonly EveMessage[],
 ): TranscriptMessage[] {
-	return messages
-		.map((message) => ({
+	const transcript: TranscriptMessage[] = [];
+	for (const message of messages) {
+		const row = {
 			id: message.id,
 			mine: message.role === "user",
 			items: message.parts.flatMap((part, index): TranscriptItem[] => {
@@ -88,26 +212,53 @@ export function toTranscript(
 					return [{ kind: "said", id, mine: message.role === "user", text }];
 				}
 
+				if (part.type === "reasoning") {
+					const text = part.text.trim();
+					if (!text) return [];
+					return [
+						{
+							kind: "reasoned",
+							id,
+							streaming: part.state === "streaming",
+							text,
+						},
+					];
+				}
+
+				if (part.type === "dynamic-tool") {
+					const request = part.toolMetadata?.eve?.inputRequest;
+					if (request?.kind === "question") {
+						return [{ kind: "asked", id, question: request }];
+					}
+				}
+
 				if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
 					const state = "state" in part ? part.state : undefined;
+					const tool = toolName(part);
 
 					return [
 						{
 							kind: "did",
 							id,
 							label: describe(part),
+							output: output(part),
 							tone: outcomeTone(part),
 							pending:
-								state === "input-streaming" || state === "input-available",
+								state === "input-streaming" ||
+								state === "input-available" ||
+								state === "approval-requested",
 							sources: sourcesOf(part),
+							tool,
 						},
 					];
 				}
 
 				return [];
 			}),
-		}))
-		.filter((message) => message.items.length > 0);
+		};
+		if (row.items.length > 0) transcript.push(row);
+	}
+	return transcript;
 }
 
 function partId(
@@ -180,10 +331,46 @@ export function sourcesOf(part: EveMessagePart): Source[] {
 
 export function pendingQuestion(messages: readonly EveMessage[]) {
 	for (const part of messages.at(-1)?.parts ?? []) {
-		if (part.type !== "dynamic-tool") continue;
+		if (part.type !== "dynamic-tool" || part.state !== "approval-requested") {
+			continue;
+		}
 
 		const request = part.toolMetadata?.eve?.inputRequest;
-		if (request) return request;
+		if (request?.kind === "question") return request;
+	}
+
+	return null;
+}
+
+export function latestTurnFailure(
+	events: readonly AgentStreamEvent[],
+): AgentTurnFailure | null {
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index];
+		if (!event) continue;
+		if (event.type === "turn.completed") return null;
+		if (event.type !== "turn.failed" && event.type !== "session.failed") {
+			continue;
+		}
+
+		const data = recordOf(event.data);
+		const message = typeof data.message === "string" ? data.message : "";
+		const code = typeof data.code === "string" ? data.code : "AGENT_FAILED";
+
+		return {
+			code,
+			kind: /free tier users do not have access|RestrictedModelsError/i.test(
+				message,
+			)
+				? "restricted"
+				: /GatewayRateLimitError|free tier requests.*rate-?limited/i.test(
+							message,
+						)
+					? "rate-limit"
+					: /credits?|quota|billing|usage limit/i.test(message)
+						? "credits"
+						: "unknown",
+		};
 	}
 
 	return null;
@@ -195,12 +382,264 @@ function output(part: EveMessagePart): Record<string, unknown> | null {
 		: null;
 }
 
+function recordOf(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function stringOf(value: unknown): string | null {
+	return typeof value === "string" && value ? value : null;
+}
+
+function timestampOf(value: string): number {
+	const timestamp = Date.parse(value);
+	return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+}
+
 function hostOf(url: string): string {
 	try {
 		return new URL(url).hostname.replace(/^www\./, "");
 	} catch {
 		return url;
 	}
+}
+
+export type DealListItem = {
+	id: string;
+	name: string;
+	stage: string;
+	amount: number | null;
+	currency: string;
+	company: {
+		id: string;
+		name: string;
+		domain: string | null;
+		iconUrl: string | null;
+		iconDarkUrl: string | null;
+		iconTone: string | null;
+		logoUrl: string | null;
+	};
+	owner: {
+		id: string;
+		name: string;
+		email: string;
+		image: string | null;
+	} | null;
+	daysSinceLastActivity: number;
+	neverActive: boolean;
+	expectedCloseDate: string | null;
+};
+
+export type DealListResult = {
+	asOf: string;
+	criteria: {
+		status: string;
+		inactiveForDays: number | null;
+		companyId: string | null;
+		ownerId: string | null;
+	};
+	deals: DealListItem[];
+	hasMore: boolean;
+};
+
+export function dealListResultOf(value: unknown): DealListResult | null {
+	const result = recordOf(value);
+	const asOf = stringOf(result.asOf);
+	const criteria = recordOf(result.criteria);
+	const status = stringOf(criteria.status);
+	const inactiveForDays = nullableNumberOf(criteria.inactiveForDays);
+	const companyId = nullableStringOf(criteria.companyId);
+	const ownerId = nullableStringOf(criteria.ownerId);
+	const rows = Array.isArray(result.deals) ? result.deals : null;
+
+	if (
+		!asOf ||
+		!status ||
+		inactiveForDays === undefined ||
+		companyId === undefined ||
+		ownerId === undefined ||
+		!rows
+	)
+		return null;
+
+	const deals = rows.map(dealListItemOf);
+	if (deals.some((deal) => deal === null)) return null;
+
+	return {
+		asOf,
+		criteria: { status, inactiveForDays, companyId, ownerId },
+		deals: deals as DealListItem[],
+		hasMore: result.hasMore === true,
+	};
+}
+
+export function mergeDealListResultPages(
+	results: readonly DealListResult[],
+): DealListResult[] {
+	const groups = new Map<string, DealListResult>();
+	for (const result of results) {
+		const key = JSON.stringify(result.criteria);
+		const previous = groups.get(key);
+		const deals = new Map(
+			previous?.deals.map((deal) => [deal.id, deal] as const),
+		);
+		for (const deal of result.deals) deals.set(deal.id, deal);
+
+		groups.set(key, {
+			...result,
+			deals: [...deals.values()],
+		});
+	}
+
+	return [...groups.values()];
+}
+
+function stripMarkdownTables(markdown: string): string {
+	const lines = markdown.split("\n");
+	const kept: string[] = [];
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const separator = lines[index + 1] ?? "";
+
+		if (line.includes("|") && isMarkdownTableSeparator(separator)) {
+			index += 1;
+			while (index + 1 < lines.length) {
+				const nextLine = lines[index + 1];
+				if (nextLine === undefined || !isMarkdownTableRow(nextLine)) break;
+				index += 1;
+			}
+			if (kept.at(-1) !== "") kept.push("");
+			continue;
+		}
+
+		kept.push(line);
+	}
+
+	return kept
+		.join("\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
+
+export function splitMarkdownTable(markdown: string): {
+	after: string;
+	before: string;
+	found: boolean;
+} {
+	const lines = markdown.split("\n");
+
+	for (let index = 0; index < lines.length - 1; index += 1) {
+		const line = lines[index] ?? "";
+		const separator = lines[index + 1] ?? "";
+		if (!line.includes("|") || !isMarkdownTableSeparator(separator)) continue;
+
+		let end = index + 2;
+		while (end < lines.length) {
+			const row = lines[end];
+			if (row === undefined || !isMarkdownTableRow(row)) break;
+			end += 1;
+		}
+
+		return {
+			before: normaliseMarkdown(lines.slice(0, index).join("\n")),
+			after: stripMarkdownTables(lines.slice(end).join("\n")),
+			found: true,
+		};
+	}
+
+	return { before: "", after: normaliseMarkdown(markdown), found: false };
+}
+
+function dealListItemOf(value: unknown): DealListItem | null {
+	const deal = recordOf(value);
+	const company = recordOf(deal.company);
+	const owner = deal.owner === null ? null : recordOf(deal.owner);
+	const id = stringOf(deal.id);
+	const name = stringOf(deal.name);
+	const stage = stringOf(deal.stage);
+	const currency = stringOf(deal.currency);
+	const companyId = stringOf(company.id);
+	const companyName = stringOf(company.name);
+	const daysSinceLastActivity = numberOf(deal.daysSinceLastActivity);
+	const amount = nullableNumberOf(deal.amount);
+	const expectedCloseDate = nullableStringOf(deal.expectedCloseDate);
+
+	if (
+		!id ||
+		!name ||
+		!stage ||
+		!currency ||
+		!companyId ||
+		!companyName ||
+		daysSinceLastActivity === null ||
+		amount === undefined ||
+		expectedCloseDate === undefined
+	) {
+		return null;
+	}
+
+	const parsedOwner = owner
+		? {
+				id: stringOf(owner.id),
+				name: stringOf(owner.name),
+				email: stringOf(owner.email),
+				image: nullableStringOf(owner.image) ?? null,
+			}
+		: null;
+	if (
+		parsedOwner &&
+		(!parsedOwner.id || !parsedOwner.name || !parsedOwner.email)
+	) {
+		return null;
+	}
+
+	return {
+		id,
+		name,
+		stage,
+		amount,
+		currency,
+		company: {
+			id: companyId,
+			name: companyName,
+			domain: nullableStringOf(company.domain) ?? null,
+			iconUrl: nullableStringOf(company.iconUrl) ?? null,
+			iconDarkUrl: nullableStringOf(company.iconDarkUrl) ?? null,
+			iconTone: nullableStringOf(company.iconTone) ?? null,
+			logoUrl: nullableStringOf(company.logoUrl) ?? null,
+		},
+		owner: parsedOwner as DealListItem["owner"],
+		daysSinceLastActivity,
+		neverActive: deal.neverActive === true,
+		expectedCloseDate,
+	};
+}
+
+function numberOf(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nullableNumberOf(value: unknown): number | null | undefined {
+	return value === null ? null : (numberOf(value) ?? undefined);
+}
+
+function nullableStringOf(value: unknown): string | null | undefined {
+	return value === null ? null : (stringOf(value) ?? undefined);
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+	return /^\s*\|?\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)+\s*\|?\s*$/.test(line);
+}
+
+function isMarkdownTableRow(line: string): boolean {
+	const trimmed = line.trim();
+	return trimmed.includes("|") && !isMarkdownTableSeparator(trimmed);
+}
+
+function normaliseMarkdown(markdown: string): string {
+	return markdown.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export const NEW_THREAD = "new";

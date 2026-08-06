@@ -1,16 +1,6 @@
-import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { connection } from "next/server";
+import { bufferedProxyResponse } from "@/lib/api-proxy-response";
 import { API_URL } from "@/lib/env";
-
-function decode(buf: Buffer, encoding: string | null): Buffer {
-	const enc = (encoding ?? "").toLowerCase();
-	try {
-		if (enc.includes("br")) return brotliDecompressSync(buf);
-		if (enc.includes("gzip")) return gunzipSync(buf);
-		if (enc.includes("deflate")) return inflateSync(buf);
-	} catch {}
-	return buf;
-}
 
 async function handler(request: Request): Promise<Response> {
 	await connection();
@@ -79,7 +69,10 @@ async function handler(request: Request): Promise<Response> {
 		}
 	}
 
-	if (upstream.headers.get("content-type")?.includes("text/event-stream")) {
+	if (
+		upstream.headers.get("content-type")?.includes("text/event-stream") ||
+		upstream.headers.has("content-disposition")
+	) {
 		return new Response(upstream.body, {
 			status: upstream.status,
 			statusText: upstream.statusText,
@@ -87,14 +80,7 @@ async function handler(request: Request): Promise<Response> {
 		});
 	}
 
-	const raw = Buffer.from(await upstream.arrayBuffer());
-	const body = decode(raw, upstream.headers.get("content-encoding"));
-
-	return new Response(new Uint8Array(body), {
-		status: upstream.status,
-		statusText: upstream.statusText,
-		headers: responseHeaders,
-	});
+	return bufferedProxyResponse(upstream, responseHeaders, request.method);
 }
 
 export {

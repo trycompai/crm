@@ -27,6 +27,7 @@
 			"passThroughEnv": ["API_URL", "NEXT_PUBLIC_API_URL"]
 		},
 		"dev": {
+			"dependsOn": ["$TURBO_EXTENDS$"],
 			"cache": false,
 			"persistent": true,
 			"passThroughEnv": [

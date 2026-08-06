@@ -46,7 +46,8 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEveAgent } from "eve/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { AgentClarificationComposer } from "@/components/agent-clarification-composer";
 import {
 	type Conversation,
 	ConversationPicker,
@@ -83,18 +84,35 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 
 	const history = conversations.data ?? [];
 
-	const landedOn = useRef<string | null>(null);
-	if (landedOn.current === null && conversations.isSuccess) {
-		landedOn.current = history[0]?.id ?? NEW_THREAD;
-	}
+	if (conversations.isPending) return <Loading />;
 
+	return (
+		<LoadedAgentPanel
+			record={record}
+			history={history}
+			thread={thread}
+			setThread={setThread}
+		/>
+	);
+}
+
+function LoadedAgentPanel({
+	record,
+	history,
+	thread,
+	setThread,
+}: {
+	record: AgentRecord;
+	history: Conversation[];
+	thread: string | null;
+	setThread: (thread: string) => void;
+}) {
+	const [landedOn] = useState(() => history[0]?.id ?? NEW_THREAD);
 	const { openId, current } = resolveThread({
 		conversations: history,
 		fromUrl: thread,
-		landedOn: landedOn.current,
+		landedOn,
 	});
-
-	if (conversations.isPending) return <Loading />;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -221,7 +239,7 @@ function Thread({
 			<MessageScrollerProvider autoScroll defaultScrollPosition="end">
 				<MessageScroller className="flex-1">
 					<MessageScrollerViewport>
-						<MessageScrollerContent className="gap-3 px-5 py-4">
+						<MessageScrollerContent className="gap-3 px-4 py-4 sm:px-5">
 							{messages.length === 0 && !busy ? (
 								<Idle kind={record.kind} onAsk={ask} />
 							) : null}
@@ -235,12 +253,6 @@ function Thread({
 									</div>
 								</MessageScrollerItem>
 							))}
-
-							{question ? (
-								<MessageScrollerItem messageId={question.requestId}>
-									<Question question={question} agent={agent} />
-								</MessageScrollerItem>
-							) : null}
 						</MessageScrollerContent>
 					</MessageScrollerViewport>
 
@@ -251,15 +263,15 @@ function Thread({
 			{agent.error ? <Failure message={agent.error.message} /> : null}
 
 			{thread?.status === "working" && !busy ? (
-				<p className="border-t px-5 py-2 text-muted-foreground text-xs">
+				<p className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5">
 					Still working on the last question. Your next one can go in when it
 					finishes.
 				</p>
 			) : null}
 
 			{ended ? (
-				<div className="flex items-center justify-between gap-3 border-t px-5 py-2">
-					<p className="text-muted-foreground text-xs">
+				<div className="flex flex-col items-start gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-2">
+					<p className="text-pretty text-muted-foreground text-xs">
 						This conversation has ended.
 					</p>
 					<Button variant="outline" size="sm" onClick={onNewThread}>
@@ -268,29 +280,40 @@ function Thread({
 				</div>
 			) : null}
 
-			<form
-				className="flex items-center gap-2 border-t px-5 py-3"
-				onSubmit={(event) => {
-					event.preventDefault();
-					ask(draft);
-				}}
-			>
-				<Input
-					value={draft}
-					onChange={(event) => setDraft(event.target.value)}
-					placeholder={copy.placeholder}
-					disabled={locked}
-				/>
-				<Button
-					type="submit"
-					size="icon-sm"
-					variant="outline"
-					disabled={locked}
-				>
-					{busy ? <Spinner /> : <Icon icon={Send} />}
-					<span className="sr-only">Ask</span>
-				</Button>
-			</form>
+			<div className="border-t px-4 py-3 sm:px-5">
+				{question ? (
+					<AgentClarificationComposer
+						key={question.requestId}
+						question={question}
+						pending={busy}
+						onSubmit={(response) => agent.send({ inputResponses: [response] })}
+					/>
+				) : (
+					<form
+						className="flex min-w-0 items-center gap-2"
+						onSubmit={(event) => {
+							event.preventDefault();
+							ask(draft);
+						}}
+					>
+						<Input
+							value={draft}
+							onChange={(event) => setDraft(event.target.value)}
+							placeholder={copy.placeholder}
+							disabled={locked}
+						/>
+						<Button
+							type="submit"
+							size="icon-sm"
+							variant="outline"
+							disabled={locked}
+						>
+							{busy ? <Spinner /> : <Icon icon={Send} />}
+							<span className="sr-only">Ask</span>
+						</Button>
+					</form>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -340,9 +363,11 @@ function Failure({ message }: { message: string }) {
 			: null;
 
 	return (
-		<div className="border-t px-5 py-3 text-xs">
-			<p className="text-destructive">{message}</p>
-			{hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
+		<div className="border-t px-4 py-3 text-xs sm:px-5">
+			<p className="wrap-break-word text-destructive">{message}</p>
+			{hint ? (
+				<p className="wrap-break-word text-muted-foreground text-xs">{hint}</p>
+			) : null}
 		</div>
 	);
 }
@@ -362,20 +387,20 @@ const SOURCE_ICONS: Record<Source["network"], CarbonIcon> = {
 function Item({ item }: { item: TranscriptItem }) {
 	if (item.kind === "said") {
 		return item.mine ? (
-			<Message align="end">
+			<Message align="end" className="min-w-0">
 				<MessageContent>
 					<Bubble variant="secondary" align="end">
-						<BubbleContent>{item.text}</BubbleContent>
+						<BubbleContent className="text-pretty">{item.text}</BubbleContent>
 					</Bubble>
 				</MessageContent>
 			</Message>
 		) : (
-			<Message>
+			<Message className="min-w-0">
 				<AgentAvatar />
 				<MessageContent>
 					<Bubble variant="ghost">
 						<BubbleContent>
-							<Markdown>{item.text}</Markdown>
+							<Markdown className="wrap-break-word">{item.text}</Markdown>
 						</BubbleContent>
 					</Bubble>
 				</MessageContent>
@@ -383,8 +408,21 @@ function Item({ item }: { item: TranscriptItem }) {
 		);
 	}
 
+	if (item.kind === "asked") {
+		return (
+			<div className="w-full max-w-sm border-ring/50 border-l-2 bg-muted/40 px-3 py-2.5">
+				<p className="font-medium text-xs">Follow-up</p>
+				<Markdown className="mt-1.5 wrap-break-word text-sm leading-5">
+					{item.question.prompt}
+				</Markdown>
+			</div>
+		);
+	}
+
+	if (item.kind === "reasoned") return null;
+
 	return (
-		<div className="space-y-1.5">
+		<div className="min-w-0 space-y-1.5">
 			<Marker>
 				<MarkerIcon>
 					{item.pending ? <Spinner /> : <Icon icon={TONE_ICONS[item.tone]} />}
@@ -430,44 +468,6 @@ function AgentAvatar() {
 	);
 }
 
-function Question({
-	question,
-	agent,
-}: {
-	question: NonNullable<ReturnType<typeof pendingQuestion>>;
-	agent: ReturnType<typeof useEveAgent>;
-}) {
-	return (
-		<Message>
-			<AgentAvatar />
-			<MessageContent>
-				<Bubble variant="tinted">
-					<BubbleContent>{question.prompt}</BubbleContent>
-				</Bubble>
-
-				<div className="flex flex-wrap gap-2">
-					{(question.options ?? []).map((option) => (
-						<Button
-							key={option.id}
-							variant="outline"
-							size="sm"
-							onClick={() =>
-								void agent.send({
-									inputResponses: [
-										{ requestId: question.requestId, optionId: option.id },
-									],
-								})
-							}
-						>
-							{option.label}
-						</Button>
-					))}
-				</div>
-			</MessageContent>
-		</Message>
-	);
-}
-
 function useSavedConversation({
 	record,
 	conversation,
@@ -496,10 +496,29 @@ function useSavedConversation({
 
 	const isNew = conversation === null || conversation.sessionId !== sessionId;
 
-	const latest = useRef({ save, queryClient, trpc, opening });
-	latest.current = { save, queryClient, trpc, opening };
-
 	const written = useRef<string | null>(null);
+	const persist = useEffectEvent(() => {
+		save.mutate(
+			{
+				...(contactId ? { contactId } : {}),
+				...(companyId ? { companyId } : {}),
+				...(dealId ? { dealId } : {}),
+				sessionId: sessionId ?? "",
+				continuationToken: token,
+				streamIndex,
+				messageCount: messages,
+				...(isNew ? { title: opening.current ?? undefined } : {}),
+			},
+			{
+				onSuccess: () => {
+					if (!isNew) return;
+					void queryClient.invalidateQueries({
+						queryKey: trpc.conversations.list.pathKey(),
+					});
+				},
+			},
+		);
+	});
 
 	useEffect(() => {
 		if (!sessionId) return;
@@ -507,42 +526,6 @@ function useSavedConversation({
 		const cursor = `${sessionId}:${token ?? ""}:${messages}`;
 		if (written.current === cursor) return;
 		written.current = cursor;
-
-		const {
-			save: mutation,
-			queryClient: cache,
-			trpc: api,
-			opening: title,
-		} = latest.current;
-
-		mutation.mutate(
-			{
-				...(contactId ? { contactId } : {}),
-				...(companyId ? { companyId } : {}),
-				...(dealId ? { dealId } : {}),
-				sessionId,
-				continuationToken: token,
-				streamIndex,
-				messageCount: messages,
-				...(isNew ? { title: title.current ?? undefined } : {}),
-			},
-			{
-				onSuccess: () => {
-					if (!isNew) return;
-					void cache.invalidateQueries({
-						queryKey: api.conversations.list.pathKey(),
-					});
-				},
-			},
-		);
-	}, [
-		sessionId,
-		token,
-		streamIndex,
-		messages,
-		contactId,
-		companyId,
-		dealId,
-		isNew,
-	]);
+		persist();
+	}, [sessionId, token, messages]);
 }
