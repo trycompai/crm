@@ -17,6 +17,18 @@ export type TableSelection = {
 
 export function useTableSelection(rowIds: string[]): TableSelection {
 	const [picked, setPicked] = useState<ReadonlySet<string>>(EMPTY);
+	const pageKey = rowIds.join(" ");
+	const [syncedKey, setSyncedKey] = useState(pageKey);
+
+	if (syncedKey !== pageKey) {
+		setSyncedKey(pageKey);
+		setPicked((prev) => {
+			if (prev.size === 0) return prev;
+			const next = new Set<string>();
+			for (const id of rowIds) if (prev.has(id)) next.add(id);
+			return next.size === prev.size ? prev : next;
+		});
+	}
 
 	const ids = useMemo(
 		() => rowIds.filter((id) => picked.has(id)),

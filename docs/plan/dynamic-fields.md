@@ -127,6 +127,7 @@ model FieldValue {
   optionId String?
   option   FieldOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
   userId   String?
+  user     User?        @relation("FieldValueUser", fields: [userId], references: [id], onDelete: SetNull)
 
   updatedAt DateTime @updatedAt
 
@@ -136,11 +137,22 @@ model FieldValue {
   @@index([fieldId, text])
   @@index([fieldId, number])
   @@index([fieldId, date])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([optionId])
+  @@index([userId])
   @@map("fieldValue")
 }
 ```
 
-Four decisions worth defending:
+`User` carries the other half of that relation:
+
+```prisma
+fieldValues FieldValue[] @relation("FieldValueUser")
+```
+
+Six decisions worth defending:
 
 - **Typed columns, not a `Json` value.** `api.md` says filter, sort and paginate
   in Prisma. A JSON blob cannot be indexed or ordered honestly, and the moment
@@ -157,6 +169,15 @@ Four decisions worth defending:
 - **`key` is immutable, `label` is not.** The key is what the API and the agents
   say; the label is what the rep reads. Renaming the label of a field an agent
   has filled for a month cannot break the brief that taught it.
+- **The record columns are indexed on their own, not only inside the uniques.**
+  A record read is `where: { companyId }` with no `fieldId` —
+  `FieldsService.valuesFor` opens every sheet that way — and a unique starting
+  `fieldId` cannot serve it. The composite uniques stay for the one-value-per-
+  field-per-record rule; the standalone indexes are what the reads use.
+- **`userId` is a foreign key, like every other id on the row.** A `USER` field
+  holds a workspace user, so a deleted rep must not leave an id on the record
+  that resolves to nobody. `SetNull` matches `Company.owner` and
+  `Contact.owner`: the value empties, and it never blocks the delete.
 
 **Archive, not delete.** A record delete is hard in this CRM by design, but a
 *definition* delete destroys a column of typed data across every record at once.

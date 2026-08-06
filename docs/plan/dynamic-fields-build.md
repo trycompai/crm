@@ -172,10 +172,17 @@ Two params, added to the **existing shared parser object** in
 parser file:
 
 ```ts
-fields: parseAsStringLiteral(RECORD_KINDS),   // which entity's fields are open
-field:  parseAsString,                         // "new" | a field key
+fields: parseAsStringLiteral(RECORD_KINDS),
+field: parseAsString,
 ```
 
+- `fields` is the entity whose fields are open; `field` is either the create
+  sentinel `new` or a field key. Add nothing else to the pasted lines — AGENTS.md
+  forbids code comments, and these go straight into `record-stack.ts`.
+- **`new` is a reserved key**, held back by `RESERVED_KEYS` in
+  `packages/db/src/fields-shape.ts`, so a field labelled *New* slugs to
+  `new_field` and its editor can still be opened. Never let the sentinel and a
+  derivable key collide.
 - Both cleared by the existing `write()` alongside `tab`, `add`, `thread`.
 - `useQueryStates` for the pair; `null` to clear; `history: "replace"` for sheet
   state, matching what `record-stack.ts` already does.

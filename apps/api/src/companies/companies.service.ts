@@ -320,10 +320,6 @@ export class CompaniesService {
 	}
 
 	async update(id: string, input: CompanyUpdateInput) {
-		if (input.fields) {
-			await this.fields.applyValues(this.db, "COMPANY", id, input.fields);
-		}
-
 		const data: Prisma.CompanyUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
@@ -371,10 +367,16 @@ export class CompaniesService {
 		}
 
 		try {
-			const updated = await this.db.company.update({
-				where: { id },
-				data,
-				select: { id: true, name: true, domain: true },
+			const updated = await this.db.$transaction(async (tx) => {
+				if (input.fields) {
+					await this.fields.applyValues(tx, "COMPANY", id, input.fields);
+				}
+
+				return tx.company.update({
+					where: { id },
+					data,
+					select: { id: true, name: true, domain: true },
+				});
 			});
 
 			if (data.enrichmentStatus === "PENDING") {
@@ -426,18 +428,20 @@ export class CompaniesService {
 	}
 
 	async bulkAssignOwner(input: CompanyBulkOwnerInput): Promise<BulkResult> {
-		await requireOwner(this.db, input.ownerId);
+		const ownerId = input.ownerId || null;
+
+		await requireOwner(this.db, ownerId);
 
 		const ids = [...new Set(input.ids)];
 		const { count } = await this.db.company.updateMany({
 			where: { id: { in: ids } },
-			data: { ownerId: input.ownerId },
+			data: { ownerId },
 		});
 
 		this.logger.log({
 			message: "Companies reassigned",
 			count,
-			ownerId: input.ownerId,
+			ownerId,
 		});
 
 		return {

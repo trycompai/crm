@@ -52,7 +52,7 @@ let companyId: string;
 
 async function clean() {
 	const owned = await db.company.findMany({
-		where: { domain },
+		where: { domain: { endsWith: domain } },
 		select: { id: true },
 	});
 	const companyIds = owned.map((row) => row.id);
@@ -62,7 +62,7 @@ async function clean() {
 	await db.agentTask.deleteMany({ where: { companyId: { in: companyIds } } });
 	await db.contact.deleteMany({ where: ours });
 	await db.suppressedContact.deleteMany({ where: ours });
-	await db.company.deleteMany({ where: { domain } });
+	await db.company.deleteMany({ where: { domain: { endsWith: domain } } });
 	await db.user.deleteMany({ where: { id: { in: [ownerId, secondOwnerId] } } });
 }
 

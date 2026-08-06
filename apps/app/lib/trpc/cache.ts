@@ -20,6 +20,7 @@ export type CrmCache = {
 	contact(id?: string, options?: Options): Promise<void>;
 	deal(id?: string, options?: Options): Promise<void>;
 	fields(entity?: RecordKind, options?: Options): Promise<void>;
+	fieldCoverage(id?: string, options?: Options): Promise<void>;
 	removed(record: RemovedRecord): Promise<void>;
 	removedMany(records: RemovedRecords): Promise<void>;
 	activity(options?: Options): Promise<void>;
@@ -105,16 +106,30 @@ export function useCrmCache(): CrmCache {
 		deal: () => trpc.deals.byId.queryKey(),
 	} as const;
 
+	const RECORD_LIST = {
+		company: () => trpc.companies.list.queryKey(),
+		contact: () => trpc.contacts.list.queryKey(),
+		deal: () => trpc.deals.list.queryKey(),
+	} as const;
+
 	return {
 		fields: (entity, options) =>
 			run(
 				[trpc.fields.list.queryKey()],
+				entity
+					? [RECORD_BY_ID[entity](), RECORD_LIST[entity]()]
+					: [...Object.values(RECORD_BY_ID).map((key) => key()), ...listKeys()],
+				options,
+			),
+
+		fieldCoverage: (id, options) =>
+			run(
 				[
-					...(entity
-						? [RECORD_BY_ID[entity]()]
-						: Object.values(RECORD_BY_ID).map((key) => key())),
-					...listKeys(),
+					id
+						? trpc.fields.coverage.queryKey({ id })
+						: trpc.fields.coverage.queryKey(),
 				],
+				[],
 				options,
 			),
 

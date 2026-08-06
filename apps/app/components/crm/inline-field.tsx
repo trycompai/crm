@@ -41,8 +41,10 @@ export function savingValue(update: {
 	isPending: boolean;
 	variables?: { data?: { fields?: Record<string, unknown> } } | undefined;
 }): (key: string) => boolean {
-	const fields = update.isPending ? (update.variables?.data?.fields ?? {}) : {};
-	return (key) => key in fields;
+	const keys = update.isPending
+		? Object.keys(update.variables?.data?.fields ?? {})
+		: [];
+	return (key) => keys.includes(key);
 }
 
 export function InlineField({
@@ -263,12 +265,14 @@ export function InlineSelectField({
 	value,
 	options,
 	onSave,
+	saving = false,
 	placeholder = "None",
 }: {
 	label: string;
 	value: string;
 	options: { value: string; label: string }[];
 	onSave: (next: string) => void;
+	saving?: boolean;
 	placeholder?: string;
 }) {
 	const id = useId();
@@ -278,18 +282,21 @@ export function InlineSelectField({
 			<label htmlFor={id} className={LABEL}>
 				{label}
 			</label>
-			<Select value={value} onValueChange={onSave}>
-				<SelectTrigger id={id} variant="ghost" className="w-full">
-					<SelectValue placeholder={placeholder} />
-				</SelectTrigger>
-				<SelectContent>
-					{options.map((option) => (
-						<SelectItem key={option.value} value={option.value}>
-							{option.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			<div className="flex min-w-0 items-center gap-1.5">
+				<Select value={value} onValueChange={onSave} disabled={saving}>
+					<SelectTrigger id={id} variant="ghost" className="w-full">
+						<SelectValue placeholder={placeholder} />
+					</SelectTrigger>
+					<SelectContent>
+						{options.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				{saving ? <Spinner /> : null}
+			</div>
 		</div>
 	);
 }

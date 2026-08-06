@@ -49,6 +49,7 @@ import {
 	ADD_OPTION,
 	AGENT_HELP,
 	AGENT_LABEL,
+	ALL_FILLED,
 	ARCHIVE,
 	BRIEF_HELP,
 	BRIEF_LABEL,
@@ -58,12 +59,13 @@ import {
 	KEY_LABEL,
 	LABEL_LABEL,
 	OPTIONS_LABEL,
+	optionLabel,
 	SAVE,
 	sheetPlacement,
 	TYPE_LABEL,
 	tablePlacement,
 } from "./fields-copy";
-import type { FieldEntity } from "./fields-entity";
+import { type FieldEntity, kindOf } from "./fields-entity";
 
 const COVERAGE_NOUN: Record<FieldEntity, string> = {
 	COMPANY: "companies",
@@ -120,13 +122,17 @@ function draftFrom(field: FieldRecord | undefined): Draft {
 
 function Coverage({ field }: { field: FieldRecord }) {
 	const trpc = useTRPC();
+	const cache = useCrmCache();
 	const coverage = useQuery(
 		trpc.fields.coverage.queryOptions({ id: field.id }),
 	);
 
 	const backfill = useMutation(
 		trpc.fields.backfill.mutationOptions({
-			onSuccess: () => toast.success("Your agents will pick this up."),
+			onSuccess: async () => {
+				toast.success("Your agents will pick this up.");
+				await cache.fieldCoverage(field.id);
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -135,6 +141,7 @@ function Coverage({ field }: { field: FieldRecord }) {
 
 	const { filled, total } = coverage.data;
 	const noun = COVERAGE_NOUN[field.entity as FieldEntity];
+	const covered = filled >= total;
 
 	return (
 		<div className="shrink-0 border-t px-5 py-3">
@@ -146,13 +153,13 @@ function Coverage({ field }: { field: FieldRecord }) {
 						label={`Filled on ${filled} of ${total} ${noun}`}
 					/>
 					<span className="pl-4 text-muted-foreground text-xs">
-						{total - filled} still to go
+						{covered ? ALL_FILLED : `${total - filled} still to go`}
 					</span>
 				</div>
 				<Button
 					variant="outline"
 					size="sm"
-					disabled={backfill.isPending}
+					disabled={backfill.isPending || covered}
 					onClick={() => backfill.mutate({ id: field.id })}
 				>
 					{FILL_REST}
@@ -175,6 +182,9 @@ export function FieldEditor({
 	const cache = useCrmCache();
 	const labelId = useId();
 	const briefId = useId();
+	const agentId = useId();
+	const typeId = useId();
+	const optionsId = useId();
 
 	const [draft, setDraft] = useState<Draft>(() => draftFrom(field));
 	const [confirming, setConfirming] = useState(false);
@@ -183,7 +193,7 @@ export function FieldEditor({
 		setDraft((current) => ({ ...current, ...next }));
 
 	const settle = async () => {
-		await cache.fields();
+		await cache.fields(kindOf(entity));
 		onDone();
 	};
 
@@ -257,10 +267,11 @@ export function FieldEditor({
 				<div className={SECTION}>
 					<Field orientation="horizontal">
 						<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-							<FieldTitle>{AGENT_LABEL}</FieldTitle>
+							<FieldLabel htmlFor={agentId}>{AGENT_LABEL}</FieldLabel>
 							<FieldDescription>{AGENT_HELP}</FieldDescription>
 						</div>
 						<Switch
+							id={agentId}
 							checked={draft.agentFilled}
 							onCheckedChange={(agentFilled) => patch({ agentFilled })}
 						/>
@@ -280,12 +291,12 @@ export function FieldEditor({
 
 				<div className={SECTION}>
 					<Field>
-						<FieldTitle>{TYPE_LABEL}</FieldTitle>
+						<FieldLabel htmlFor={typeId}>{TYPE_LABEL}</FieldLabel>
 						<Select
 							value={draft.type}
 							onValueChange={(value) => patch({ type: value as Draft["type"] })}
 						>
-							<SelectTrigger className="w-full">
+							<SelectTrigger id={typeId} className="w-full">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -299,8 +310,8 @@ export function FieldEditor({
 					</Field>
 
 					{draft.type === "SELECT" ? (
-						<Field>
-							<FieldTitle>{OPTIONS_LABEL}</FieldTitle>
+						<Field aria-labelledby={optionsId}>
+							<FieldTitle id={optionsId}>{OPTIONS_LABEL}</FieldTitle>
 							<SortableList
 								ids={draft.options.map(optionId)}
 								onReorder={(ids) =>
@@ -325,6 +336,7 @@ export function FieldEditor({
 											label={option.label || "option"}
 										>
 											<Input
+												aria-label={optionLabel(index)}
 												value={option.label}
 												onChange={(event) =>
 													patch({
@@ -348,7 +360,9 @@ export function FieldEditor({
 												}
 											>
 												<Icon icon={Close} />
-												<span className="sr-only">Remove option</span>
+												<span className="sr-only">
+													Remove {optionLabel(index)}
+												</span>
 											</Button>
 										</SortableItem>
 									))}

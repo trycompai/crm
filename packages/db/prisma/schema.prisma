@@ -29,6 +29,7 @@ model User {
   mailboxSyncs   MailboxSync[]
   factDecisions  ContactFact[]       @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
+  fieldValues    FieldValue[]        @relation("FieldValueUser")
 
   members     Member[]
   invitations Invitation[]
@@ -534,6 +535,7 @@ model FieldValue {
   optionId String?
   option   FieldOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
   userId   String?
+  user     User?        @relation("FieldValueUser", fields: [userId], references: [id], onDelete: SetNull)
 
   updatedAt DateTime @updatedAt
 
@@ -543,7 +545,11 @@ model FieldValue {
   @@index([fieldId, text])
   @@index([fieldId, number])
   @@index([fieldId, date])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([dealId])
   @@index([optionId])
+  @@index([userId])
   @@map("fieldValue")
 }
 

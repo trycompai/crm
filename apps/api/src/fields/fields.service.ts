@@ -1,4 +1,9 @@
-import type { Db, FieldEntity, Prisma } from "@crm/db";
+import {
+	type Db,
+	type FieldEntity,
+	type Prisma,
+	Prisma as PrismaNamespace,
+} from "@crm/db";
 import {
 	attachValues,
 	type FieldDefinitionWithOptions,
@@ -113,7 +118,11 @@ export class FieldsService {
 		});
 
 		if (definition.agentFilled) {
-			await this.agent.fieldBackfill(definition.key, "New field");
+			await this.agent.fieldBackfill(
+				definition.entity,
+				definition.key,
+				"New field",
+			);
 		}
 
 		return serializeField(definition);
@@ -141,7 +150,11 @@ export class FieldsService {
 			}
 		}
 
-		if (usesOptions(type) && data.options && data.options.length === 0) {
+		const optionCount = data.options
+			? data.options.length
+			: existing.options.filter((option) => option.archivedAt === null).length;
+
+		if (usesOptions(type) && optionCount === 0) {
 			throw new BadRequestException("A select needs at least one option.");
 		}
 
@@ -193,7 +206,11 @@ export class FieldsService {
 		const turnedOn = data.agentFilled === true && !existing.agentFilled;
 
 		if (definition.agentFilled && (briefChanged || turnedOn)) {
-			await this.agent.fieldBackfill(definition.key, "Brief changed");
+			await this.agent.fieldBackfill(
+				definition.entity,
+				definition.key,
+				"Brief changed",
+			);
 		}
 
 		return serializeField(definition);
@@ -224,37 +241,39 @@ export class FieldsService {
 	}
 
 	async archive(id: string): Promise<SerializedField> {
-		const definition = await this.db.fieldDefinition
-			.update({
+		try {
+			const definition = await this.db.fieldDefinition.update({
 				where: { id },
 				data: { archivedAt: new Date() },
 				include: WITH_OPTIONS,
-			})
-			.catch(() => {
-				throw new NotFoundException("That field does not exist.");
 			});
 
-		return serializeField(definition);
+			return serializeField(definition);
+		} catch (error) {
+			throw this.translate(error);
+		}
 	}
 
 	async restore(id: string): Promise<SerializedField> {
-		const definition = await this.db.fieldDefinition
-			.update({
+		try {
+			const definition = await this.db.fieldDefinition.update({
 				where: { id },
 				data: { archivedAt: null },
 				include: WITH_OPTIONS,
-			})
-			.catch(() => {
-				throw new NotFoundException("That field does not exist.");
 			});
 
-		return serializeField(definition);
+			return serializeField(definition);
+		} catch (error) {
+			throw this.translate(error);
+		}
 	}
 
 	async delete(id: string): Promise<{ id: string }> {
-		await this.db.fieldDefinition.delete({ where: { id } }).catch(() => {
-			throw new NotFoundException("That field does not exist.");
-		});
+		try {
+			await this.db.fieldDefinition.delete({ where: { id } });
+		} catch (error) {
+			throw this.translate(error);
+		}
 
 		return { id };
 	}
@@ -262,7 +281,12 @@ export class FieldsService {
 	async backfill(id: string): Promise<{ queued: boolean }> {
 		const definition = await this.db.fieldDefinition.findUnique({
 			where: { id },
-			select: { key: true, agentFilled: true, archivedAt: true },
+			select: {
+				entity: true,
+				key: true,
+				agentFilled: true,
+				archivedAt: true,
+			},
 		});
 
 		if (!definition) throw new NotFoundException("That field does not exist.");
@@ -273,7 +297,11 @@ export class FieldsService {
 			);
 		}
 
-		await this.agent.fieldBackfill(definition.key, "Asked to fill the rest");
+		await this.agent.fieldBackfill(
+			definition.entity,
+			definition.key,
+			"Asked to fill the rest",
+		);
 
 		return { queued: true };
 	}
@@ -361,7 +389,10 @@ export class FieldsService {
 			if (!definition) continue;
 
 			const current = byRecord.get(recordId) ?? {};
-			current[definition.key] = readValue(definition, row);
+			current[definition.key] = tableValue(
+				definition,
+				readValue(definition, row),
+			);
 			byRecord.set(recordId, current);
 		}
 
@@ -388,4 +419,26 @@ export class FieldsService {
 			throw error;
 		}
 	}
+
+	private translate(error: unknown): unknown {
+		if (
+			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			error.code === "P2025"
+		) {
+			return new NotFoundException("That field does not exist.");
+		}
+
+		return error;
+	}
+}
+
+function tableValue(
+	definition: FieldDefinitionWithOptions,
+	value: FieldValueJson,
+): FieldValueJson {
+	if (definition.type !== "SELECT" || typeof value !== "string") return value;
+
+	return (
+		definition.options.find((option) => option.id === value)?.label ?? null
+	);
 }

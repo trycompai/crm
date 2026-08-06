@@ -61,4 +61,9 @@ export const fieldReorderInput = z.object({
 
 export type FieldReorderInput = z.infer<typeof fieldReorderInput>;
 
-export const recordFieldValues = z.record(z.string(), z.unknown());
+const recordFieldValue = z.union(
+	[z.string(), z.number(), z.boolean(), z.null()],
+	{ error: "A field holds text, a number, true or false, or nothing at all." },
+);
+
+export const recordFieldValues = z.record(z.string(), recordFieldValue);

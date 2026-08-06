@@ -5,6 +5,7 @@ import Partnership from "@carbon/icons-react/es/Partnership";
 import Star from "@carbon/icons-react/es/Star";
 import StarFilled from "@carbon/icons-react/es/StarFilled";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import type { FieldValueJson } from "@crm/db/fields";
 import { Button } from "@crm/ui/components/button";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
@@ -360,7 +361,7 @@ function CompanyOverview({
 	const save = (data: Record<string, string | null>) =>
 		update.mutate({ id: company.id, data });
 
-	const saveFields = (fields: Record<string, unknown>) =>
+	const saveFields = (fields: Record<string, FieldValueJson>) =>
 		update.mutate({ id: company.id, data: { fields } });
 
 	const isSaving = savingField(update);

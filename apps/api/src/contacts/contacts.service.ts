@@ -375,10 +375,6 @@ export class ContactsService {
 	}
 
 	async update(id: string, input: ContactUpdateInput) {
-		if (input.fields) {
-			await this.fields.applyValues(this.db, "CONTACT", id, input.fields);
-		}
-
 		const data: Prisma.ContactUpdateInput = {};
 
 		if (input.firstName !== undefined) data.firstName = input.firstName.trim();
@@ -409,6 +405,10 @@ export class ContactsService {
 
 		try {
 			return await this.db.$transaction(async (tx) => {
+				if (input.fields) {
+					await this.fields.applyValues(tx, "CONTACT", id, input.fields);
+				}
+
 				const updated = await tx.contact.update({
 					where: { id },
 					data,
@@ -427,18 +427,20 @@ export class ContactsService {
 	}
 
 	async bulkAssignOwner(input: ContactBulkOwnerInput): Promise<BulkResult> {
-		await requireOwner(this.db, input.ownerId);
+		const ownerId = input.ownerId || null;
+
+		await requireOwner(this.db, ownerId);
 
 		const ids = [...new Set(input.ids)];
 		const { count } = await this.db.contact.updateMany({
 			where: { id: { in: ids } },
-			data: { ownerId: input.ownerId },
+			data: { ownerId },
 		});
 
 		this.logger.log({
 			message: "Contacts reassigned",
 			count,
-			ownerId: input.ownerId,
+			ownerId,
 		});
 
 		return {
@@ -450,26 +452,28 @@ export class ContactsService {
 	}
 
 	async bulkSetCompany(input: ContactBulkCompanyInput): Promise<BulkResult> {
-		if (input.companyId) {
+		const companyId = input.companyId || null;
+
+		if (companyId) {
 			const company = await this.db.company.findUnique({
-				where: { id: input.companyId },
+				where: { id: companyId },
 				select: { id: true },
 			});
 			if (!company) {
-				throw new NotFoundException(`No company with id ${input.companyId}.`);
+				throw new NotFoundException(`No company with id ${companyId}.`);
 			}
 		}
 
 		const ids = [...new Set(input.ids)];
 		const { count } = await this.db.contact.updateMany({
 			where: { id: { in: ids } },
-			data: { companyId: input.companyId },
+			data: { companyId },
 		});
 
 		this.logger.log({
 			message: "Contacts moved",
 			count,
-			companyId: input.companyId,
+			companyId,
 		});
 
 		return {

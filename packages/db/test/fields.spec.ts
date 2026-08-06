@@ -68,6 +68,10 @@ describe("fieldKeyFromLabel", () => {
 		expect(fieldKeyFromLabel("id")).toBe("id_field");
 		expect(fieldKeyFromLabel("Owner")).toBe("owner_field");
 	});
+
+	it("steps around the sentinel the fields sheet opens the create form with", () => {
+		expect(fieldKeyFromLabel("New")).toBe("new_field");
+	});
 });
 
 describe("columnFor", () => {

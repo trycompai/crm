@@ -3,6 +3,8 @@
 import Add from "@carbon/icons-react/es/Add";
 import ChevronRight from "@carbon/icons-react/es/ChevronRight";
 import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
+import Renew from "@carbon/icons-react/es/Renew";
+import Warning from "@carbon/icons-react/es/Warning";
 import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -40,14 +42,17 @@ import {
 	DRAG_NOTE,
 	EMPTY_BODY,
 	EMPTY_TITLE,
+	ERROR_BODY,
+	ERROR_TITLE,
 	MANUAL_ONLY,
 	NEW_FIELD,
 	ORDER_NOTE,
+	RETRY,
 	STANDARD_NOTE,
 	STANDARD_ROW,
 	TABLE_NOTE,
 } from "./fields-copy";
-import type { FieldEntity } from "./fields-entity";
+import { type FieldEntity, kindOf } from "./fields-entity";
 import { STANDARD_FIELDS } from "./standard-fields";
 
 type Field = RouterOutputs["fields"]["list"][number];
@@ -123,21 +128,24 @@ export function FieldsList({
 
 	const reorder = useMutation(
 		trpc.fields.reorder.mutationOptions({
-			onSuccess: () => cache.fields(),
-			onError: (error) => toast.error(error.message),
+			onSuccess: () => cache.fields(kindOf(entity)),
+			onError: (error) => {
+				toast.error(error.message);
+				return cache.fields(kindOf(entity));
+			},
 		}),
 	);
 
 	const archive = useMutation(
 		trpc.fields.archive.mutationOptions({
-			onSuccess: () => cache.fields(),
+			onSuccess: () => cache.fields(kindOf(entity)),
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
 	const restore = useMutation(
 		trpc.fields.restore.mutationOptions({
-			onSuccess: () => cache.fields(),
+			onSuccess: () => cache.fields(kindOf(entity)),
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -170,84 +178,112 @@ export function FieldsList({
 					<div className="flex flex-1 items-center justify-center">
 						<Spinner />
 					</div>
-				) : live.length === 0 ? (
+				) : query.isError ? (
 					<Empty className="flex-1">
 						<EmptyHeader>
 							<EmptyMedia variant="icon">
-								<Icon icon={Add} />
+								<Icon icon={Warning} />
 							</EmptyMedia>
-							<EmptyTitle>{EMPTY_TITLE}</EmptyTitle>
-							<EmptyDescription>{EMPTY_BODY}</EmptyDescription>
+							<EmptyTitle>{ERROR_TITLE}</EmptyTitle>
+							<EmptyDescription>{ERROR_BODY}</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent>
-							<Button onClick={onNew}>
-								<Icon icon={Add} data-icon="inline-start" />
-								{NEW_FIELD}
+							<Button
+								variant="outline"
+								disabled={query.isFetching}
+								onClick={() => query.refetch()}
+							>
+								<Icon icon={Renew} data-icon="inline-start" />
+								{RETRY}
 							</Button>
 						</EmptyContent>
 					</Empty>
 				) : (
 					<>
-						<div className="flex items-center justify-between gap-3 px-5 pt-3.5 pb-2">
-							<span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-								{CUSTOM_GROUP}
-							</span>
-							<span className="text-muted-foreground text-xs">{DRAG_NOTE}</span>
-						</div>
+						{live.length === 0 ? (
+							<Empty className="flex-1">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<Icon icon={Add} />
+									</EmptyMedia>
+									<EmptyTitle>{EMPTY_TITLE}</EmptyTitle>
+									<EmptyDescription>{EMPTY_BODY}</EmptyDescription>
+								</EmptyHeader>
+								<EmptyContent>
+									<Button onClick={onNew}>
+										<Icon icon={Add} data-icon="inline-start" />
+										{NEW_FIELD}
+									</Button>
+								</EmptyContent>
+							</Empty>
+						) : (
+							<>
+								<div className="flex items-center justify-between gap-3 px-5 pt-3.5 pb-2">
+									<span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+										{CUSTOM_GROUP}
+									</span>
+									<span className="text-muted-foreground text-xs">
+										{DRAG_NOTE}
+									</span>
+								</div>
 
-						<SortableList
-							ids={live.map((field) => field.id)}
-							onReorder={(ids) => reorder.mutate({ entity, ids })}
-						>
-							{live.map((field) => (
-								<SortableItem
-									key={field.id}
-									id={field.id}
-									label={field.label}
-									className={ROW}
+								<SortableList
+									ids={live.map((field) => field.id)}
+									onReorder={(ids) => reorder.mutate({ entity, ids })}
 								>
-									<button
-										type="button"
-										onClick={() => onEdit(field.key)}
-										className="flex min-w-0 flex-1 flex-col gap-px text-left"
-									>
-										<span className="w-full truncate font-medium text-foreground text-xs">
-											{field.label}
-										</span>
-										<span className="w-full truncate text-muted-foreground text-xs">
-											{summaryOf(field)}
-										</span>
-									</button>
-
-									<Badge
-										variant="mono"
-										className="w-18 shrink-0 justify-center"
-									>
-										{field.typeLabel}
-									</Badge>
-
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button variant="ghost" size="icon-xs">
-												<Icon icon={OverflowMenuVertical} />
-												<span className="sr-only">More for {field.label}</span>
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end">
-											<DropdownMenuItem onSelect={() => onEdit(field.key)}>
-												Edit
-											</DropdownMenuItem>
-											<DropdownMenuSeparator />
-											<DropdownMenuItem
-												onSelect={() => archive.mutate({ id: field.id })}
+									{live.map((field) => (
+										<SortableItem
+											key={field.id}
+											id={field.id}
+											label={field.label}
+											className={ROW}
+										>
+											<button
+												type="button"
+												onClick={() => onEdit(field.key)}
+												className="flex min-w-0 flex-1 flex-col gap-px text-left"
 											>
-												Archive
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</SortableItem>
-							))}
-						</SortableList>
+												<span className="w-full truncate font-medium text-foreground text-xs">
+													{field.label}
+												</span>
+												<span className="w-full truncate text-muted-foreground text-xs">
+													{summaryOf(field)}
+												</span>
+											</button>
+
+											<Badge
+												variant="mono"
+												className="w-18 shrink-0 justify-center"
+											>
+												{field.typeLabel}
+											</Badge>
+
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<Button variant="ghost" size="icon-xs">
+														<Icon icon={OverflowMenuVertical} />
+														<span className="sr-only">
+															More for {field.label}
+														</span>
+													</Button>
+												</DropdownMenuTrigger>
+												<DropdownMenuContent align="end">
+													<DropdownMenuItem onSelect={() => onEdit(field.key)}>
+														Edit
+													</DropdownMenuItem>
+													<DropdownMenuSeparator />
+													<DropdownMenuItem
+														onSelect={() => archive.mutate({ id: field.id })}
+													>
+														Archive
+													</DropdownMenuItem>
+												</DropdownMenuContent>
+											</DropdownMenu>
+										</SortableItem>
+									))}
+								</SortableList>
+							</>
+						)}
 
 						{archived.length > 0 ? (
 							<DisclosureRow

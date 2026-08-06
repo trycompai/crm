@@ -3,6 +3,7 @@
 import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Star from "@carbon/icons-react/es/Star";
+import type { FieldValueJson } from "@crm/db/fields";
 import {
 	Accordion,
 	AccordionContent,
@@ -307,7 +308,7 @@ function ContactOverview({ contact }: { contact: Contact }) {
 		}),
 	);
 
-	const saveFields = (fields: Record<string, unknown>) =>
+	const saveFields = (fields: Record<string, FieldValueJson>) =>
 		update.mutate({ id: contact.id, data: { fields } });
 
 	const isSavingField = savingValue(update);

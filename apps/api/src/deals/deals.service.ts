@@ -270,10 +270,6 @@ export class DealsService {
 	}
 
 	async update(id: string, input: DealUpdateInput) {
-		if (input.fields) {
-			await this.fields.applyValues(this.db, "DEAL", id, input.fields);
-		}
-
 		const data: Prisma.DealUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
@@ -320,10 +316,16 @@ export class DealsService {
 		}
 
 		try {
-			return await this.db.deal.update({
-				where: { id },
-				data,
-				select: { id: true, name: true },
+			return await this.db.$transaction(async (tx) => {
+				if (input.fields) {
+					await this.fields.applyValues(tx, "DEAL", id, input.fields);
+				}
+
+				return tx.deal.update({
+					where: { id },
+					data,
+					select: { id: true, name: true },
+				});
 			});
 		} catch (error) {
 			throw this.translate(error, id);

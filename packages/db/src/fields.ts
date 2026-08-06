@@ -71,7 +71,30 @@ export function serializeField(
 	};
 }
 
+export function serializeFieldFor(
+	definition: FieldDefinitionWithOptions,
+	value: FieldValueJson,
+): SerializedField {
+	const field = serializeField(definition);
+
+	if (definition.type !== "SELECT" || typeof value !== "string") return field;
+	if (field.options.some((option) => option.id === value)) return field;
+
+	const retired = definition.options.find((option) => option.id === value);
+	if (!retired) return field;
+
+	return {
+		...field,
+		options: [
+			...field.options,
+			{ id: retired.id, label: retired.label, position: retired.position },
+		].sort((left, right) => left.position - right.position),
+	};
+}
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE_TIME =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?$/;
 
 export function coerceValue(
 	definition: FieldDefinitionWithOptions,
@@ -121,14 +144,21 @@ export function coerceValue(
 
 		case "DATE": {
 			const raw = String(input).trim();
-			const parsed = ISO_DATE.test(raw)
-				? new Date(`${raw}T00:00:00.000Z`)
-				: new Date(raw);
+			const dateOnly = ISO_DATE.test(raw);
+
+			if (!dateOnly && !ISO_DATE_TIME.test(raw)) {
+				throw new FieldValueError(
+					definition.key,
+					`${definition.label} takes a date like 2027-03-31.`,
+				);
+			}
+
+			const parsed = new Date(dateOnly ? `${raw}T00:00:00.000Z` : raw);
 
 			if (Number.isNaN(parsed.getTime())) {
 				throw new FieldValueError(
 					definition.key,
-					`${definition.label} takes a date.`,
+					`${definition.label} takes a date like 2027-03-31.`,
 				);
 			}
 
@@ -194,10 +224,11 @@ export function attachValues(
 	return definitions
 		.filter((definition) => definition.archivedAt === null)
 		.sort((left, right) => left.position - right.position)
-		.map((definition) => ({
-			...serializeField(definition),
-			value: readValue(definition, byField.get(definition.id)),
-		}));
+		.map((definition) => {
+			const value = readValue(definition, byField.get(definition.id));
+
+			return { ...serializeFieldFor(definition, value), value };
+		});
 }
 
 export type FieldWriter = {
@@ -208,6 +239,12 @@ export type FieldWriter = {
 			create: Record<string, unknown>;
 			update: Record<string, unknown>;
 		}): Promise<unknown>;
+	};
+	user: {
+		findMany(args: {
+			where: { id: { in: string[] } };
+			select: { id: true };
+		}): Promise<{ id: string }[]>;
 	};
 };
 
@@ -225,7 +262,7 @@ export async function writeValues(
 			.map((definition) => [definition.key, definition]),
 	);
 
-	for (const [key, input] of Object.entries(values)) {
+	const writes = Object.entries(values).map(([key, input]) => {
 		const definition = byKey.get(key);
 
 		if (!definition) {
@@ -233,8 +270,13 @@ export async function writeValues(
 		}
 
 		const data = coerceValue(definition, input);
-		const stored = data[columnFor(definition.type)];
 
+		return { definition, data, stored: data[columnFor(definition.type)] };
+	});
+
+	await assertUsersExist(tx, writes);
+
+	for (const { definition, data, stored } of writes) {
 		if (stored === null || stored === undefined) {
 			await tx.fieldValue.deleteMany({
 				where: { fieldId: definition.id, [column]: recordId },
@@ -249,5 +291,38 @@ export async function writeValues(
 			create: { fieldId: definition.id, [column]: recordId, ...data },
 			update: data,
 		});
+	}
+}
+
+type PendingWrite = {
+	definition: FieldDefinitionWithOptions;
+	stored: unknown;
+};
+
+async function assertUsersExist(
+	tx: FieldWriter,
+	writes: PendingWrite[],
+): Promise<void> {
+	const wanted = writes.filter(
+		(write): write is PendingWrite & { stored: string } =>
+			write.definition.type === "USER" && typeof write.stored === "string",
+	);
+
+	if (wanted.length === 0) return;
+
+	const known = await tx.user.findMany({
+		where: { id: { in: [...new Set(wanted.map((write) => write.stored))] } },
+		select: { id: true },
+	});
+
+	const found = new Set(known.map((row) => row.id));
+
+	for (const write of wanted) {
+		if (!found.has(write.stored)) {
+			throw new FieldValueError(
+				write.definition.key,
+				`${write.definition.label} takes someone who works here.`,
+			);
+		}
 	}
 }

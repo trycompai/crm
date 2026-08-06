@@ -1,4 +1,4 @@
-import type { Db } from "@crm/db";
+import type { Db, FieldEntity } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -70,13 +70,19 @@ export class AgentTriggerService {
 		});
 	}
 
-	async fieldBackfill(key: string, reason: string): Promise<void> {
+	async fieldBackfill(
+		entity: FieldEntity,
+		key: string,
+		reason: string,
+	): Promise<void> {
+		const subject = `${entity.toLowerCase()}.${key}`;
+
 		try {
 			const pending = await this.db.agentTask.findFirst({
 				where: {
 					kind: "field-backfill",
 					finishedAt: null,
-					reason: { startsWith: `${key}: ` },
+					reason: { startsWith: `${subject}: ` },
 				},
 				select: { id: true },
 			});
@@ -86,7 +92,7 @@ export class AgentTriggerService {
 			await this.db.agentTask.create({
 				data: {
 					kind: "field-backfill",
-					reason: `${key}: ${reason}`,
+					reason: `${subject}: ${reason}`,
 					priority: PRIORITY.fieldBackfill,
 					budget: 8,
 					dueAt: new Date(),
@@ -96,13 +102,19 @@ export class AgentTriggerService {
 			this.logger.log({
 				message: "Agent task queued",
 				kind: "field-backfill",
+				entity,
 				key,
 			});
 
 			this.poke();
 		} catch (error) {
 			this.logger.error(
-				{ message: "Could not queue agent task", kind: "field-backfill", key },
+				{
+					message: "Could not queue agent task",
+					kind: "field-backfill",
+					entity,
+					key,
+				},
 				error instanceof Error ? error.stack : String(error),
 			);
 		}

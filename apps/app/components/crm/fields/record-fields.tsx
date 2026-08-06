@@ -1,6 +1,7 @@
 "use client";
 
 import Settings from "@carbon/icons-react/es/Settings";
+import type { FieldValueJson } from "@crm/db/fields";
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import { Icon } from "@crm/ui/components/icon";
@@ -9,6 +10,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@crm/ui/components/tooltip";
+import { useQuery } from "@tanstack/react-query";
 import {
 	InlineDateField,
 	InlineField,
@@ -20,8 +22,7 @@ import {
 	useFieldsSheet,
 } from "@/components/crm/record-sheet/record-stack";
 import { DetailSheetProperty } from "@/components/detail-sheet";
-
-type RecordFieldValue = string | number | boolean | null;
+import { useTRPC } from "@/lib/trpc/client";
 
 type RecordFieldOption = { id: string; label: string };
 
@@ -32,10 +33,14 @@ export type RecordFieldEntry = {
 	type: string;
 	showOnSheet: boolean;
 	options: RecordFieldOption[];
-	value: RecordFieldValue;
+	value: FieldValueJson;
 };
 
 const NONE = "__none__";
+
+const UNASSIGNED = "Unassigned";
+
+const FORMER_MEMBER = "Former member";
 
 export function FieldsCog({ kind }: { kind: RecordKind }) {
 	const { open } = useFieldsSheet();
@@ -60,14 +65,34 @@ export function RecordFields({
 }: {
 	fields: RecordFieldEntry[];
 	saving: (key: string) => boolean;
-	onSave: (values: Record<string, unknown>) => void;
+	onSave: (values: Record<string, FieldValueJson>) => void;
 }) {
+	const trpc = useTRPC();
+	const users = useQuery(trpc.users.list.queryOptions());
+
+	const userOptionsFor = (value: string) => {
+		const options = [
+			{ value: NONE, label: UNASSIGNED },
+			...(users.data ?? []).map((user) => ({
+				value: user.id,
+				label: user.name,
+			})),
+		];
+
+		if (users.data && !options.some((option) => option.value === value)) {
+			options.push({ value, label: FORMER_MEMBER });
+		}
+
+		return options;
+	};
+
 	return (
 		<>
 			{fields
 				.filter((field) => field.showOnSheet)
 				.map((field) => {
-					const save = (value: unknown) => onSave({ [field.key]: value });
+					const save = (value: FieldValueJson) =>
+						onSave({ [field.key]: value });
 					const busy = saving(field.key);
 
 					if (field.type === "CHECKBOX") {
@@ -120,6 +145,23 @@ export function RecordFields({
 										label: option.label,
 									})),
 								]}
+								saving={busy}
+								onSave={(next) => save(next === NONE ? null : next)}
+							/>
+						);
+					}
+
+					if (field.type === "USER") {
+						const current = field.value === null ? NONE : String(field.value);
+
+						return (
+							<InlineSelectField
+								key={field.id}
+								label={field.label}
+								value={current}
+								options={userOptionsFor(current)}
+								placeholder={UNASSIGNED}
+								saving={busy}
 								onSave={(next) => save(next === NONE ? null : next)}
 							/>
 						);

@@ -40,6 +40,10 @@ const VERBS: Record<string, string> = {
 	schedule_recheck: "Decided when to look again",
 	record_job_change: "Raised a job change",
 	list_outstanding_work: "Looked for outstanding work",
+	list_fields: "Read what this workspace tracks",
+	set_field_value: "Filled in a custom field",
+	manage_fields: "Changed what the CRM tracks",
+	archive_field: "Asked to retire a field",
 
 	load_skill: "Read its instructions for this",
 	web_search: "Searched the web",

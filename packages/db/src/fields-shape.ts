@@ -83,6 +83,7 @@ const RESERVED_KEYS = new Set([
 	"fields",
 	"owner",
 	"ownerid",
+	"new",
 ]);
 
 export function fieldKeyFromLabel(label: string): string {

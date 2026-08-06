@@ -28,6 +28,11 @@ export const EMPTY_TITLE = "No custom fields yet";
 export const EMPTY_BODY =
 	"Create dynamic fields that your agents can research and pre-fill.";
 
+export const ERROR_TITLE = "We could not load your fields";
+export const ERROR_BODY =
+	"Your fields are still there. Try again in a moment, before you create anything new.";
+export const RETRY = "Try again";
+
 export const LABEL_LABEL = "Label";
 export const KEY_LABEL = "Key";
 export const KEY_HELP =
@@ -41,6 +46,11 @@ export const BRIEF_HELP =
 export const TYPE_LABEL = "Type";
 export const OPTIONS_LABEL = "Options";
 export const ADD_OPTION = "Add option";
+export const ALL_FILLED = "Nothing left to fill";
+
+export function optionLabel(index: number): string {
+	return `Option ${index + 1}`;
+}
 export const ADD_FIELD = "Create field";
 export const CANCEL = "Cancel";
 export const SAVE = "Save changes";

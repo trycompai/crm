@@ -2,6 +2,7 @@
 
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { CURRENCIES, normalizeCurrency } from "@crm/db/currency";
+import type { FieldValueJson } from "@crm/db/fields";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	EntityLogo,
@@ -232,7 +233,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 		}),
 	);
 
-	const saveFields = (fields: Record<string, unknown>) =>
+	const saveFields = (fields: Record<string, FieldValueJson>) =>
 		update.mutate({ id: deal.id, data: { fields } });
 
 	const isSavingField = savingValue(update);
