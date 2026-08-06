@@ -1074,7 +1074,6 @@ function focusEditorAtOffset(
 	offset: number,
 ): void {
 	if (!root) return;
-	root.focus();
 	const textParts = Array.from(
 		root.querySelectorAll<HTMLElement>("[data-composer-text]"),
 	);
@@ -1099,7 +1098,6 @@ function focusEditorAfterContext(
 	).find((item) => item.dataset.composerTokenKey === key);
 	const text = token?.nextElementSibling;
 	if (!(text instanceof HTMLElement) || !text.dataset.composerText) return null;
-	root.focus();
 	setComposerCaret(text, 0);
 	return Number(text.dataset.composerTextStart ?? 0);
 }
