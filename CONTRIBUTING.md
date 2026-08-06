@@ -51,42 +51,98 @@ A few things that trip people up:
   to `apps/api/src/config/env.validation.ts`. A variable that only exists in someone's shell is a
   variable that breaks the next person's clone.
 
-## Releases
+## Shipping a change
 
-Releases are cut by [release-please](https://github.com/googleapis/release-please), so **your commit
-subject is the release note**. Write it for somebody reading the changelog six months from now, not
-for the diff.
+Push a branch and the rest is mechanical. There are exactly two things you click.
 
-Subjects follow [Conventional Commits](https://www.conventionalcommits.org/), which the history
-already does — `feat(api):`, `fix(db):`, `refactor(agent):`. The type decides both the version bump
-and the heading it appears under:
+```
+push a branch ──▶ draft PR opens by itself
+                        │
+                  you title it, mark it ready, CI runs
+                        │
+                  ◀── click 1: squash into main
+                        │
+                  release PR opens or updates itself
+                        │
+                  ◀── click 2: merge it
+                        │
+        tag + GitHub Release + CHANGELOG.md, and `release` moves up
+```
 
-| Subject | Bump | Appears under |
+**Pushing any branch that isn't `main` or `release` opens a draft pull request into `main`.** You do
+not create it, and re-pushing does not create a second one. If you close it on purpose it stays
+closed. The title is guessed from your first commit subject, which is usually wrong — fixing it is
+the one thing the automation cannot do for you.
+
+**The pull request title is the release note.** The repo squashes, so the title becomes the commit
+subject on `main`, and that subject is the line somebody reads in the changelog six months from now.
+Write it for them, not for the diff. It has to be a
+[Conventional Commit](https://www.conventionalcommits.org/) — `feat(api): …`, `fix(db): …` — and the
+`PR title` check enforces that the moment the PR leaves draft. Drafts are deliberately exempt, so an
+auto-opened PR does not sit there red while you are still working.
+
+The type decides both the version bump and the heading it appears under:
+
+| Title | Bump | Appears under |
 | --- | --- | --- |
 | `feat(app): …` | minor | Features |
 | `fix(db): …` | patch | Fixes |
 | `perf:`, `refactor:`, `docs:`, `revert:` | patch | their own heading |
+| `feat(db)!: …` | major | Features, flagged as breaking |
 | `chore:`, `ci:`, `test:`, `build:`, `style:` | none | nothing — deliberately invisible |
 
-Nothing is released by the merge itself. Merging to `main` opens or updates a single
-`chore(release): 0.2.0` pull request that accumulates the changelog and bumps the version; **merging
-that PR** is what tags `v0.2.0` and publishes the GitHub Release. So the notes are reviewable before
-they are public, and a stack of merges is one release rather than five.
+The `!` is how you declare a break. A `BREAKING CHANGE:` footer in the body will not work here,
+because the squashed commit body is left empty on purpose — the title is the whole record.
 
-Two consequences worth knowing:
+## Releases
+
+Nothing is released by merging to `main`. Merging opens or updates a single
+`chore(release): 0.2.0` pull request from [release-please](https://github.com/googleapis/release-please)
+that accumulates the changelog and bumps the version; **merging that PR** is what tags `v0.2.0`,
+publishes the GitHub Release, and writes `CHANGELOG.md`. So the notes are reviewable before they are
+public, and a stack of merges is one release rather than five.
+
+Once the tag exists, the `release` branch is fast-forwarded onto it automatically. `release` is
+therefore never anything but the last released commit, which is what makes it safe to point a
+production deploy at. There is no second pull request to merge — the release PR was the gate.
+
+Three consequences worth knowing:
 
 - **A release PR with nothing in it is not a bug.** A run of `chore:` and `test:` commits bumps
   nothing, so no PR appears. That is the type doing its job.
 - **The release PR does not run CI.** A PR opened by `GITHUB_TOKEN` cannot trigger workflows — that
   is GitHub's own loop guard, not something to work around. It is safe because the PR only ever
   touches `CHANGELOG.md`, the root `version`, and the release manifest, and because CI runs again on
-  `main` after it lands. Setting a `RELEASE_PLEASE_TOKEN` secret (a PAT or a GitHub App token) makes
-  the PR run CI like any other; the workflow already prefers it and falls back to `GITHUB_TOKEN`, so
-  it is an upgrade rather than a requirement.
+  `main` after it lands. The same guard is why an auto-opened draft PR shows no checks until you
+  push to it or mark it ready.
+- **An `AUTOMATION_TOKEN` secret removes that caveat.** A PAT or GitHub App token makes both the
+  release PR and the auto-opened PR trigger CI like any other. Every workflow already prefers it and
+  falls back to `GITHUB_TOKEN`, so it is an upgrade rather than a requirement.
 
 `main` is expected to be green when a tag is cut, and the thing that guarantees that is **branch
-protection requiring the `check-types, lint, test` check** — not the release workflow, which cannot
-wait on a run in another workflow.
+protection requiring the `check-types, lint, test` and `conventional commit` checks** — not the
+release workflow, which cannot wait on a run in another workflow.
+
+### When it jams
+
+The Release workflow reports success even when it has done nothing, so the symptom of a jam is
+silence: merges land, no release PR appears. Read the log rather than the status. Two failures have
+actually happened here:
+
+- **`There are untagged, merged release PRs outstanding - aborting`.** A release PR was merged but
+  never tagged, and release-please refuses to move past it — every later run aborts on the same PR,
+  which is how this repo sat from `v1.0.0` in August with no tags at all. Fix it by hand: create the
+  tag and GitHub Release at the release PR's merge commit, then swap that PR's
+  `autorelease: pending` label for `autorelease: tagged`. The next run picks up where it left off.
+  The usual cause is a release PR whose title does not match `pull-request-title-pattern`, because
+  the version is parsed back out of that title — so do not edit the pattern with a release PR open.
+- **`commit could not be parsed`, in bulk.** Non-conventional subjects reached `main`. They are not
+  errors, they are silently missing changelog lines. The squash-only merge policy and the
+  `conventional commit` check exist to stop this; if you see it again, one of the two has been
+  turned off.
+
+`workflow_dispatch` is enabled on the workflow, so you can re-run it against `main` from the Actions
+tab once you have fixed the cause, instead of pushing an empty commit.
 
 ## House style
 

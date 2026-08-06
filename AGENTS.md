@@ -14,6 +14,7 @@ context until you read them, and the rules in them are not optional.
 | The record sheet's Agent tab | `docs/agent-panel.md` |
 | Running it locally, Google Cloud, DB commands, secrets | `docs/setup.md` |
 | Anything that sends a telemetry event, or a new property on one | `docs/telemetry.md` |
+| `.github/workflows`, versions, changelog, how a change reaches `release` | `CONTRIBUTING.md` |
 
 Also check `.agents/skills/` for a relevant skill before starting — better-auth,
 prisma, nestjs-trpc, eve, shadcn, nuqs and others have one. Tell the user which

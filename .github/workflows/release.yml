@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -14,16 +15,41 @@ permissions:
 
 jobs:
   release-please:
+    name: Release pull request, tag and notes
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       released: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+      url: ${{ steps.release.outputs.html_url }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.AUTOMATION_TOKEN || secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  promote:
+    name: Fast-forward release
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Move release to ${{ needs.release-please.outputs.tag }}
+        env:
+          SHA: ${{ needs.release-please.outputs.sha }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+          URL: ${{ needs.release-please.outputs.url }}
+        run: |
+          set -euo pipefail
+          git push origin "$SHA:refs/heads/release"
+          echo "\`release\` now points at [$TAG]($URL)." >> "$GITHUB_STEP_SUMMARY"
