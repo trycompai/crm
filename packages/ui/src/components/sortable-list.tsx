@@ -22,27 +22,10 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Children, type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
-
-function inOrder(
-	children: ReactNode,
-	ids: string[],
-	order: string[],
-): ReactNode {
-	const slots = Children.toArray(children);
-	if (slots.length !== ids.length) return children;
-
-	const arranged: ReactNode[] = [];
-	for (const id of order) {
-		const at = ids.indexOf(id);
-		if (at === -1) return children;
-		arranged.push(slots[at]);
-	}
-	return arranged;
-}
 
 export function SortableList({
 	ids,
@@ -53,17 +36,6 @@ export function SortableList({
 	onReorder: (ids: string[]) => void;
 	children: ReactNode;
 }) {
-	const propKey = ids.join(" ");
-	const [syncedKey, setSyncedKey] = useState(propKey);
-	const [dragged, setDragged] = useState(ids);
-
-	let order = dragged;
-	if (syncedKey !== propKey) {
-		setSyncedKey(propKey);
-		setDragged(ids);
-		order = ids;
-	}
-
 	const sensors = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
 		useSensor(KeyboardSensor, {
@@ -75,13 +47,11 @@ export function SortableList({
 		const { active, over } = event;
 		if (!over || active.id === over.id) return;
 
-		const from = order.indexOf(String(active.id));
-		const to = order.indexOf(String(over.id));
+		const from = ids.indexOf(String(active.id));
+		const to = ids.indexOf(String(over.id));
 		if (from === -1 || to === -1) return;
 
-		const next = arrayMove(order, from, to);
-		setDragged(next);
-		onReorder(next);
+		onReorder(arrayMove(ids, from, to));
 	};
 
 	return (
@@ -91,8 +61,8 @@ export function SortableList({
 			modifiers={[restrictToVerticalAxis, restrictToParentElement]}
 			onDragEnd={onDragEnd}
 		>
-			<SortableContext items={order} strategy={verticalListSortingStrategy}>
-				{inOrder(children, ids, order)}
+			<SortableContext items={ids} strategy={verticalListSortingStrategy}>
+				{children}
 			</SortableContext>
 		</DndContext>
 	);

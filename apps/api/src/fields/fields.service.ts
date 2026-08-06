@@ -332,8 +332,9 @@ export class FieldsService {
 
 	async definitionsFor(
 		entity: FieldEntity,
+		client: Prisma.TransactionClient = this.db,
 	): Promise<FieldDefinitionWithOptions[]> {
-		return this.db.fieldDefinition.findMany({
+		return client.fieldDefinition.findMany({
 			where: { entity, archivedAt: null },
 			include: WITH_OPTIONS,
 			orderBy: { position: "asc" },
@@ -400,14 +401,14 @@ export class FieldsService {
 	}
 
 	async applyValues(
-		tx: Db | Prisma.TransactionClient,
+		tx: Prisma.TransactionClient,
 		entity: FieldEntity,
 		recordId: string,
 		values: Record<string, unknown>,
 	): Promise<void> {
 		if (Object.keys(values).length === 0) return;
 
-		const definitions = await this.definitionsFor(entity);
+		const definitions = await this.definitionsFor(entity, tx);
 
 		try {
 			await writeValues(tx, entity, recordId, definitions, values);

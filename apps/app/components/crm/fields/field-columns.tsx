@@ -14,12 +14,18 @@ type WithFields = { fields: Record<string, string | number | boolean | null> };
 function render(
 	type: string,
 	value: string | number | boolean | null,
+	options: { id: string; label: string }[],
 	users: Map<string, Owner>,
 ) {
 	if (value === null || value === "") return <EmptyCellValue />;
 
 	if (type === "CHECKBOX") return value === true ? "Yes" : "No";
 	if (type === "DATE") return formatDay(String(value));
+	if (type === "SELECT") {
+		return (
+			options.find((option) => option.id === value)?.label ?? <EmptyCellValue />
+		);
+	}
 	if (type === "USER") {
 		const user = users.get(String(value));
 		return user ? <OwnerCell owner={user} /> : <EmptyCellValue />;
@@ -60,7 +66,12 @@ export function useFieldColumns<Row extends WithFields>(
 				hideBelow: "lg" as const,
 				cell: (row: Row) => (
 					<span className="truncate">
-						{render(field.type, row.fields[field.key] ?? null, byId)}
+						{render(
+							field.type,
+							row.fields[field.key] ?? null,
+							field.options,
+							byId,
+						)}
 					</span>
 				),
 			}));

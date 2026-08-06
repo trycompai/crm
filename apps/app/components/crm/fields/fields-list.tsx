@@ -30,7 +30,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { SortableItem, SortableList } from "@crm/ui/components/sortable-list";
 import { Spinner } from "@crm/ui/components/spinner";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -79,6 +79,20 @@ function summaryOf(field: Field): string {
 	return parts.join(" · ");
 }
 
+function reordered(fields: Field[], ids: string[]): Field[] {
+	const live = fields.filter((field) => !field.archived);
+	const byId = new Map(live.map((field) => [field.id, field]));
+	const queue = ids
+		.map((id) => byId.get(id))
+		.filter((field): field is Field => field !== undefined);
+
+	if (queue.length !== live.length) return fields;
+
+	return fields.map((field) =>
+		field.archived ? field : (queue.shift() ?? field),
+	);
+}
+
 function DisclosureRow({
 	title,
 	note,
@@ -121,6 +135,9 @@ export function FieldsList({
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const queryClient = useQueryClient();
+
+	const listKey = trpc.fields.list.queryKey({ entity, includeArchived: true });
 
 	const query = useQuery(
 		trpc.fields.list.queryOptions({ entity, includeArchived: true }),
@@ -128,11 +145,21 @@ export function FieldsList({
 
 	const reorder = useMutation(
 		trpc.fields.reorder.mutationOptions({
-			onSuccess: () => cache.fields(kindOf(entity)),
-			onError: (error) => {
-				toast.error(error.message);
-				return cache.fields(kindOf(entity));
+			onMutate: async ({ ids }) => {
+				await queryClient.cancelQueries({ queryKey: listKey });
+				const previous = queryClient.getQueryData(listKey);
+				if (previous) {
+					queryClient.setQueryData(listKey, reordered(previous, ids));
+				}
+				return { previous };
 			},
+			onError: (error, _input, context) => {
+				if (context?.previous) {
+					queryClient.setQueryData(listKey, context.previous);
+				}
+				toast.error(error.message);
+			},
+			onSettled: () => cache.fields(kindOf(entity)),
 		}),
 	);
 

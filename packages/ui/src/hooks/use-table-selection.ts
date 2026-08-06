@@ -17,7 +17,7 @@ export type TableSelection = {
 
 export function useTableSelection(rowIds: string[]): TableSelection {
 	const [picked, setPicked] = useState<ReadonlySet<string>>(EMPTY);
-	const pageKey = rowIds.join(" ");
+	const pageKey = [...rowIds].sort().join(" ");
 	const [syncedKey, setSyncedKey] = useState(pageKey);
 
 	if (syncedKey !== pageKey) {
