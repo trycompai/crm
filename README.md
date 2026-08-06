@@ -14,8 +14,8 @@
 <h1 align="center">CRM</h1>
 
 <p align="center">
-  <strong>An open-source, agentic-first CRM.</strong><br>
-  A durable research agent is the product. The database is just where it writes things down.
+  <strong>Comp AI CRM is an open source, CRM designed for AI agents.</strong><br>
+  Agentic-first CRM.
 </p>
 
 <p align="center">

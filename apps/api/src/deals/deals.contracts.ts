@@ -78,6 +78,37 @@ export const setStageInput = z.object({
 
 export type SetStageInput = z.infer<typeof setStageInput>;
 
+const dealContactRole = z
+	.string()
+	.trim()
+	.max(80, "That role is too long.")
+	.nullable();
+
+export const dealContactsInput = z.object({ dealId: z.string() });
+
+export const dealAttachContactInput = z.object({
+	dealId: z.string(),
+	contactId: z.string().min(1, "Choose somebody to bring onto the deal."),
+	role: dealContactRole.optional(),
+});
+
+export type DealAttachContactInput = z.infer<typeof dealAttachContactInput>;
+
+export const dealDetachContactInput = z.object({
+	dealId: z.string(),
+	contactId: z.string(),
+});
+
+export type DealDetachContactInput = z.infer<typeof dealDetachContactInput>;
+
+export const dealContactRoleInput = z.object({
+	dealId: z.string(),
+	contactId: z.string(),
+	role: dealContactRole,
+});
+
+export type DealContactRoleInput = z.infer<typeof dealContactRoleInput>;
+
 export const dealBulkInput = bulkIdsInput;
 
 export const dealBulkOwnerInput = bulkIdsInput.extend({

@@ -157,6 +157,21 @@ self-hoster's admin cannot redeploy.
 - **`isAutomatedAddress` is a separate list about the local part** (`sales@`,
   `noreply@`), which is why `support@acme.com` never becomes a lead.
 
+## People on a deal
+
+`DealContact` is the join, and `deals.attachContact` / `detachContact` /
+`setContactRole` are the only ways to write it. `deals.contactOptions` is what the
+picker reads.
+
+- **A contact on a deal works at that deal's company**, enforced in the service and
+  not merely by the picker — the same rule as `companies.setPrimaryContact`.
+- **Attaching is an upsert and re-attaching keeps the role already there**, so a
+  double click cannot blank what somebody typed.
+- **Detaching removes the row, never the contact.** They stay in the CRM, on the
+  company, with their history.
+- **`role` is blanked to null, never stored as `""`** — `blankToNull`, as everywhere
+  else.
+
 ## Deleting a record
 
 `contacts.delete`, `companies.delete`, `deals.delete`. No soft delete, no archive.
@@ -189,7 +204,7 @@ self-hoster's admin cannot redeploy.
 
 A deal is sold in one currency and reported in another, and **only `baseAmount` may
 ever be summed**. The rules — `baseCurrency`, `countedWhere`/`pendingWhere`, frozen
-rates, the ten supported currencies, the keyless feed, and why the fetcher is the one
+rates, the supported currencies, the keyless feed, and why the fetcher is the one
 documented exception to *no intelligence in the API* — are in **`docs/currency.md`**.
 Read it before touching any amount, total, chart or rate.
 

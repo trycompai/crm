@@ -62,6 +62,7 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import { QuickAddContact, QuickAddDeal } from "./quick-add";
 import { RecordActions } from "./record-actions";
 import {
+	AddRow,
 	DealAmount,
 	DomainLink,
 	MetaLine,
@@ -132,32 +133,6 @@ function nextClose(deals: CompanyDeal[]): string | null {
 		.filter((date): date is string => date !== null)
 		.sort();
 	return dates[0] ?? null;
-}
-
-function AddRow({
-	label,
-	columns,
-	onClick,
-}: {
-	label: string;
-	columns: number;
-	onClick: () => void;
-}) {
-	return (
-		<SimpleTableRow>
-			<TableCell colSpan={columns} className="p-0">
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={onClick}
-					className="h-9 w-full justify-start px-5 font-normal text-muted-foreground"
-				>
-					<Icon icon={Add} data-icon="inline-start" />
-					{label}
-				</Button>
-			</TableCell>
-		</SimpleTableRow>
-	);
 }
 
 export function CompanySheet({ companyId }: { companyId: string }) {
