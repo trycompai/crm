@@ -7,6 +7,12 @@ import {
 } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
 import {
+	CLOSED_DEAL_STAGES,
+	isClosedStage,
+	LOSING_DEAL_STAGES,
+	OPEN_DEAL_STAGES,
+} from "@crm/db/deal-stage";
+import {
 	BadRequestException,
 	Injectable,
 	Logger,
@@ -34,12 +40,6 @@ import {
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
-import {
-	CLOSED_DEAL_STAGES,
-	isClosedStage,
-	LOSING_DEAL_STAGES,
-	OPEN_DEAL_STAGES,
-} from "./deal-stage";
 import type {
 	ClosingWindow,
 	DealAttachContactInput,

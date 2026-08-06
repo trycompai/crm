@@ -156,6 +156,53 @@ describe("builder persistence", () => {
 		});
 	});
 
+	it("assigns consecutive versions to distinct concurrent drafts", async () => {
+		const conversation = await db.agentConversation.create({
+			data: { kind: "BUILDER", userId },
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+		const base = {
+			description: "Prepare a distinct CRM run summary.",
+			trigger: {
+				type: "MANUAL" as const,
+				name: "Manual",
+				summary: "Run when a rep requests it.",
+			},
+			recordScope: "WORKSPACE" as const,
+			resources: [],
+			actions: [
+				{
+					type: "run.summary" as const,
+					provider: "crm" as const,
+					summary: "Write a run summary.",
+				},
+			],
+			access: ["Read workspace CRM records"],
+		};
+		const saves = await Promise.all(
+			Array.from({ length: 4 }, (_, index) =>
+				saveBuilderDraft(conversation.id, userId, {
+					...base,
+					name: `Concurrent draft ${index + 1}`,
+					instructions: `When manually triggered, prepare distinct CRM summary ${index + 1} without changing external systems.`,
+				}),
+			),
+		);
+		const saved = saves.flatMap((save) => (save.saved ? [save] : []));
+
+		expect(saved).toHaveLength(4);
+		expect(new Set(saved.map((save) => save.agentId)).size).toBe(1);
+		expect(saved.map((save) => save.versionNumber).sort()).toEqual([
+			1, 2, 3, 4,
+		]);
+		expect(
+			await db.agentVersion.count({
+				where: { agentId: saved[0]?.agentId },
+			}),
+		).toBe(4);
+	});
+
 	it("fails closed on unsupported integrations and ambiguous record scope", async () => {
 		const conversation = await db.agentConversation.create({
 			data: { kind: "BUILDER", userId },

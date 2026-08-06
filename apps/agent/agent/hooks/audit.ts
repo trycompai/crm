@@ -58,7 +58,7 @@ async function persistBuilderLifecycle(
 	const conversationId = attribute(ctx, "conversationId");
 	if (!conversationId) return;
 
-	if (event.type === "session.started") {
+	if (event.type === "session.started" && isRootSession(ctx)) {
 		await tx.agentConversation.updateMany({
 			where: { id: conversationId, kind: "BUILDER" },
 			data: { sessionId, continuationToken: null },
@@ -88,6 +88,13 @@ async function persistRunEvent(
 	if (!runId) return;
 
 	const run = await lockAgentRun(tx, runId);
+	if (
+		run.status === "SUCCEEDED" ||
+		run.status === "FAILED" ||
+		run.status === "CANCELLED"
+	) {
+		return;
+	}
 	const existing = await tx.agentRunEvent.findUnique({
 		where: { id: eventId },
 		select: { id: true },
@@ -97,6 +104,7 @@ async function persistRunEvent(
 	const sequence = run.nextEventSequence + 1;
 	const mayStart =
 		type === "session.started" &&
+		isRootSession(ctx) &&
 		(run.status === "QUEUED" || run.status === "RUNNING");
 	await tx.agentRun.update({
 		where: { id: run.id },
@@ -158,6 +166,10 @@ async function persistRunEvent(
 			});
 		}
 	}
+}
+
+function isRootSession(ctx: Parameters<typeof purposeOf>[0]): boolean {
+	return !("parent" in ctx.session) || !ctx.session.parent;
 }
 
 function recordOf(value: unknown): Record<string, unknown> {

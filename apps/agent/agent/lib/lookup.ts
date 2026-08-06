@@ -1,14 +1,6 @@
 import { DealStage, db } from "@crm/db";
+import { LOSING_DEAL_STAGES, OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import { domainOf, normalise } from "./names";
-
-const OPEN_DEAL_STAGES = [
-	DealStage.DEMO_BOOKED,
-	DealStage.QUALIFIED_TO_BUY,
-	DealStage.DECISION_MAKER_BOUGHT_IN,
-	DealStage.CONTRACT_SENT,
-];
-
-const LOST_DEAL_STAGES = [DealStage.CLOSED_LOST, DealStage.UNQUALIFIED_TO_BUY];
 
 export type RecordKind = "contact" | "company" | "deal";
 
@@ -76,11 +68,11 @@ export async function listDeals(options: DealListOptions = {}) {
 				);
 	const stages =
 		status === "open"
-			? OPEN_DEAL_STAGES
+			? [...OPEN_DEAL_STAGES]
 			: status === "won"
 				? [DealStage.CLOSED_WON]
 				: status === "lost"
-					? LOST_DEAL_STAGES
+					? [...LOSING_DEAL_STAGES]
 					: null;
 
 	const rows = await db.deal.findMany({

@@ -500,7 +500,7 @@ was empty. Nothing was broken and nothing reported a problem, because nothing
 ran.
 
 **The poke is what makes dev behave like production now**, which is most of why
-it was widened to both lanes — see [starting now](#starting-now-instead-of-on-the-minute).
+it was widened to both lanes — see [dispatch on demand](#dispatch-on-demand).
 A row written by the API is dispatched immediately whatever the clock is doing,
 so the schedule is a backstop rather than the only door.
 

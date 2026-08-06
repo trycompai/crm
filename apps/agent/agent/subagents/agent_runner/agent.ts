@@ -17,9 +17,18 @@ export default defineAgent({
 
 				const run = await db.agentRun.findUnique({
 					where: { id: runId },
-					select: { version: { select: { modelId: true } } },
+					select: {
+						version: {
+							select: { modelId: true, modelContextWindowTokens: true },
+						},
+					},
 				});
-				return run?.version.modelId ?? null;
+				return run
+					? {
+							model: run.version.modelId,
+							modelContextWindowTokens: run.version.modelContextWindowTokens,
+						}
+					: null;
 			},
 		},
 	}),

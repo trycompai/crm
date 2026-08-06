@@ -5,6 +5,7 @@ import {
 	Prisma as PrismaNamespace,
 	type RecordSource,
 } from "@crm/db";
+import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import {
 	BadRequestException,
 	ConflictException,
@@ -22,7 +23,6 @@ import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
 import { blankToNull, toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
-import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
 import { FieldsService } from "../fields/fields.service";
 import {
 	countsByKey,

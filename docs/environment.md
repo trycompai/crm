@@ -348,8 +348,3 @@ way.
 
 Generate your own secret. Never reuse one from an example file, a tutorial, or
 another environment: `openssl rand -base64 32`.
-
-- **Cache TTL** — `DEFAULT_TTL_MS` (60s) in `cache.module.ts`; `CACHE_TTL_MS` overrides.
-- **Redis** — optional; without `REDIS_URL` the cache is per-instance in-memory, which
-  is wrong for multi-instance.
-- **Sign-in method** — Google is in code; an IdP is a row (SSO, in `api.md`).

@@ -290,12 +290,14 @@ export async function saveBuilderDraft(
 				instructions: true,
 				manifest: true,
 				modelId: true,
+				modelContextWindowTokens: true,
 			},
 		});
 		if (
 			latest?.status === "READY" &&
 			latest.instructions === input.instructions &&
 			latest.modelId === model.id &&
+			latest.modelContextWindowTokens === model.contextWindowTokens &&
 			isDeepStrictEqual(latest.manifest, manifest)
 		) {
 			await persistArtifactSnapshots(tx, conversationId, latest.id, files);
@@ -317,6 +319,7 @@ export async function saveBuilderDraft(
 				instructions: input.instructions,
 				manifest: manifest as Prisma.InputJsonValue,
 				modelId: model.id,
+				modelContextWindowTokens: model.contextWindowTokens,
 				sandboxPolicy,
 				validation: {
 					status: "passed",

@@ -1,9 +1,9 @@
 import { ActivityType, type Db, DealStage } from "@crm/db";
+import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
-import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
 import type { DashboardSummaryInput } from "./dashboard.contracts";
 
 const OWNER_SELECT = {

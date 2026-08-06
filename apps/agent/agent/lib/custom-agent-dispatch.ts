@@ -98,7 +98,7 @@ export async function dispatchBuilderSubmission(
 				message: true,
 				attemptCount: true,
 				attachments: {
-					orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+					orderBy: { position: "asc" },
 					select: {
 						name: true,
 						mediaType: true,
@@ -132,7 +132,10 @@ export async function dispatchBuilderSubmission(
 					principalId: submission.conversation.userId,
 					attributes: {
 						purpose: "builder",
-						commandType: submission.commandType,
+						commandType: builderCommandType(
+							submission.commandType,
+							submission.message,
+						),
 						needsTitle: submission.conversation.title ? "false" : "true",
 						conversationId,
 						userId: submission.conversation.userId,
@@ -578,6 +581,17 @@ export function builderDeliveryMessage(
 	}
 
 	return parts as Parameters<SendFn>[0];
+}
+
+export function builderCommandType(
+	commandType: string,
+	value: unknown,
+): string {
+	const inputResponse = recordOf(recordOf(value).inputResponse);
+	return typeof inputResponse.requestId === "string" &&
+		typeof inputResponse.answer === "string"
+		? "CREATE_AGENT"
+		: commandType;
 }
 
 type BuilderDeliveryAttachment = {

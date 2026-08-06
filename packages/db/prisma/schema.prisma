@@ -610,11 +610,12 @@ model AgentVersion {
   number Int
   status AgentVersionStatus @default(DRAFT)
 
-  instructions  String
-  manifest      Json
-  modelId       String
-  sandboxPolicy Json
-  validation    Json?
+  instructions             String
+  manifest                 Json
+  modelId                  String
+  modelContextWindowTokens Int    @default(1000000)
+  sandboxPolicy            Json
+  validation               Json?
 
   sourceConversationId String?
   sourceConversation   AgentConversation? @relation("AgentVersionSourceConversation", fields: [sourceConversationId], references: [id], onDelete: SetNull)

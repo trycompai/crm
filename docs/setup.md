@@ -43,10 +43,11 @@ inventory, including a `diagnostics` count that finds files eve silently ignored
 
 ## Running the agent
 
-**`bun run dev` is `eve dev --no-ui`** — turbo gives each task a pty, so the
-interactive TUI and turbo redraw over each other. `dev:tui` keeps the interactive one,
-and only that writes `.eve/logs/` for `eve logs`; under `--no-ui` the turbo pane is
-the record.
+The agent package's default `dev` command is interactive `eve dev`. The root
+Turbo task marks it interactive, so select the agent pane and press Enter before
+using the eve TUI. Run `bun run --filter=agent dev:headless` when a terminal
+cannot render the TUI; that uses `eve dev --no-ui`, and the Turbo pane is the
+record because only interactive development writes `.eve/logs/` for `eve logs`.
 
 `hooks/activity.ts` is the replacement narration, **to stderr** (the TUI hides
 stdout), printing shape everywhere and argument contents outside production only. It

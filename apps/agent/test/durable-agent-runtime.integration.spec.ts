@@ -11,7 +11,11 @@ import {
 	pendingBuilderSubmissionIds,
 	queueDueAgentRuns,
 } from "../agent/lib/custom-agent-dispatch";
-import { createRunActivity, finishRun } from "../agent/lib/run-runtime";
+import {
+	createRunActivity,
+	finishRun,
+	stageRunResult,
+} from "../agent/lib/run-runtime";
 
 const suffix = crypto.randomUUID();
 const userId = `durable-runtime-user-${suffix}`;
@@ -70,7 +74,10 @@ beforeAll(async () => {
 						},
 					],
 				},
-				actions: [{ type: "crm.activity.create", activityTypes: ["NOTE"] }],
+				actions: [
+					{ type: "crm.activity.create", activityTypes: ["NOTE"] },
+					{ type: "run.summary" },
+				],
 			},
 			modelId: "test/model",
 			sandboxPolicy: {},
@@ -346,6 +353,7 @@ describe("durable custom-agent runtime", () => {
 						},
 						attachments: {
 							create: {
+								position: 0,
 								name: "brief.txt",
 								mediaType: "text/plain",
 								size: content.byteLength,
@@ -431,6 +439,56 @@ describe("durable custom-agent runtime", () => {
 		expect(await db.agentEvent.count({ where: { id: eventId } })).toBe(1);
 	});
 
+	it("keeps a nested subagent session from replacing the root run session", async () => {
+		const rootSessionId = `durable-session-${suffix}-root`;
+		const run = await createRun("RUNNING", new Date(), rootSessionId);
+		type AuditHandler = (
+			event: {
+				type: string;
+				data: object;
+				meta: { id: string; at: string };
+			},
+			ctx: {
+				session: {
+					id: string;
+					parent?: unknown;
+					auth: {
+						current: { attributes: Record<string, unknown> };
+						initiator: null;
+					};
+				};
+			},
+		) => Promise<void>;
+		const handler = audit.events["*"] as unknown as AuditHandler;
+
+		await handler(
+			{
+				type: "session.started",
+				data: {},
+				meta: {
+					id: `evt_${suffix}_nested_started`,
+					at: new Date().toISOString(),
+				},
+			},
+			{
+				session: {
+					id: `durable-session-${suffix}-nested`,
+					parent: { id: rootSessionId },
+					auth: {
+						current: {
+							attributes: { purpose: "team-agent", runId: run.id },
+						},
+						initiator: null,
+					},
+				},
+			},
+		);
+
+		expect(
+			await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }),
+		).toMatchObject({ sessionId: rootSessionId });
+	});
+
 	it("lets the first terminal state win without duplicate terminal logs", async () => {
 		const [completed, failed] = await Promise.all([createRun(), createRun()]);
 		await finishRun(completed.id, { summary: "Completed safely" });
@@ -468,6 +526,35 @@ describe("durable custom-agent runtime", () => {
 				},
 			}),
 		).toBe(2);
+	});
+
+	it("stages tool output before the session owns terminal completion", async () => {
+		const run = await createRun();
+		await stageRunResult(run.id, {
+			summary: "Staged safely",
+			result: { noted: 2 },
+		});
+		const staged = await db.agentRun.findUniqueOrThrow({
+			where: { id: run.id },
+		});
+		expect(staged).toMatchObject({
+			status: "RUNNING",
+			summary: "Staged safely",
+			result: { noted: 2 },
+		});
+		expect(
+			await db.agentRunEvent.count({
+				where: { runId: run.id, type: "run.completed" },
+			}),
+		).toBe(0);
+
+		await finishRun(run.id, {
+			summary: staged.summary ?? "Staged safely",
+			result: staged.result as Record<string, unknown>,
+		});
+		expect(
+			await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }),
+		).toMatchObject({ status: "SUCCEEDED", summary: "Staged safely" });
 	});
 
 	it("claims an approved CRM action once and rejects scope before target access", async () => {

@@ -363,6 +363,29 @@ export async function createRunActivity(
 	}
 }
 
+export async function stageRunResult(
+	runId: string,
+	input: { summary: string; result?: Record<string, unknown> | null },
+) {
+	return db.$transaction(async (tx) => {
+		const run = await lockAgentRun(tx, runId);
+		if (run.status !== "RUNNING") {
+			throw new Error(`This agent run already ended with ${run.status}.`);
+		}
+
+		await assertRunSummaryAllowed(tx, run.versionId);
+		await tx.agentRun.update({
+			where: { id: runId },
+			data: {
+				summary: input.summary,
+				result: (input.result ?? {}) as Prisma.InputJsonValue,
+			},
+		});
+
+		return { id: run.id, status: "RUNNING" as const };
+	});
+}
+
 export async function finishRun(
 	runId: string,
 	input: { summary: string; result?: Record<string, unknown> | null },
@@ -375,6 +398,7 @@ export async function finishRun(
 		if (run.status !== "RUNNING") {
 			throw new Error(`This agent run already ended with ${run.status}.`);
 		}
+		await assertRunSummaryAllowed(tx, run.versionId);
 
 		const sequence = run.nextEventSequence + 1;
 		const finishedAt = new Date();
@@ -420,6 +444,23 @@ export async function finishRun(
 
 		return { id: run.id, status: "SUCCEEDED" as const };
 	});
+}
+
+async function assertRunSummaryAllowed(
+	tx: Prisma.TransactionClient,
+	versionId: string,
+): Promise<void> {
+	const version = await tx.agentVersion.findUniqueOrThrow({
+		where: { id: versionId },
+		select: { manifest: true },
+	});
+	if (
+		!manifestActions(version.manifest).some(
+			(action) => action.type === "run.summary",
+		)
+	) {
+		throw new Error("Agent version does not allow a run summary.");
+	}
 }
 
 function manifestDataScope(value: unknown): {

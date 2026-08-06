@@ -170,11 +170,12 @@ export default defineChannel({
 			const { db } = await import("@crm/db");
 			const run = await db.agentRun.findUnique({
 				where: { id: runId },
-				select: { status: true, summary: true },
+				select: { status: true, summary: true, result: true },
 			});
 			if (run?.status === "RUNNING") {
 				await finishRun(runId, {
 					summary: run.summary ?? "The agent run completed.",
+					result: recordOf(run.result),
 				});
 			}
 		},
@@ -205,12 +206,16 @@ export default defineChannel({
 				? input.target.builderSubmissionId
 				: null;
 		if (builderSubmissionId) {
+			assertInternalDispatchAuth(input.auth);
 			return dispatchBuilderSubmission(builderSubmissionId, send);
 		}
 
 		const runId =
 			typeof input.target?.runId === "string" ? input.target.runId : null;
-		if (runId) return dispatchAgentRun(runId, send);
+		if (runId) {
+			assertInternalDispatchAuth(input.auth);
+			return dispatchAgentRun(runId, send);
+		}
 
 		const taskId =
 			typeof input.target?.taskId === "string" ? input.target.taskId : null;
@@ -223,3 +228,20 @@ export default defineChannel({
 		});
 	},
 });
+
+function assertInternalDispatchAuth(value: unknown): void {
+	const auth = recordOf(value);
+	if (
+		auth.authenticator !== "app" ||
+		auth.principalType !== "runtime" ||
+		auth.principalId !== "eve:app"
+	) {
+		throw new Error("Internal agent dispatch requires Eve app authentication.");
+	}
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}

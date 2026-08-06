@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { builderTaskMarkdown } from "../agent/instructions/task";
 import {
+	builderCommandType,
 	builderDeliveryMessage,
 	builderIdFromToken,
 	builderToken,
@@ -46,6 +47,17 @@ describe("custom agent continuation tokens", () => {
 });
 
 describe("builder delivery messages", () => {
+	it("keeps clarification answers in agent-creation mode", () => {
+		expect(
+			builderCommandType("CHAT", {
+				inputResponse: { requestId: "question-1", answer: "crm-task" },
+			}),
+		).toBe("CREATE_AGENT");
+		expect(builderCommandType("CHAT", { text: "Research this company" })).toBe(
+			"CHAT",
+		);
+	});
+
 	it("delivers a question response without submission wrapper text", () => {
 		expect(
 			builderDeliveryMessage("submission-1", {
