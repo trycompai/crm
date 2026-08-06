@@ -16,7 +16,11 @@ import {
 } from "@crm/ui/components/async-action";
 import { Button } from "@crm/ui/components/button";
 import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
-import { Input } from "@crm/ui/components/input";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@crm/ui/components/input-group";
 import {
 	Popover,
 	PopoverContent,
@@ -25,6 +29,7 @@ import {
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { SkeletonSwap } from "@crm/ui/components/skeleton-swap";
 import { Textarea } from "@crm/ui/components/textarea";
+import { TokenField, TokenFieldControl } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useReducer, useRef } from "react";
@@ -82,7 +87,6 @@ const CREATE_AGENT_COMMAND = {
 	commandType: "CREATE_AGENT" as const,
 	invocation: "/Create agent",
 	label: "Create agent",
-	description: "Build a durable team automation",
 };
 
 type ComposerCommand = typeof CREATE_AGENT_COMMAND;
@@ -92,6 +96,7 @@ type ComposerState = {
 	command: ComposerCommand | null;
 	detectedCommandLabel: string | null;
 	commandOpen: boolean;
+	resourceOpen: boolean;
 	resourceQuery: string;
 	resources: BuilderResource[];
 	attachments: BuilderUploadAttachment[];
@@ -103,6 +108,7 @@ type ComposerAction =
 	| { type: "command.selected" }
 	| { type: "command.removed" }
 	| { type: "command.open.changed"; open: boolean }
+	| { type: "resource.open.changed"; open: boolean }
 	| { type: "resource.query.changed"; value: string }
 	| { type: "resource.added"; resource: BuilderResource }
 	| { type: "resource.removed"; resource: BuilderResource }
@@ -122,6 +128,7 @@ function initialComposerState(initialPrompt: string): ComposerState {
 		command: explicitCommand || detectedIntent ? CREATE_AGENT_COMMAND : null,
 		detectedCommandLabel: detectedIntent?.invocation ?? null,
 		commandOpen: false,
+		resourceOpen: false,
 		resourceQuery: "",
 		resources: [],
 		attachments: [],
@@ -179,6 +186,8 @@ function composerReducer(
 			};
 		case "command.open.changed":
 			return { ...state, commandOpen: action.open };
+		case "resource.open.changed":
+			return { ...state, resourceOpen: action.open };
 		case "resource.query.changed":
 			return { ...state, resourceQuery: action.value };
 		case "resource.added":
@@ -229,6 +238,8 @@ function composerReducer(
 				command: null,
 				detectedCommandLabel: null,
 				commandOpen: false,
+				resourceOpen: false,
+				resourceQuery: "",
 				resources: [],
 				attachments: [],
 				attachmentsReading: false,
@@ -263,6 +274,7 @@ export function AgentComposer({
 }) {
 	const trpc = useTRPC();
 	const pendingSubmission = useRef<PendingSubmission | null>(null);
+	const textarea = useRef<HTMLTextAreaElement>(null);
 	const [state, dispatch] = useReducer(
 		composerReducer,
 		initialPrompt,
@@ -309,6 +321,26 @@ export function AgentComposer({
 	const connectedGoogle = (google.data?.sources ?? []).filter(
 		(source) => source.connected,
 	);
+	const focusComposer = () => {
+		requestAnimationFrame(() => textarea.current?.focus());
+	};
+	const removeLastContext = () => {
+		const attachment = state.attachments.at(-1);
+		if (attachment) {
+			dispatch({ type: "attachment.removed", attachment });
+			return;
+		}
+		const resource = state.resources.at(-1);
+		if (resource) {
+			dispatch({ type: "resource.removed", resource });
+			return;
+		}
+		if (state.command) dispatch({ type: "command.removed" });
+	};
+	const hasContext =
+		state.command !== null ||
+		state.resources.length > 0 ||
+		state.attachments.length > 0;
 
 	return (
 		<div
@@ -317,22 +349,28 @@ export function AgentComposer({
 				mode === "home" ? "min-h-24" : "min-h-[78px]",
 			)}
 		>
-			<ComposerContext
-				command={state.command}
-				resources={state.resources}
-				attachments={state.attachments}
-				disabled={locked}
-				dispatch={dispatch}
-			/>
+			<TokenField>
+				<ComposerContext
+					command={state.command}
+					resources={state.resources}
+					attachments={state.attachments}
+					disabled={locked}
+					dispatch={dispatch}
+					onChanged={focusComposer}
+				/>
 
-			<ComposerTextarea
-				mode={mode}
-				value={state.draft}
-				detectedIntent={state.detectedCommandLabel}
-				onChange={(value) => dispatch({ type: "draft.changed", value })}
-				disabled={locked}
-				onSubmit={submit}
-			/>
+				<ComposerTextarea
+					textareaRef={textarea}
+					mode={mode}
+					value={state.draft}
+					detectedIntent={state.detectedCommandLabel}
+					onChange={(value) => dispatch({ type: "draft.changed", value })}
+					disabled={locked}
+					hasContext={hasContext}
+					onRemoveLastContext={removeLastContext}
+					onSubmit={submit}
+				/>
+			</TokenField>
 
 			<div className="flex h-7 items-center justify-between">
 				<ComposerTools
@@ -344,6 +382,7 @@ export function AgentComposer({
 					disabled={locked}
 					attachmentsReading={state.attachmentsReading}
 					dispatch={dispatch}
+					onContextAdded={focusComposer}
 				/>
 
 				<Button
@@ -376,18 +415,24 @@ export function AgentComposer({
 }
 
 function ComposerTextarea({
+	textareaRef,
 	mode,
 	value,
 	detectedIntent,
 	disabled,
+	hasContext,
 	onChange,
+	onRemoveLastContext,
 	onSubmit,
 }: {
+	textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 	mode: "home" | "chat";
 	value: string;
 	detectedIntent: string | null;
 	disabled: boolean;
+	hasContext: boolean;
 	onChange: (value: string) => void;
+	onRemoveLastContext: () => void;
 	onSubmit: () => void;
 }) {
 	const emphasis = useRef<HTMLDivElement>(null);
@@ -395,7 +440,7 @@ function ComposerTextarea({
 	const showEmphasis = detectedIntent !== null && intentStart >= 0;
 
 	return (
-		<div className="relative grid">
+		<TokenFieldControl>
 			{showEmphasis ? (
 				<div
 					ref={emphasis}
@@ -415,6 +460,7 @@ function ComposerTextarea({
 				</div>
 			) : null}
 			<Textarea
+				ref={textareaRef}
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 				onScroll={(event) => {
@@ -422,6 +468,17 @@ function ComposerTextarea({
 					emphasis.current.style.translate = `${-event.currentTarget.scrollLeft}px ${-event.currentTarget.scrollTop}px`;
 				}}
 				onKeyDown={(event) => {
+					if (event.nativeEvent.isComposing) return;
+					if (
+						event.key === "Backspace" &&
+						hasContext &&
+						event.currentTarget.selectionStart === 0 &&
+						event.currentTarget.selectionEnd === 0
+					) {
+						event.preventDefault();
+						onRemoveLastContext();
+						return;
+					}
 					if (event.key === "Enter" && !event.shiftKey) {
 						event.preventDefault();
 						onSubmit();
@@ -442,7 +499,7 @@ function ComposerTextarea({
 					showEmphasis && "text-transparent caret-foreground",
 				)}
 			/>
-		</div>
+		</TokenFieldControl>
 	);
 }
 
@@ -452,25 +509,32 @@ function ComposerContext({
 	attachments,
 	disabled,
 	dispatch,
+	onChanged,
 }: {
 	command: ComposerCommand | null;
 	resources: BuilderResource[];
 	attachments: BuilderUploadAttachment[];
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
+	onChanged: () => void;
 }) {
 	if (!command && resources.length === 0 && attachments.length === 0) {
 		return null;
 	}
+	const remove = (action: ComposerAction) => {
+		dispatch(action);
+		onChanged();
+	};
 
 	return (
-		<div className="flex flex-wrap gap-1 px-1 pb-1">
+		<>
 			{command ? (
 				<ChatCommandChip
 					label={command.label}
 					icon={Application}
+					variant="composer"
 					onRemove={
-						disabled ? undefined : () => dispatch({ type: "command.removed" })
+						disabled ? undefined : () => remove({ type: "command.removed" })
 					}
 				/>
 			) : null}
@@ -479,10 +543,11 @@ function ComposerContext({
 					key={`${resource.kind}:${resource.id}`}
 					resource={resource}
 					icon={RESOURCE_ICONS[resource.kind]}
+					variant="composer"
 					onRemove={
 						disabled
 							? undefined
-							: () => dispatch({ type: "resource.removed", resource })
+							: () => remove({ type: "resource.removed", resource })
 					}
 				/>
 			))}
@@ -490,14 +555,15 @@ function ComposerContext({
 				<ChatAttachmentChip
 					key={attachmentKey(attachment)}
 					attachment={attachment}
+					variant="composer"
 					onRemove={
 						disabled
 							? undefined
-							: () => dispatch({ type: "attachment.removed", attachment })
+							: () => remove({ type: "attachment.removed", attachment })
 					}
 				/>
 			))}
-		</div>
+		</>
 	);
 }
 
@@ -510,6 +576,7 @@ function ComposerTools({
 	disabled,
 	attachmentsReading,
 	dispatch,
+	onContextAdded,
 }: {
 	state: ComposerState;
 	resources: BuilderResource[];
@@ -519,10 +586,12 @@ function ComposerTools({
 	disabled: boolean;
 	attachmentsReading: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
+	onContextAdded: () => void;
 }) {
 	return (
 		<div className="flex items-center gap-0.5">
 			<ResourcePicker
+				open={state.resourceOpen}
 				query={state.resourceQuery}
 				resources={resources}
 				loading={resourcesLoading}
@@ -530,21 +599,25 @@ function ComposerTools({
 				connectedGoogle={connectedGoogle}
 				disabled={disabled}
 				dispatch={dispatch}
+				onPicked={onContextAdded}
 			/>
 			<AttachmentPicker
 				disabled={disabled || attachmentsReading}
 				dispatch={dispatch}
+				onPicked={onContextAdded}
 			/>
 			<CommandPicker
 				open={state.commandOpen}
 				disabled={disabled}
 				dispatch={dispatch}
+				onPicked={onContextAdded}
 			/>
 		</div>
 	);
 }
 
 function ResourcePicker({
+	open,
 	query,
 	resources,
 	loading,
@@ -552,7 +625,9 @@ function ResourcePicker({
 	connectedGoogle,
 	disabled,
 	dispatch,
+	onPicked,
 }: {
+	open: boolean;
 	query: string;
 	resources: BuilderResource[];
 	loading: boolean;
@@ -560,12 +635,21 @@ function ResourcePicker({
 	connectedGoogle: Array<{ source: string }>;
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
+	onPicked: () => void;
 }) {
-	const add = (resource: BuilderResource) =>
+	const add = (resource: BuilderResource) => {
 		dispatch({ type: "resource.added", resource });
+		dispatch({ type: "resource.open.changed", open: false });
+		onPicked();
+	};
 
 	return (
-		<Popover>
+		<Popover
+			open={disabled ? false : open}
+			onOpenChange={(next) =>
+				dispatch({ type: "resource.open.changed", open: next })
+			}
+		>
 			<PopoverTrigger asChild>
 				<Button
 					variant="ghost"
@@ -578,12 +662,8 @@ function ResourcePicker({
 			</PopoverTrigger>
 			<PopoverContent size="fit" align="start" side="top" className="w-80">
 				<div className="border-b p-2">
-					<div className="relative">
-						<Icon
-							icon={Search}
-							className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-						/>
-						<Input
+					<InputGroup>
+						<InputGroupInput
 							value={query}
 							onChange={(event) =>
 								dispatch({
@@ -591,12 +671,14 @@ function ResourcePicker({
 									value: event.target.value,
 								})
 							}
-							placeholder="Search CRM records"
-							aria-label="Search CRM records"
+							placeholder="Search CRM"
+							aria-label="Search CRM"
 							disabled={disabled}
-							className="pl-8"
 						/>
-					</div>
+						<InputGroupAddon>
+							<Icon icon={Search} className="size-3.5" />
+						</InputGroupAddon>
+					</InputGroup>
 				</div>
 				<div className="max-h-72 overflow-y-auto p-1">
 					{connectedGoogle.map((source) => {
@@ -607,14 +689,13 @@ function ResourcePicker({
 								key={source.source}
 								icon={calendar ? Calendar : Email}
 								label={label}
-								detail="Connected integration"
 								disabled={disabled}
 								onSelect={() =>
 									add({
 										kind: "integration",
 										id: `google:${source.source}`,
 										label,
-										detail: "Connected integration",
+										detail: null,
 										imageUrl: null,
 									})
 								}
@@ -631,7 +712,6 @@ function ResourcePicker({
 								key={`${resource.kind}:${resource.id}`}
 								icon={RESOURCE_ICONS[resource.kind]}
 								label={resource.label}
-								detail={resource.detail ?? RESOURCE_LABELS[resource.kind]}
 								disabled={disabled}
 								imageUrl={resource.imageUrl}
 								onSelect={() => add(resource)}
@@ -652,9 +732,11 @@ function ResourcePicker({
 function AttachmentPicker({
 	disabled,
 	dispatch,
+	onPicked,
 }: {
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
+	onPicked: () => void;
 }) {
 	const input = useRef<HTMLInputElement>(null);
 	const addFiles = async (files: FileList | null) => {
@@ -662,7 +744,10 @@ function AttachmentPicker({
 		dispatch({ type: "attachments.reading.started" });
 		try {
 			const attachments = await readFiles(files);
-			dispatch({ type: "attachments.added", attachments });
+			if (attachments.length > 0) {
+				dispatch({ type: "attachments.added", attachments });
+				onPicked();
+			}
 		} catch {
 			toast.error("Those files could not be attached. Try again.");
 		} finally {
@@ -700,10 +785,12 @@ function CommandPicker({
 	open,
 	disabled,
 	dispatch,
+	onPicked,
 }: {
 	open: boolean;
 	disabled: boolean;
 	dispatch: React.Dispatch<ComposerAction>;
+	onPicked: () => void;
 }) {
 	return (
 		<Popover
@@ -726,18 +813,16 @@ function CommandPicker({
 			<PopoverContent size="fit" align="start" side="top" className="w-64 p-1">
 				<button
 					type="button"
-					onClick={() => dispatch({ type: "command.selected" })}
-					className="flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted"
+					onClick={() => {
+						dispatch({ type: "command.selected" });
+						onPicked();
+					}}
+					className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:bg-muted"
 					disabled={disabled}
 				>
 					<Icon icon={Application} className="size-4 text-muted-foreground" />
-					<span>
-						<span className="block font-medium text-xs">
-							/{CREATE_AGENT_COMMAND.label}
-						</span>
-						<span className="block text-muted-foreground text-xs">
-							{CREATE_AGENT_COMMAND.description}
-						</span>
+					<span className="font-medium text-xs">
+						/{CREATE_AGENT_COMMAND.label}
 					</span>
 				</button>
 			</PopoverContent>
@@ -749,12 +834,9 @@ function ResourceResultsSkeleton() {
 	return (
 		<div className="flex flex-col gap-1 px-3 py-2">
 			{["first", "second", "third"].map((item) => (
-				<div key={item} className="flex h-10 items-center gap-3">
+				<div key={item} className="flex h-8 items-center gap-2">
 					<Skeleton className="size-6 shrink-0" />
-					<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-						<Skeleton className="h-3 w-2/3" />
-						<Skeleton className="h-2.5 w-1/3" />
-					</div>
+					<Skeleton className="h-3 w-2/3" />
 				</div>
 			))}
 		</div>
@@ -768,24 +850,15 @@ const RESOURCE_ICONS: Record<BuilderResource["kind"], CarbonIcon> = {
 	deal: Partnership,
 };
 
-const RESOURCE_LABELS: Record<BuilderResource["kind"], string> = {
-	integration: "Integration",
-	company: "Company",
-	contact: "Contact",
-	deal: "Deal",
-};
-
 function ResourceButton({
 	icon,
 	label,
-	detail,
 	imageUrl,
 	disabled,
 	onSelect,
 }: {
 	icon: CarbonIcon;
 	label: string;
-	detail: string | null;
 	imageUrl?: string | null;
 	disabled: boolean;
 	onSelect: () => void;
@@ -795,17 +868,18 @@ function ResourceButton({
 			type="button"
 			onClick={onSelect}
 			disabled={disabled}
-			className="flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted"
+			className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:bg-muted"
 		>
 			<ChatReferenceIdentity
 				resource={{
 					kind: "integration",
 					id: label,
 					label,
-					detail,
+					detail: null,
 					imageUrl,
 				}}
 				icon={icon}
+				showDetail={false}
 			/>
 		</button>
 	);

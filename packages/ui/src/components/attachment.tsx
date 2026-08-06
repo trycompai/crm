@@ -16,6 +16,8 @@ const attachmentVariants = cva(
         xs: "gap-1.5 rounded-sm text-xs has-data-[slot=attachment-content]:px-1.5 has-data-[slot=attachment-content]:py-1 has-data-[slot=attachment-media]:p-1",
         compact:
           "gap-1 rounded-sm text-xs has-data-[slot=attachment-content]:px-1.5 has-data-[slot=attachment-content]:py-0.5 has-data-[slot=attachment-media]:p-0.5",
+        token:
+          "gap-1 rounded-lg border-0 bg-tag text-tag-foreground text-xs has-data-[slot=attachment-content]:px-1 has-data-[slot=attachment-content]:py-0.5 has-data-[slot=attachment-media]:p-0.5",
       },
       orientation: {
         horizontal: "min-w-40 items-center",
@@ -25,6 +27,11 @@ const attachmentVariants = cva(
     compoundVariants: [
       {
         size: "compact",
+        orientation: "horizontal",
+        className: "min-w-0",
+      },
+      {
+        size: "token",
         orientation: "horizontal",
         className: "min-w-0",
       },
@@ -55,7 +62,7 @@ function Attachment({
 }
 
 const attachmentMediaVariants = cva(
-  "relative flex aspect-square w-10 shrink-0 items-center justify-center overflow-hidden rounded-none bg-muted text-foreground group-data-[orientation=vertical]/attachment:w-full group-data-[size=sm]/attachment:w-8 group-data-[size=xs]/attachment:w-7 group-data-[size=compact]/attachment:w-5 group-data-[size=xs]/attachment:rounded-none group-data-[size=compact]/attachment:rounded-none group-data-[state=error]/attachment:bg-destructive/10 group-data-[state=error]/attachment:text-destructive group-data-[orientation=vertical]/attachment:*:data-[slot=spinner]:size-6! [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 group-data-[orientation=vertical]/attachment:[&_svg:not([class*='size-'])]:size-6 group-data-[size=xs]/attachment:[&_svg:not([class*='size-'])]:size-3.5 group-data-[size=compact]/attachment:[&_svg:not([class*='size-'])]:size-3",
+  "relative flex aspect-square w-10 shrink-0 items-center justify-center overflow-hidden rounded-none bg-muted text-foreground group-data-[orientation=vertical]/attachment:w-full group-data-[size=sm]/attachment:w-8 group-data-[size=xs]/attachment:w-7 group-data-[size=compact]/attachment:w-5 group-data-[size=token]/attachment:w-5 group-data-[size=xs]/attachment:rounded-none group-data-[size=compact]/attachment:rounded-none group-data-[size=token]/attachment:rounded-md group-data-[state=error]/attachment:bg-destructive/10 group-data-[state=error]/attachment:text-destructive group-data-[orientation=vertical]/attachment:*:data-[slot=spinner]:size-6! [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 group-data-[orientation=vertical]/attachment:[&_svg:not([class*='size-'])]:size-6 group-data-[size=xs]/attachment:[&_svg:not([class*='size-'])]:size-3.5 group-data-[size=compact]/attachment:[&_svg:not([class*='size-'])]:size-3 group-data-[size=token]/attachment:[&_svg:not([class*='size-'])]:size-3",
   {
     variants: {
       variant: {
@@ -161,7 +168,10 @@ function AttachmentAction({
       data-slot="attachment-action"
       variant={variant ?? "ghost"}
       size={size}
-      className={cn(className)}
+      className={cn(
+        "group-data-[size=token]/attachment:size-5 group-data-[size=token]/attachment:rounded-lg",
+        className
+      )}
       {...props}
     />
   )

@@ -10,7 +10,14 @@ import {
 } from "@crm/ui/components/attachment";
 import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
 import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
+import {
+	TokenFieldAction,
+	TokenFieldItem,
+} from "@crm/ui/components/token-field";
+import { cn } from "@crm/ui/lib/utils";
 import Image from "next/image";
+
+type ChatChipVariant = "default" | "composer";
 
 export type ChatChipResource = {
 	kind: "integration" | "company" | "contact" | "deal";
@@ -33,18 +40,41 @@ export function ChatReferenceChip({
 	resource,
 	icon,
 	onRemove,
+	variant = "default",
 }: {
 	resource: ChatChipResource;
 	icon: CarbonIcon;
 	onRemove?: () => void;
+	variant?: ChatChipVariant;
 }) {
+	const identity = (
+		<ChatReferenceIdentity
+			resource={resource}
+			icon={icon}
+			showDetail={false}
+			compact={variant === "composer"}
+		/>
+	);
+
+	if (variant === "composer") {
+		return (
+			<TokenFieldItem>
+				{identity}
+				{onRemove ? (
+					<TokenFieldAction
+						aria-label={`Remove ${resource.label}`}
+						onClick={onRemove}
+					>
+						<Icon icon={Close} className="size-3" />
+					</TokenFieldAction>
+				) : null}
+			</TokenFieldItem>
+		);
+	}
+
 	return (
 		<span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border bg-background py-0.5 pr-1 pl-0.5 text-left">
-			<ChatReferenceIdentity
-				resource={resource}
-				icon={icon}
-				showDetail={false}
-			/>
+			{identity}
 			{onRemove ? (
 				<button
 					type="button"
@@ -63,14 +93,16 @@ export function ChatReferenceIdentity({
 	resource,
 	icon,
 	showDetail = true,
+	compact = false,
 }: {
 	resource: ChatChipResource;
 	icon: CarbonIcon;
 	showDetail?: boolean;
+	compact?: boolean;
 }) {
 	return (
 		<>
-			<Avatar size="sm">
+			<Avatar size={compact ? "xs" : "sm"}>
 				{resource.imageUrl ? (
 					<AvatarImage src={resource.imageUrl} alt="" />
 				) : null}
@@ -78,7 +110,7 @@ export function ChatReferenceIdentity({
 					<Icon icon={icon} className="size-3" />
 				</AvatarFallback>
 			</Avatar>
-			<span className="min-w-0 max-w-48">
+			<span className={cn("min-w-0 max-w-48", compact && "max-w-40")}>
 				<span className="block truncate font-medium text-xs">
 					{resource.label}
 				</span>
@@ -95,9 +127,11 @@ export function ChatReferenceIdentity({
 export function ChatAttachmentChip({
 	attachment,
 	onRemove,
+	variant = "default",
 }: {
 	attachment: ChatChipAttachment;
 	onRemove?: () => void;
+	variant?: ChatChipVariant;
 }) {
 	const label = `${attachment.name} · ${formatBytes(attachment.size)}`;
 	const image = isPreviewableImage(attachment.type)
@@ -108,7 +142,10 @@ export function ChatAttachmentChip({
 		: null;
 
 	return (
-		<Attachment size="compact" state="done">
+		<Attachment
+			size={variant === "composer" ? "token" : "compact"}
+			state="done"
+		>
 			<AttachmentMedia variant={image ? "image" : "icon"}>
 				{image ? (
 					<Image
@@ -145,11 +182,27 @@ export function ChatCommandChip({
 	label,
 	icon,
 	onRemove,
+	variant = "default",
 }: {
 	label: string;
 	icon: CarbonIcon;
 	onRemove?: () => void;
+	variant?: ChatChipVariant;
 }) {
+	if (variant === "composer") {
+		return (
+			<TokenFieldItem className="pl-1.5">
+				<Icon icon={icon} className="size-3.5" />
+				<span className="font-medium">{label}</span>
+				{onRemove ? (
+					<TokenFieldAction aria-label={`Remove ${label}`} onClick={onRemove}>
+						<Icon icon={Close} className="size-3" />
+					</TokenFieldAction>
+				) : null}
+			</TokenFieldItem>
+		);
+	}
+
 	return (
 		<span className="flex h-7 items-center gap-1.5 rounded-md bg-primary px-2 text-primary-foreground text-xs">
 			<Icon icon={icon} className="size-3.5" />
