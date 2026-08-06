@@ -42,9 +42,12 @@ import {
 } from "./deal-stage";
 import type {
 	ClosingWindow,
+	DealAttachContactInput,
 	DealBulkOwnerInput,
 	DealBulkStageInput,
+	DealContactRoleInput,
 	DealCreateInput,
+	DealDetachContactInput,
 	DealListInput,
 	DealUpdateInput,
 	SetStageInput,
@@ -66,6 +69,15 @@ const COMPANY_SELECT = {
 	iconDarkUrl: true,
 	iconTone: true,
 	logoUrl: true,
+} as const;
+
+const CONTACT_SELECT = {
+	id: true,
+	firstName: true,
+	lastName: true,
+	email: true,
+	title: true,
+	imageUrl: true,
 } as const;
 
 const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
@@ -192,19 +204,8 @@ export class DealsService {
 				company: { select: { ...COMPANY_SELECT, industry: true } },
 				owner: { select: OWNER_SELECT },
 				contacts: {
-					select: {
-						role: true,
-						contact: {
-							select: {
-								id: true,
-								firstName: true,
-								lastName: true,
-								email: true,
-								title: true,
-								imageUrl: true,
-							},
-						},
-					},
+					select: { role: true, contact: { select: CONTACT_SELECT } },
+					orderBy: { contact: { firstName: "asc" } },
 				},
 			},
 		});
@@ -425,6 +426,99 @@ export class DealsService {
 		return { ...updated, changed: true };
 	}
 
+	async contactOptions(dealId: string) {
+		const deal = await this.db.deal.findUnique({
+			where: { id: dealId },
+			select: { companyId: true, contacts: { select: { contactId: true } } },
+		});
+
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${dealId}.`);
+		}
+
+		return this.db.contact.findMany({
+			where: {
+				companyId: deal.companyId,
+				id: { notIn: deal.contacts.map((row) => row.contactId) },
+			},
+			select: CONTACT_SELECT,
+			orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+			take: 100,
+		});
+	}
+
+	async attachContact(input: DealAttachContactInput) {
+		const company = await this.companyOf(input.dealId);
+		const contact = await this.db.contact.findUnique({
+			where: { id: input.contactId },
+			select: { companyId: true },
+		});
+
+		if (!contact) {
+			throw new NotFoundException(`No contact with id ${input.contactId}.`);
+		}
+
+		if (contact.companyId !== company.id) {
+			throw new BadRequestException(
+				`That contact does not work at ${company.name}.`,
+			);
+		}
+
+		const role = roleOrNull(input.role ?? null);
+
+		await this.db.dealContact.upsert({
+			where: {
+				dealId_contactId: {
+					dealId: input.dealId,
+					contactId: input.contactId,
+				},
+			},
+			create: { dealId: input.dealId, contactId: input.contactId, role },
+			update: role === null ? {} : { role },
+		});
+
+		this.logger.log({
+			message: "Contact attached to deal",
+			dealId: input.dealId,
+			contactId: input.contactId,
+		});
+
+		return { dealId: input.dealId, contactId: input.contactId };
+	}
+
+	async detachContact(input: DealDetachContactInput) {
+		const { count } = await this.db.dealContact.deleteMany({
+			where: { dealId: input.dealId, contactId: input.contactId },
+		});
+
+		if (count === 0) {
+			throw new NotFoundException("That contact is not on this deal.");
+		}
+
+		this.logger.log({
+			message: "Contact detached from deal",
+			dealId: input.dealId,
+			contactId: input.contactId,
+		});
+
+		return { dealId: input.dealId, contactId: input.contactId };
+	}
+
+	async setContactRole(input: DealContactRoleInput) {
+		const role = roleOrNull(input.role);
+
+		const { count } = await this.db.dealContact.updateMany({
+			where: { dealId: input.dealId, contactId: input.contactId },
+			data: { role },
+		});
+
+		if (count === 0) {
+			throw new NotFoundException("That contact is not on this deal.");
+		}
+
+		return { dealId: input.dealId, contactId: input.contactId, role };
+	}
+
 	async bulkAssignOwner(input: DealBulkOwnerInput): Promise<BulkResult> {
 		await requireOwner(this.db, input.ownerId);
 
@@ -467,6 +561,19 @@ export class DealsService {
 
 	async bulkDelete(ids: string[]): Promise<BulkResult> {
 		return runBulk(ids, (id) => this.delete(id));
+	}
+
+	private async companyOf(dealId: string) {
+		const deal = await this.db.deal.findUnique({
+			where: { id: dealId },
+			select: { company: { select: { id: true, name: true } } },
+		});
+
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${dealId}.`);
+		}
+
+		return deal.company;
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {
@@ -588,6 +695,10 @@ function closingFilter(window: ClosingWindow): Prisma.DealWhereInput {
 		case "none":
 			return { expectedCloseDate: null };
 	}
+}
+
+function roleOrNull(value: string | null): string | null {
+	return value === null ? null : blankToNull(value);
 }
 
 function parseDate(value: string | null | undefined): Date | null {

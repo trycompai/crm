@@ -1,16 +1,25 @@
 "use client";
 
+import Add from "@carbon/icons-react/es/Add";
+import Close from "@carbon/icons-react/es/Close";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { CURRENCIES, normalizeCurrency } from "@crm/db/currency";
 import type { FieldValueJson } from "@crm/db/fields";
+import { Button } from "@crm/ui/components/button";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	EntityLogo,
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
+import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { TableCell } from "@crm/ui/components/table";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@crm/ui/components/tooltip";
 import {
 	formatDay,
 	formatMoney,
@@ -26,6 +35,7 @@ import {
 	InlineField,
 	InlineSelectField,
 	InlineTextArea,
+	InlineTextCell,
 	savingField,
 	savingValue,
 } from "@/components/crm/inline-field";
@@ -46,8 +56,9 @@ import {
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { AttachDealContact } from "./quick-add";
 import { RecordActions } from "./record-actions";
-import { RecordSheetFrame } from "./record-parts";
+import { AddRow, RecordSheetFrame } from "./record-parts";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
 type Deal = RouterOutputs["deals"]["byId"];
@@ -94,10 +105,11 @@ function ReportedValue({ deal }: { deal: Deal }) {
 }
 
 const CONTACT_COLUMNS = [
-	{ header: "Name", width: "w-[30%]", className: "pl-5" },
+	{ header: "Name", width: "w-[28%]", className: "pl-5" },
 	{ header: "Role", width: "w-[20%]" },
-	{ header: "Title", width: "w-[25%]" },
-	{ header: "Email", width: "w-[25%]" },
+	{ header: "Title", width: "w-[22%]" },
+	{ header: "Email", width: "w-[22%]" },
+	{ srLabel: "Remove", width: "w-10" },
 ];
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
@@ -109,7 +121,12 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 export function DealSheet({ dealId }: { dealId: string }) {
 	const trpc = useTRPC();
 	const openRecord = useOpenRecord();
-	const { tab, setTab } = useRecordSheetView("overview");
+	const {
+		tab,
+		setTab,
+		form: adding,
+		setForm: setAdding,
+	} = useRecordSheetView("overview");
 
 	const query = useQuery(trpc.deals.byId.queryOptions({ id: dealId }));
 	const deal = query.data;
@@ -125,7 +142,14 @@ export function DealSheet({ dealId }: { dealId: string }) {
 					value: "contacts",
 					label: "Contacts",
 					count: deal.contacts.length,
-					content: <DealContacts deal={deal} />,
+					content: (
+						<DealContacts
+							deal={deal}
+							adding={adding === "contact"}
+							onAdd={() => setAdding("contact")}
+							onDone={() => setAdding(null)}
+						/>
+					),
 				},
 				{
 					value: "activity",
@@ -392,49 +416,142 @@ function WhereItStands({ deal }: { deal: Deal }) {
 	);
 }
 
-function DealContacts({ deal }: { deal: Deal }) {
+function DealContacts({
+	deal,
+	adding,
+	onAdd,
+	onDone,
+}: {
+	deal: Deal;
+	adding: boolean;
+	onAdd: () => void;
+	onDone: () => void;
+}) {
+	const trpc = useTRPC();
+	const cache = useCrmCache();
 	const openRecord = useOpenRecord();
+
+	const detach = useMutation(
+		trpc.deals.detachContact.mutationOptions({
+			onSuccess: () => cache.deal(deal.id, { settle: "record" }),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const setRole = useMutation(
+		trpc.deals.setContactRole.mutationOptions({
+			onSuccess: () => cache.deal(deal.id, { settle: "record" }),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const form = adding ? (
+		<AttachDealContact
+			dealId={deal.id}
+			companyName={deal.company.name}
+			onDone={onDone}
+		/>
+	) : null;
 
 	if (deal.contacts.length === 0) {
 		return (
-			<DetailSheetEmpty
-				icon={UserMultiple}
-				title="No contacts on this deal"
-				description={`Nobody from ${deal.company.name} is attached yet. Add people to the company, then bring them onto the deal.`}
-			/>
+			<>
+				{form}
+				{adding ? null : (
+					<DetailSheetEmpty
+						icon={UserMultiple}
+						title="No contacts on this deal"
+						description={`Nobody from ${deal.company.name} is attached yet. Bring the people you are selling to onto the deal and it says who to chase.`}
+						action={
+							<Button variant="outline" size="sm" onClick={onAdd}>
+								<Icon icon={Add} data-icon="inline-start" />
+								Add contact
+							</Button>
+						}
+					/>
+				)}
+			</>
 		);
 	}
 
 	return (
-		<SimpleTable variant="panel" columns={CONTACT_COLUMNS}>
-			{deal.contacts.map((contact) => (
-				<SimpleTableRow
-					key={contact.id}
-					clickable
-					onClick={() => openRecord({ kind: "contact", id: contact.id })}
-				>
-					<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
-						<span className="flex min-w-0 items-center gap-2">
-							<PersonAvatar
-								src={contact.imageUrl}
-								name={contactName(contact)}
-								email={contact.email}
-								size="sm"
+		<>
+			{form}
+			<SimpleTable variant="panel" columns={CONTACT_COLUMNS}>
+				{deal.contacts.map((contact) => (
+					<SimpleTableRow
+						key={contact.id}
+						clickable
+						onClick={() => openRecord({ kind: "contact", id: contact.id })}
+					>
+						<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
+							<span className="flex min-w-0 items-center gap-2">
+								<PersonAvatar
+									src={contact.imageUrl}
+									name={contactName(contact)}
+									email={contact.email}
+									size="sm"
+								/>
+								<span className="truncate">{contactName(contact)}</span>
+							</span>
+						</TableCell>
+						<TableCell className="truncate px-1 py-2.5">
+							<InlineTextCell
+								label={`Role on this deal for ${contactName(contact)}`}
+								value={contact.role}
+								placeholder="Champion"
+								saving={
+									setRole.isPending &&
+									setRole.variables?.contactId === contact.id
+								}
+								onSave={(role) =>
+									setRole.mutate({
+										dealId: deal.id,
+										contactId: contact.id,
+										role: role || null,
+									})
+								}
 							/>
-							<span className="truncate">{contactName(contact)}</span>
-						</span>
-					</TableCell>
-					<TableCell className="truncate px-3 py-2.5">
-						{contact.role ?? <EmptyCellValue />}
-					</TableCell>
-					<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
-						{contact.title ?? <EmptyCellValue />}
-					</TableCell>
-					<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
-						{contact.email ?? <EmptyCellValue />}
-					</TableCell>
-				</SimpleTableRow>
-			))}
-		</SimpleTable>
+						</TableCell>
+						<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+							{contact.title ?? <EmptyCellValue />}
+						</TableCell>
+						<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+							{contact.email ?? <EmptyCellValue />}
+						</TableCell>
+						<TableCell className="px-3 py-2.5">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										disabled={detach.isPending}
+										onClick={(event) => {
+											event.stopPropagation();
+											detach.mutate({
+												dealId: deal.id,
+												contactId: contact.id,
+											});
+										}}
+									>
+										<Icon icon={Close} />
+										<span className="sr-only">
+											Take {contactName(contact)} off this deal
+										</span>
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>Take off this deal</TooltipContent>
+							</Tooltip>
+						</TableCell>
+					</SimpleTableRow>
+				))}
+
+				<AddRow
+					label="Add contact"
+					columns={CONTACT_COLUMNS.length}
+					onClick={onAdd}
+				/>
+			</SimpleTable>
+		</>
 	);
 }

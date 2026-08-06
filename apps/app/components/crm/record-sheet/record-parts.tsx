@@ -1,7 +1,12 @@
 "use client";
 
+import Add from "@carbon/icons-react/es/Add";
+import { Button } from "@crm/ui/components/button";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { Icon } from "@crm/ui/components/icon";
+import { SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Spinner } from "@crm/ui/components/spinner";
+import { TableCell } from "@crm/ui/components/table";
 import { formatMoney } from "@crm/ui/lib/format";
 import type { ReactNode } from "react";
 import {
@@ -70,6 +75,32 @@ export function RecordSheetFrame({
 				</>
 			)}
 		</>
+	);
+}
+
+export function AddRow({
+	label,
+	columns,
+	onClick,
+}: {
+	label: string;
+	columns: number;
+	onClick: () => void;
+}) {
+	return (
+		<SimpleTableRow>
+			<TableCell colSpan={columns} className="p-0">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onClick}
+					className="h-9 w-full justify-start px-5 font-normal text-muted-foreground"
+				>
+					<Icon icon={Add} data-icon="inline-start" />
+					{label}
+				</Button>
+			</TableCell>
+		</SimpleTableRow>
 	);
 }
 

@@ -41,10 +41,8 @@ export function savingValue(update: {
 	isPending: boolean;
 	variables?: { data?: { fields?: Record<string, unknown> } } | undefined;
 }): (key: string) => boolean {
-	const keys = update.isPending
-		? Object.keys(update.variables?.data?.fields ?? {})
-		: [];
-	return (key) => keys.includes(key);
+	const fields = update.isPending ? (update.variables?.data?.fields ?? {}) : {};
+	return (key) => key in fields;
 }
 
 export function InlineField({
@@ -153,6 +151,78 @@ export function InlineField({
 				{suggestion}
 			</div>
 		</div>
+	);
+}
+
+export function InlineTextCell({
+	label,
+	value,
+	onSave,
+	saving = false,
+	placeholder,
+}: {
+	label: string;
+	value: string | null;
+	onSave: (next: string) => void;
+	saving?: boolean;
+	placeholder?: string;
+}) {
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(value ?? "");
+
+	const commit = () => {
+		setEditing(false);
+		if (draft.trim() !== (value ?? "")) onSave(draft.trim());
+	};
+
+	if (editing) {
+		return (
+			<Input
+				aria-label={label}
+				autoFocus
+				value={draft}
+				placeholder={placeholder}
+				onClick={(event) => event.stopPropagation()}
+				onChange={(event) => setDraft(event.target.value)}
+				onBlur={commit}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						commit();
+					}
+					if (event.key === "Escape") {
+						setDraft(value ?? "");
+						setEditing(false);
+					}
+				}}
+			/>
+		);
+	}
+
+	const shown = saving ? draft.trim() : (value ?? "");
+
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			aria-label={label}
+			className={CONTROL}
+			disabled={saving}
+			onClick={(event) => {
+				event.stopPropagation();
+				setDraft(value ?? "");
+				setEditing(true);
+			}}
+		>
+			{saving ? <Spinner /> : null}
+			{shown ? (
+				<span className="truncate">{shown}</span>
+			) : (
+				<span className="truncate text-muted-foreground">
+					{placeholder ?? <EmptyCellValue />}
+				</span>
+			)}
+		</Button>
 	);
 }
 

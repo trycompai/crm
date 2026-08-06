@@ -472,7 +472,7 @@ export function DataTable<TRow, TSub = unknown>({
 				<TableHeader className="sticky top-0 z-10 bg-muted [&_th]:bg-muted [&_tr]:border-0 [&_tr]:shadow-[inset_0_-1px_0_var(--border)]">
 					<TableRow>
 						{selection && (
-							<TableHead className="h-11 w-10 px-3">
+							<TableHead className={cn("h-11 w-10 px-3", HIDE_BELOW_CLASS.sm)}>
 								<Checkbox
 									checked={
 										selection.state.allSelected
@@ -573,7 +573,7 @@ export function DataTable<TRow, TSub = unknown>({
 								>
 									{selection && (
 										<TableCell
-											className="w-10 px-3 py-3"
+											className={cn("w-10 px-3 py-3", HIDE_BELOW_CLASS.sm)}
 											onClick={(event) => event.stopPropagation()}
 										>
 											<Checkbox
@@ -637,7 +637,12 @@ export function DataTable<TRow, TSub = unknown>({
 												)}
 											>
 												{selection && (
-													<TableCell className="w-10 px-3 py-2.5" />
+													<TableCell
+														className={cn(
+															"w-10 px-3 py-2.5",
+															HIDE_BELOW_CLASS.sm,
+														)}
+													/>
 												)}
 												{anyExpandable && (
 													<TableCell className="w-10 px-3 py-2.5" />
