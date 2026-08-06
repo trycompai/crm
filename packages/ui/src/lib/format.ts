@@ -3,6 +3,10 @@ export function formatCount(count: number, noun: string): string {
 }
 
 const WELL_FORMED_CURRENCY_CODE = /^[A-Za-z]{3}$/;
+const percentFormat = new Intl.NumberFormat("en-US", {
+	style: "percent",
+	maximumFractionDigits: 0,
+});
 
 function displayCurrencyCode(currency: string): string {
 	return WELL_FORMED_CURRENCY_CODE.test(currency)
@@ -40,7 +44,7 @@ export function formatMoney(cents: number, currency = "usd"): string {
 }
 
 export function formatMoneyCompact(cents: number, currency = "usd"): string {
-	return new Intl.NumberFormat(undefined, {
+	return new Intl.NumberFormat("en-US", {
 		style: "currency",
 		currency: displayCurrencyCode(currency),
 		notation: "compact",
@@ -49,13 +53,10 @@ export function formatMoneyCompact(cents: number, currency = "usd"): string {
 }
 
 export function formatPercent(rate: number): string {
-	return new Intl.NumberFormat(undefined, {
-		style: "percent",
-		maximumFractionDigits: 0,
-	}).format(rate);
+	return percentFormat.format(rate);
 }
 
-const dayFormat = new Intl.DateTimeFormat(undefined, {
+const dayFormat = new Intl.DateTimeFormat("en-US", {
 	month: "short",
 	day: "numeric",
 	year: "numeric",
@@ -80,33 +81,6 @@ export function fromDay(value: string | null | undefined): Date | undefined {
 export function formatDay(value: string | null | undefined): string {
 	const date = fromDay(value);
 	return date ? dayFormat.format(date) : (value ?? "—");
-}
-
-export function relativeTimeFromIso(iso: string | null | undefined): string {
-	if (!iso) return "—";
-	const then = new Date(iso).getTime();
-	if (!Number.isFinite(then)) return "—";
-	const diff = Date.now() - then;
-	const abs = Math.abs(diff);
-	const min = 60_000;
-	const hour = 60 * min;
-	const day = 24 * hour;
-	if (abs < min) return "just now";
-	const distance =
-		abs < hour
-			? `${Math.round(abs / min)}m`
-			: abs < day
-				? `${Math.round(abs / hour)}h`
-				: abs < 30 * day
-					? `${Math.round(abs / day)}d`
-					: null;
-	if (distance === null) {
-		return new Date(iso).toLocaleDateString(undefined, {
-			month: "short",
-			day: "numeric",
-		});
-	}
-	return diff < 0 ? `in ${distance}` : `${distance} ago`;
 }
 
 export function initialsFromName(name: string | null | undefined): string {

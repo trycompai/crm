@@ -14,17 +14,18 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { LocalDateTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 export type Conversation = RouterOutputs["conversations"]["list"][number];
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	hour: "numeric",
 	minute: "2-digit",
-});
+};
 
 export function ConversationPicker({
 	conversations,
@@ -42,7 +43,7 @@ export function ConversationPicker({
 	const label = current?.title ?? "New conversation";
 
 	return (
-		<div className="flex items-center gap-2 border-b px-5 py-2">
+		<div className="flex min-w-0 items-center gap-2 border-b px-4 py-2 sm:px-5">
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button
@@ -68,7 +69,10 @@ export function ConversationPicker({
 									{conversation.title ?? "Untitled"}
 								</span>
 								<span className="shrink-0 text-muted-foreground text-xs">
-									{dateFormat.format(new Date(conversation.lastMessageAt))}
+									<LocalDateTime
+										date={conversation.lastMessageAt}
+										options={DATE_OPTIONS}
+									/>
 								</span>
 							</DropdownMenuItem>
 						))

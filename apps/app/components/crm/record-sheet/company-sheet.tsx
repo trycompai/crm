@@ -24,20 +24,11 @@ import { formatMoney } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
-import { OPEN_STAGES } from "@/components/crm/deal-stage";
 import { EnrichmentActions } from "@/components/crm/enrichment-actions";
-import {
-	ENRICHMENT_POLL_MS,
-	EnrichmentIndicator,
-	isEnriching,
-} from "@/components/crm/enrichment-status";
-import {
-	InlineField,
-	InlineSelectField,
-	savingField,
-} from "@/components/crm/inline-field";
+import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
+import { InlineField, InlineSelectField } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
-import { CompanySocials, hasCompanyLinks } from "@/components/crm/social-links";
+import { CompanySocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
 import {
@@ -54,6 +45,11 @@ import {
 	DetailSheetStats,
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
+import { LocalDateTime } from "@/components/local-date-time";
+import { OPEN_STAGES } from "@/lib/deal-stage";
+import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
+import { savingField } from "@/lib/pending-field";
+import { hasCompanyLinks } from "@/lib/social-links";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -98,31 +94,36 @@ function companyConsequence(company: Company): string {
 }
 
 const CONTACT_COLUMNS = [
-	{ srLabel: "Primary", width: "w-10", className: "pl-5" },
-	{ header: "Name", width: "w-[28%]" },
-	{ header: "Title", width: "w-[24%]" },
-	{ header: "Email", width: "w-[26%]" },
-	{ header: "Owner", width: "w-[22%]" },
+	{ id: "primary", srLabel: "Primary", width: "w-10", className: "pl-5" },
+	{ id: "name", header: "Name", width: "w-[28%]" },
+	{ id: "title", header: "Title", width: "w-[24%]" },
+	{ id: "email", header: "Email", width: "w-[26%]" },
+	{ id: "owner", header: "Owner", width: "w-[22%]" },
 ];
 
 const DEAL_COLUMNS = [
-	{ header: "Deal", width: "w-[32%]", className: "pl-5" },
-	{ header: "Stage", width: "w-[24%]" },
-	{ header: "Amount", width: "w-[16%]", align: "right" as const },
-	{ header: "Close date", width: "w-[14%]" },
-	{ header: "Owner", width: "w-[14%]" },
+	{ id: "deal", header: "Deal", width: "w-[32%]", className: "pl-5" },
+	{ id: "stage", header: "Stage", width: "w-[24%]" },
+	{
+		id: "amount",
+		header: "Amount",
+		width: "w-[16%]",
+		align: "right" as const,
+	},
+	{ id: "close-date", header: "Close date", width: "w-[14%]" },
+	{ id: "owner", header: "Owner", width: "w-[14%]" },
 ];
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	year: "numeric",
-});
+};
 
-const shortDateFormat = new Intl.DateTimeFormat(undefined, {
+const SHORT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
-});
+};
 
 function nextClose(deals: CompanyDeal[]): string | null {
 	const dates = deals
@@ -318,7 +319,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 						</DetailSheetStat>
 						<DetailSheetStat label="Next close">
 							{closing ? (
-								shortDateFormat.format(new Date(closing))
+								<LocalDateTime date={closing} options={SHORT_DATE_OPTIONS} />
 							) : (
 								<EmptyCellValue />
 							)}
@@ -661,7 +662,10 @@ function CompanyDeals({
 						</TableCell>
 						<TableCell className="px-3 py-2.5 text-muted-foreground">
 							{deal.expectedCloseDate ? (
-								dateFormat.format(new Date(deal.expectedCloseDate))
+								<LocalDateTime
+									date={deal.expectedCloseDate}
+									options={DATE_OPTIONS}
+								/>
 							) : (
 								<EmptyCellValue />
 							)}

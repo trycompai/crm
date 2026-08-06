@@ -7,7 +7,6 @@ import {
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
-import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
@@ -16,6 +15,7 @@ import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
+import { LocalRelativeTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { contactsSearchParams } from "./contacts-search-params";
@@ -91,8 +91,8 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		width: "w-[10%]",
 		defaultHidden: true,
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.createdAt)}
+			<span className="text-muted-foreground">
+				<LocalRelativeTime date={row.createdAt} />
 			</span>
 		),
 	},
@@ -104,8 +104,12 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		width: "w-[12%]",
 		hideBelow: "sm",
 		cell: (row) => (
-			<span className="text-muted-foreground" suppressHydrationWarning>
-				{relativeTimeFromIso(row.lastActivityAt)}
+			<span className="text-muted-foreground">
+				{row.lastActivityAt ? (
+					<LocalRelativeTime date={row.lastActivityAt} />
+				) : (
+					<EmptyCellValue />
+				)}
 			</span>
 		),
 	},

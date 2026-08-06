@@ -1,4 +1,3 @@
-
 datasource db {
   provider = "postgresql"
 }
@@ -30,6 +29,15 @@ model User {
   mailboxSyncs   MailboxSync[]
   factDecisions  ContactFact[]       @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
+
+  createdAgentDefinitions AgentDefinition[]             @relation("AgentDefinitionCreator")
+  createdAgentVersions    AgentVersion[]                @relation("AgentVersionCreator")
+  createdAgentTriggers    AgentTrigger[]                @relation("AgentTriggerCreator")
+  initiatedAgentRuns      AgentRun[]                    @relation("AgentRunInitiator")
+  agentAuditEvents        AgentAuditEvent[]             @relation("AgentAuditActor")
+  conversationShares      AgentConversationShare[]      @relation("ConversationShareCreator")
+  conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
+  conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
 
   members     Member[]
   invitations Invitation[]
@@ -133,6 +141,79 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+}
+
+enum AgentConversationKind {
+  RECORD
+  BUILDER
+}
+
+enum AgentDefinitionStatus {
+  DRAFT
+  DEPLOYING
+  LIVE
+  PAUSED
+  ARCHIVED
+  DELETED
+}
+
+enum AgentVersionStatus {
+  DRAFT
+  VALIDATING
+  READY
+  DEPLOYED
+  REJECTED
+}
+
+enum AgentBuilderArtifactStatus {
+  WRITING
+  READY
+}
+
+enum AgentTriggerType {
+  MANUAL
+  SCHEDULE
+  EVENT
+  WEBHOOK
+}
+
+enum AgentRunStatus {
+  QUEUED
+  RUNNING
+  WAITING_FOR_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AgentActionStatus {
+  PLANNED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AgentConversationShareScope {
+  WORKSPACE_LINK
+}
+
+enum AgentConversationSubmissionStatus {
+  PENDING
+  SENDING
+  ACCEPTED
+  FAILED
+  CANCELLED
+}
+
+enum AgentConversationCommandType {
+  CHAT
+  CREATE_AGENT
+}
+
+enum AgentResponseRating {
+  UP
+  DOWN
 }
 
 model Company {
@@ -353,6 +434,8 @@ model AgentEvent {
 model AgentConversation {
   id String @id @default(cuid())
 
+  kind AgentConversationKind @default(RECORD)
+
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId String?
@@ -363,20 +446,376 @@ model AgentConversation {
   userId String
   user   User   @relation("ConversationOwner", fields: [userId], references: [id], onDelete: Cascade)
 
-  sessionId         String  @unique
+  agentId String?
+  agent   AgentDefinition? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  sessionId         String? @unique
   continuationToken String?
   streamIndex       Int     @default(0)
 
   title        String?
   messageCount Int     @default(0)
 
-  createdAt     DateTime @default(now())
-  lastMessageAt DateTime @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastMessageAt   DateTime  @default(now())
+  lastAssistantAt DateTime?
+  lastReadAt      DateTime?
+
+  shares          AgentConversationShare[]
+  submissions     AgentConversationSubmission[]
+  feedback        AgentConversationFeedback[]
+  createdVersions AgentVersion[]                @relation("AgentVersionSourceConversation")
+  builderArtifacts AgentBuilderArtifact[]
 
   @@index([contactId, lastMessageAt])
   @@index([companyId, lastMessageAt])
   @@index([dealId, lastMessageAt])
+  @@index([userId, kind, lastMessageAt])
+  @@index([agentId, lastMessageAt])
   @@map("agentConversation")
+}
+
+model AgentConversationFeedback {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("ConversationFeedbackAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  messageId String
+  rating    AgentResponseRating
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conversationId, userId, messageId])
+  @@index([conversationId, createdAt])
+  @@map("agentConversationFeedback")
+}
+
+model AgentConversationShare {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("ConversationShareCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  scope     AgentConversationShareScope @default(WORKSPACE_LINK)
+  tokenHash String                      @unique
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  @@index([conversationId, revokedAt])
+  @@map("agentConversationShare")
+}
+
+model AgentConversationSubmission {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  submittedById String
+  submittedBy   User   @relation("ConversationSubmissionAuthor", fields: [submittedById], references: [id], onDelete: Restrict)
+
+  clientRequestId String                            @unique
+  inputRequestId  String?
+  commandType     AgentConversationCommandType      @default(CHAT)
+  message         Json
+  status          AgentConversationSubmissionStatus @default(PENDING)
+  attemptCount    Int                               @default(0)
+
+  errorCode    String?
+  errorMessage String?
+
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
+  acceptedAt DateTime?
+
+  attachments AgentConversationAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([status, createdAt])
+  @@unique([conversationId, inputRequestId])
+  @@map("agentConversationSubmission")
+}
+
+model AgentConversationAttachment {
+  id String @id @default(cuid())
+
+  submissionId String
+  submission   AgentConversationSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  name      String
+  mediaType String
+  size      Int
+  content   Bytes
+
+  createdAt DateTime @default(now())
+
+  @@index([submissionId, createdAt])
+  @@map("agentConversationAttachment")
+}
+
+model AgentDefinition {
+  id String @id @default(cuid())
+
+  name        String
+  description String?
+  status      AgentDefinitionStatus @default(DRAFT)
+
+  createdById String
+  createdBy   User   @relation("AgentDefinitionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  currentVersionId String?       @unique
+  currentVersion   AgentVersion? @relation("CurrentAgentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  versions      AgentVersion[]      @relation("AgentVersions")
+  triggers      AgentTrigger[]
+  runs          AgentRun[]
+  actions       AgentAction[]
+  auditEvents   AgentAuditEvent[]
+  conversations AgentConversation[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+  deletedAt  DateTime?
+
+  @@index([status, updatedAt])
+  @@index([createdById, createdAt])
+  @@map("agentDefinition")
+}
+
+model AgentVersion {
+  id String @id @default(cuid())
+
+  agentId String
+  agent   AgentDefinition @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Restrict)
+
+  number Int
+  status AgentVersionStatus @default(DRAFT)
+
+  instructions  String
+  manifest      Json
+  modelId       String
+  sandboxPolicy Json
+  validation    Json?
+
+  sourceConversationId String?
+  sourceConversation   AgentConversation? @relation("AgentVersionSourceConversation", fields: [sourceConversationId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("AgentVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  deploymentId String?
+  approvedAt   DateTime?
+  deployedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  currentFor  AgentDefinition?  @relation("CurrentAgentVersion")
+  triggers    AgentTrigger[]
+  runs        AgentRun[]
+  auditEvents AgentAuditEvent[]
+  builderArtifacts AgentBuilderArtifact[]
+
+  @@unique([agentId, number])
+  @@index([agentId, createdAt])
+  @@index([status, createdAt])
+  @@map("agentVersion")
+}
+
+model AgentBuilderArtifact {
+  id String @id @default(cuid())
+
+  conversationId String?
+  conversation   AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  versionId String?
+  version   AgentVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  path            String
+  language        String
+  content         String
+  previousContent String?
+  revision        Int
+  status          AgentBuilderArtifactStatus @default(WRITING)
+  createdAt       DateTime                   @default(now())
+
+  @@unique([conversationId, path, revision])
+  @@index([conversationId, createdAt])
+  @@index([versionId, path])
+  @@map("agentBuilderArtifact")
+}
+
+model AgentTrigger {
+  id String @id @default(cuid())
+
+  agentId String
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+
+  versionId String
+  version   AgentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  type   AgentTriggerType
+  name   String
+  config Json
+
+  createdById String
+  createdBy   User   @relation("AgentTriggerCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  enabled   Boolean   @default(false)
+  nextRunAt DateTime?
+  lastRunAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  runs AgentRun[]
+
+  @@index([agentId, enabled])
+  @@index([enabled, nextRunAt])
+  @@index([versionId])
+  @@map("agentTrigger")
+}
+
+model AgentRun {
+  id String @id @default(cuid())
+
+  agentId String
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+
+  versionId String
+  version   AgentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  triggerId String?
+  trigger   AgentTrigger? @relation(fields: [triggerId], references: [id], onDelete: Restrict)
+
+  initiatedById String?
+  initiatedBy   User?   @relation("AgentRunInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  triggerType    AgentTriggerType
+  status         AgentRunStatus   @default(QUEUED)
+  principalId    String?
+  sessionId      String?          @unique
+  idempotencyKey String           @unique
+  correlationId  String           @unique
+
+  input   Json?
+  result  Json?
+  summary String?
+
+  modelId      String?
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Decimal? @db.Decimal(12, 6)
+
+  errorCode    String?
+  errorMessage String?
+
+  nextEventSequence Int @default(0)
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  events  AgentRunEvent[]
+  actions AgentAction[]
+
+  @@index([agentId, createdAt])
+  @@index([versionId, createdAt])
+  @@index([status, createdAt])
+  @@index([triggerId, createdAt])
+  @@map("agentRun")
+}
+
+model AgentRunEvent {
+  id String @id @default(cuid())
+
+  runId String
+  run   AgentRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  sequence  Int
+  type      String
+  data      Json
+  emittedAt DateTime @default(now())
+
+  @@unique([runId, sequence])
+  @@index([runId, emittedAt])
+  @@map("agentRunEvent")
+}
+
+model AgentAction {
+  id String @id @default(cuid())
+
+  agentId String
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+
+  runId String
+  run   AgentRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  type        String
+  provider    String
+  targetType  String?
+  targetId    String?
+  targetLabel String?
+  summary     String
+  metadata    Json?
+
+  status         AgentActionStatus @default(PLANNED)
+  idempotencyKey String            @unique
+  requestHash    String?
+  externalId     String?
+  attemptCount   Int               @default(0)
+
+  errorCode    String?
+  errorMessage String?
+
+  plannedAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([agentId, plannedAt])
+  @@index([runId, plannedAt])
+  @@index([provider, externalId])
+  @@index([status, plannedAt])
+  @@map("agentAction")
+}
+
+model AgentAuditEvent {
+  id String @id @default(cuid())
+
+  agentId String
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+
+  versionId String?
+  version   AgentVersion? @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  actorUserId String?
+  actorUser   User?   @relation("AgentAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  type      String
+  actorType String
+  actorId   String?
+  summary   String
+  before    Json?
+  after     Json?
+  requestId String?
+  emittedAt DateTime @default(now())
+
+  @@unique([agentId, type, requestId])
+  @@index([agentId, emittedAt])
+  @@index([versionId, emittedAt])
+  @@index([actorUserId, emittedAt])
+  @@index([type, emittedAt])
+  @@map("agentAuditEvent")
 }
 
 model Deal {

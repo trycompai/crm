@@ -36,6 +36,7 @@ CLI works without any app running.
 | Script        | Purpose                                                  |
 | ------------- | -------------------------------------------------------- |
 | `build`       | `prisma generate` — cached by Turborepo, runs via `^build` |
+| `dev:prepare` | Apply pending local migrations, reject drift, and generate Prisma Client |
 | `db:generate` | Regenerate Prisma Client                                 |
 | `db:migrate`  | Create and apply a migration (development)               |
 | `db:deploy`   | Apply pending migrations (CI / production)               |
@@ -46,6 +47,11 @@ CLI works without any app running.
 
 Each is also exposed at the repo root (`bun run db:migrate`) and routed through
 `turbo run`.
+
+The root `bun run dev` command runs `dev:prepare` before any service starts and
+reruns it when the schema or migrations change. Services that hold a Prisma
+client restart only after preparation finishes, so they cannot retain an older
+generated model map.
 
 ## Notes
 

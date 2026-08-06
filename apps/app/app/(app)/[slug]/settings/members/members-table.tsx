@@ -15,11 +15,11 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
-import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
+import { LocalRelativeTime } from "@/components/local-date-time";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -90,8 +90,8 @@ function columns(
 			width: "w-[14%]",
 			hideBelow: "sm",
 			cell: (row) => (
-				<span className="text-muted-foreground" suppressHydrationWarning>
-					{relativeTimeFromIso(row.joinedAt)}
+				<span className="text-muted-foreground">
+					<LocalRelativeTime date={row.joinedAt} />
 				</span>
 			),
 		},
@@ -159,9 +159,11 @@ export function MembersTable() {
 		{
 			id: "role",
 			label: "Role",
-			options: (Object.keys(ROLE_LABEL) as Role[])
-				.map((role) => ({ value: role, label: ROLE_LABEL[role] }))
-				.filter((option) => (facetCounts?.role?.[option.value] ?? 0) > 0),
+			options: (Object.keys(ROLE_LABEL) as Role[]).flatMap((role) =>
+				(facetCounts?.role?.[role] ?? 0) > 0
+					? [{ value: role, label: ROLE_LABEL[role] }]
+					: [],
+			),
 		},
 	];
 

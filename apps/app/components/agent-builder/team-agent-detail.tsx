@@ -1,0 +1,788 @@
+"use client";
+
+import ChevronDown from "@carbon/icons-react/es/ChevronDown";
+import ChevronUp from "@carbon/icons-react/es/ChevronUp";
+import Download from "@carbon/icons-react/es/Download";
+import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
+import Pause from "@carbon/icons-react/es/Pause";
+import Play from "@carbon/icons-react/es/Play";
+import TrashCan from "@carbon/icons-react/es/TrashCan";
+import {
+	AlertDialog,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@crm/ui/components/alert-dialog";
+import {
+	AsyncButtonContent,
+	useAsyncAction,
+} from "@crm/ui/components/async-action";
+import { Button } from "@crm/ui/components/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@crm/ui/components/dropdown-menu";
+import { Icon } from "@crm/ui/components/icon";
+import { Skeleton } from "@crm/ui/components/skeleton";
+import { cn } from "@crm/ui/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+	PageShell,
+	PageShellActions,
+	PageShellContent,
+	PageShellDescription,
+	PageShellHeader,
+	PageShellHeading,
+	PageShellTitle,
+} from "@/components/page-shell";
+import { useTRPC } from "@/lib/trpc/client";
+import type { RouterOutputs } from "@/lib/trpc/types";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+
+type AgentTab = "overview" | "runs" | "activity";
+type AgentDetail = RouterOutputs["agents"]["byId"];
+type Runs = RouterOutputs["agents"]["history"];
+type Activity = RouterOutputs["agents"]["activity"];
+type RunRow = Omit<Runs[number], "events"> & {
+	events: Array<{
+		id: string;
+		type: string;
+		data: unknown;
+		emittedAt: string;
+	}>;
+};
+type ActivityRow = Omit<Activity[number], "before" | "after"> & {
+	before: unknown;
+	after: unknown;
+};
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	month: "short",
+	day: "numeric",
+	hour: "numeric",
+	minute: "2-digit",
+	second: "2-digit",
+	timeZone: "UTC",
+	timeZoneName: "short",
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+	hour12: false,
+	timeZone: "UTC",
+});
+
+export function TeamAgentDetail({
+	agentId,
+	initialAgent,
+	initialRuns,
+	initialActivity,
+}: {
+	agentId: string;
+	initialAgent: AgentDetail;
+	initialRuns: Runs;
+	initialActivity: Activity;
+}) {
+	const trpc = useTRPC();
+	const queryClient = useQueryClient();
+	const [tab, setTab] = useState<AgentTab>("runs");
+	const agent = useQuery({
+		...trpc.agents.byId.queryOptions({ id: agentId }),
+		initialData: initialAgent,
+	});
+	const runs = useQuery({
+		...trpc.agents.history.queryOptions({ id: agentId, limit: 50 }),
+		initialData: initialRuns,
+		refetchInterval: (query) =>
+			query.state.data?.some((run) =>
+				["QUEUED", "RUNNING"].includes(run.status),
+			)
+				? 2500
+				: false,
+	});
+	const activity = useQuery({
+		...trpc.agents.activity.queryOptions({ id: agentId, limit: 100 }),
+		initialData: initialActivity,
+	});
+	const invalidate = () =>
+		Promise.all([
+			queryClient.invalidateQueries({ queryKey: trpc.agents.byId.pathKey() }),
+			queryClient.invalidateQueries({ queryKey: trpc.agents.list.pathKey() }),
+		]);
+	const runNow = useMutation(
+		trpc.agents.runNow.mutationOptions({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries({
+					queryKey: trpc.agents.history.pathKey(),
+				});
+				setTab("runs");
+				toast.success("Agent run queued.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const pause = useMutation(
+		trpc.agents.pause.mutationOptions({
+			onSuccess: invalidate,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const resume = useMutation(
+		trpc.agents.resume.mutationOptions({
+			onSuccess: invalidate,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const runAction = useAsyncAction({
+		action: () =>
+			runNow.mutateAsync({
+				id: agentId,
+				clientRequestId: crypto.randomUUID(),
+			}),
+	});
+	const pauseAction = useAsyncAction({
+		action: () => pause.mutateAsync({ id: agentId }),
+	});
+	const resumeAction = useAsyncAction({
+		action: () => resume.mutateAsync({ id: agentId }),
+	});
+
+	if (agent.isPending) {
+		return (
+			<PageShell className="min-h-0" aria-busy="true">
+				<PageShellHeader>
+					<PageShellHeading>
+						<Skeleton className="h-8 w-72 max-w-full" />
+						<Skeleton className="h-4 w-[520px] max-w-full" />
+					</PageShellHeading>
+				</PageShellHeader>
+				<PageShellContent>
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-56 w-full" />
+				</PageShellContent>
+				<span role="status" className="sr-only">
+					Loading agent
+				</span>
+			</PageShell>
+		);
+	}
+
+	if (agent.isError) {
+		return (
+			<PageShell>
+				<PageShellHeader>
+					<PageShellHeading>
+						<PageShellTitle>Agent unavailable</PageShellTitle>
+						<PageShellDescription>{agent.error.message}</PageShellDescription>
+					</PageShellHeading>
+				</PageShellHeader>
+			</PageShell>
+		);
+	}
+
+	const data = agent.data;
+	const nextRun = data.triggers.find((trigger) => trigger.enabled)?.nextRunAt;
+
+	return (
+		<PageShell className="min-h-0">
+			<PageShellHeader className="[&>div]:grid-cols-1 sm:[&>div]:grid-cols-[minmax(0,1fr)_auto]">
+				<PageShellHeading>
+					<PageShellTitle className="wrap-break-word">
+						{data.name}
+					</PageShellTitle>
+					<PageShellDescription className="wrap-break-word leading-6">
+						<span className="block">
+							{data.description ?? "A durable team automation."}
+						</span>
+						<span className="mt-2 block text-xs">
+							Created by {data.createdBy.name} · Team agent · Version{" "}
+							{data.currentVersion?.number ?? "—"}
+						</span>
+					</PageShellDescription>
+				</PageShellHeading>
+				<PageShellActions className="col-start-1 row-start-3 justify-self-start sm:col-start-2 sm:row-start-1 sm:justify-self-end">
+					<div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+						<span className="text-muted-foreground text-xs">Next run</span>
+						<span className="font-mono text-sm">
+							{nextRun ? formatDate(nextRun) : "Manual only"}
+						</span>
+						<div className="mt-1 flex flex-wrap gap-2">
+							<Button
+								variant="outline"
+								disabled={data.status !== "LIVE" || runAction.pending}
+								aria-busy={runAction.pending}
+								onClick={() => runAction.run()}
+							>
+								<AsyncButtonContent
+									status={runAction.status}
+									pendingLabel="Queueing"
+									successLabel="Queued"
+									errorLabel="Try again"
+								>
+									<Icon icon={Play} data-icon="inline-start" />
+									Run now
+								</AsyncButtonContent>
+							</Button>
+							{data.canManage && data.status === "LIVE" ? (
+								<Button
+									variant="outline"
+									disabled={pauseAction.pending}
+									aria-busy={pauseAction.pending}
+									onClick={() => pauseAction.run()}
+								>
+									<AsyncButtonContent
+										status={pauseAction.status}
+										pendingLabel="Pausing"
+										successLabel="Paused"
+										errorLabel="Try again"
+									>
+										<Icon icon={Pause} data-icon="inline-start" />
+										Pause
+									</AsyncButtonContent>
+								</Button>
+							) : null}
+							{data.canManage && data.status === "PAUSED" ? (
+								<Button
+									variant="outline"
+									disabled={resumeAction.pending}
+									aria-busy={resumeAction.pending}
+									onClick={() => resumeAction.run()}
+								>
+									<AsyncButtonContent
+										status={resumeAction.status}
+										pendingLabel="Resuming"
+										successLabel="Resumed"
+										errorLabel="Try again"
+									>
+										<Icon icon={Play} data-icon="inline-start" />
+										Resume
+									</AsyncButtonContent>
+								</Button>
+							) : null}
+							{data.canManage ? (
+								<DeleteAgentAction agentId={data.id} name={data.name} />
+							) : null}
+						</div>
+					</div>
+				</PageShellActions>
+			</PageShellHeader>
+
+			<PageShellContent className="min-h-0">
+				<div className="flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b sm:gap-6">
+					<TabButton
+						active={tab === "overview"}
+						onClick={() => setTab("overview")}
+					>
+						Overview
+					</TabButton>
+					<TabButton active={tab === "runs"} onClick={() => setTab("runs")}>
+						Runs{" "}
+						<span className="font-mono text-muted-foreground">
+							{data.runCount}
+						</span>
+					</TabButton>
+					<TabButton
+						active={tab === "activity"}
+						onClick={() => setTab("activity")}
+					>
+						Activity{" "}
+						<span className="font-mono text-muted-foreground">
+							{activity.data?.length ?? 0}
+						</span>
+					</TabButton>
+				</div>
+
+				{tab === "overview" ? <AgentOverview agent={data} /> : null}
+				{tab === "runs" ? <AgentRuns runs={runs.data ?? []} /> : null}
+				{tab === "activity" ? (
+					<AgentActivity activity={activity.data ?? []} />
+				) : null}
+			</PageShellContent>
+		</PageShell>
+	);
+}
+
+function DeleteAgentAction({
+	agentId,
+	name,
+}: {
+	agentId: string;
+	name: string;
+}) {
+	const trpc = useTRPC();
+	const queryClient = useQueryClient();
+	const router = useRouter();
+	const workspaceUrl = useWorkspaceUrl();
+	const [confirming, setConfirming] = useState(false);
+	const remove = useMutation(
+		trpc.agents.remove.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.list.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.byId.pathKey(),
+						refetchType: "none",
+					}),
+				]);
+				setConfirming(false);
+				toast.success(`${name} was deleted.`);
+				router.replace(workspaceUrl("/agents"));
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const removeAction = useAsyncAction({
+		action: () => remove.mutateAsync({ id: agentId }),
+	});
+
+	return (
+		<>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						disabled={removeAction.pending}
+					>
+						<Icon icon={OverflowMenuVertical} />
+						<span className="sr-only">More agent actions</span>
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuItem
+						variant="destructive"
+						onSelect={() => setConfirming(true)}
+					>
+						<Icon icon={TrashCan} />
+						Delete agent
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+
+			<AlertDialog
+				open={confirming}
+				onOpenChange={(open) => {
+					if (!removeAction.pending) setConfirming(open);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete {name}?</AlertDialogTitle>
+						<AlertDialogDescription>
+							This removes it from the team agent list, disables its triggers,
+							and cancels queued runs. Its run and action history stays in the
+							audit log. A run already in progress may finish.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={removeAction.pending}>
+							Cancel
+						</AlertDialogCancel>
+						<Button
+							variant="destructive"
+							disabled={removeAction.pending}
+							aria-busy={removeAction.pending}
+							onClick={() => removeAction.run()}
+						>
+							<AsyncButtonContent
+								status={removeAction.status}
+								pendingLabel="Deleting"
+								successLabel="Deleted"
+								errorLabel="Try again"
+							>
+								Delete agent
+							</AsyncButtonContent>
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</>
+	);
+}
+
+function TabButton({
+	active,
+	onClick,
+	children,
+}: {
+	active: boolean;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"flex h-8 items-center gap-2 border-b-2 border-transparent text-muted-foreground text-sm outline-none hover:text-foreground focus-visible:text-foreground",
+				active && "border-ring font-medium text-foreground",
+			)}
+		>
+			{children}
+		</button>
+	);
+}
+
+function AgentOverview({ agent }: { agent: AgentDetail }) {
+	const version = agent.currentVersion as {
+		manifest: unknown;
+		sandboxPolicy: unknown;
+		modelId: string;
+	} | null;
+	const manifest = recordOf(version?.manifest);
+	const sandbox = recordOf(version?.sandboxPolicy);
+
+	return (
+		<div className="overflow-hidden rounded-lg border bg-card">
+			<DetailRow label="Status" value={agent.status} />
+			<DetailRow label="Model" value={version?.modelId ?? "—"} />
+			<DetailRow
+				label="Execution"
+				value={textOf(
+					sandbox.summary,
+					"Isolated sandbox · deny-all network · bounded CRM tools",
+				)}
+			/>
+			<DetailRow
+				label="Scope"
+				value={textOf(
+					recordOf(manifest.dataScope).summary,
+					"Bounded CRM access",
+				)}
+			/>
+			<DetailRow
+				label="Triggers"
+				value={
+					agent.triggers.map((trigger) => trigger.name).join(" · ") ||
+					"Manual only"
+				}
+			/>
+		</div>
+	);
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex min-h-11 flex-col items-start gap-1 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-2">
+			<span className="text-muted-foreground text-xs sm:w-36 sm:shrink-0">
+				{label}
+			</span>
+			<span className="min-w-0 max-w-full flex-1 wrap-break-word text-sm">
+				{value}
+			</span>
+		</div>
+	);
+}
+
+function AgentRuns({ runs }: { runs: Runs }) {
+	const [outcome, setOutcome] = useState("ALL");
+	const [expanded, setExpanded] = useState<string | null>(null);
+	const visible = runs.filter(
+		(run) => outcome === "ALL" || run.status === outcome,
+	);
+
+	return (
+		<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
+			<div className="flex min-h-7 items-center justify-start sm:justify-end">
+				<select
+					value={outcome}
+					onChange={(event) => setOutcome(event.target.value)}
+					aria-label="Filter run outcomes"
+					className="h-7 rounded-md border bg-muted px-2.5 font-medium text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+				>
+					<option value="ALL">All outcomes</option>
+					<option value="SUCCEEDED">Succeeded</option>
+					<option value="FAILED">Failed</option>
+					<option value="RUNNING">Running</option>
+					<option value="QUEUED">Queued</option>
+				</select>
+			</div>
+
+			{visible.map((run, index) => (
+				<div
+					key={run.id}
+					className="min-w-0 overflow-hidden rounded-lg border bg-card"
+				>
+					<button
+						type="button"
+						onClick={() =>
+							setExpanded((current) => (current === run.id ? null : run.id))
+						}
+						className="flex min-h-14 w-full min-w-0 flex-col items-stretch gap-3 px-4 py-3 text-left outline-none hover:bg-muted/40 focus-visible:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-5 sm:py-2"
+					>
+						<span className="min-w-0 flex-1">
+							<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+								<span className="font-semibold text-sm">
+									Run #{String(runs.length - index).padStart(3, "0")}
+								</span>
+								<span
+									className={cn(
+										"text-muted-foreground text-xs",
+										run.status === "FAILED" && "text-destructive",
+									)}
+								>
+									{humanStatus(run.status)}
+								</span>
+							</span>
+							<span className="mt-1 block wrap-break-word font-mono text-muted-foreground text-xs leading-5 sm:mt-0">
+								{humanStatus(run.triggerType)} · {formatDate(run.createdAt)} ·
+								Version {run.version.number}
+							</span>
+						</span>
+						<span className="flex min-w-0 items-center justify-between gap-3 font-mono text-muted-foreground text-xs sm:shrink-0 sm:justify-start sm:gap-4">
+							<span>{duration(run.startedAt, run.finishedAt)}</span>
+							<span>
+								{run.actions.length} external{" "}
+								{run.actions.length === 1 ? "action" : "actions"}
+							</span>
+							<Icon
+								icon={expanded === run.id ? ChevronUp : ChevronDown}
+								className="size-3.5"
+							/>
+						</span>
+					</button>
+
+					{expanded === run.id ? (
+						<ExpandedRun run={run as unknown as RunRow} />
+					) : null}
+				</div>
+			))}
+
+			{visible.length === 0 ? (
+				<p className="py-12 text-center text-muted-foreground text-sm">
+					No runs match this outcome.
+				</p>
+			) : null}
+		</div>
+	);
+}
+
+function ExpandedRun({ run }: { run: RunRow }) {
+	const events = run.events.filter(
+		(event) => event.type !== "message.appended",
+	);
+	const condensedEvents = run.events.length - events.length;
+
+	return (
+		<div className="min-w-0 border-t">
+			<div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b bg-background px-4 py-3 sm:min-h-[58px] sm:grid-cols-4 sm:items-center sm:gap-0 sm:px-5 sm:py-2">
+				<RunMeta label="Trigger" value={humanStatus(run.triggerType)} />
+				<RunMeta
+					label="Initiated by"
+					value={run.initiatedBy?.name ?? "Eve scheduler"}
+				/>
+				<RunMeta label="Model" value={run.modelId ?? "Gateway default"} />
+				<RunMeta label="Version" value={String(run.version.number)} last />
+			</div>
+
+			<div>
+				{events.map((event) => (
+					<div
+						key={event.id}
+						className="grid min-h-8 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 border-t px-4 py-2 first:border-t-0 sm:flex sm:items-center sm:gap-5 sm:px-5 sm:py-1.5"
+					>
+						<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
+							{formatTime(event.emittedAt)}
+						</span>
+						<span className="min-w-0 flex-1 wrap-break-word text-sm">
+							{eventLabel(event.type, event.data)}
+						</span>
+						<span className="hidden shrink-0 font-mono text-muted-foreground text-xs sm:inline">
+							event
+						</span>
+					</div>
+				))}
+				{run.actions.map((action) => (
+					<div
+						key={action.id}
+						className="grid min-h-12 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 border-t px-4 py-3 sm:flex sm:gap-5 sm:px-5"
+					>
+						<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
+							{formatTime(
+								action.completedAt ?? action.startedAt ?? action.plannedAt,
+							)}
+						</span>
+						<span className="min-w-0 flex-1">
+							<span className="block wrap-break-word text-sm">
+								{action.summary}
+							</span>
+							<span className="block wrap-break-word text-muted-foreground text-xs">
+								{action.provider} · {humanStatus(action.status)}
+								{action.targetLabel ? ` · ${action.targetLabel}` : ""}
+							</span>
+						</span>
+						<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
+							{action.externalId ?? action.id.slice(0, 12)}
+						</span>
+					</div>
+				))}
+				{condensedEvents > 0 ? (
+					<div className="flex min-h-9 items-center border-t px-4 py-2 text-muted-foreground text-xs sm:px-5">
+						{condensedEvents} streaming{" "}
+						{condensedEvents === 1 ? "update" : "updates"} condensed
+					</div>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
+function RunMeta({
+	label,
+	value,
+	last = false,
+}: {
+	label: string;
+	value: string;
+	last?: boolean;
+}) {
+	return (
+		<span
+			className={cn(
+				"flex min-w-0 flex-col gap-0.5 sm:flex-1",
+				last && "sm:max-w-44",
+			)}
+		>
+			<span className="text-muted-foreground text-xs">{label}</span>
+			<span className="wrap-break-word text-sm sm:truncate">{value}</span>
+		</span>
+	);
+}
+
+function AgentActivity({ activity }: { activity: Activity }) {
+	const [kind, setKind] = useState("ALL");
+	const rows = activity as unknown as ActivityRow[];
+	const visible = rows.filter(
+		(event) => kind === "ALL" || event.type.startsWith(kind),
+	);
+
+	return (
+		<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
+			<div className="flex min-h-7 flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
+				<select
+					value={kind}
+					onChange={(event) => setKind(event.target.value)}
+					aria-label="Filter activity"
+					className="h-7 rounded-md border bg-muted px-2.5 font-medium text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+				>
+					<option value="ALL">All changes</option>
+					<option value="agent.">Agent changes</option>
+					<option value="run.">Run requests</option>
+				</select>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => exportJson("agent-activity.json", visible)}
+				>
+					<Icon icon={Download} data-icon="inline-start" />
+					Export
+				</Button>
+			</div>
+
+			<div className="min-w-0 overflow-hidden rounded-lg border bg-card">
+				<div className="hidden h-9 items-center border-b bg-background px-5 text-muted-foreground text-xs sm:flex">
+					<span className="w-[166px] shrink-0">Time</span>
+					<span className="min-w-0 flex-1">Change</span>
+					<span className="w-[140px] shrink-0">Actor</span>
+					<span className="w-[118px] shrink-0 text-right">Request</span>
+				</div>
+				{visible.map((event) => (
+					<div
+						key={event.id}
+						className="flex min-h-11 min-w-0 flex-col items-start gap-2 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-0 sm:px-5"
+					>
+						<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[166px]">
+							{formatDate(event.emittedAt)}
+						</span>
+						<span className="min-w-0 flex-1">
+							<span className="block wrap-break-word text-sm">
+								{event.summary}
+							</span>
+							{changeDetail(event.before, event.after) ? (
+								<span className="block max-w-full whitespace-pre-wrap wrap-break-word font-mono text-muted-foreground text-xs">
+									{changeDetail(event.before, event.after)}
+								</span>
+							) : null}
+						</span>
+						<span className="min-w-0 wrap-break-word text-xs sm:w-[140px] sm:shrink-0 sm:text-sm">
+							<span className="text-muted-foreground sm:hidden">Actor · </span>
+							{event.actorUser?.name ?? event.actorId ?? event.actorType}
+						</span>
+						<span className="min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:w-[118px] sm:shrink-0 sm:text-right">
+							<span className="font-sans sm:hidden">Request · </span>
+							{event.requestId?.slice(0, 12) ?? "—"}
+						</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function textOf(value: unknown, fallback: string): string {
+	return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function humanStatus(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/_/g, " ")
+		.replace(/^./, (character) => character.toUpperCase());
+}
+
+function formatDate(value: string): string {
+	return DATE_FORMATTER.format(new Date(value));
+}
+
+function formatTime(value: string): string {
+	return TIME_FORMATTER.format(new Date(value));
+}
+
+function duration(startedAt: string | null, finishedAt: string | null): string {
+	if (!startedAt) return "—";
+	if (!finishedAt) return "In progress";
+
+	const milliseconds =
+		new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+	return `${Math.max(0, milliseconds / 1000).toFixed(1)}s`;
+}
+
+function eventLabel(type: string, data: unknown): string {
+	const payload = recordOf(data);
+	return textOf(payload.summary, humanStatus(type.replace(/\./g, " ")));
+}
+
+function changeDetail(before: unknown, after: unknown): string | null {
+	if (!before && !after) return null;
+	const previous = JSON.stringify(before);
+	const next = JSON.stringify(after);
+	return previous && next ? `${previous} → ${next}` : next || previous;
+}
+
+function exportJson(name: string, value: unknown) {
+	const url = URL.createObjectURL(
+		new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }),
+	);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = name;
+	anchor.click();
+	URL.revokeObjectURL(url);
+}

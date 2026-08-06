@@ -80,8 +80,12 @@
 			"dependsOn": ["topo", "^build"]
 		},
 		"dev": {
+			"dependsOn": ["@crm/db#dev:prepare"],
 			"cache": false,
 			"persistent": true
+		},
+		"dev:prepare": {
+			"cache": false
 		}
 	}
 }

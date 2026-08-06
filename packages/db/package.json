@@ -13,6 +13,7 @@
 		"./favicon": "./src/favicon.ts",
 		"./fx": "./src/fx.ts",
 		"./images": "./src/images.ts",
+		"./idempotency": "./src/idempotency.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
 		"./workspace": "./src/workspace.ts"
@@ -28,7 +29,7 @@
 		"db:seed": "bun scripts/require-local-db.ts db:seed && prisma db seed",
 		"db:studio": "prisma studio",
 		"test": "bun test",
-		"dev": "prisma generate --watch",
+		"dev:prepare": "bun scripts/prepare-dev.ts",
 		"lint": "biome check .",
 		"postinstall": "prisma generate",
 		"clean": "rm -rf .turbo node_modules src/generated"

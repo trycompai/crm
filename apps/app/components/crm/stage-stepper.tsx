@@ -4,12 +4,8 @@ import { DealStage } from "@crm/db/enums";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-	DealStageIndicator,
-	dealStageLabel,
-	isClosedStage,
-	OPEN_STAGES,
-} from "@/components/crm/deal-stage";
+import { DealStageIndicator } from "@/components/crm/deal-stage";
+import { dealStageLabel, isClosedStage, OPEN_STAGES } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 

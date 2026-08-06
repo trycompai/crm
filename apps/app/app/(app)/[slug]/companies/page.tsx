@@ -50,9 +50,10 @@ export default function CompaniesPage({
 async function Companies({
 	searchParams,
 }: Pick<PageProps<"/[slug]/companies">, "searchParams">) {
-	await requireSession();
-
-	const values = await companiesSearchParams.load(searchParams);
+	const [, values] = await Promise.all([
+		requireSession(),
+		companiesSearchParams.load(searchParams),
+	]);
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();

@@ -210,6 +210,54 @@ the backend factory** so it cannot be forgotten per session. Costs nothing —
 **Never give the sandbox `DATABASE_URL`.** CRM access is authored tools. A shell with
 credentials and network is exfiltration-shaped; with neither it is a text processor.
 
+## Team-agent builder and runner
+
+`agent_builder` and `agent_runner` are declared subagents with independent
+instructions, tools and deny-all sandboxes. They inherit nothing from the root. The
+root built-in `agent` copy tool is disabled; these two named specialists are the only
+delegation paths for custom agents.
+
+- **Creation requires the current `CREATE_AGENT` turn.** Every builder tool checks the
+  purpose and command type in session auth. A normal builder chat cannot create a
+  draft by prompt alone.
+- **Builder output is typed.** `needs_input` carries one question and its choices for
+  the parent to surface through eve HITL. `draft_ready` carries the immutable version
+  ids. The specialist cannot ask directly because its `ask_question` is disabled.
+- **Empty never means all.** A version chooses `SELECTED` or `WORKSPACE` record scope.
+  Selected scope requires at least one record tagged in that private conversation;
+  workspace scope is an explicit grant and cannot also list selected records.
+- **Connections are executable permissions.** Only `google:gmail` and
+  `google:calendar` are accepted, only when connected, and the runner does not query
+  their synced tables unless the deployed manifest includes that source.
+- **Actions are structured permissions.** `crm.activity.create` separately names
+  `NOTE`, `TASK`, or both. Runtime enforcement never infers a grant from the action's
+  prose summary. Every action is ledgered before execution and keyed by eve's call id
+  for replay safety.
+- **Deployment is the human approval boundary.** Saving produces a private READY
+  version and never deploys it. The review screen shows its trigger, scope, actions,
+  access and exact files. A user's Deploy action pins that immutable version for the
+  team. Scheduled runner sessions use task mode and therefore cannot pause for a
+  per-action approval; the deployed permission and idempotent runtime checks are the
+  boundary.
+- **Approved instructions are system context.** The runner resolves the pinned
+  version instructions at `session.started`, then calls `inspect_run` for the manifest
+  and current run state. Every runner tool also checks the `team-agent` purpose and
+  revalidates scope and action permission.
+- **No generic execution surface.** Both specialists disable shell, file, arbitrary
+  web, todo and direct-question built-ins. CRM access exists only through their small
+  authored tool sets. Tool code runs in the trusted app runtime; the sandbox remains
+  isolated and deny-all.
+
+Runner manifests fail closed when either the explicit record-scope mode or an
+activity type grant is missing. Versions created before these typed permissions were
+introduced must be revised and deployed again before they can run.
+
+`bun run --filter=agent eval` runs the eve end-to-end builder eval against the real
+HTTP channel. It creates an isolated private conversation, dispatches the builder,
+asserts the declared subagent path, verifies a READY side-effect-free manifest, and
+cleans up its rows. It skips visibly when the database, bridge secret or model
+credential is unavailable.
+
 ## The bridge
 
 ```
@@ -248,6 +296,284 @@ were written, sessions looked clean, but **no task reached `finishedAt`**, so co
 sat on "Researching" forever. Hidden because the archived event's
 `data.continuationToken` is *un-namespaced* while `channel.continuationToken` is not.
 
+### Conversations are kept
+
+A record accumulates conversations, and they survive a reload. `AgentConversation`
+holds the *handle* — the durable eve session id plus its cursor — while the
+transcript itself is already in `AgentEvent`, written by the audit hook. Nothing
+is stored twice.
+
+- **Resuming.** The panel passes the saved cursor as `initialSession`, so
+  reopening a contact continues last week's thread rather than starting another.
+  eve keeps sessions for 30 days.
+- **Replay from the start.** `streamIndex: 0` on resume, deliberately — the
+  saved index is where the *last reader* stopped, and a reopened thread should
+  show what was said in it, not only what has happened since.
+- **Which thread is open lives in the URL** (`?thread=`), like every other view
+  state in the sheet, so a refresh keeps your place and a conversation is a link.
+  It is cleared when the record or the tab changes, by the same rule that drops
+  a half-typed quick-add form.
+- **Nothing mounts until the list has loaded.** Rendering a thread while the
+  history is still in flight starts a *new* eve session and then remounts onto
+  the real one — which presents as "the history only appears if I refresh".
+- **The thread the panel landed on is captured once.** Re-deriving "the latest"
+  as the list changes would swap the open conversation out from under a live
+  answer the moment the first save adds a row. `resolveThread` in
+  `lib/agent-transcript.ts` holds the rule, and it is tested.
+- **The panel is not unmounted when you switch tabs.** It holds a live stream,
+  and Radix drops an inactive tab by default — which aborts the stream
+  mid-answer, so the reply landed in the durable session with nothing attached
+  to receive it. That is the "I went to another tab and the answer never came
+  back" bug, and no amount of re-reading state on the way in could fix it,
+  because the events had been dropped. `keepMounted` on the tab descriptor
+  (`detail-sheet.tsx`) keeps it alive; it renders nothing until the tab is
+  opened once, so flicking through records costs nothing.
+- **A thread is loaded with `session.snapshot()`, not by hand.** One call
+  returns the complete event prefix, the cursor that continues from it, and a
+  continuation token *if and only if* eve will accept another turn — about 30ms
+  against a hundred-event thread. `lib/agent-session.ts` is the whole of it.
+
+  What it replaced is worth remembering, because every panel bug of the last
+  day came out of it: a raw `fetch` of `…/stream?startIndex=-1`, parsing the
+  last line into a state machine. The endpoint *follows*, so awaiting the body
+  never returned. The stream opens with a bare newline, so "the first line" was
+  empty — which failed closed to "busy" and locked **every** reopened
+  conversation with "still working on the last question", including ones parked
+  with a perfectly good token. And a read that failed reported the *session* as
+  working rather than reporting itself as broken, so it could never recover.
+  The framework had a documented answer to the exact question that code was
+  asking. Read the guide before hand-rolling the protocol.
+- **The token is the authority on whether a message can be sent**, not our
+  reading of the events. eve returns one only when the captured prefix ends
+  parked, which is precisely the condition under which the next send lands.
+- **A turn that has gone quiet for 90 seconds is over, not working.** A
+  restarted agent leaves sessions with no closing boundary; they never park, and
+  treating them as in-flight locks that thread forever.
+- **An unreachable agent is `offline`, not `working`.** One is a fact about us
+  and the other a claim about the session; stated as the latter it is both
+  untrue and unrecoverable, since the read fails identically next time. The
+  transcript then comes from our own `AgentEvent` archive — which is also what
+  makes a thread older than eve's 30-day retention still readable — and the
+  composer stays usable.
+- **An ended thread gets a button, not a locked box.** Ended and working both
+  disable the composer and mean completely different things: one is a wait of
+  seconds, the other is permanent. `composerState()` keeps them apart, and an
+  ended thread offers **Start a new conversation**, which moves the picker to a
+  new thread. The transcript stays on screen throughout, and the save hook
+  treats the fresh session as a new conversation by comparing session ids
+  rather than by whether the panel started empty.
+- **`autoScroll` and nothing else.** The scroller is a state machine
+  (`following-bottom`, `free-scrolling`, `anchored-to-message`) and
+  `scrollAnchor` selects the third, which *stops it following the bottom* — the
+  answer then streams below the fold while the modes fight over each new row.
+  Left alone, `autoScroll` follows the tail while the reader is at the bottom
+  and releases the moment they scroll away, which lights the jump-to-end button.
+- **One `MessageScrollerItem` per message, not per part.** The row is what the
+  scroller measures; a row per tool call adds a boundary every few hundred
+  milliseconds during an answer. Part ids prefer `toolCallId`, which is stable
+  across a call's streaming states.
+- **A thread nobody has spoken in is loaded from nothing.** The snapshot query
+  is disabled without a conversation; a brand-new thread mounts with no session
+  and no events, and its first message creates both.
+- **Scoped to the rep.** Two people asking about the same contact are having two
+  conversations. `ConversationsService` filters on the caller, and a session id
+  in a request body decides which row, never whose.
+- **Cached the way `api.md` prescribes**: read through
+  `cache-manager` (Redis when `REDIS_URL` is set), write on miss, explicit
+  invalidation on every save. The list is read on every sheet open and changes
+  only when somebody sends a message, which is the shape a cache is for.
+
+This lives in the API rather than the agent, and that is not a breach of rule
+one: listing a record's history researches nothing, scores nothing and decides
+nothing. The agent owns judgement; the data surface owns filing.
+
+### Turning it on
+
+Same value in both processes, from the one root `.env`:
+
+```sh
+AGENT_URL="http://127.0.0.1:2000"        # the default
+AGENT_BRIDGE_SECRET="$(openssl rand -base64 32)"
+```
+
+Then `bun run dev` (the agent serves on `:2000`) and open any contact.
+
+**If the Agent tab errors:**
+
+| Symptom | Cause |
+| --- | --- |
+| `503`, "not configured for this install" | `AGENT_BRIDGE_SECRET` is unset in the app's process |
+| `401` | The two processes hold *different* secrets |
+| `502`, "not reachable" | The agent is not running, or `AGENT_URL` is wrong |
+
+`eve dev` takes about five seconds to bind, and it listens on **IPv4 only**.
+That is why `AGENT_URL` defaults to `http://127.0.0.1:2000` rather than
+`http://localhost:2000`: Node resolves `localhost` to `::1` first, so the
+`localhost` form fails to connect on a machine where the agent is plainly
+running — and reports itself as "not reachable", which sends you looking in the
+wrong place.
+
+A variable in `.env` is not enough on its own: Turbo runs in strict env mode, so
+`apps/app/turbo.json` and `apps/agent/turbo.json` both declare the pair in
+`passThroughEnv`. Adding a variable and not declaring it produces exactly the
+`401` above.
+
+### Checking it without a browser
+
+`localDev()` accepts anything on loopback, so a bare `curl` to `127.0.0.1`
+proves nothing about the bridge. Send a non-loopback `Host` to make that entry
+skip:
+
+```sh
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H 'Host: agent.example.com' \
+  http://127.0.0.1:2000/eve/v1/info                      # 401
+
+curl -s -H 'Host: agent.example.com' \
+  -H "authorization: Bearer $TOKEN" \
+  http://127.0.0.1:2000/eve/v1/info | jq '.tools.available | length'
+```
+
+`GET /eve/v1/info` is the whole inventory — tools, skills, schedules, channels,
+sandbox, and a `diagnostics` count that is the fastest way to find a file eve
+silently ignored.
+
+## Watching it work
+
+`eve dev` shows every tool call, every result and every token in its interactive
+TUI, and it is the agent package's default `dev` command. The package's Turbo
+task is explicitly interactive, so select the agent pane and press Enter to hand
+stdin to eve. Type `/traces` to open the live trace viewer; Ctrl+Z returns input
+to Turbo.
+
+`dev:headless` keeps `eve dev --no-ui` available when a terminal cannot render
+the nested TUI. It starts the same server on the same port with the same routes
+and watcher. In that mode `hooks/activity.ts` narrates the session instead: a
+line per tool call with its arguments, a line per result with how long it took,
+the finish reason and token spend of each step, and any failure with its code.
+
+- **The lines go to stderr, not stdout.** The TUI's default log mode is `stderr`
+  and it keeps stdout buffered and hidden, so a `console.log` here would be
+  invisible in the mode it exists to serve. Written to stderr the same lines show
+  under `--no-ui`, under the TUI, and in `eve logs`.
+- **Contents print outside production; the shape prints everywhere.** Which tool
+  ran, whether it worked, what it cost — none of that is anybody's data, so it
+  logs wherever the agent runs. Arguments and replies carry names, addresses and
+  whatever a rep typed, which is the "nothing sensitive logged" rule above, so
+  they are gated on `NODE_ENV`. In production the durable record is an
+  `AgentEvent` row, not a log drain.
+- **It is not the audit trail.** `hooks/audit.ts` writes every event to
+  `AgentEvent` whatever this prints, and the panel's transcript is read back from
+  there. A change to one is not a change to the other.
+- **A call is timed by remembering it, because the result event does not carry
+  the tool name or a duration.** The map of in-flight calls is bounded rather
+  than trusted: a turn that dies between request and result would otherwise leak
+  an entry per call, forever, in a process that stays up for days.
+
+`eve logs` reads the full record back, but only for an **interactive** `eve dev`
+— that is the process that writes `.eve/logs/`. Under `--no-ui` the pane is the
+record, so keep the turbo scrollback rather than going looking for a file that
+was never written.
+
+Two consequences of opting into `dev:headless`, both worth recognising rather
+than debugging:
+
+- **A headless dev process cannot reconnect.** An interactive `eve dev`
+  reconnects to a local server that is already up; `dev:headless` rejects it and
+  exits non-zero. `A dev server is already running for this eve agent` means
+  exactly what it says: use the terminal it is in, or stop it before starting
+  another.
+- **An orphaned agent holds the port.** If turbo dies without reaping its child,
+  nothing on screen says so and every later `dev:headless` fails the same way.
+  `lsof -nP -iTCP:2000 -sTCP:LISTEN` names the process to kill.
+
+### Nothing is researching, and the queue only grows
+
+**`eve dev` never fires schedules on their cron cadence.** It is one line in
+eve's own [schedules guide](../apps/agent/node_modules/eve/docs/schedules.mdx),
+and it used to be the single most confusing thing about working on this agent,
+because every visible part of the loop worked: the Research button wrote its
+`AgentTask` row, the sheet said *Queued*, the toast promised the page would
+update — and `schedules/dispatch.ts`, the only thing that turns a row into a
+session, was never called. Twenty rows sat with `attempts = 0` and `AgentEvent`
+was empty. Nothing was broken and nothing reported a problem, because nothing
+ran.
+
+**The poke is what makes dev behave like production now**, which is most of why
+it was widened to both lanes — see [starting now](#starting-now-instead-of-on-the-minute).
+A row written by the API is dispatched immediately whatever the clock is doing,
+so the schedule is a backstop rather than the only door.
+
+**It only does that when `AGENT_BRIDGE_SECRET` is set**, and that variable is
+optional: `poke()` reads it first and returns without sending anything when it is
+unset. So an install that has not set it is back at the paragraph above with no
+cron behind it either — rows queue, nothing dispatches, and the queue looks
+exactly like a slow agent. Set it, or run the dispatch below by hand.
+
+That leaves two cases where the clock's absence bites even with the poke
+working, and both look identical to the above: **a task the API did not
+write** — `schedule_recheck`,
+which books its own `dueAt` weeks out — and **anything queued while the agent was
+down**, since a missed poke is not retried. For those, the dev server mounts a
+one-shot route that runs the exact dispatch path production cron uses:
+
+```sh
+bun run --filter=agent dispatch
+# {"scheduleId":"dispatch","sessionIds":["wrun_01KZ…", …]}
+```
+
+It drains **both lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
+`brand` and `portrait` rows six at a time, handled in the process with no session
+at all, and `RESEARCH_BATCH` (12) research rows, one session each. So the
+`sessionIds` it prints are the research rows only — a run that resolved forty
+logos prints an empty list and was not idle. Either way it spends real credits, a
+vendor call per visible row and a model session per research one; that is the
+point of it, and the reason it is a command you run rather than a ticker somebody
+leaves on. Watch the agent pane; the session ids it returns are also streamable at
+`GET /eve/v1/session/:id/stream`.
+
+`eve start` on a built app *does* run the schedule, and so does Vercel, where
+each `defineSchedule` becomes a Cron Job. Dev is the only place the clock is
+missing.
+
+### The continuation token you write is not the one you read
+
+**eve namespaces a continuation token with the channel's name.** `channels/crm.ts`
+mints `task:<id>`; by the time `session.waiting` hands it back on the channel
+context it is `crm:task:<id>`. The `eve` channel's own sessions read back as
+`eve:<uuid>` for the same reason.
+
+This is worth stating because of how it failed, which was silently and
+completely. `taskToken()` used to mint `crm:task:<id>` itself, so the handler was
+matching `startsWith("crm:task:")` against `crm:crm:task:<id>`, getting `null`,
+and returning before `completeTask`. Nothing errored. The research ran, facts
+were written, briefs were saved, and the agent pane showed a clean session — but
+**no task ever reached `finishedAt`**, so every contact sat on "Researching"
+forever and the sweep re-queued work that had already been done. Twenty-eight
+tasks, zero finished.
+
+Two things made it survive a reading:
+
+- **The event data and the channel accessor disagree.** `session.waiting`'s
+  `data.continuationToken` carries the token *as stored* — un-namespaced — while
+  `channel.continuationToken` carries it namespaced. Debugging from the archived
+  event says the token is fine, because from that angle it is.
+- **Nothing downstream depends on settling.** The record's status is the only
+  thing that notices, and "still researching" is indistinguishable from
+  "researching slowly" until you look at `attempts` in the table.
+
+So `taskFromToken` keys on the `task:` marker rather than a fixed prefix, which
+reads correctly whoever namespaced it and still settles sessions parked before
+the fix. `test/crm-token.spec.ts` pins all three forms.
+
+The general rule: **a channel handler must not assume the token it receives is
+byte-identical to the one it sent.** Parse for your own marker.
+
+## Tests
+
+`bun run --filter=agent test`. The integration specs need `DATABASE_URL` and run
+against a real Postgres, which is the point — "never overwrite a human" is only
+true if the transaction says so.
 **`taskFromToken` keys on the `task:` marker, not a fixed prefix**
 (`test/crm-token.spec.ts`). **A channel handler must not assume the token it receives
 is byte-identical to the one it sent.**

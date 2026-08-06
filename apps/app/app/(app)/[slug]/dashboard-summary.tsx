@@ -25,23 +25,18 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
-import {
-	formatCount,
-	formatMoneyCompact,
-	relativeTimeFromIso,
-} from "@crm/ui/lib/format";
+import { formatCount, formatMoneyCompact } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { toast } from "sonner";
-import {
-	DealStageIndicator,
-	dealStageColor,
-} from "@/components/crm/deal-stage";
+import { DealStageIndicator } from "@/components/crm/deal-stage";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { activityLabel } from "@/components/crm/timeline/activity-icon";
+import { LocalRelativeTime } from "@/components/local-date-time";
+import { activityLabel } from "@/lib/activity-presentation";
+import { dealStageColor } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -49,6 +44,49 @@ import { overviewParsers } from "./overview-search-params";
 import { SalesDashboard } from "./sales-dashboard";
 
 const CELL = "px-3 py-2.5 align-middle";
+const OPEN_COLUMNS: SimpleTableColumn[] = [
+	{ id: "deal", header: "Deal" },
+	{
+		id: "stage",
+		header: "Stage",
+		width: "w-32",
+		className: "hidden lg:table-cell",
+	},
+	{
+		id: "share",
+		srLabel: "Share of the largest",
+		width: "w-24",
+		className: "hidden sm:table-cell",
+	},
+	{ id: "value", header: "Value", width: "w-20", align: "right" },
+];
+const TASK_COLUMNS: SimpleTableColumn[] = [
+	{ id: "done", srLabel: "Done", width: "w-8" },
+	{ id: "task", header: "Task" },
+	{ id: "overdue", header: "Overdue", width: "w-24", align: "right" },
+];
+const ACTIVITY_COLUMNS: SimpleTableColumn[] = [
+	{ id: "activity", header: "Activity" },
+	{
+		id: "company",
+		header: "Company",
+		width: "w-44",
+		className: "hidden md:table-cell",
+	},
+	{
+		id: "deal",
+		header: "Deal",
+		width: "w-48",
+		className: "hidden lg:table-cell",
+	},
+	{
+		id: "who",
+		header: "Who",
+		width: "w-32",
+		className: "hidden md:table-cell",
+	},
+	{ id: "when", header: "When", width: "w-20", align: "right" },
+];
 
 export function DashboardSummary() {
 	const trpc = useTRPC();
@@ -85,31 +123,6 @@ export function DashboardSummary() {
 	const mine = scope === "me";
 	const largestOpenCents = biggestOpen[0]?.baseAmountCents ?? 0;
 
-	const openColumns: SimpleTableColumn[] = [
-		{ header: "Deal" },
-		{ header: "Stage", width: "w-32", className: "hidden lg:table-cell" },
-		{
-			srLabel: "Share of the largest",
-			width: "w-24",
-			className: "hidden sm:table-cell",
-		},
-		{ header: "Value", width: "w-20", align: "right" },
-	];
-
-	const taskColumns: SimpleTableColumn[] = [
-		{ srLabel: "Done", width: "w-8" },
-		{ header: "Task" },
-		{ header: "Overdue", width: "w-24", align: "right" },
-	];
-
-	const activityColumns: SimpleTableColumn[] = [
-		{ header: "Activity" },
-		{ header: "Company", width: "w-44", className: "hidden md:table-cell" },
-		{ header: "Deal", width: "w-48", className: "hidden lg:table-cell" },
-		{ header: "Who", width: "w-32", className: "hidden md:table-cell" },
-		{ header: "When", width: "w-20", align: "right" },
-	];
-
 	return (
 		<div className="flex flex-col gap-6">
 			<SalesDashboard summary={summary} />
@@ -133,7 +146,11 @@ export function DashboardSummary() {
 								Nothing open. Time to fill the pipeline.
 							</CardPanelEmpty>
 						) : (
-							<SimpleTable variant="panel" surface="page" columns={openColumns}>
+							<SimpleTable
+								variant="panel"
+								surface="page"
+								columns={OPEN_COLUMNS}
+							>
 								{biggestOpen.map((deal) => (
 									<SimpleTableRow
 										key={deal.id}
@@ -144,7 +161,7 @@ export function DashboardSummary() {
 											<DealCell
 												name={deal.name}
 												company={deal.company}
-												meta={relativeTimeFromIso(deal.stageChangedAt)}
+												meta={<LocalRelativeTime date={deal.stageChangedAt} />}
 											/>
 										</TableCell>
 										<TableCell className={`${CELL} hidden lg:table-cell`}>
@@ -188,7 +205,11 @@ export function DashboardSummary() {
 						{overdueTasks.length === 0 ? (
 							<CardPanelEmpty>Nothing overdue. Good.</CardPanelEmpty>
 						) : (
-							<SimpleTable variant="panel" surface="page" columns={taskColumns}>
+							<SimpleTable
+								variant="panel"
+								surface="page"
+								columns={TASK_COLUMNS}
+							>
 								{overdueTasks.map((task) => (
 									<SimpleTableRow key={task.id}>
 										<TableCell className={CELL}>
@@ -220,7 +241,13 @@ export function DashboardSummary() {
 										<TableCell className={`${CELL} text-right`}>
 											<StatusIndicator
 												tone="error"
-												label={relativeTimeFromIso(task.dueAt)}
+												label={
+													task.dueAt ? (
+														<LocalRelativeTime date={task.dueAt} />
+													) : (
+														"No due date"
+													)
+												}
 											/>
 										</TableCell>
 									</SimpleTableRow>
@@ -250,7 +277,7 @@ export function DashboardSummary() {
 				{recentActivity.length === 0 ? (
 					<CardTableEmpty>Nothing has happened yet.</CardTableEmpty>
 				) : (
-					<SimpleTable columns={activityColumns}>
+					<SimpleTable columns={ACTIVITY_COLUMNS}>
 						{recentActivity.map((entry) => (
 							<SimpleTableRow key={entry.id}>
 								<TableCell className={CELL}>
@@ -284,9 +311,7 @@ export function DashboardSummary() {
 								<TableCell
 									className={`${CELL} text-right text-muted-foreground`}
 								>
-									<span suppressHydrationWarning>
-										{relativeTimeFromIso(entry.createdAt)}
-									</span>
+									<LocalRelativeTime date={entry.createdAt} />
 								</TableCell>
 							</SimpleTableRow>
 						))}
@@ -309,7 +334,7 @@ function DealCell({
 		iconDarkUrl: string | null;
 		iconTone: string | null;
 	};
-	meta?: string;
+	meta?: ReactNode;
 }) {
 	return (
 		<span className="flex min-w-0 items-center gap-2">
@@ -322,11 +347,14 @@ function DealCell({
 			/>
 			<span className="flex min-w-0 flex-col">
 				<span className="truncate font-medium">{name}</span>
-				<span
-					className="truncate text-muted-foreground"
-					suppressHydrationWarning
-				>
-					{meta ? `${company.name} · ${meta}` : company.name}
+				<span className="truncate text-muted-foreground">
+					{meta ? (
+						<>
+							{company.name} · {meta}
+						</>
+					) : (
+						company.name
+					)}
 				</span>
 			</span>
 		</span>

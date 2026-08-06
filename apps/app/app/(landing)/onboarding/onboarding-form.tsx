@@ -1,5 +1,6 @@
 "use client";
 
+import { workspaceSlug } from "@crm/db/workspace";
 import { Button } from "@crm/ui/components/button";
 import {
 	Field,
@@ -17,7 +18,7 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -26,7 +27,11 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 	const router = useRouter();
 
 	const nameId = useId();
+	const slugId = useId();
 	const websiteId = useId();
+	const [name, setName] = useState("");
+	const [slug, setSlug] = useState("");
+	const slugEdited = useRef(false);
 
 	const save = useMutation(
 		trpc.workspace.update.mutationOptions({
@@ -47,6 +52,7 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 
 				save.mutate({
 					name: String(form.get("name") ?? "").trim(),
+					slug: String(form.get("slug") ?? "").trim(),
 					website: String(form.get("website") ?? "").trim(),
 				});
 			}}
@@ -58,11 +64,44 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 					<Input
 						id={nameId}
 						name="name"
+						value={name}
+						onChange={(event) => {
+							const next = event.target.value;
+							setName(next);
+							if (!slugEdited.current) setSlug(workspaceSlug(next));
+						}}
 						placeholder={placeholder}
 						autoComplete="organization"
 						autoFocus
 						required
 					/>
+				</Field>
+
+				<Field>
+					<FieldLabel htmlFor={slugId}>Workspace URL</FieldLabel>
+					<InputGroup>
+						<InputGroupAddon>
+							<InputGroupText>/</InputGroupText>
+						</InputGroupAddon>
+						<InputGroupInput
+							id={slugId}
+							name="slug"
+							value={slug}
+							onChange={(event) => {
+								slugEdited.current = true;
+								setSlug(workspaceSlug(event.target.value));
+							}}
+							placeholder={workspaceSlug(placeholder)}
+							autoComplete="off"
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
+							required
+						/>
+					</InputGroup>
+					<FieldDescription>
+						Your team will use this address to open the CRM.
+					</FieldDescription>
 				</Field>
 
 				<Field>

@@ -29,27 +29,28 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
-import { formatCount, relativeTimeFromIso } from "@crm/ui/lib/format";
+import { formatCount } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { LocalRelativeTime } from "@/components/local-date-time";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
 const CELL = "px-3 py-2.5 align-middle";
 
 const RATE_COLUMNS: SimpleTableColumn[] = [
-	{ header: "Currency" },
-	{ header: "Rate", width: "w-32", align: "right" },
-	{ header: "Source", width: "w-28" },
-	{ header: "As of", width: "w-24", align: "right" },
-	{ srLabel: "Actions", width: "w-20" },
+	{ id: "currency", header: "Currency" },
+	{ id: "rate", header: "Rate", width: "w-32", align: "right" },
+	{ id: "source", header: "Source", width: "w-28" },
+	{ id: "asOf", header: "As of", width: "w-24", align: "right" },
+	{ id: "actions", srLabel: "Actions", width: "w-20" },
 ];
 
 const USAGE_COLUMNS: SimpleTableColumn[] = [
-	{ header: "Currency" },
-	{ header: "Deals", width: "w-20", align: "right" },
-	{ header: "Convertible", width: "w-32", align: "right" },
+	{ id: "currency", header: "Currency" },
+	{ id: "deals", header: "Deals", width: "w-20", align: "right" },
+	{ id: "convertible", header: "Convertible", width: "w-32", align: "right" },
 ];
 
 export function CurrencySettings() {
@@ -274,9 +275,7 @@ export function CurrencySettings() {
 								<TableCell
 									className={`${CELL} text-right text-muted-foreground`}
 								>
-									<span suppressHydrationWarning>
-										{relativeTimeFromIso(rate.asOf)}
-									</span>
+									<LocalRelativeTime date={rate.asOf} />
 								</TableCell>
 								<TableCell className={`${CELL} text-right`}>
 									{rate.source === "MANUAL" ? (
@@ -308,11 +307,7 @@ export function CurrencySettings() {
 						{refreshedAt ? (
 							<>
 								{" "}
-								Rates last fetched{" "}
-								<span suppressHydrationWarning>
-									{relativeTimeFromIso(refreshedAt)}
-								</span>
-								.
+								Rates last fetched <LocalRelativeTime date={refreshedAt} />.
 							</>
 						) : null}
 					</CardDescription>

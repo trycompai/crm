@@ -37,12 +37,12 @@ import { Label } from "@crm/ui/components/label";
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
-import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
-import { isSyncing, SYNC_POLL_MS } from "@/components/crm/sync-status";
+import { LocalRelativeTime } from "@/components/local-date-time";
+import { isSyncing, SYNC_POLL_MS } from "@/lib/sync-status";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -95,11 +95,13 @@ function failureSignature(
 		lastError: string | null;
 	}[],
 ): string {
-	return sources
-		.filter((source) => source.status === "NEEDS_RECONNECT" || source.lastError)
-		.map((source) => `${source.source}:${source.lastError ?? "reconnect"}`)
-		.sort()
-		.join("|");
+	const failures: string[] = [];
+	for (const source of sources) {
+		if (source.status === "NEEDS_RECONNECT" || source.lastError) {
+			failures.push(`${source.source}:${source.lastError ?? "reconnect"}`);
+		}
+	}
+	return failures.sort().join("|");
 }
 
 function GoogleUnavailable() {
@@ -131,18 +133,19 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 
 	async function handleConnect() {
 		setPending(true);
+		try {
+			const origin = window.location.origin;
+			const { error } = await authClient.linkSocial({
+				provider: "google",
+				scopes: [...SYNC_SCOPES],
+				callbackURL: `${origin}/settings/connections`,
+				errorCallbackURL: `${origin}/settings/connections`,
+			});
 
-		const origin = window.location.origin;
-
-		const { error } = await authClient.linkSocial({
-			provider: "google",
-			scopes: [...SYNC_SCOPES],
-			callbackURL: `${origin}/settings/connections`,
-			errorCallbackURL: `${origin}/settings/connections`,
-		});
-
-		if (error) {
-			toast.error(error.message ?? "Could not reach Google.");
+			if (error) toast.error(error.message ?? "Could not reach Google.");
+		} catch {
+			toast.error("Could not reach Google.");
+		} finally {
 			setPending(false);
 		}
 	}
@@ -337,9 +340,13 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 					})
 				) : (
 					<p className="text-muted-foreground text-xs">
-						{lastSyncedAt
-							? `Last checked ${relativeTimeFromIso(lastSyncedAt)}`
-							: "Waiting for the first check"}
+						{lastSyncedAt ? (
+							<>
+								Last checked <LocalRelativeTime date={lastSyncedAt} />
+							</>
+						) : (
+							"Waiting for the first check"
+						)}
 					</p>
 				)}
 

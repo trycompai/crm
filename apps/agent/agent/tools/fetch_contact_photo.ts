@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { spend } from "../lib/focus";
 import { runPortrait } from "../lib/portrait";
+import { assertResearchPurpose } from "../lib/session-purpose";
 
 export default defineTool({
 	description:
@@ -14,7 +15,8 @@ export default defineTool({
 			.default(false)
 			.describe("Replace an existing photo. Only when a rep asked."),
 	}),
-	async execute({ contactId, force }) {
+	async execute({ contactId, force }, ctx) {
+		assertResearchPurpose(ctx);
 		if (!blobEnabled()) {
 			return {
 				stored: false as const,

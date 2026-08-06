@@ -16,8 +16,8 @@
 		"postinstall": "node scripts/chmod-trpc-binary.mjs",
 		"start": "bun src/main.ts",
 		"start:prod": "bun dist/main.js",
-		"test": "CRM_TELEMETRY_DISABLED=1 bun test",
-		"test:watch": "bun test --watch",
+		"test": "CRM_TELEMETRY_DISABLED=1 bun test --preload ./test/setup.ts",
+		"test:watch": "CRM_TELEMETRY_DISABLED=1 bun test --watch --preload ./test/setup.ts",
 		"trpc:generate": "nestjs-trpc generate -e src/app.module.ts -r \"**/*.router.ts\" -o src/generated",
 		"clean": "rm -rf .turbo dist node_modules src/generated"
 	},

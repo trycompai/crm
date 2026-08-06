@@ -15,6 +15,7 @@
 			"outputs": ["src/generated/**"]
 		},
 		"dev": {
+			"dependsOn": ["$TURBO_EXTENDS$"],
 			"cache": false,
 			"persistent": true,
 			"passThroughEnv": [

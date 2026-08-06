@@ -1,3 +1,4 @@
+import { db } from "@crm/db";
 import { connection } from "next/server";
 import {
 	AGENT_URL,
@@ -45,9 +46,47 @@ async function handler(request: Request): Promise<Response> {
 	const contactId = request.headers.get("x-crm-contact");
 	const companyId = request.headers.get("x-crm-company");
 	const dealId = request.headers.get("x-crm-deal");
+	const builderConversationId = request.headers.get(
+		"x-crm-builder-conversation",
+	);
+	const requestedSession = sessionFromPath(url.pathname);
 	headers.delete("x-crm-contact");
 	headers.delete("x-crm-company");
 	headers.delete("x-crm-deal");
+	headers.delete("x-crm-builder-conversation");
+
+	if (requestedSession) {
+		const conversation = await db.agentConversation.findUnique({
+			where: { sessionId: requestedSession },
+			select: { userId: true },
+		});
+		if (conversation && conversation.userId !== session.user.id) {
+			return Response.json(
+				{ error: "Conversation not found." },
+				{ status: 404 },
+			);
+		}
+	}
+
+	if (builderConversationId) {
+		const conversation = await db.agentConversation.findFirst({
+			where: {
+				id: builderConversationId,
+				userId: session.user.id,
+				kind: "BUILDER",
+			},
+			select: { sessionId: true },
+		});
+		if (
+			!conversation ||
+			(requestedSession && conversation.sessionId !== requestedSession)
+		) {
+			return Response.json(
+				{ error: "Conversation not found." },
+				{ status: 404 },
+			);
+		}
+	}
 
 	headers.set(
 		"authorization",
@@ -119,4 +158,9 @@ export {
 
 function cuid(value: string | null): string | undefined {
 	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
+}
+
+function sessionFromPath(pathname: string): string | null {
+	const match = pathname.match(/\/eve\/v1\/session\/([^/]+)/);
+	return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

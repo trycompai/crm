@@ -137,6 +137,270 @@ function SortIndicator({
 	);
 }
 
+function DataTableControls<TRow>({
+	query,
+	columns,
+	facetCounts,
+	facets,
+	tabs,
+	anyExpandable,
+	hiddenSet,
+	visibleColumnCount,
+	actions,
+	leadingActions,
+	search,
+	onColumnVisibilityChange,
+}: {
+	query: TableQueryState;
+	columns: DataTableColumn<TRow>[];
+	facetCounts?: Record<string, Record<string, number>>;
+	facets?: DataTableFacet[];
+	tabs?: DataTableTabs;
+	anyExpandable: boolean;
+	hiddenSet: Set<string>;
+	visibleColumnCount: number;
+	actions?: ReactNode;
+	leadingActions?: ReactNode;
+	search?: ReactNode;
+	onColumnVisibilityChange: (columnId: string, visible: boolean) => void;
+}) {
+	const [filtersOpen, setFiltersOpen] = useState(false);
+	const filtersId = useId();
+	const hideable = columns.filter((column) => column.hideable !== false);
+	const sortableColumns = columns.filter((column) => column.sortable);
+	const tabCounts = tabs ? facetCounts?.[tabs.id] : undefined;
+	const activeTabOption =
+		query.tab === "all"
+			? undefined
+			: tabs?.options.find((option) => option.value === query.tab);
+	const activeTabLabel = activeTabOption
+		? activeTabOption.label
+		: (tabs?.allLabel ?? "All");
+	const hasFilterControls =
+		tabs != null ||
+		(facets?.length ?? 0) > 0 ||
+		sortableColumns.length > 0 ||
+		anyExpandable ||
+		hideable.length > 0 ||
+		actions != null ||
+		leadingActions != null;
+	const activeFilterCount =
+		(tabs && query.tab !== "all" ? 1 : 0) +
+		(facets?.reduce(
+			(count, facet) =>
+				(query.filters[facet.id] ?? "all") !== "all" ? count + 1 : count,
+			0,
+		) ?? 0);
+
+	return (
+		<div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+			{search}
+			{hasFilterControls && (
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="w-full justify-between sm:hidden"
+					aria-expanded={filtersOpen}
+					aria-controls={filtersId}
+					onClick={() => setFiltersOpen((open) => !open)}
+				>
+					<span className="flex items-center gap-2">
+						<Filter />
+						Filters
+						{activeFilterCount > 0 && (
+							<span className="tabular-nums opacity-60">
+								({activeFilterCount})
+							</span>
+						)}
+					</span>
+					<ChevronDown
+						className={cn(
+							"shrink-0 opacity-60 transition-transform",
+							filtersOpen && "rotate-180",
+						)}
+					/>
+				</Button>
+			)}
+			<div
+				id={filtersId}
+				className={cn(
+					"flex-col gap-2 lg:contents",
+					filtersOpen ? "flex" : "hidden sm:flex",
+				)}
+			>
+				{tabs && (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="w-full justify-between sm:w-auto sm:min-w-44"
+							>
+								<span className="truncate">{activeTabLabel}</span>
+								<ChevronDown className="shrink-0 opacity-60" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start" className="min-w-52">
+							<DropdownMenuRadioGroup
+								value={query.tab}
+								onValueChange={(value) => query.setTab(value)}
+							>
+								<DropdownMenuRadioItem value="all">
+									<span className="flex-1">{tabs.allLabel ?? "All"}</span>
+								</DropdownMenuRadioItem>
+								{tabs.options.map((option) => {
+									if (tabCounts?.[option.value] === 0) return null;
+									return (
+										<DropdownMenuRadioItem
+											key={option.value}
+											value={option.value}
+										>
+											<span className="flex-1">{option.label}</span>
+										</DropdownMenuRadioItem>
+									);
+								})}
+							</DropdownMenuRadioGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				)}
+
+				{leadingActions}
+
+				<div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center lg:ml-auto">
+					{facets?.map((facet) => {
+						const selected = query.filters[facet.id] ?? "all";
+						const active = facet.options.find(
+							(option) => option.value === selected,
+						);
+						return (
+							<DropdownMenu key={facet.id}>
+								<DropdownMenuTrigger asChild>
+									<Button
+										variant="outline"
+										size="sm"
+										className="justify-between"
+									>
+										<span className="truncate">
+											{active ? active.label : facet.label}
+										</span>
+										<ChevronDown
+											data-icon="inline-end"
+											className="opacity-60"
+										/>
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="min-w-44">
+									<DropdownMenuRadioGroup
+										value={selected}
+										onValueChange={(value) =>
+											query.setFilter(facet.id, value)
+										}
+									>
+										<DropdownMenuRadioItem value="all">
+											{facet.label}
+										</DropdownMenuRadioItem>
+										{facet.options.map((option) => (
+											<DropdownMenuRadioItem
+												key={option.value}
+												value={option.value}
+											>
+												{option.label}
+											</DropdownMenuRadioItem>
+										))}
+									</DropdownMenuRadioGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						);
+					})}
+					{(sortableColumns.length > 0 || anyExpandable) && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="outline"
+									size="sm"
+									className="justify-start sm:justify-center"
+								>
+									<ArrowsVertical data-icon="inline-start" />
+									Sort
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="min-w-48">
+								<DropdownMenuLabel>Sort by</DropdownMenuLabel>
+								<DropdownMenuRadioGroup
+									value={query.sort}
+									onValueChange={query.setSort}
+								>
+									{anyExpandable && (
+										<DropdownMenuRadioItem value="detail">
+											Detail
+										</DropdownMenuRadioItem>
+									)}
+									{sortableColumns.map((column) => (
+										<DropdownMenuRadioItem
+											key={column.id}
+											value={column.id}
+										>
+											{columnLabel(column)}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+								<DropdownMenuSeparator />
+								<DropdownMenuRadioGroup
+									value={query.dir}
+									onValueChange={(value) =>
+										query.setDir(value === "desc" ? "desc" : "asc")
+									}
+								>
+									<DropdownMenuRadioItem value="asc">
+										Ascending
+									</DropdownMenuRadioItem>
+									<DropdownMenuRadioItem value="desc">
+										Descending
+									</DropdownMenuRadioItem>
+								</DropdownMenuRadioGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
+					{hideable.length > 0 && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="outline"
+									size="sm"
+									className="justify-start sm:justify-center"
+								>
+									<Column data-icon="inline-start" />
+									Columns
+									<span className="tabular-nums opacity-60">
+										({visibleColumnCount})
+									</span>
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="min-w-48">
+								<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+								{hideable.map((column) => (
+									<DropdownMenuCheckboxItem
+										key={column.id}
+										checked={!hiddenSet.has(column.id)}
+										onCheckedChange={(checked) =>
+											onColumnVisibilityChange(column.id, checked === true)
+										}
+									>
+										{columnLabel(column)}
+									</DropdownMenuCheckboxItem>
+								))}
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
+					{actions}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 export function DataTable<TRow, TSub = unknown>({
 	query,
 	columns,
@@ -163,31 +427,19 @@ export function DataTable<TRow, TSub = unknown>({
 		parseAsArrayOf(parseAsString).withDefault([]),
 	);
 	const expanded = useMemo(() => new Set(expandedIds), [expandedIds]);
-	const defaultHiddenIds = useMemo(
-		() => columns.filter((column) => column.defaultHidden).map((c) => c.id),
-		[columns],
-	);
+	const defaultHiddenIds = useMemo(() => {
+		const ids: string[] = [];
+		for (const column of columns) {
+			if (column.defaultHidden) ids.push(column.id);
+		}
+		return ids;
+	}, [columns]);
 	const [hidden, setHidden] = useQueryState(
 		"hide",
 		parseAsArrayOf(parseAsString).withDefault(defaultHiddenIds),
 	);
-	const [filtersOpen, setFiltersOpen] = useState(false);
-	const filtersId = useId();
-
-	const hideable = columns.filter((column) => column.hideable !== false);
-	const visibleColumns = columns.filter(
-		(column) => !hidden.includes(column.id),
-	);
-	const sortableColumns = columns.filter((column) => column.sortable);
-
-	const tabCounts = tabs ? facetCounts?.[tabs.id] : undefined;
-	const activeTabOption =
-		query.tab === "all"
-			? undefined
-			: tabs?.options.find((option) => option.value === query.tab);
-	const activeTabLabel = activeTabOption
-		? activeTabOption.label
-		: (tabs?.allLabel ?? "All");
+	const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
+	const visibleColumns = columns.filter((column) => !hiddenSet.has(column.id));
 
 	const deferredRows = useDeferredValue(rows);
 	const anyExpandable =
@@ -198,227 +450,29 @@ export function DataTable<TRow, TSub = unknown>({
 	const pageSize = query.pageSize;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-	const hasFilterControls =
-		tabs != null ||
-		(facets?.length ?? 0) > 0 ||
-		sortableColumns.length > 0 ||
-		anyExpandable ||
-		hideable.length > 0 ||
-		actions != null ||
-		leadingActions != null;
-	const activeFilterCount =
-		(tabs && query.tab !== "all" ? 1 : 0) +
-		(facets?.filter((facet) => (query.filters[facet.id] ?? "all") !== "all")
-			.length ?? 0);
-
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
-			<div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-				{search}
-				{hasFilterControls && (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						className="w-full justify-between sm:hidden"
-						aria-expanded={filtersOpen}
-						aria-controls={filtersId}
-						onClick={() => setFiltersOpen((open) => !open)}
-					>
-						<span className="flex items-center gap-2">
-							<Filter />
-							Filters
-							{activeFilterCount > 0 && (
-								<span className="tabular-nums opacity-60">
-									({activeFilterCount})
-								</span>
-							)}
-						</span>
-						<ChevronDown
-							className={cn(
-								"shrink-0 opacity-60 transition-transform",
-								filtersOpen && "rotate-180",
-							)}
-						/>
-					</Button>
-				)}
-				{/* `lg:contents` so the controls join the search on one row on desktop
-				    while staying a group the Filters button can collapse on mobile —
-				    search itself must never be inside that collapse. */}
-				<div
-					id={filtersId}
-					className={cn(
-						"flex-col gap-2 lg:contents",
-						filtersOpen ? "flex" : "hidden sm:flex",
-					)}
-				>
-					{tabs && (
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									className="w-full justify-between sm:w-auto sm:min-w-44"
-								>
-									<span className="truncate">{activeTabLabel}</span>
-									<ChevronDown className="shrink-0 opacity-60" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="start" className="min-w-52">
-								<DropdownMenuRadioGroup
-									value={query.tab}
-									onValueChange={(value) => query.setTab(value)}
-								>
-									<DropdownMenuRadioItem value="all">
-										<span className="flex-1">{tabs.allLabel ?? "All"}</span>
-									</DropdownMenuRadioItem>
-									{tabs.options.map((option) => {
-										if (tabCounts?.[option.value] === 0) return null;
-										return (
-											<DropdownMenuRadioItem
-												key={option.value}
-												value={option.value}
-											>
-												<span className="flex-1">{option.label}</span>
-											</DropdownMenuRadioItem>
-										);
-									})}
-								</DropdownMenuRadioGroup>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					)}
-
-					{leadingActions}
-
-					<div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center lg:ml-auto">
-						{facets?.map((facet) => {
-							const selected = query.filters[facet.id] ?? "all";
-							const active = facet.options.find((o) => o.value === selected);
-							return (
-								<DropdownMenu key={facet.id}>
-									<DropdownMenuTrigger asChild>
-										<Button
-											variant="outline"
-											size="sm"
-											className="justify-between"
-										>
-											<span className="truncate">
-												{active ? active.label : facet.label}
-											</span>
-											<ChevronDown
-												data-icon="inline-end"
-												className="opacity-60"
-											/>
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="min-w-44">
-										<DropdownMenuRadioGroup
-											value={selected}
-											onValueChange={(value) => query.setFilter(facet.id, value)}
-										>
-											<DropdownMenuRadioItem value="all">
-												{facet.label}
-											</DropdownMenuRadioItem>
-											{facet.options.map((option) => (
-												<DropdownMenuRadioItem
-													key={option.value}
-													value={option.value}
-												>
-													{option.label}
-												</DropdownMenuRadioItem>
-											))}
-										</DropdownMenuRadioGroup>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							);
-						})}
-						{(sortableColumns.length > 0 || anyExpandable) && (
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										variant="outline"
-										size="sm"
-										className="justify-start sm:justify-center"
-									>
-										<ArrowsVertical data-icon="inline-start" />
-										Sort
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuLabel>Sort by</DropdownMenuLabel>
-									<DropdownMenuRadioGroup
-										value={query.sort}
-										onValueChange={query.setSort}
-									>
-										{anyExpandable && (
-											<DropdownMenuRadioItem value="detail">
-												Detail
-											</DropdownMenuRadioItem>
-										)}
-										{sortableColumns.map((column) => (
-											<DropdownMenuRadioItem key={column.id} value={column.id}>
-												{columnLabel(column)}
-											</DropdownMenuRadioItem>
-										))}
-									</DropdownMenuRadioGroup>
-									<DropdownMenuSeparator />
-									<DropdownMenuRadioGroup
-										value={query.dir}
-										onValueChange={(value) =>
-											query.setDir(value === "desc" ? "desc" : "asc")
-										}
-									>
-										<DropdownMenuRadioItem value="asc">
-											Ascending
-										</DropdownMenuRadioItem>
-										<DropdownMenuRadioItem value="desc">
-											Descending
-										</DropdownMenuRadioItem>
-									</DropdownMenuRadioGroup>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)}
-						{hideable.length > 0 && (
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										variant="outline"
-										size="sm"
-										className="justify-start sm:justify-center"
-									>
-										<Column data-icon="inline-start" />
-										Columns
-										<span className="tabular-nums opacity-60">
-											({visibleColumns.length})
-										</span>
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-48">
-									<DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-									{hideable.map((column) => (
-										<DropdownMenuCheckboxItem
-											key={column.id}
-											checked={!hidden.includes(column.id)}
-											onCheckedChange={(checked) =>
-												setHidden((prev) => {
-													const set = new Set(prev);
-													if (checked) set.delete(column.id);
-													else set.add(column.id);
-													return [...set];
-												})
-											}
-										>
-											{columnLabel(column)}
-										</DropdownMenuCheckboxItem>
-									))}
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)}
-						{actions}
-					</div>
-				</div>
-			</div>
+			<DataTableControls
+				query={query}
+				columns={columns}
+				facetCounts={facetCounts}
+				facets={facets}
+				tabs={tabs}
+				anyExpandable={anyExpandable}
+				hiddenSet={hiddenSet}
+				visibleColumnCount={visibleColumns.length}
+				actions={actions}
+				leadingActions={leadingActions}
+				search={search}
+				onColumnVisibilityChange={(columnId, visible) => {
+					void setHidden((previous) => {
+						const next = new Set(previous);
+						if (visible) next.delete(columnId);
+						else next.add(columnId);
+						return [...next];
+					});
+				}}
+			/>
 
 			<Table
 				className={cn(

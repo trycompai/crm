@@ -25,23 +25,11 @@ import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { contactName } from "@/components/crm/contact-name";
 import { ContactEnrichmentAction } from "@/components/crm/enrichment-actions";
-import {
-	ENRICHMENT_POLL_MS,
-	EnrichmentIndicator,
-	isEnriching,
-} from "@/components/crm/enrichment-status";
-import {
-	FactSuggestion,
-	factsByField,
-	provenanceFor,
-} from "@/components/crm/facts";
-import {
-	InlineField,
-	InlineSelectField,
-	savingField,
-} from "@/components/crm/inline-field";
+import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
+import { FactProvenance, FactSuggestion } from "@/components/crm/facts";
+import { InlineField, InlineSelectField } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
-import { ContactSocials, hasContactLinks } from "@/components/crm/social-links";
+import { ContactSocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
 import {
@@ -55,6 +43,11 @@ import {
 	DetailSheetStats,
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
+import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
+import { factsByField } from "@/lib/contact-facts";
+import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
+import { savingField } from "@/lib/pending-field";
+import { hasContactLinks } from "@/lib/social-links";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -66,18 +59,23 @@ type Contact = RouterOutputs["contacts"]["byId"];
 
 const NONE = "none";
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
 	day: "numeric",
 	year: "numeric",
-});
+};
 
 const DEAL_COLUMNS = [
-	{ header: "Deal", width: "w-[32%]", className: "pl-5" },
-	{ header: "Role", width: "w-[16%]" },
-	{ header: "Stage", width: "w-[22%]" },
-	{ header: "Amount", width: "w-[16%]", align: "right" as const },
-	{ header: "Owner", width: "w-[14%]" },
+	{ id: "deal", header: "Deal", width: "w-[32%]", className: "pl-5" },
+	{ id: "role", header: "Role", width: "w-[16%]" },
+	{ id: "stage", header: "Stage", width: "w-[22%]" },
+	{
+		id: "amount",
+		header: "Amount",
+		width: "w-[16%]",
+		align: "right" as const,
+	},
+	{ id: "owner", header: "Owner", width: "w-[14%]" },
 ];
 
 export function ContactSheet({ contactId }: { contactId: string }) {
@@ -291,7 +289,7 @@ function ContactOverview({ contact }: { contact: Contact }) {
 		const fact = applied.get(field);
 		const suggestion = proposed.get(field);
 		return {
-			provenance: fact ? provenanceFor(fact) : undefined,
+			provenance: fact ? <FactProvenance fact={fact} /> : undefined,
 			suggestion: suggestion ? (
 				<FactSuggestion fact={suggestion} contactId={contact.id} />
 			) : undefined,
@@ -447,7 +445,7 @@ function Background({ brief }: { brief: NonNullable<Contact["brief"]> }) {
 						</a>
 					) : null}
 					{brief.sourceUrl ? " · " : null}
-					{dateFormat.format(new Date(brief.refreshedAt))}
+					<LocalDateTime date={brief.refreshedAt} options={DATE_OPTIONS} />
 				</span>
 			}
 		>
@@ -489,17 +487,6 @@ function PreviousRoles({ roles }: { roles: string[] }) {
 	);
 }
 
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, {
-	numeric: "auto",
-});
-
-function daysAgo(iso: string): string {
-	const days = Math.round(
-		(Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24),
-	);
-	return relativeFormat.format(-days, "day");
-}
-
 function WeKnowThem({
 	relationship,
 	contactName: name,
@@ -522,9 +509,13 @@ function WeKnowThem({
 						<span className="tabular-nums">{emails}</span>
 						<span className="text-muted-foreground">
 							{" · "}
-							{lastReplyAt
-								? `last reply ${daysAgo(lastReplyAt)}`
-								: `${first} has never replied`}
+							{lastReplyAt ? (
+								<>
+									last reply <LocalRelativeDate date={lastReplyAt} />
+								</>
+							) : (
+								`${first} has never replied`
+							)}
 						</span>
 					</DetailSheetProperty>
 				) : null}
@@ -540,7 +531,10 @@ function WeKnowThem({
 						{nextMeeting.title ?? "Meeting"}
 						<span className="text-muted-foreground">
 							{" · "}
-							{dateFormat.format(new Date(nextMeeting.startsAt))}
+							<LocalDateTime
+								date={nextMeeting.startsAt}
+								options={DATE_OPTIONS}
+							/>
 						</span>
 					</DetailSheetProperty>
 				) : null}

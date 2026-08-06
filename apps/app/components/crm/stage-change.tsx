@@ -26,13 +26,10 @@ import { useMutation } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { DEAL_STAGE_OPTIONS, LOSING_STAGES } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import {
-	DEAL_STAGE_OPTIONS,
-	DealStageIndicator,
-	LOSING_STAGES,
-} from "./deal-stage";
+import { DealStageIndicator } from "./deal-stage";
 
 const closeReasonParams = {
 	closing: parseAsString,

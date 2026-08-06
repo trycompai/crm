@@ -80,6 +80,14 @@ export class AgentTriggerService {
 		});
 	}
 
+	builderConversationQueued(): void {
+		this.pokeRoute("/internal/crm/builder-dispatch");
+	}
+
+	deployedAgentRunQueued(): void {
+		this.pokeRoute("/internal/crm/agent-dispatch");
+	}
+
 	async backfill(input: {
 		kind: string;
 		reason: string;
@@ -193,6 +201,10 @@ export class AgentTriggerService {
 	}
 
 	private poke(): void {
+		this.pokeRoute("/internal/crm/dispatch");
+	}
+
+	private pokeRoute(path: string): void {
 		const agent = bridge();
 		if (!agent) return;
 
@@ -204,7 +216,7 @@ export class AgentTriggerService {
 		};
 
 		try {
-			void fetch(agent.url("/internal/crm/dispatch"), {
+			void fetch(agent.url(path), {
 				method: "POST",
 				headers: { authorization: `Bearer ${agent.secret}` },
 				signal: AbortSignal.timeout(POKE_TIMEOUT_MS),

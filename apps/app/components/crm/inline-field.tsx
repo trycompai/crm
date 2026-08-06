@@ -27,16 +27,6 @@ const BLOCK_CONTROL = cn(
 	"h-auto min-h-16 items-start whitespace-pre-wrap py-2 text-left leading-5",
 );
 
-export function savingField(update: {
-	isPending: boolean;
-	variables?: { data?: object } | undefined;
-}): (field: string) => boolean {
-	const fields = update.isPending
-		? Object.keys(update.variables?.data ?? {})
-		: [];
-	return (field) => fields.includes(field);
-}
-
 export function InlineField({
 	label,
 	value,

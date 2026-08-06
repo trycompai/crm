@@ -7,10 +7,17 @@
 			"outputs": ["src/generated/**"],
 			"passThroughEnv": ["DATABASE_URL"]
 		},
-		"dev": {
+		"dev:prepare": {
 			"cache": false,
-			"persistent": true,
-			"passThroughEnv": ["DATABASE_URL"]
+			"inputs": [
+				"prisma/schema.prisma",
+				"prisma/migrations/**",
+				"prisma.config.ts",
+				"scripts/prepare-dev.ts",
+				"scripts/require-local-db.ts"
+			],
+			"outputs": ["src/generated/**"],
+			"passThroughEnv": ["ALLOW_REMOTE_DB", "DATABASE_URL"]
 		},
 		"db:generate": {
 			"inputs": ["$TURBO_DEFAULT$", "prisma/**"],

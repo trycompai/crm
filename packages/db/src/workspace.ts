@@ -10,6 +10,9 @@ export const MAX_SLUG = 48;
 export const RESERVED_SLUGS: readonly string[] = [
 	"_next",
 	"api",
+	"agent",
+	"agents",
+	"chat",
 	"companies",
 	"contacts",
 	"deals",

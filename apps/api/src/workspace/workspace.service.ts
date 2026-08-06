@@ -144,7 +144,7 @@ export class WorkspaceService {
 			where: { id: WORKSPACE_ID },
 			data: {
 				name: input.name,
-				slug: workspaceSlug(input.name),
+				slug: workspaceSlug(input.slug ?? input.name),
 				website,
 				metadata: markOnboarded(before?.metadata ?? null, new Date()),
 			},

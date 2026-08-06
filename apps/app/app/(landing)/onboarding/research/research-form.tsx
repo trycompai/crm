@@ -34,11 +34,7 @@ export function ResearchForm() {
 
 	return (
 		<form
-			onSubmit={(event) => {
-				event.preventDefault();
-
-				const form = new FormData(event.currentTarget);
-
+			action={(form) => {
 				save.mutate({ apiKey: String(form.get("apiKey") ?? "").trim() });
 			}}
 			className="flex flex-col gap-6"

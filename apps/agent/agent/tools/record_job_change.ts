@@ -5,6 +5,7 @@ import { sensitiveWrite } from "../lib/approval";
 import { writeTimelineNote } from "../lib/crm";
 import { lastEmployerChange } from "../lib/facts";
 import { focusOn } from "../lib/focus";
+import { assertResearchPurpose } from "../lib/session-purpose";
 
 export default defineTool({
 	description:
@@ -21,7 +22,8 @@ export default defineTool({
 	approval: sensitiveWrite(
 		"Raise the change without `moveToCompanyId` — the alert lands on the timeline and their owner decides whether to move them.",
 	),
-	async execute({ contactId, moveToCompanyId }) {
+	async execute({ contactId, moveToCompanyId }, ctx) {
+		assertResearchPurpose(ctx);
 		focusOn({ contactId });
 
 		const change = await lastEmployerChange(contactId);

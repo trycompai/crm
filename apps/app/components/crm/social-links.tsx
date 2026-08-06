@@ -1,60 +1,23 @@
-import LogoGithub from "@carbon/icons-react/es/LogoGithub";
-import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
-import LogoX from "@carbon/icons-react/es/LogoX";
-import Money from "@carbon/icons-react/es/Money";
-import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
+import {
+	type CompanyLinks,
+	type ContactLinks,
+	companySocialLinks,
+	contactSocialLinks,
+} from "@/lib/social-links";
 
-type Link<T> = { key: keyof T; label: string; icon: CarbonIcon };
-
-export type CompanyLinks = {
-	linkedinUrl: string | null;
-	twitterUrl: string | null;
-	githubUrl: string | null;
-	pricingUrl: string | null;
-	careersUrl: string | null;
-};
-
-export type ContactLinks = {
-	linkedinUrl: string | null;
-	twitterUrl: string | null;
-	githubUrl: string | null;
-};
-
-const COMPANY_LINKS: Link<CompanyLinks>[] = [
-	{ key: "linkedinUrl", label: "LinkedIn", icon: LogoLinkedin },
-	{ key: "twitterUrl", label: "X", icon: LogoX },
-	{ key: "githubUrl", label: "GitHub", icon: LogoGithub },
-	{ key: "pricingUrl", label: "Pricing", icon: Money },
-	{ key: "careersUrl", label: "Careers", icon: UserMultiple },
-];
-
-const CONTACT_LINKS: Link<ContactLinks>[] = [
-	{ key: "linkedinUrl", label: "LinkedIn", icon: LogoLinkedin },
-	{ key: "twitterUrl", label: "X", icon: LogoX },
-	{ key: "githubUrl", label: "GitHub", icon: LogoGithub },
-];
-
-function present<T>(record: T, links: Link<T>[]) {
-	return links.flatMap((link) => {
-		const href = record[link.key];
-		return typeof href === "string" && href ? [{ ...link, href }] : [];
-	});
-}
-
-export function hasCompanyLinks(company: CompanyLinks): boolean {
-	return present(company, COMPANY_LINKS).length > 0;
-}
-
-export function hasContactLinks(contact: ContactLinks): boolean {
-	return present(contact, CONTACT_LINKS).length > 0;
-}
-
-function SocialLinks<T>({ record, links }: { record: T; links: Link<T>[] }) {
-	const rows = present(record, links);
-
+function SocialLinks({
+	rows,
+}: {
+	rows: Array<{
+		key: PropertyKey;
+		label: string;
+		icon: CarbonIcon;
+		href: string;
+	}>;
+}) {
 	if (rows.length === 0) return null;
 
 	return (
@@ -72,9 +35,9 @@ function SocialLinks<T>({ record, links }: { record: T; links: Link<T>[] }) {
 }
 
 export function CompanySocials({ company }: { company: CompanyLinks }) {
-	return <SocialLinks record={company} links={COMPANY_LINKS} />;
+	return <SocialLinks rows={companySocialLinks(company)} />;
 }
 
 export function ContactSocials({ contact }: { contact: ContactLinks }) {
-	return <SocialLinks record={contact} links={CONTACT_LINKS} />;
+	return <SocialLinks rows={contactSocialLinks(contact)} />;
 }

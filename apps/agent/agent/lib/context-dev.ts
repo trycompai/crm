@@ -99,27 +99,20 @@ export async function verifyKey(key: string): Promise<KeyCheck> {
 	}
 }
 
-/**
- * 401 is the only answer that means *this key is wrong*. Everything else that
- * came back from Context.dev — a 422 refusing the probe address, a 403 about
- * the plan, a 429, a 500 — was served *after* the key authenticated, so the
- * key is good and only the probe was refused. Anything that never reached them
- * says nothing about the key at all.
- */
 export function classifyKey(error: unknown): KeyCheck {
 	if (!(error instanceof APIError)) {
 		return { outcome: "unknown", reason: describe(error) };
 	}
 
-	if (error.status === 401) {
+	if (error.status === undefined) {
+		return { outcome: "unknown", reason: describe(error) };
+	}
+
+	if (error.status === 401 && !recognisedKeyFailure(error)) {
 		return {
 			outcome: "invalid",
 			reason: "Context did not recognise that API key.",
 		};
-	}
-
-	if (error.status === undefined) {
-		return { outcome: "unknown", reason: describe(error) };
 	}
 
 	return { outcome: "valid" };
@@ -279,6 +272,19 @@ function classify(error: unknown): LookupResult {
 function errorCode(error: APIError): string | undefined {
 	const body = error.error as { error_code?: unknown } | undefined;
 	return typeof body?.error_code === "string" ? body.error_code : undefined;
+}
+
+function recognisedKeyFailure(error: APIError): boolean {
+	const body = error.error as
+		| { error_code?: unknown; message?: unknown }
+		| undefined;
+	const detail = [body?.error_code, body?.message, error.message]
+		.filter((value): value is string => typeof value === "string")
+		.join(" ");
+
+	return /(usage|credit|quota|allowance|billing|rate.?limit|limit.?exceeded|insufficient.?permission)/i.test(
+		detail,
+	);
 }
 
 function describe(error: unknown): string {

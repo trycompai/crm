@@ -13,11 +13,13 @@ export async function notifySignedIn(user: {
 	id: string;
 	email: string;
 }): Promise<void> {
-	for (const handler of handlers) {
-		try {
-			await handler(user);
-		} catch (error) {
-			console.error("[auth] a sign-in handler failed", error);
-		}
-	}
+	await Promise.all(
+		handlers.map(async (handler) => {
+			try {
+				await handler(user);
+			} catch (error) {
+				console.error("[auth] a sign-in handler failed", error);
+			}
+		}),
+	);
 }

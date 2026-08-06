@@ -48,9 +48,10 @@ export default function ContactsPage({
 async function Contacts({
 	searchParams,
 }: Pick<PageProps<"/[slug]/contacts">, "searchParams">) {
-	await requireSession();
-
-	const values = await contactsSearchParams.load(searchParams);
+	const [, values] = await Promise.all([
+		requireSession(),
+		contactsSearchParams.load(searchParams),
+	]);
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();

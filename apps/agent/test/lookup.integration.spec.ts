@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DealStage, db } from "@crm/db";
-import { searchCrm } from "../agent/lib/lookup";
+import { listDeals, searchCrm } from "../agent/lib/lookup";
 
 const suffix = process.env.TEST_RUN_ID ?? "lookup-spec";
 const domain = `northwind-${suffix}.test`;
@@ -11,6 +11,8 @@ let brightwaterId: string;
 let paulaId: string;
 let peterId: string;
 let dealId: string;
+let freshDealId: string;
+let closedDealId: string;
 
 beforeAll(async () => {
 	await cleanup();
@@ -21,12 +23,20 @@ beforeAll(async () => {
 			name: "Rep One",
 			email: `rep.${suffix}@example.test`,
 			emailVerified: true,
+			image: "https://cdn.example.test/rep-one.png",
 		},
 		select: { id: true },
 	});
 
 	const northwind = await db.company.create({
-		data: { name: `Northwind ${suffix}`, domain },
+		data: {
+			name: `Northwind ${suffix}`,
+			domain,
+			iconUrl: "https://cdn.example.test/northwind-icon.png",
+			iconDarkUrl: "https://cdn.example.test/northwind-icon-dark.png",
+			iconTone: "opaque",
+			logoUrl: "https://cdn.example.test/northwind-logo.svg",
+		},
 		select: { id: true },
 	});
 	northwindId = northwind.id;
@@ -69,10 +79,35 @@ beforeAll(async () => {
 			ownerId: user.id,
 			stage: DealStage.QUALIFIED_TO_BUY,
 			amount: 12_000,
+			lastActivityAt: new Date("2026-06-01T12:00:00.000Z"),
 		},
 		select: { id: true },
 	});
 	dealId = deal.id;
+
+	const freshDeal = await db.deal.create({
+		data: {
+			name: `Fresh expansion ${suffix}`,
+			companyId: northwindId,
+			ownerId: user.id,
+			stage: DealStage.CONTRACT_SENT,
+			lastActivityAt: new Date("2026-08-04T12:00:00.000Z"),
+		},
+		select: { id: true },
+	});
+	freshDealId = freshDeal.id;
+
+	const closedDeal = await db.deal.create({
+		data: {
+			name: `Closed renewal ${suffix}`,
+			companyId: brightwaterId,
+			ownerId: user.id,
+			stage: DealStage.CLOSED_LOST,
+			lastActivityAt: new Date("2026-05-01T12:00:00.000Z"),
+		},
+		select: { id: true },
+	});
+	closedDealId = closedDeal.id;
 });
 
 afterAll(cleanup);
@@ -162,5 +197,45 @@ describe("searchCrm", () => {
 
 	it("refuses a query too short to mean anything", async () => {
 		expect((await searchCrm("a")).total).toBe(0);
+	});
+});
+
+describe("listDeals", () => {
+	it("lists stale open deals across the pipeline", async () => {
+		const result = await listDeals({
+			status: "open",
+			inactiveForDays: 14,
+			now: new Date("2026-08-05T12:00:00.000Z"),
+		});
+		const ids = result.deals.map((deal) => deal.id);
+
+		expect(ids).toContain(dealId);
+		expect(ids).not.toContain(freshDealId);
+		expect(ids).not.toContain(closedDealId);
+		expect(result.deals.find((deal) => deal.id === dealId)).toMatchObject({
+			daysSinceLastActivity: 65,
+			neverActive: false,
+			company: {
+				domain,
+				iconUrl: "https://cdn.example.test/northwind-icon.png",
+				iconDarkUrl: "https://cdn.example.test/northwind-icon-dark.png",
+				iconTone: "opaque",
+				logoUrl: "https://cdn.example.test/northwind-logo.svg",
+			},
+			owner: { image: "https://cdn.example.test/rep-one.png" },
+		});
+	});
+
+	it("paginates a broad deal sweep without repeating a row", async () => {
+		const first = await listDeals({ status: "all", limit: 1 });
+		expect(first.hasMore).toBe(true);
+		expect(first.nextCursor).toBeTruthy();
+
+		const second = await listDeals({
+			status: "all",
+			limit: 1,
+			cursor: first.nextCursor ?? undefined,
+		});
+		expect(second.deals[0]?.id).not.toBe(first.deals[0]?.id);
 	});
 });

@@ -17,4 +17,9 @@ export default defineAgent({
 		fallback: DEFAULT_AGENT_MODEL.id,
 		events: { "session.started": () => selectedModel() },
 	}),
+	limits: {
+		maxInputTokensPerSession: 500_000,
+		maxOutputTokensPerSession: 50_000,
+		sessionTimeoutMs: 30 * 24 * 60 * 60 * 1000,
+	},
 });

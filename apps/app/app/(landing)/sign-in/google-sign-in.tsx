@@ -12,17 +12,20 @@ export function GoogleSignIn() {
 
 	async function handleClick() {
 		setPending(true);
+		try {
+			const origin = window.location.origin;
+			const { error } = await signIn.social({
+				provider: "google",
+				callbackURL: `${origin}/`,
+				errorCallbackURL: `${origin}/sign-in`,
+			});
 
-		const origin = window.location.origin;
-
-		const { error } = await signIn.social({
-			provider: "google",
-			callbackURL: `${origin}/`,
-			errorCallbackURL: `${origin}/sign-in`,
-		});
-
-		if (error) {
-			toast.error(error.message ?? "Could not reach the sign-in service.");
+			if (error) {
+				toast.error(error.message ?? "Could not reach the sign-in service.");
+			}
+		} catch {
+			toast.error("Could not reach the sign-in service.");
+		} finally {
 			setPending(false);
 		}
 	}

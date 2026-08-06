@@ -19,16 +19,17 @@ import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { activityLabel } from "@/lib/activity-presentation";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import { ActivityIcon, activityLabel } from "./activity-icon";
+import { ActivityIcon } from "./activity-icon";
 import type { TimelineAnchor } from "./timeline";
 
 const TYPES = ["NOTE", "CALL", "EMAIL", "MEETING", "TASK"] as const;
 
 type ComposableType = (typeof TYPES)[number];
 
-const dueFormat = new Intl.DateTimeFormat(undefined, {
+const dueFormat = new Intl.DateTimeFormat("en-US", {
 	month: "short",
 	day: "numeric",
 });

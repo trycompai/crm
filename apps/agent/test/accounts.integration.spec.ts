@@ -257,6 +257,25 @@ describe("readCompanyHistory", () => {
 		]);
 	});
 
+	it("omits connected history when the caller did not approve those sources", async () => {
+		const history = await readCompanyHistory(companyId, {
+			includeEmail: false,
+			includeCalendar: false,
+		});
+
+		expect(history?.threads).toEqual([]);
+		expect(history?.meetings).toEqual([]);
+		expect(history?.stats.emails).toBe(0);
+		expect(history?.stats.meetings).toBe(0);
+		expect(history?.stats.lastReplyAt).toBeNull();
+		expect(history?.stats.nextMeetingAt).toBeNull();
+		expect(
+			history?.people.every(
+				(person) => person.threads === 0 && person.meetings === 0,
+			),
+		).toBe(true);
+	});
+
 	it("returns null for a company that does not exist", async () => {
 		expect(await readCompanyHistory("nope")).toBeNull();
 	});
@@ -301,6 +320,19 @@ describe("readDealHistory", () => {
 		expect(history?.threads).toHaveLength(1);
 		expect(history?.stats.theyReplied).toBe(true);
 		expect(history?.note).toContain("never against a deal");
+	});
+
+	it("omits deal correspondence when connected sources are not approved", async () => {
+		const history = await readDealHistory(dealId, {
+			includeEmail: false,
+			includeCalendar: false,
+		});
+
+		expect(history?.threads).toEqual([]);
+		expect(history?.meetings).toEqual([]);
+		expect(history?.stats.theyReplied).toBe(false);
+		expect(history?.stats.nextMeetingAt).toBeNull();
+		expect(history?.note).toContain("outside this agent version");
 	});
 
 	it("returns null for a deal that does not exist", async () => {

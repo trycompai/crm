@@ -50,9 +50,10 @@ export default function DealsPage({
 async function Deals({
 	searchParams,
 }: Pick<PageProps<"/[slug]/deals">, "searchParams">) {
-	await requireSession();
-
-	const values = await dealsSearchParams.load(searchParams);
+	const [, values] = await Promise.all([
+		requireSession(),
+		dealsSearchParams.load(searchParams),
+	]);
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();

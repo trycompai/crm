@@ -79,13 +79,14 @@ export function loadRootEnv(): void {
 	if (!root) return;
 
 	const merged: Record<string, string> = {};
+	const runtimeFs = process.getBuiltinModule("node:fs");
 
 	for (const file of FILES) {
-		const path = join(root, file);
-		if (!existsSync(path)) continue;
-
 		try {
-			Object.assign(merged, parseEnv(readFileSync(path, "utf8")));
+			Object.assign(
+				merged,
+				parseEnv(runtimeFs.readFileSync(join(root, file), "utf8")),
+			);
 		} catch {}
 	}
 

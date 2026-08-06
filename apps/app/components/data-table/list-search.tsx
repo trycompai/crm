@@ -13,9 +13,26 @@ import { searchParsers } from "./list-search-params";
 export function ListSearch({ placeholder }: { placeholder: string }) {
 	const [{ q }, setState] = useQueryStates(searchParsers);
 
-	const [value, setValue] = useSearchInput(q, (next) =>
-		setState({ q: next, page: 1 }),
+	return (
+		<ListSearchInput
+			key={q}
+			committed={q}
+			commit={(next) => setState({ q: next, page: 1 })}
+			placeholder={placeholder}
+		/>
 	);
+}
+
+function ListSearchInput({
+	committed,
+	commit,
+	placeholder,
+}: {
+	committed: string;
+	commit: (value: string) => void;
+	placeholder: string;
+}) {
+	const [value, setValue] = useSearchInput(committed, commit);
 
 	return (
 		<InputGroup className="w-full sm:w-64">

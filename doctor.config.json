@@ -1,0 +1,34 @@
+{
+	"$schema": "https://react.doctor/schema/config.json",
+	"ignore": {
+		"overrides": [
+			{
+				"files": ["components/inline-script.tsx"],
+				"rules": ["react-doctor/nextjs-no-native-script"]
+			},
+			{
+				"files": [
+					"src/components/accordion.tsx",
+					"src/components/button.tsx",
+					"src/components/icon.tsx",
+					"src/components/link.tsx",
+					"src/components/marker.tsx",
+					"src/components/popover.tsx",
+					"src/components/select.tsx",
+					"src/components/sheet.tsx",
+					"src/components/tabs.tsx",
+					"src/components/textarea.tsx",
+					"src/components/toggle.tsx"
+				],
+				"rules": ["react-doctor/only-export-components"]
+			},
+			{
+				"files": [
+					"src/components/chart.tsx",
+					"src/components/dashboard-chart.tsx"
+				],
+				"rules": ["react-doctor/prefer-dynamic-import"]
+			}
+		]
+	}
+}

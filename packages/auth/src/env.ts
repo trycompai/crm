@@ -37,7 +37,8 @@ const appUrls = (optional("APP_URL") ?? DEFAULT_APP_URL)
 const appUrl = appUrls[0] ?? DEFAULT_APP_URL;
 
 export const env = {
-	appUrl: apiUrl,
+	apiUrl,
+	appUrl,
 	google: googleCredentials(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],

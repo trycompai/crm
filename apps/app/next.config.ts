@@ -8,7 +8,19 @@ const apiUrl =
 	process.env.NEXT_PUBLIC_API_URL ??
 	"http://localhost:3001";
 
+const allowedDevOrigins = (process.env.APP_URL ?? "")
+	.split(",")
+	.flatMap((origin) => {
+		try {
+			return [new URL(origin.trim()).hostname];
+		} catch {
+			return [];
+		}
+	});
+
 const nextConfig: NextConfig = {
+	allowedDevOrigins,
+
 	env: {
 		NEXT_PUBLIC_API_URL: apiUrl,
 	},

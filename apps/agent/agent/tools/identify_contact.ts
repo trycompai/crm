@@ -4,6 +4,7 @@ import type { Evidence, EvidenceKind } from "../lib/evidence";
 import { WEIGHTS } from "../lib/evidence";
 import { recordFact } from "../lib/facts";
 import { focusOn } from "../lib/focus";
+import { assertResearchPurpose } from "../lib/session-purpose";
 
 export default defineTool({
 	description:
@@ -24,7 +25,8 @@ export default defineTool({
 			.min(1),
 		sourceUrl: z.string().describe("The page a rep should open to check."),
 	}),
-	async execute(input) {
+	async execute(input, ctx) {
+		assertResearchPurpose(ctx);
 		focusOn({ contactId: input.contactId });
 
 		const result = await recordFact({

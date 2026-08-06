@@ -12,8 +12,8 @@ import { makeQueryClient } from "./query-client";
 
 export const getServerQueryClient = cache(makeQueryClient);
 
-export function getServerTrpc(): TRPCOptionsProxy<AppRouter> {
-	const client = createTRPCClient<AppRouter>({
+export function getServerTrpcClient(): TRPCClient<AppRouter> {
+	return createTRPCClient<AppRouter>({
 		links: [
 			httpBatchLink({
 				url: `${API_URL}/api/trpc`,
@@ -24,6 +24,10 @@ export function getServerTrpc(): TRPCOptionsProxy<AppRouter> {
 			}),
 		],
 	});
+}
+
+export function getServerTrpc(): TRPCOptionsProxy<AppRouter> {
+	const client = getServerTrpcClient();
 
 	return createTRPCOptionsProxy<AppRouter>({
 		client,

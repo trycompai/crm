@@ -31,6 +31,7 @@ if (env.google) {
 
 export const auth = betterAuth({
 	appName: "CRM",
+	baseURL: env.apiUrl,
 
 	database: prismaAdapter(db, {
 		provider: "postgresql",

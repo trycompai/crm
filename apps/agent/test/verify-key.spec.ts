@@ -31,6 +31,20 @@ describe("checking a Context key", () => {
 		expect(classifyKey(answered(403, "FORBIDDEN")).outcome).toBe("valid");
 	});
 
+	it("accepts an exhausted free-tier key when Context answers with 401", () => {
+		expect(classifyKey(answered(401, "USAGE_EXCEEDED")).outcome).toBe("valid");
+		expect(
+			classifyKey(
+				new APIError(
+					401,
+					{ message: "This account has no API credits remaining." },
+					undefined,
+					new Headers(),
+				),
+			).outcome,
+		).toBe("valid");
+	});
+
 	it("accepts a key when Context itself is having a bad day", () => {
 		for (const status of [429, 500, 502, 503]) {
 			expect(classifyKey(answered(status)).outcome).toBe("valid");

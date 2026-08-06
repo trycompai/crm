@@ -1,4 +1,5 @@
 import { notFound, unstable_rethrow } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { AppHeader, AppHeaderFallback } from "@/components/app-header";
 import { AppIconRail, AppIconRailFallback } from "@/components/app-icon-rail";
@@ -42,17 +43,18 @@ export default function AppLayout({
 async function WorkspaceHeader({
 	params,
 }: Pick<LayoutProps<"/[slug]">, "params">) {
-	const [{ user }, { slug }] = await Promise.all([
-		requireGoogleAccess(),
-		params,
-	]);
-
-	const workspace = await getServerQueryClient()
+	await connection();
+	const workspacePromise = getServerQueryClient()
 		.fetchQuery(getServerTrpc().workspace.get.queryOptions())
 		.catch((error: unknown) => {
 			unstable_rethrow(error);
 			return null;
 		});
+	const [{ user }, { slug }, workspace] = await Promise.all([
+		requireGoogleAccess(),
+		params,
+		workspacePromise,
+	]);
 
 	if (workspace && workspace.slug !== slug) notFound();
 
