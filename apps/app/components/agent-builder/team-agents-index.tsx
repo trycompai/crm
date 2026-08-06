@@ -3,7 +3,6 @@
 import ArrowRight from "@carbon/icons-react/es/ArrowRight";
 import Bot from "@carbon/icons-react/es/Bot";
 import { Icon } from "@crm/ui/components/icon";
-import { Skeleton } from "@crm/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTRPC } from "@/lib/trpc/client";
@@ -19,13 +18,11 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 		...trpc.agents.list.queryOptions(),
 		initialData: initialAgents,
 	});
-	const rows = agents.data;
+	const rows = agents.data ?? initialAgents;
 
 	return (
 		<>
-			{rows === undefined ? (
-				<AgentListFallback />
-			) : rows.length ? (
+			{rows.length ? (
 				<div className="overflow-hidden rounded-lg border bg-card">
 					{rows.map((agent) => (
 						<Link
@@ -79,33 +76,6 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 					</Link>
 				</div>
 			)}
-		</>
-	);
-}
-
-function AgentListFallback() {
-	return (
-		<>
-			<div
-				className="overflow-hidden rounded-lg border bg-card"
-				aria-hidden="true"
-			>
-				{[0, 1].map((row) => (
-					<div
-						key={row}
-						className="flex min-h-16 items-center gap-4 border-t px-4 py-3 first:border-t-0 sm:px-5"
-					>
-						<Skeleton className="size-8 shrink-0 rounded-md" />
-						<span className="min-w-0 flex-1 space-y-2">
-							<Skeleton className="h-3 w-32 max-w-full" />
-							<Skeleton className="h-2.5 w-full max-w-96" />
-						</span>
-					</div>
-				))}
-			</div>
-			<span role="status" className="sr-only">
-				Loading team agents
-			</span>
 		</>
 	);
 }

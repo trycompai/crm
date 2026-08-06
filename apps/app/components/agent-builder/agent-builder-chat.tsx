@@ -23,7 +23,6 @@ import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { Markdown } from "@crm/ui/components/markdown";
 import { Reasoning } from "@crm/ui/components/reasoning";
-import { Skeleton } from "@crm/ui/components/skeleton";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -96,8 +95,10 @@ type BuilderSubmission = {
 
 export function AgentBuilderChat({
 	conversationId,
+	initialData,
 }: {
 	conversationId: string;
+	initialData: Conversation | SharedConversation;
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -109,6 +110,7 @@ export function AgentBuilderChat({
 	const conversation = useQuery({
 		...trpc.conversations.builderById.queryOptions({ id: conversationId }),
 		enabled: !sharedChat,
+		initialData: sharedChat ? undefined : (initialData as Conversation),
 		refetchInterval: (query) => {
 			const data = query.state.data;
 			return data && builderConversationNeedsPolling(data) ? 2500 : false;
@@ -117,6 +119,7 @@ export function AgentBuilderChat({
 	const shared = useQuery({
 		...trpc.conversations.shared.queryOptions({ token: conversationId }),
 		enabled: sharedChat,
+		initialData: sharedChat ? (initialData as SharedConversation) : undefined,
 		refetchInterval: (query) =>
 			sharedConversationNeedsPolling(query.state.data) ? 5000 : false,
 	});
@@ -175,23 +178,19 @@ export function AgentBuilderChat({
 		}),
 	);
 
-	if (sharedChat && shared.isPending) {
-		return <ChatLoading />;
-	}
-
 	if (sharedChat) {
-		if (shared.data) return <SharedAgentChat conversation={shared.data} />;
-
-		return <ChatUnavailable shared />;
+		return (
+			<SharedAgentChat
+				conversation={shared.data ?? (initialData as SharedConversation)}
+			/>
+		);
 	}
 
-	if (conversation.isPending) return <ChatLoading />;
-
-	if (conversation.isError) {
+	if (conversation.isError && !conversation.data) {
 		return <ChatUnavailable />;
 	}
 
-	const data = conversation.data;
+	const data = conversation.data ?? (initialData as Conversation);
 	const submissions = data.submissions as BuilderSubmission[];
 	const persistedEvents = (events.data ??
 		[]) as unknown as MessageStreamEvent[];
@@ -1286,30 +1285,7 @@ function DeployedStat({
 	);
 }
 
-function ChatLoading() {
-	return (
-		<main className="flex min-h-0 flex-1 flex-col" aria-busy="true">
-			<header className="flex h-12 shrink-0 items-center border-b px-5">
-				<Skeleton className="h-4 w-40" />
-			</header>
-			<div className="min-h-0 flex-1 overflow-hidden">
-				<div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 sm:px-5 sm:py-9">
-					<Skeleton className="ml-auto h-16 w-2/3 max-w-[520px]" />
-					<div className="flex max-w-[640px] flex-col gap-2">
-						<Skeleton className="h-4 w-full" />
-						<Skeleton className="h-4 w-11/12" />
-						<Skeleton className="h-4 w-8/12" />
-					</div>
-				</div>
-			</div>
-			<span role="status" className="sr-only">
-				Loading chat…
-			</span>
-		</main>
-	);
-}
-
-function ChatUnavailable({ shared = false }: { shared?: boolean }) {
+function ChatUnavailable() {
 	const workspaceUrl = useWorkspaceUrl();
 
 	return (
@@ -1317,9 +1293,7 @@ function ChatUnavailable({ shared = false }: { shared?: boolean }) {
 			<div className="max-w-md text-center">
 				<h1 className="font-medium text-lg">Chat unavailable</h1>
 				<p className="mt-2 text-muted-foreground text-sm">
-					{shared
-						? "This shared chat no longer exists or is not available."
-						: "This chat does not exist or you do not have access to it."}
+					This chat does not exist or you do not have access to it.
 				</p>
 				<Button asChild variant="outline" className="mt-5">
 					<Link href={workspaceUrl("/chat")}>Start a new chat</Link>

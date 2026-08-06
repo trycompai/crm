@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AgentBuilderChat } from "@/components/agent-builder/agent-builder-chat";
+import { AgentBuilderChatFallback } from "@/components/agent-builder/agent-builder-route-fallback";
 import { isSharedChatToken } from "@/lib/chat-route";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
@@ -12,7 +13,7 @@ export default function AgentChatPage({
 	params: Promise<{ chatId: string }>;
 }) {
 	return (
-		<Suspense fallback={<ChatFallback />}>
+		<Suspense fallback={<AgentBuilderChatFallback />}>
 			<PrefetchedAgentChat params={params} />
 		</Suspense>
 	);
@@ -28,25 +29,15 @@ async function PrefetchedAgentChat({
 	const queryClient = getServerQueryClient();
 	const sharedChat = isSharedChatToken(chatId);
 
-	if (sharedChat) {
-		await queryClient.prefetchQuery(
-			trpc.conversations.shared.queryOptions({ token: chatId }),
-		);
-	} else {
-		await queryClient.prefetchQuery(
-			trpc.conversations.builderById.queryOptions({
-				id: chatId,
-			}),
-		);
-	}
+	const initialData = sharedChat
+		? await queryClient.fetchQuery(
+				trpc.conversations.shared.queryOptions({ token: chatId }),
+			)
+		: await queryClient.fetchQuery(
+				trpc.conversations.builderById.queryOptions({
+					id: chatId,
+				}),
+			);
 
-	return <AgentBuilderChat conversationId={chatId} />;
-}
-
-function ChatFallback() {
-	return (
-		<main className="flex min-h-0 flex-1 items-center justify-center">
-			<span className="text-muted-foreground text-sm">Opening chat…</span>
-		</main>
-	);
+	return <AgentBuilderChat conversationId={chatId} initialData={initialData} />;
 }

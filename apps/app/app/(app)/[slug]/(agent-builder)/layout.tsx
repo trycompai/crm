@@ -1,5 +1,9 @@
 import { Suspense } from "react";
-import { AgentBuilderShell } from "@/components/agent-builder/agent-builder-shell";
+import {
+	AgentBuilderShell,
+	AgentBuilderSidebarFallback,
+} from "@/components/agent-builder/agent-builder-shell";
+import { AgentBuilderSidebar } from "@/components/agent-builder/agent-builder-sidebar";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
@@ -7,29 +11,19 @@ export default function AgentBuilderLayout({
 	children,
 }: Readonly<{ children: React.ReactNode }>) {
 	return (
-		<Suspense
-			fallback={
-				<AgentBuilderShell>
-					<AgentBuilderContentFallback />
-				</AgentBuilderShell>
+		<AgentBuilderShell
+			sidebar={
+				<Suspense fallback={<AgentBuilderSidebarFallback />}>
+					<PrefetchedAgentBuilderSidebar />
+				</Suspense>
 			}
 		>
-			<PrefetchedAgentBuilderShell>{children}</PrefetchedAgentBuilderShell>
-		</Suspense>
+			{children}
+		</AgentBuilderShell>
 	);
 }
 
-function AgentBuilderContentFallback() {
-	return (
-		<main className="flex min-h-0 flex-1 items-center justify-center">
-			<span className="text-muted-foreground text-sm">Loading chat…</span>
-		</main>
-	);
-}
-
-async function PrefetchedAgentBuilderShell({
-	children,
-}: Readonly<{ children: React.ReactNode }>) {
+async function PrefetchedAgentBuilderSidebar() {
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 	const conversationsQuery = trpc.conversations.builderList.queryOptions();
@@ -46,9 +40,10 @@ async function PrefetchedAgentBuilderShell({
 
 	return (
 		<HydrateClient>
-			<AgentBuilderShell sidebarData={{ conversations, agents, updatedAt }}>
-				{children}
-			</AgentBuilderShell>
+			<AgentBuilderSidebar
+				className="hidden w-[213px] flex-none border-r md:flex"
+				initialData={{ conversations, agents, updatedAt }}
+			/>
 		</HydrateClient>
 	);
 }

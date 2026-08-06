@@ -133,26 +133,19 @@ function PageShellLoading() {
 function PageShellFallback() {
 	return (
 		<PageShell aria-busy="true">
-			<div className="flex flex-col gap-3" aria-hidden="true">
-				<Skeleton className="h-8 w-48 max-w-full" />
-				<Skeleton className="h-4 w-72 max-w-full" />
-			</div>
-			<div className="overflow-hidden rounded-lg border">
-				{[0, 1, 2, 3, 4].map((row) => (
-					<div
-						key={row}
-						className="flex min-h-14 items-center gap-4 border-t px-4 first:border-t-0 sm:px-5"
-					>
-						<Skeleton className="size-7 shrink-0 rounded-md" />
-						<div className="min-w-0 flex-1 space-y-2">
-							<Skeleton className="h-3 w-40 max-w-full" />
-							<Skeleton className="h-2.5 w-64 max-w-full" />
-						</div>
-					</div>
-				))}
+			<div className="flex flex-col gap-6" aria-hidden="true">
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-8 w-48 max-w-full" />
+					<Skeleton className="h-4 w-72 max-w-full" />
+				</div>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-14 w-full rounded-lg" />
+					<Skeleton className="h-14 w-full rounded-lg" />
+					<Skeleton className="h-40 w-full rounded-lg" />
+				</div>
 			</div>
 			<span role="status" className="sr-only">
-				Loading page
+				Loading page…
 			</span>
 		</PageShell>
 	);

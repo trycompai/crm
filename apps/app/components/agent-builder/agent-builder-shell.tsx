@@ -1,37 +1,25 @@
 import { Skeleton } from "@crm/ui/components/skeleton";
-import { AgentBuilderSidebar } from "./agent-builder-sidebar";
-
-type SidebarData = React.ComponentProps<
-	typeof AgentBuilderSidebar
->["initialData"];
 
 export function AgentBuilderShell({
 	children,
-	sidebarData,
+	sidebar,
 }: {
 	children: React.ReactNode;
-	sidebarData?: SidebarData;
+	sidebar: React.ReactNode;
 }) {
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1">
-			{sidebarData ? (
-				<AgentBuilderSidebar
-					className="hidden w-[213px] flex-none border-r md:flex"
-					initialData={sidebarData}
-				/>
-			) : (
-				<AgentBuilderSidebarFallback />
-			)}
+			{sidebar}
 			<div className="flex min-w-0 flex-1 flex-col">{children}</div>
 		</div>
 	);
 }
 
-function AgentBuilderSidebarFallback() {
+export function AgentBuilderSidebarFallback() {
 	return (
 		<aside
-			aria-busy="true"
 			className="hidden w-[213px] flex-none flex-col border-r p-4 md:flex"
+			aria-busy="true"
 		>
 			<div className="flex h-7 items-center pl-2 font-medium text-xs">
 				Chats
@@ -41,6 +29,9 @@ function AgentBuilderSidebarFallback() {
 				<Skeleton className="h-7 w-full" />
 				<Skeleton className="h-7 w-full" />
 			</div>
+			<span role="status" className="sr-only">
+				Loading agent navigation…
+			</span>
 		</aside>
 	);
 }

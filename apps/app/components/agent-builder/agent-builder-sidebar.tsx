@@ -170,6 +170,7 @@ function TeamAgents({
 		<div className="mt-3 border-t pt-1">
 			<Link
 				href={workspaceUrl("/agents")}
+				transitionTypes={["nav-lateral"]}
 				onClick={onNavigate}
 				className="flex h-8 items-end gap-2 rounded-sm px-2 pb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.08em] outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
 			>

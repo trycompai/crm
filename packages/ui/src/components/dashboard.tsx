@@ -1,4 +1,3 @@
-import { Skeleton } from "@crm/ui/components/skeleton";
 import { cn } from "@crm/ui/lib/utils";
 import type * as React from "react";
 
@@ -176,48 +175,11 @@ function DashboardSection({
 	);
 }
 
-function DashboardSkeleton({
-	stats = 4,
-	className,
-}: {
-	stats?: number;
-	className?: string;
-}) {
-	return (
-		<div
-			data-slot="dashboard-skeleton"
-			className={cn("flex flex-col gap-6", className)}
-			aria-hidden
-		>
-			<StatGroup>
-				{Array.from({ length: stats }).map((_, i) => (
-					<div key={i} className="flex flex-col gap-3 p-4 md:p-6">
-						<Skeleton className="h-4 w-24" />
-						<Skeleton className="h-8 w-16" />
-						<Skeleton className="h-3 w-28" />
-					</div>
-				))}
-			</StatGroup>
-			<DashboardRow>
-				<div className="flex flex-col gap-4 border p-5 md:p-6">
-					<Skeleton className="h-4 w-40" />
-					<Skeleton className="h-[200px] w-full" />
-				</div>
-				<div className="flex flex-col items-center gap-4 border p-5 md:p-6">
-					<Skeleton className="h-4 w-32 self-start" />
-					<Skeleton className="size-[200px] rounded-full" />
-				</div>
-			</DashboardRow>
-		</div>
-	);
-}
-
 export {
 	ChartCard,
 	DashboardGrid,
 	DashboardRow,
 	DashboardSection,
-	DashboardSkeleton,
 	KpiCard,
 	StatGroup,
 };

@@ -76,7 +76,10 @@ export function AppHeader({ user }: { user: User }) {
 
 export function AppHeaderFallback() {
 	return (
-		<header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 [view-transition-name:app-header]">
+		<header
+			className="flex h-12 shrink-0 items-center gap-2 border-b px-3 [view-transition-name:app-header]"
+			aria-busy="true"
+		>
 			<div className="flex shrink-0 items-center gap-1">
 				<span className="hidden size-8 items-center justify-center text-foreground md:flex">
 					<Logo className="size-5" />
@@ -90,6 +93,9 @@ export function AppHeaderFallback() {
 					<AvatarFallback />
 				</Avatar>
 			</div>
+			<span role="status" className="sr-only">
+				Loading workspace header…
+			</span>
 		</header>
 	);
 }
