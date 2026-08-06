@@ -123,6 +123,27 @@ Three consequences worth knowing:
 protection requiring the `check-types, lint, test` and `conventional commit` checks** — not the
 release workflow, which cannot wait on a run in another workflow.
 
+### When it jams
+
+The Release workflow reports success even when it has done nothing, so the symptom of a jam is
+silence: merges land, no release PR appears. Read the log rather than the status. Two failures have
+actually happened here:
+
+- **`There are untagged, merged release PRs outstanding - aborting`.** A release PR was merged but
+  never tagged, and release-please refuses to move past it — every later run aborts on the same PR,
+  which is how this repo sat from `v1.0.0` in August with no tags at all. Fix it by hand: create the
+  tag and GitHub Release at the release PR's merge commit, then swap that PR's
+  `autorelease: pending` label for `autorelease: tagged`. The next run picks up where it left off.
+  The usual cause is a release PR whose title does not match `pull-request-title-pattern`, because
+  the version is parsed back out of that title — so do not edit the pattern with a release PR open.
+- **`commit could not be parsed`, in bulk.** Non-conventional subjects reached `main`. They are not
+  errors, they are silently missing changelog lines. The squash-only merge policy and the
+  `conventional commit` check exist to stop this; if you see it again, one of the two has been
+  turned off.
+
+`workflow_dispatch` is enabled on the workflow, so you can re-run it against `main` from the Actions
+tab once you have fixed the cause, instead of pushing an empty commit.
+
 ## House style
 
 The repo has opinions, and they're written down where the work happens rather than in a style
