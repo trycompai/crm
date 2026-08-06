@@ -4,6 +4,7 @@ import { DIRECT_KINDS, isDirectKind, PRIORITY } from "@crm/db/agent-tasks";
 import { claimDue } from "../agent/lib/tasks";
 
 const REASON = "lane-test";
+const TEST_PRIORITY_OFFSET = 1_000_000;
 
 const VISIBLE = { only: DIRECT_KINDS } as const;
 const RESEARCH = { except: DIRECT_KINDS } as const;
@@ -21,7 +22,7 @@ async function queue(kind: string, priority: number) {
 			kind,
 			reason: REASON,
 			dueAt: new Date(Date.now() - 1000),
-			priority,
+			priority: TEST_PRIORITY_OFFSET + priority,
 			budget: 2,
 		},
 		select: { id: true },

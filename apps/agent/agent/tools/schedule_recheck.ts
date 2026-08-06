@@ -1,6 +1,7 @@
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { assertResearchPurpose } from "../lib/session-purpose";
 import { scheduleTask } from "../lib/tasks";
 
 const MIN_DAYS = 1;
@@ -33,7 +34,8 @@ export default defineTool({
 			.default(4)
 			.describe("Vendor calls the next run may spend."),
 	}),
-	async execute({ contactId, days, reason, budget }) {
+	async execute({ contactId, days, reason, budget }, ctx) {
+		assertResearchPurpose(ctx);
 		const dueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
 		await scheduleTask({

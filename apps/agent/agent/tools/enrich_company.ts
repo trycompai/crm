@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { runBrand } from "../lib/brand";
 import { spend } from "../lib/focus";
+import { assertResearchPurpose } from "../lib/session-purpose";
 
 export default defineTool({
 	description:
@@ -15,7 +16,8 @@ export default defineTool({
 				"Bypass the vendor's ~90-day cache. Only when a rep has asked for a fresh look.",
 			),
 	}),
-	async execute({ companyId, fresh }) {
+	async execute({ companyId, fresh }, ctx) {
+		assertResearchPurpose(ctx);
 		const result = await runBrand({ companyId, fresh, spend });
 
 		if (!result.enriched) {

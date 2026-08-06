@@ -90,6 +90,8 @@ export async function readCompanyHistory(
 		threads?: number;
 		messagesPerThread?: number;
 		people?: number;
+		includeEmail?: boolean;
+		includeCalendar?: boolean;
 	} = {},
 ): Promise<CompanyHistory | null> {
 	const company = await db.company.findUnique({
@@ -110,6 +112,8 @@ export async function readCompanyHistory(
 	});
 
 	if (!company) return null;
+	const includeEmail = options.includeEmail ?? true;
+	const includeCalendar = options.includeCalendar ?? true;
 
 	const belongsToCompany = { OR: [{ companyId }, { contact: { companyId } }] };
 
@@ -127,7 +131,15 @@ export async function readCompanyHistory(
 					email: true,
 					linkedinUrl: true,
 					lastActivityAt: true,
-					_count: { select: { emailThreads: true, calendarEvents: true } },
+					_count:
+						includeEmail || includeCalendar
+							? {
+									select: {
+										emailThreads: includeEmail,
+										calendarEvents: includeCalendar,
+									},
+								}
+							: false,
 				},
 			}),
 			db.deal.findMany({
@@ -152,62 +164,74 @@ export async function readCompanyHistory(
 					},
 				},
 			}),
-			db.emailThread.findMany({
-				where: belongsToCompany,
-				orderBy: { lastMessageAt: "desc" },
-				take: options.threads ?? 5,
-				select: {
-					subject: true,
-					messageCount: true,
-					lastMessageAt: true,
-					contact: { select: { id: true, firstName: true, lastName: true } },
-					messages: {
-						orderBy: { sentAt: "desc" },
-						take: options.messagesPerThread ?? 4,
+			includeEmail
+				? db.emailThread.findMany({
+						where: belongsToCompany,
+						orderBy: { lastMessageAt: "desc" },
+						take: options.threads ?? 5,
 						select: {
-							direction: true,
-							fromEmail: true,
-							fromName: true,
-							sentAt: true,
-							body: true,
-							snippet: true,
+							subject: true,
+							messageCount: true,
+							lastMessageAt: true,
+							contact: {
+								select: { id: true, firstName: true, lastName: true },
+							},
+							messages: {
+								orderBy: { sentAt: "desc" },
+								take: options.messagesPerThread ?? 4,
+								select: {
+									direction: true,
+									fromEmail: true,
+									fromName: true,
+									sentAt: true,
+									body: true,
+									snippet: true,
+								},
+							},
 						},
-					},
-				},
-			}),
-			db.calendarEvent.findMany({
-				where: {
-					OR: [
-						{ companyId },
-						{ contact: { companyId } },
-						{ attendees: { some: { contact: { companyId } } } },
-					],
-				},
-				orderBy: { startsAt: "desc" },
-				take: 10,
-				select: {
-					title: true,
-					startsAt: true,
-					attendees: { select: { email: true, name: true } },
-				},
-			}),
+					})
+				: Promise.resolve([]),
+			includeCalendar
+				? db.calendarEvent.findMany({
+						where: {
+							OR: [
+								{ companyId },
+								{ contact: { companyId } },
+								{ attendees: { some: { contact: { companyId } } } },
+							],
+						},
+						orderBy: { startsAt: "desc" },
+						take: 10,
+						select: {
+							title: true,
+							startsAt: true,
+							attendees: { select: { email: true, name: true } },
+						},
+					})
+				: Promise.resolve([]),
 			recentNotes({ companyId }),
-			db.emailMessage.findFirst({
-				where: {
-					direction: EmailDirection.INBOUND,
-					thread: belongsToCompany,
-				},
-				orderBy: { sentAt: "desc" },
-				select: { sentAt: true, fromEmail: true, fromName: true },
-			}),
+			includeEmail
+				? db.emailMessage.findFirst({
+						where: {
+							direction: EmailDirection.INBOUND,
+							thread: belongsToCompany,
+						},
+						orderBy: { sentAt: "desc" },
+						select: { sentAt: true, fromEmail: true, fromName: true },
+					})
+				: Promise.resolve(null),
 			Promise.all([
 				db.contact.count({ where: { companyId } }),
-				db.emailMessage.count({ where: { thread: belongsToCompany } }),
-				db.calendarEvent.count({
-					where: {
-						OR: [{ companyId }, { contact: { companyId } }],
-					},
-				}),
+				includeEmail
+					? db.emailMessage.count({ where: { thread: belongsToCompany } })
+					: Promise.resolve(0),
+				includeCalendar
+					? db.calendarEvent.count({
+							where: {
+								OR: [{ companyId }, { contact: { companyId } }],
+							},
+						})
+					: Promise.resolve(0),
 			]),
 		]);
 
@@ -235,8 +259,8 @@ export async function readCompanyHistory(
 			email: person.email,
 			linkedinUrl: person.linkedinUrl,
 			lastActivityAt: person.lastActivityAt?.toISOString() ?? null,
-			threads: person._count.emailThreads,
-			meetings: person._count.calendarEvents,
+			threads: person._count?.emailThreads ?? 0,
+			meetings: person._count?.calendarEvents ?? 0,
 			needsIdentity: isDerivedName(
 				person.email,
 				person.firstName,
@@ -307,7 +331,12 @@ export type DealHistory = {
 
 export async function readDealHistory(
 	dealId: string,
-	options: { threads?: number; messagesPerThread?: number } = {},
+	options: {
+		threads?: number;
+		messagesPerThread?: number;
+		includeEmail?: boolean;
+		includeCalendar?: boolean;
+	} = {},
 ): Promise<DealHistory | null> {
 	const deal = await db.deal.findUnique({
 		where: { id: dealId },
@@ -344,6 +373,8 @@ export async function readDealHistory(
 	});
 
 	if (!deal) return null;
+	const includeEmail = options.includeEmail ?? true;
+	const includeCalendar = options.includeCalendar ?? true;
 
 	const contactIds = deal.contacts.map(({ contact }) => contact.id);
 
@@ -365,54 +396,67 @@ export async function readDealHistory(
 				take: 25,
 				select: { meta: true, createdAt: true },
 			}),
-			db.emailThread.findMany({
-				where: relatedThreads,
-				orderBy: { lastMessageAt: "desc" },
-				take: options.threads ?? 5,
-				select: {
-					subject: true,
-					messageCount: true,
-					lastMessageAt: true,
-					contact: { select: { id: true, firstName: true, lastName: true } },
-					messages: {
-						orderBy: { sentAt: "desc" },
-						take: options.messagesPerThread ?? 4,
+			includeEmail
+				? db.emailThread.findMany({
+						where: relatedThreads,
+						orderBy: { lastMessageAt: "desc" },
+						take: options.threads ?? 5,
 						select: {
-							direction: true,
-							fromEmail: true,
-							fromName: true,
-							sentAt: true,
-							body: true,
-							snippet: true,
+							subject: true,
+							messageCount: true,
+							lastMessageAt: true,
+							contact: {
+								select: { id: true, firstName: true, lastName: true },
+							},
+							messages: {
+								orderBy: { sentAt: "desc" },
+								take: options.messagesPerThread ?? 4,
+								select: {
+									direction: true,
+									fromEmail: true,
+									fromName: true,
+									sentAt: true,
+									body: true,
+									snippet: true,
+								},
+							},
 						},
-					},
-				},
-			}),
-			db.calendarEvent.findMany({
-				where:
-					contactIds.length > 0
-						? {
-								OR: [
-									{ contactId: { in: contactIds } },
-									{ attendees: { some: { contactId: { in: contactIds } } } },
-									{ companyId: deal.company.id },
-								],
-							}
-						: { companyId: deal.company.id },
-				orderBy: { startsAt: "desc" },
-				take: 10,
-				select: {
-					title: true,
-					startsAt: true,
-					attendees: { select: { email: true, name: true } },
-				},
-			}),
+					})
+				: Promise.resolve([]),
+			includeCalendar
+				? db.calendarEvent.findMany({
+						where:
+							contactIds.length > 0
+								? {
+										OR: [
+											{ contactId: { in: contactIds } },
+											{
+												attendees: { some: { contactId: { in: contactIds } } },
+											},
+											{ companyId: deal.company.id },
+										],
+									}
+								: { companyId: deal.company.id },
+						orderBy: { startsAt: "desc" },
+						take: 10,
+						select: {
+							title: true,
+							startsAt: true,
+							attendees: { select: { email: true, name: true } },
+						},
+					})
+				: Promise.resolve([]),
 			recentNotes({ dealId }),
-			db.emailMessage.findFirst({
-				where: { direction: EmailDirection.INBOUND, thread: relatedThreads },
-				orderBy: { sentAt: "desc" },
-				select: { sentAt: true, fromEmail: true, fromName: true },
-			}),
+			includeEmail
+				? db.emailMessage.findFirst({
+						where: {
+							direction: EmailDirection.INBOUND,
+							thread: relatedThreads,
+						},
+						orderBy: { sentAt: "desc" },
+						select: { sentAt: true, fromEmail: true, fromName: true },
+					})
+				: Promise.resolve(null),
 		]);
 
 	const now = new Date();
@@ -469,9 +513,11 @@ export async function readDealHistory(
 				: null,
 		},
 		note:
-			contactIds.length > 0
-				? "Email and meetings are filed against people and companies, never against a deal. The correspondence here is with the people on this deal and with the rest of the account — read the subjects before treating any of it as being about this deal."
-				: "Nobody is attached to this deal, so the correspondence here is the whole account's. Attaching the people on it would make this answer sharper.",
+			includeEmail || includeCalendar
+				? contactIds.length > 0
+					? "Connected account history is filed against people and companies, never against a deal. The history here belongs to the people on this deal and the rest of the account — read the details before treating any of it as being about this deal."
+					: "Nobody is attached to this deal, so the correspondence here is the whole account's. Attaching the people on it would make this answer sharper."
+				: "Connected email and calendar history are outside this agent version's approved data sources.",
 	};
 }
 

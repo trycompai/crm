@@ -1,8 +1,19 @@
+import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus } from "@crm/db";
 import { defineChannel, POST } from "eve/channels";
 import { verifyKey } from "../lib/context-dev";
+import {
+	builderIdFromToken,
+	dispatchAgentRun,
+	dispatchBuilderSubmission,
+	drainAgentRuns,
+	drainBuilder,
+	failRun,
+	runIdFromToken,
+} from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
+import { finishRun } from "../lib/run-runtime";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
@@ -10,8 +21,13 @@ const TASK_MARKER = "task:";
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
 	if (!secret) return false;
+	const header = request.headers.get("authorization");
+	if (!header?.startsWith("Bearer ")) return false;
+	const candidate = Buffer.from(header.slice("Bearer ".length));
+	const expected = Buffer.from(secret);
+	if (candidate.length !== expected.length) return false;
 
-	return request.headers.get("authorization") === `Bearer ${secret}`;
+	return timingSafeEqual(candidate, expected);
 }
 
 export function taskToken(taskId: string): string {
@@ -47,6 +63,30 @@ export default defineChannel({
 			return new Response(null, { status: 202 });
 		}),
 
+		POST(
+			"/internal/crm/builder-dispatch",
+			async (request, { send, waitUntil }) => {
+				if (!authorised(request)) {
+					return new Response("Unauthorized", { status: 401 });
+				}
+
+				waitUntil(drainBuilder(send));
+				return new Response(null, { status: 202 });
+			},
+		),
+
+		POST(
+			"/internal/crm/agent-dispatch",
+			async (request, { send, waitUntil }) => {
+				if (!authorised(request)) {
+					return new Response("Unauthorized", { status: 401 });
+				}
+
+				waitUntil(drainAgentRuns(send));
+				return new Response(null, { status: 202 });
+			},
+		),
+
 		POST("/internal/crm/verify-key", async (request) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
@@ -71,29 +111,107 @@ export default defineChannel({
 	],
 
 	events: {
+		async "message.completed"(data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (!conversationId || !data.message?.trim()) return;
+
+			await import("@crm/db").then(({ db }) =>
+				db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						lastAssistantAt: new Date(),
+						lastMessageAt: new Date(),
+						messageCount: { increment: 1 },
+					},
+				}),
+			);
+		},
+
 		async "session.waiting"(_data, channel) {
 			const taskId = taskFromToken(channel.continuationToken);
-			if (!taskId) return;
+			if (taskId) {
+				const subject = await completeTask(taskId, "ran");
+				if (subject) await settle(subject, EnrichmentStatus.COMPLETE);
+				return;
+			}
 
-			const subject = await completeTask(taskId, "ran");
-			if (subject) await settle(subject, EnrichmentStatus.COMPLETE);
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (!conversationId) return;
+
+			await import("@crm/db").then(({ db }) =>
+				db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: { continuationToken: channel.continuationToken },
+				}),
+			);
 		},
 
 		async "turn.failed"(data, channel) {
 			const taskId = taskFromToken(channel.continuationToken);
-			if (!taskId) return;
-
 			const reason =
-				typeof data === "object" && data && "error" in data
-					? String((data as { error: unknown }).error)
-					: "The research turn failed.";
+				typeof data === "object" && data && "message" in data
+					? String((data as { message: unknown }).message)
+					: "The agent turn failed.";
 
-			const subject = await taskSubject(taskId);
-			if (subject) await settle(subject, EnrichmentStatus.FAILED, reason);
+			if (taskId) {
+				const subject = await taskSubject(taskId);
+				if (subject) await settle(subject, EnrichmentStatus.FAILED, reason);
+				return;
+			}
+
+			const runId = runIdFromToken(channel.continuationToken);
+			if (runId) await failRun(runId, "TURN_FAILED", reason);
+		},
+
+		async "session.completed"(_data, channel) {
+			const runId = runIdFromToken(channel.continuationToken);
+			if (!runId) return;
+
+			const { db } = await import("@crm/db");
+			const run = await db.agentRun.findUnique({
+				where: { id: runId },
+				select: { status: true, summary: true },
+			});
+			if (run?.status === "RUNNING") {
+				await finishRun(runId, {
+					summary: run.summary ?? "The agent run completed.",
+				});
+			}
+		},
+
+		async "session.failed"(data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						continuationToken: channel.continuationToken,
+						lastAssistantAt: new Date(),
+						lastMessageAt: new Date(),
+					},
+				});
+				return;
+			}
+
+			const runId = runIdFromToken(channel.continuationToken);
+			if (runId) await failRun(runId, data.code, data.message);
 		},
 	},
 
 	async receive(input, { send }) {
+		const builderSubmissionId =
+			typeof input.target?.builderSubmissionId === "string"
+				? input.target.builderSubmissionId
+				: null;
+		if (builderSubmissionId) {
+			return dispatchBuilderSubmission(builderSubmissionId, send);
+		}
+
+		const runId =
+			typeof input.target?.runId === "string" ? input.target.runId : null;
+		if (runId) return dispatchAgentRun(runId, send);
+
 		const taskId =
 			typeof input.target?.taskId === "string" ? input.target.taskId : null;
 

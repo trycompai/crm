@@ -1,6 +1,8 @@
-import { db } from "@crm/db";
+import { db, type Prisma } from "@crm/db";
 import { defineHook } from "eve/hooks";
 import { currentFocus } from "../lib/focus";
+import { lockAgentRun } from "../lib/run-state";
+import { attribute, purposeOf } from "../lib/session-purpose";
 
 const CUMULATIVE_DELTAS = new Set(["reasoning.appended"]);
 
@@ -12,18 +14,30 @@ export default defineHook({
 			if (!id || CUMULATIVE_DELTAS.has(event.type)) return;
 
 			try {
-				await db.agentEvent.createMany({
-					data: [
-						{
-							id,
-							sessionId: ctx.session.id,
-							contactId: currentFocus().contactId,
-							type: event.type,
-							data: ("data" in event ? (event.data ?? {}) : {}) as object,
-							emittedAt: event.meta?.at ? new Date(event.meta.at) : new Date(),
-						},
-					],
-					skipDuplicates: true,
+				const data = ("data" in event ? (event.data ?? {}) : {}) as object;
+				const emittedAt = event.meta?.at ? new Date(event.meta.at) : new Date();
+				await db.$transaction(async (tx) => {
+					await tx.agentEvent.createMany({
+						data: [
+							{
+								id,
+								sessionId: ctx.session.id,
+								contactId: currentFocus().contactId,
+								type: event.type,
+								data,
+								emittedAt,
+							},
+						],
+						skipDuplicates: true,
+					});
+
+					const purpose = purposeOf(ctx);
+					if (purpose === "builder") {
+						await persistBuilderLifecycle(tx, event, ctx.session.id, ctx);
+					}
+					if (purpose === "team-agent") {
+						await persistRunEvent(tx, id, event.type, data, emittedAt, ctx);
+					}
 				});
 			} catch (error) {
 				console.warn("[audit] could not record event", {
@@ -34,3 +48,124 @@ export default defineHook({
 		},
 	},
 });
+
+async function persistBuilderLifecycle(
+	tx: Prisma.TransactionClient,
+	event: { type: string },
+	sessionId: string,
+	ctx: Parameters<typeof purposeOf>[0],
+) {
+	const conversationId = attribute(ctx, "conversationId");
+	if (!conversationId) return;
+
+	if (event.type === "session.started") {
+		await tx.agentConversation.updateMany({
+			where: { id: conversationId, kind: "BUILDER" },
+			data: { sessionId, continuationToken: null },
+		});
+	}
+
+	if (event.type === "message.received") {
+		const submissionId = attribute(ctx, "submissionId");
+		if (submissionId) {
+			await tx.agentConversationSubmission.updateMany({
+				where: { id: submissionId, conversationId },
+				data: { status: "ACCEPTED", acceptedAt: new Date() },
+			});
+		}
+	}
+}
+
+async function persistRunEvent(
+	tx: Prisma.TransactionClient,
+	eventId: string,
+	type: string,
+	data: object,
+	emittedAt: Date,
+	ctx: Parameters<typeof purposeOf>[0] & { session: { id: string } },
+) {
+	const runId = attribute(ctx, "runId");
+	if (!runId) return;
+
+	const run = await lockAgentRun(tx, runId);
+	const existing = await tx.agentRunEvent.findUnique({
+		where: { id: eventId },
+		select: { id: true },
+	});
+	if (existing) return;
+
+	const sequence = run.nextEventSequence + 1;
+	const mayStart =
+		type === "session.started" &&
+		(run.status === "QUEUED" || run.status === "RUNNING");
+	await tx.agentRun.update({
+		where: { id: run.id },
+		data: {
+			nextEventSequence: sequence,
+			...(mayStart
+				? {
+						sessionId: ctx.session.id,
+						status: "RUNNING",
+						startedAt: run.startedAt ?? new Date(),
+					}
+				: {}),
+		},
+	});
+
+	await tx.agentRunEvent.create({
+		data: {
+			id: eventId,
+			runId,
+			sequence,
+			type,
+			data: data as Prisma.InputJsonValue,
+			emittedAt,
+		},
+	});
+
+	if (type === "step.completed") {
+		const usage = recordOf(data).usage;
+		const values = recordOf(usage);
+		const inputTokens = numberOf(values.inputTokens);
+		const outputTokens = numberOf(values.outputTokens);
+		const costUsd = numberOf(values.costUsd);
+		const current = await tx.agentRun.findUniqueOrThrow({
+			where: { id: runId },
+			select: { inputTokens: true, outputTokens: true, costUsd: true },
+		});
+		await tx.agentRun.update({
+			where: { id: runId },
+			data: {
+				...(inputTokens !== null
+					? { inputTokens: (current.inputTokens ?? 0) + inputTokens }
+					: {}),
+				...(outputTokens !== null
+					? { outputTokens: (current.outputTokens ?? 0) + outputTokens }
+					: {}),
+				...(costUsd !== null
+					? { costUsd: Number(current.costUsd ?? 0) + costUsd }
+					: {}),
+			},
+		});
+	}
+
+	if (type === "message.completed") {
+		const message = recordOf(data).message;
+		if (typeof message === "string" && message.trim()) {
+			await tx.agentRun.updateMany({
+				where: { id: runId, status: "RUNNING" },
+				data: { summary: message.slice(0, 1000) },
+			});
+		}
+	}
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function numberOf(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}

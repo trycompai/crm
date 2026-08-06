@@ -1,5 +1,14 @@
-import { db } from "@crm/db";
+import { DealStage, db } from "@crm/db";
 import { domainOf, normalise } from "./names";
+
+const OPEN_DEAL_STAGES = [
+	DealStage.DEMO_BOOKED,
+	DealStage.QUALIFIED_TO_BUY,
+	DealStage.DECISION_MAKER_BOUGHT_IN,
+	DealStage.CONTRACT_SENT,
+];
+
+const LOST_DEAL_STAGES = [DealStage.CLOSED_LOST, DealStage.UNQUALIFIED_TO_BUY];
 
 export type RecordKind = "contact" | "company" | "deal";
 
@@ -42,6 +51,117 @@ export type SearchResult = {
 	deals: DealHit[];
 	total: number;
 };
+
+export type DealListStatus = "open" | "won" | "lost" | "all";
+
+export type DealListOptions = {
+	status?: DealListStatus;
+	inactiveForDays?: number;
+	companyId?: string;
+	ownerId?: string;
+	limit?: number;
+	cursor?: string;
+	now?: Date;
+};
+
+export async function listDeals(options: DealListOptions = {}) {
+	const status = options.status ?? "open";
+	const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+	const now = options.now ?? new Date();
+	const cutoff =
+		options.inactiveForDays === undefined
+			? null
+			: new Date(
+					now.getTime() - Math.max(options.inactiveForDays, 0) * 86_400_000,
+				);
+	const stages =
+		status === "open"
+			? OPEN_DEAL_STAGES
+			: status === "won"
+				? [DealStage.CLOSED_WON]
+				: status === "lost"
+					? LOST_DEAL_STAGES
+					: null;
+
+	const rows = await db.deal.findMany({
+		where: {
+			...(stages ? { stage: { in: stages } } : {}),
+			...(options.companyId ? { companyId: options.companyId } : {}),
+			...(options.ownerId ? { ownerId: options.ownerId } : {}),
+			...(cutoff
+				? {
+						OR: [
+							{ lastActivityAt: { lte: cutoff } },
+							{ lastActivityAt: null, createdAt: { lte: cutoff } },
+						],
+					}
+				: {}),
+		},
+		orderBy: [
+			{ lastActivityAt: { sort: "asc", nulls: "first" } },
+			{ createdAt: "asc" },
+			{ id: "asc" },
+		],
+		...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
+		take: limit + 1,
+		select: {
+			id: true,
+			name: true,
+			stage: true,
+			amount: true,
+			currency: true,
+			createdAt: true,
+			lastActivityAt: true,
+			expectedCloseDate: true,
+			company: {
+				select: {
+					id: true,
+					name: true,
+					domain: true,
+					iconUrl: true,
+					iconDarkUrl: true,
+					iconTone: true,
+					logoUrl: true,
+				},
+			},
+			owner: { select: { id: true, name: true, email: true, image: true } },
+		},
+	});
+	const hasMore = rows.length > limit;
+	const page = rows.slice(0, limit);
+
+	return {
+		criteria: {
+			status,
+			inactiveForDays: options.inactiveForDays ?? null,
+			companyId: options.companyId ?? null,
+			ownerId: options.ownerId ?? null,
+		},
+		asOf: now.toISOString(),
+		deals: page.map((deal) => {
+			const activityDate = deal.lastActivityAt ?? deal.createdAt;
+			return {
+				id: deal.id,
+				name: deal.name,
+				stage: deal.stage,
+				amount: deal.amount === null ? null : Number(deal.amount),
+				currency: deal.currency,
+				company: deal.company,
+				owner: deal.owner,
+				createdAt: deal.createdAt.toISOString(),
+				lastActivityAt: deal.lastActivityAt?.toISOString() ?? null,
+				daysSinceLastActivity: Math.max(
+					0,
+					Math.floor((now.getTime() - activityDate.getTime()) / 86_400_000),
+				),
+				neverActive: deal.lastActivityAt === null,
+				expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
+			};
+		}),
+		hasMore,
+		nextCursor: hasMore ? page.at(-1)?.id : null,
+	};
+}
 
 export async function searchCrm(
 	query: string,

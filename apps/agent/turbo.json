@@ -4,13 +4,15 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
-			"outputs": [".eve/**", ".output/**", ".vercel/output/**"]
+			"outputs": [".output/**", ".vercel/output/**"]
 		},
 		"check-types": {
 			"dependsOn": ["topo", "^build"]
 		},
 		"dev": {
+			"dependsOn": ["$TURBO_EXTENDS$"],
 			"cache": false,
+			"interactive": true,
 			"persistent": true,
 			"passThroughEnv": [
 				"AGENT_BRIDGE_SECRET",
