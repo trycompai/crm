@@ -9,6 +9,7 @@ import { ContactsService } from "../src/contacts/contacts.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { EnrichmentLogService } from "../src/crm/enrichment-log.service";
 import { ConversionService } from "../src/currency/conversion.service";
+import { FieldsService } from "../src/fields/fields.service";
 import { GoogleMatchService } from "../src/google/google-match.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "record-delete-spec";
@@ -33,7 +34,15 @@ const log = new EnrichmentLogService(db, stamp);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);
 
-const contacts = new ContactsService(db, directory, agent, queue, stamp);
+const fields = new FieldsService(db, agent);
+const contacts = new ContactsService(
+	db,
+	directory,
+	agent,
+	queue,
+	stamp,
+	fields,
+);
 const companies = new CompaniesService(
 	db,
 	agent,
@@ -41,6 +50,7 @@ const companies = new CompaniesService(
 	{ backfill: async () => undefined } as unknown as FaviconService,
 	stamp,
 	conversion,
+	fields,
 );
 const match = new GoogleMatchService(db, directory, agent, log);
 

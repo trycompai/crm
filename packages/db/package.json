@@ -11,6 +11,8 @@
 		"./currency": "./src/currency.ts",
 		"./enums": "./src/generated/prisma/enums.ts",
 		"./favicon": "./src/favicon.ts",
+		"./fields": "./src/fields.ts",
+		"./fields-shape": "./src/fields-shape.ts",
 		"./fx": "./src/fx.ts",
 		"./images": "./src/images.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",

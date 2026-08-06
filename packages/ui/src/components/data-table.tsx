@@ -8,6 +8,7 @@ import ChevronRight from "@carbon/icons-react/es/ChevronRight";
 import Column from "@carbon/icons-react/es/Column";
 import Filter from "@carbon/icons-react/es/Filter";
 import { Button } from "@crm/ui/components/button";
+import { Checkbox } from "@crm/ui/components/checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
@@ -28,6 +29,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@crm/ui/components/table";
+import type { TableSelection } from "@crm/ui/hooks/use-table-selection";
 import { ROW_ACCENT, ROW_ACCENT_EXPANDABLE } from "@crm/ui/lib/row-accent";
 import type { TableQueryState } from "@crm/ui/lib/table-query";
 import { cn } from "@crm/ui/lib/utils";
@@ -76,6 +78,12 @@ export type DataTableExpandable<TRow, TSub> = {
 	onSubRowClick?: (sub: TSub, row: TRow) => void;
 };
 
+export type DataTableSelection<TRow> = {
+	state: TableSelection;
+	actions: ReactNode;
+	rowLabel?: (row: TRow) => string;
+};
+
 export type DataTableProps<TRow, TSub> = {
 	query: TableQueryState;
 	columns: DataTableColumn<TRow>[];
@@ -89,6 +97,7 @@ export type DataTableProps<TRow, TSub> = {
 	onRowClick?: (row: TRow) => void;
 	onRowHover?: (row: TRow) => void;
 	expandable?: DataTableExpandable<TRow, TSub>;
+	selection?: DataTableSelection<TRow>;
 	actions?: ReactNode;
 	leadingActions?: ReactNode;
 	search?: ReactNode;
@@ -150,6 +159,7 @@ export function DataTable<TRow, TSub = unknown>({
 	onRowClick,
 	onRowHover,
 	expandable,
+	selection,
 	actions,
 	leadingActions,
 	search,
@@ -193,7 +203,7 @@ export function DataTable<TRow, TSub = unknown>({
 	const anyExpandable =
 		expandable != null &&
 		deferredRows.some((row) => expandable.isExpandable(row));
-	const colCount = visibleColumns.length + (anyExpandable ? 1 : 0);
+	const selecting = selection != null && selection.state.count > 0;
 
 	const pageSize = query.pageSize;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -213,7 +223,32 @@ export function DataTable<TRow, TSub = unknown>({
 
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
-			<div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+			{selecting && selection ? (
+				<div className="flex h-8 items-center gap-2">
+					<span className="truncate text-xs text-muted-foreground">
+						<span className="font-medium text-foreground tabular-nums">
+							{selection.state.count}
+						</span>{" "}
+						selected
+					</span>
+					<div className="ml-auto flex items-center gap-2">
+						{selection.actions}
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => selection.state.clear()}
+						>
+							Clear
+						</Button>
+					</div>
+				</div>
+			) : null}
+			<div
+				className={cn(
+					"flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between",
+					selecting && "hidden",
+				)}
+			>
 				{search}
 				{hasFilterControls && (
 					<Button
@@ -426,9 +461,34 @@ export function DataTable<TRow, TSub = unknown>({
 					tableClassName,
 				)}
 				containerClassName="min-h-0 flex-1 overflow-auto rounded-lg border bg-card"
+				overlay={
+					deferredRows.length === 0 ? (
+						<div className="absolute inset-x-0 top-11 bottom-0 flex items-center justify-center px-4 py-8 text-center text-muted-foreground">
+							{loading ? <Spinner /> : (empty ?? "No results found.")}
+						</div>
+					) : null
+				}
 			>
 				<TableHeader className="sticky top-0 z-10 bg-muted [&_th]:bg-muted [&_tr]:border-0 [&_tr]:shadow-[inset_0_-1px_0_var(--border)]">
 					<TableRow>
+						{selection && (
+							<TableHead className={cn("h-11 w-10 px-3", HIDE_BELOW_CLASS.sm)}>
+								<Checkbox
+									checked={
+										selection.state.allSelected
+											? true
+											: selection.state.someSelected
+												? "indeterminate"
+												: false
+									}
+									onCheckedChange={(checked) =>
+										selection.state.toggleAll(checked === true)
+									}
+									disabled={deferredRows.length === 0}
+									aria-label="Select every row on this page"
+								/>
+							</TableHead>
+						)}
 						{anyExpandable && (
 							<TableHead className="h-11 w-10 px-3">
 								<span className="sr-only">Detail</span>
@@ -477,122 +537,137 @@ export function DataTable<TRow, TSub = unknown>({
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{deferredRows.length === 0 ? (
-						<TableRow className="hover:bg-transparent">
-							<TableCell
-								colSpan={colCount}
-								className="h-32 whitespace-normal py-8 text-center align-middle text-muted-foreground"
-							>
-								{loading ? <Spinner /> : (empty ?? "No results found.")}
-							</TableCell>
-						</TableRow>
-					) : (
-						deferredRows.map((row) => {
-							const id = getRowId(row);
-							const canExpand = expandable?.isExpandable(row) ?? false;
-							const isOpen = canExpand && expanded.has(id);
-							const clickable = canExpand || !!onRowClick;
-							const handleClick = () => {
-								if (canExpand) {
-									setExpandedIds((prev) => {
-										const set = new Set(prev ?? []);
-										if (set.has(id)) set.delete(id);
-										else set.add(id);
-										const next = [...set];
-										return next.length > 0 ? next : null;
-									});
-								} else {
-									onRowClick?.(row);
-								}
-							};
-							return (
-								<Fragment key={id}>
-									<TableRow
-										onClick={clickable ? handleClick : undefined}
-										onMouseEnter={
-											onRowHover ? () => onRowHover(row) : undefined
-										}
-										onFocus={onRowHover ? () => onRowHover(row) : undefined}
-										className={
-											clickable
-												? anyExpandable
-													? ROW_ACCENT_EXPANDABLE
-													: ROW_ACCENT
-												: undefined
-										}
-									>
-										{anyExpandable && (
-											<TableCell className="w-10 px-3 py-3 text-center text-muted-foreground">
-												{canExpand && (
-													<ChevronRight
-														size={12}
+					{deferredRows.map((row) => {
+						const id = getRowId(row);
+						const canExpand = expandable?.isExpandable(row) ?? false;
+						const isOpen = canExpand && expanded.has(id);
+						const isSelected = selection?.state.has(id) ?? false;
+						const clickable = canExpand || !!onRowClick;
+						const handleClick = () => {
+							if (canExpand) {
+								setExpandedIds((prev) => {
+									const set = new Set(prev ?? []);
+									if (set.has(id)) set.delete(id);
+									else set.add(id);
+									const next = [...set];
+									return next.length > 0 ? next : null;
+								});
+							} else {
+								onRowClick?.(row);
+							}
+						};
+						return (
+							<Fragment key={id}>
+								<TableRow
+									data-state={isSelected ? "selected" : undefined}
+									onClick={clickable ? handleClick : undefined}
+									onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}
+									onFocus={onRowHover ? () => onRowHover(row) : undefined}
+									className={
+										clickable
+											? anyExpandable
+												? ROW_ACCENT_EXPANDABLE
+												: ROW_ACCENT
+											: undefined
+									}
+								>
+									{selection && (
+										<TableCell
+											className={cn("w-10 px-3 py-3", HIDE_BELOW_CLASS.sm)}
+											onClick={(event) => event.stopPropagation()}
+										>
+											<Checkbox
+												checked={isSelected}
+												onCheckedChange={(checked) =>
+													selection.state.toggle(id, checked === true)
+												}
+												aria-label={
+													selection.rowLabel
+														? `Select ${selection.rowLabel(row)}`
+														: "Select row"
+												}
+											/>
+										</TableCell>
+									)}
+									{anyExpandable && (
+										<TableCell className="w-10 px-3 py-3 text-center text-muted-foreground">
+											{canExpand && (
+												<ChevronRight
+													size={12}
+													className={cn(
+														"inline-block transition-transform",
+														isOpen && "rotate-90",
+													)}
+												/>
+											)}
+										</TableCell>
+									)}
+									{visibleColumns.map((column) => (
+										<TableCell
+											key={column.id}
+											className={cn(
+												"overflow-hidden px-3 py-3",
+												column.width,
+												ALIGN_CLASS[column.align ?? "left"],
+												column.hideBelow && HIDE_BELOW_CLASS[column.hideBelow],
+												column.cellClassName,
+											)}
+										>
+											{column.cell(row)}
+										</TableCell>
+									))}
+								</TableRow>
+								{isOpen &&
+									expandable?.getSubRows(row).map((sub) => {
+										const subClickable = !!expandable.onSubRowClick;
+										return (
+											<TableRow
+												key={expandable.getSubRowId(sub, row)}
+												onClick={
+													subClickable
+														? () => expandable.onSubRowClick?.(sub, row)
+														: undefined
+												}
+												className={cn(
+													"bg-muted/30",
+													subClickable &&
+														(anyExpandable
+															? ROW_ACCENT_EXPANDABLE
+															: ROW_ACCENT),
+												)}
+											>
+												{selection && (
+													<TableCell
 														className={cn(
-															"inline-block transition-transform",
-															isOpen && "rotate-90",
+															"w-10 px-3 py-2.5",
+															HIDE_BELOW_CLASS.sm,
 														)}
 													/>
 												)}
-											</TableCell>
-										)}
-										{visibleColumns.map((column) => (
-											<TableCell
-												key={column.id}
-												className={cn(
-													"overflow-hidden px-3 py-3",
-													column.width,
-													ALIGN_CLASS[column.align ?? "left"],
-													column.hideBelow && HIDE_BELOW_CLASS[column.hideBelow],
-													column.cellClassName,
+												{anyExpandable && (
+													<TableCell className="w-10 px-3 py-2.5" />
 												)}
-											>
-												{column.cell(row)}
-											</TableCell>
-										))}
-									</TableRow>
-									{isOpen &&
-										expandable?.getSubRows(row).map((sub) => {
-											const subClickable = !!expandable.onSubRowClick;
-											return (
-												<TableRow
-													key={expandable.getSubRowId(sub, row)}
-													onClick={
-														subClickable
-															? () => expandable.onSubRowClick?.(sub, row)
-															: undefined
-													}
-													className={cn(
-														"bg-muted/30",
-														subClickable &&
-															(anyExpandable
-																? ROW_ACCENT_EXPANDABLE
-																: ROW_ACCENT),
-													)}
-												>
-													{anyExpandable && (
-														<TableCell className="w-10 px-3 py-2.5" />
-													)}
-													{visibleColumns.map((column) => (
-														<TableCell
-															key={column.id}
-															className={cn(
-																"overflow-hidden px-3 py-2.5 align-top",
-																column.width,
-																ALIGN_CLASS[column.align ?? "left"],
-																column.hideBelow &&
-																	HIDE_BELOW_CLASS[column.hideBelow],
-																column.cellClassName,
-															)}
-														>
-															{expandable.renderSubCell(sub, column.id, row)}
-														</TableCell>
-													))}
-												</TableRow>
-											);
-										})}
-								</Fragment>
-							);
-						})
-					)}
+												{visibleColumns.map((column) => (
+													<TableCell
+														key={column.id}
+														className={cn(
+															"overflow-hidden px-3 py-2.5 align-top",
+															column.width,
+															ALIGN_CLASS[column.align ?? "left"],
+															column.hideBelow &&
+																HIDE_BELOW_CLASS[column.hideBelow],
+															column.cellClassName,
+														)}
+													>
+														{expandable.renderSubCell(sub, column.id, row)}
+													</TableCell>
+												))}
+											</TableRow>
+										);
+									})}
+							</Fragment>
+						);
+					})}
 				</TableBody>
 			</Table>
 

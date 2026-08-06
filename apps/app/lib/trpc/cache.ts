@@ -9,13 +9,19 @@ type Options = {
 	settle?: Settle;
 };
 
-type RemovedRecord = { kind: "company" | "contact" | "deal"; id: string };
+type RecordKind = "company" | "contact" | "deal";
+
+type RemovedRecord = { kind: RecordKind; id: string };
+
+type RemovedRecords = { kind: RecordKind; ids: string[] };
 
 export type CrmCache = {
 	company(id?: string, options?: Options): Promise<void>;
 	contact(id?: string, options?: Options): Promise<void>;
 	deal(id?: string, options?: Options): Promise<void>;
+	fields(entity?: RecordKind, options?: Options): Promise<void>;
 	removed(record: RemovedRecord): Promise<void>;
+	removedMany(records: RemovedRecords): Promise<void>;
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
@@ -59,7 +65,59 @@ export function useCrmCache(): CrmCache {
 		trpc.search.quick.queryKey(),
 	];
 
+	const removeRecords = (kind: RecordKind, ids: string[]): Promise<void> => {
+		const byId = {
+			company: trpc.companies.byId,
+			contact: trpc.contacts.byId,
+			deal: trpc.deals.byId,
+		}[kind];
+		const goneKeys = ids.map((id) => byId.queryKey({ id }));
+		const gone = new Set(goneKeys.map((key) => JSON.stringify(key)));
+
+		for (const record of [
+			trpc.companies.byId,
+			trpc.contacts.byId,
+			trpc.deals.byId,
+		]) {
+			void queryClient.invalidateQueries({
+				queryKey: record.queryKey(),
+				predicate: (query) => !gone.has(JSON.stringify(query.queryKey)),
+			});
+		}
+
+		for (const queryKey of goneKeys) {
+			void queryClient.invalidateQueries({
+				queryKey,
+				exact: true,
+				refetchType: "none",
+			});
+		}
+
+		return run(
+			[...listKeys(), ...activityKeys(), trpc.dashboard.summary.queryKey()],
+			[],
+		);
+	};
+
+	const RECORD_BY_ID = {
+		company: () => trpc.companies.byId.queryKey(),
+		contact: () => trpc.contacts.byId.queryKey(),
+		deal: () => trpc.deals.byId.queryKey(),
+	} as const;
+
 	return {
+		fields: (entity, options) =>
+			run(
+				[trpc.fields.list.queryKey()],
+				[
+					...(entity
+						? [RECORD_BY_ID[entity]()]
+						: Object.values(RECORD_BY_ID).map((key) => key())),
+					...listKeys(),
+				],
+				options,
+			),
+
 		company: (id, options) =>
 			run(
 				[
@@ -104,36 +162,9 @@ export function useCrmCache(): CrmCache {
 				options,
 			),
 
-		removed: ({ kind, id }) => {
-			const goneKey = {
-				company: trpc.companies.byId,
-				contact: trpc.contacts.byId,
-				deal: trpc.deals.byId,
-			}[kind].queryKey({ id });
-			const gone = JSON.stringify(goneKey);
+		removed: ({ kind, id }) => removeRecords(kind, [id]),
 
-			for (const record of [
-				trpc.companies.byId,
-				trpc.contacts.byId,
-				trpc.deals.byId,
-			]) {
-				void queryClient.invalidateQueries({
-					queryKey: record.queryKey(),
-					predicate: (query) => JSON.stringify(query.queryKey) !== gone,
-				});
-			}
-
-			void queryClient.invalidateQueries({
-				queryKey: goneKey,
-				exact: true,
-				refetchType: "none",
-			});
-
-			return run(
-				[...listKeys(), ...activityKeys(), trpc.dashboard.summary.queryKey()],
-				[],
-			);
-		},
+		removedMany: ({ kind, ids }) => removeRecords(kind, ids),
 
 		activity: (options) =>
 			run(

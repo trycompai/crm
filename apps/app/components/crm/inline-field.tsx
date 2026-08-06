@@ -37,6 +37,14 @@ export function savingField(update: {
 	return (field) => fields.includes(field);
 }
 
+export function savingValue(update: {
+	isPending: boolean;
+	variables?: { data?: { fields?: Record<string, unknown> } } | undefined;
+}): (key: string) => boolean {
+	const fields = update.isPending ? (update.variables?.data?.fields ?? {}) : {};
+	return (key) => key in fields;
+}
+
 export function InlineField({
 	label,
 	value,

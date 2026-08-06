@@ -6,8 +6,12 @@ import type * as React from "react";
 function Table({
 	className,
 	containerClassName,
+	overlay,
 	...props
-}: React.ComponentProps<"table"> & { containerClassName?: string }) {
+}: React.ComponentProps<"table"> & {
+	containerClassName?: string;
+	overlay?: React.ReactNode;
+}) {
 	return (
 		<div
 			data-slot="table-container"
@@ -18,6 +22,7 @@ function Table({
 				className={cn("w-full caption-bottom text-xs", className)}
 				{...props}
 			/>
+			{overlay}
 		</div>
 	);
 }

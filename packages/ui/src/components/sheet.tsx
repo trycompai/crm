@@ -13,6 +13,7 @@ const sheetContentVariants = cva(
 		variants: {
 			size: {
 				sm: "data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+				md: "data-[side=left]:sm:max-w-[460px] data-[side=right]:sm:max-w-[460px]",
 				lg: "data-[side=left]:sm:max-w-3xl data-[side=right]:sm:max-w-3xl",
 				xl: "data-[side=left]:sm:max-w-4xl data-[side=right]:sm:max-w-4xl",
 				"2xl":

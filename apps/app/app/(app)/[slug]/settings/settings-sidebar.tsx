@@ -16,10 +16,10 @@ const ROOT = "/settings";
 
 const ITEMS: SettingsNavItem[] = [
 	{ title: "General", href: ROOT },
+	{ title: "Connections", href: `${ROOT}/connections` },
 	{ title: "Currencies", href: `${ROOT}/currencies` },
 	{ title: "Members", href: `${ROOT}/members` },
 	{ title: "SSO", href: `${ROOT}/sso` },
-	{ title: "Connections", href: `${ROOT}/connections` },
 ];
 
 function isActive(href: string, root: string, pathname: string): boolean {

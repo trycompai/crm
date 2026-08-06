@@ -31,10 +31,12 @@ import {
 	EnrichmentIndicator,
 	isEnriching,
 } from "@/components/crm/enrichment-status";
+import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
 	savingField,
+	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { CompanySocials, hasCompanyLinks } from "@/components/crm/social-links";
@@ -358,7 +360,11 @@ function CompanyOverview({
 	const save = (data: Record<string, string | null>) =>
 		update.mutate({ id: company.id, data });
 
+	const saveFields = (fields: Record<string, unknown>) =>
+		update.mutate({ id: company.id, data: { fields } });
+
 	const isSaving = savingField(update);
+	const isSavingField = savingValue(update);
 
 	return (
 		<DetailSheetBody>
@@ -381,7 +387,10 @@ function CompanyOverview({
 				</DetailSheetMain>
 
 				<DetailSheetRail>
-					<DetailSheetSection title="Details">
+					<DetailSheetSection
+						title="Details"
+						action={<FieldsCog kind="company" />}
+					>
 						<DetailSheetProperties columns={1}>
 							<InlineField
 								label="Name"
@@ -444,6 +453,11 @@ function CompanyOverview({
 								onSave={(ownerId) =>
 									save({ ownerId: ownerId === UNASSIGNED ? null : ownerId })
 								}
+							/>
+							<RecordFields
+								fields={company.fields}
+								saving={isSavingField}
+								onSave={saveFields}
 							/>
 						</DetailSheetProperties>
 					</DetailSheetSection>

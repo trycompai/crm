@@ -19,12 +19,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { contactName } from "@/components/crm/contact-name";
+import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineDateField,
 	InlineField,
 	InlineSelectField,
 	InlineTextArea,
 	savingField,
+	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { DealStageMenu } from "@/components/crm/stage-change";
@@ -230,6 +232,11 @@ function DealOverview({ deal }: { deal: Deal }) {
 		}),
 	);
 
+	const saveFields = (fields: Record<string, unknown>) =>
+		update.mutate({ id: deal.id, data: { fields } });
+
+	const isSavingField = savingValue(update);
+
 	const save = (data: Parameters<typeof update.mutate>[0]["data"]) =>
 		update.mutate({ id: deal.id, data });
 
@@ -243,7 +250,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 				<StageStepper dealId={deal.id} stage={deal.stage} />
 			</DetailSheetSection>
 
-			<DetailSheetSection title="Details">
+			<DetailSheetSection title="Details" action={<FieldsCog kind="deal" />}>
 				<DetailSheetProperties>
 					<InlineField
 						label="Name"
@@ -301,6 +308,11 @@ function DealOverview({ deal }: { deal: Deal }) {
 							label: user.name,
 						}))}
 						onSave={(ownerId) => save({ ownerId })}
+					/>
+					<RecordFields
+						fields={deal.fields}
+						saving={isSavingField}
+						onSave={saveFields}
 					/>
 				</DetailSheetProperties>
 			</DetailSheetSection>

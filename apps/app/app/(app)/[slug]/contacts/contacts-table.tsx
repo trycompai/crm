@@ -7,10 +7,13 @@ import {
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
+import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
+import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
@@ -18,6 +21,7 @@ import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { ContactsBulkActions } from "./contacts-bulk-actions";
 import { contactsSearchParams } from "./contacts-search-params";
 
 type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
@@ -124,6 +128,11 @@ export function ContactsTable() {
 	const users = useQuery(trpc.users.list.queryOptions());
 	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
+	const rows = contacts.data?.rows ?? [];
+	const selection = useTableSelection(
+		useMemo(() => rows.map((row) => row.id), [rows]),
+	);
+
 	const facetCounts = contacts.data?.facetCounts;
 
 	const facets: DataTableFacet[] = [
@@ -151,15 +160,25 @@ export function ContactsTable() {
 		},
 	];
 
+	const fieldColumns = useFieldColumns<ContactRow>("CONTACT");
+	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search by name, email or company…" />}
-			columns={COLUMNS}
-			rows={contacts.data?.rows ?? []}
+			columns={columns}
+			rows={rows}
 			total={contacts.data?.total ?? 0}
 			facetCounts={facetCounts}
 			facets={facets}
+			selection={{
+				state: selection,
+				actions: (
+					<ContactsBulkActions ids={selection.ids} onDone={selection.clear} />
+				),
+				rowLabel: (row) => contactName(row),
+			}}
 			getRowId={(row) => row.id}
 			loading={contacts.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "contact", id: row.id })}

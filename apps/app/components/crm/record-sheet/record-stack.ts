@@ -32,6 +32,8 @@ const params = {
 	tab: parseAsString,
 	add: parseAsStringLiteral(RECORD_FORMS),
 	thread: parseAsString,
+	fields: parseAsStringLiteral(RECORD_KINDS),
+	field: parseAsString,
 	[TIMELINE_PARAM]: timelineTabParser,
 };
 
@@ -64,6 +66,8 @@ export function useRecordStack() {
 					tab: null,
 					add: null,
 					thread: null,
+					fields: null,
+					field: null,
 					[TIMELINE_PARAM]: null,
 				},
 				{ history },
@@ -101,6 +105,27 @@ export function useRecordStack() {
 
 export function useOpenRecord() {
 	return useRecordStack().open;
+}
+
+export function useFieldsSheet() {
+	const [{ fields, field }, setParams] = useQueryStates(params);
+
+	const open = useCallback(
+		(kind: RecordKind) => void setParams({ fields: kind, field: null }),
+		[setParams],
+	);
+
+	const close = useCallback(
+		() => void setParams({ fields: null, field: null }),
+		[setParams],
+	);
+
+	const edit = useCallback(
+		(key: string | null) => void setParams({ field: key }),
+		[setParams],
+	);
+
+	return { entity: fields, field, open, close, edit };
 }
 
 export function useRecordSheetView(fallbackTab: string) {

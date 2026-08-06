@@ -70,6 +70,44 @@ export class AgentTriggerService {
 		});
 	}
 
+	async fieldBackfill(key: string, reason: string): Promise<void> {
+		try {
+			const pending = await this.db.agentTask.findFirst({
+				where: {
+					kind: "field-backfill",
+					finishedAt: null,
+					reason: { startsWith: `${key}: ` },
+				},
+				select: { id: true },
+			});
+
+			if (pending) return;
+
+			await this.db.agentTask.create({
+				data: {
+					kind: "field-backfill",
+					reason: `${key}: ${reason}`,
+					priority: PRIORITY.fieldBackfill,
+					budget: 8,
+					dueAt: new Date(),
+				},
+			});
+
+			this.logger.log({
+				message: "Agent task queued",
+				kind: "field-backfill",
+				key,
+			});
+
+			this.poke();
+		} catch (error) {
+			this.logger.error(
+				{ message: "Could not queue agent task", kind: "field-backfill", key },
+				error instanceof Error ? error.stack : String(error),
+			);
+		}
+	}
+
 	async meetingSoon(contactId: string, when: Date): Promise<void> {
 		await this.enqueue({
 			contactId,

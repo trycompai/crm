@@ -11,6 +11,9 @@ import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
+	dealBulkInput,
+	dealBulkOwnerInput,
+	dealBulkStageInput,
 	dealCreateInput,
 	dealIdInput,
 	dealListInput,
@@ -55,5 +58,23 @@ export class DealsRouter {
 		@Input() input: z.infer<typeof setStageInput>,
 	) {
 		return this.deals.setStage(input, ctx.user.id);
+	}
+
+	@Mutation({ input: dealBulkOwnerInput })
+	async bulkAssignOwner(@Input() input: z.infer<typeof dealBulkOwnerInput>) {
+		return this.deals.bulkAssignOwner(input);
+	}
+
+	@Mutation({ input: dealBulkStageInput })
+	async bulkSetStage(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealBulkStageInput>,
+	) {
+		return this.deals.bulkSetStage(input, ctx.user.id);
+	}
+
+	@Mutation({ input: dealBulkInput })
+	async bulkDelete(@Input("ids") ids: string[]) {
+		return this.deals.bulkDelete(ids);
 	}
 }

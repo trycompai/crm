@@ -6,11 +6,14 @@ import {
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney, relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { DEAL_STAGE_OPTIONS } from "@/components/crm/deal-stage";
+import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
@@ -19,6 +22,7 @@ import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { DealsBulkActions } from "./deals-bulk-actions";
 import { dealsSearchParams } from "./deals-search-params";
 
 type DealRow = RouterOutputs["deals"]["list"]["rows"][number];
@@ -132,6 +136,11 @@ export function DealsTable() {
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
 
+	const rows = deals.data?.rows ?? [];
+	const selection = useTableSelection(
+		useMemo(() => rows.map((row) => row.id), [rows]),
+	);
+
 	const facetCounts = deals.data?.facetCounts;
 
 	const facets: DataTableFacet[] = [
@@ -164,12 +173,15 @@ export function DealsTable() {
 	const uncounted = unconverted?.count ?? 0;
 	const openPipelineCents = openValueCents ?? (uncounted > 0 ? 0 : null);
 
+	const fieldColumns = useFieldColumns<DealRow>("DEAL");
+	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search deals by name or company…" />}
-			columns={COLUMNS}
-			rows={deals.data?.rows ?? []}
+			columns={columns}
+			rows={rows}
 			total={deals.data?.total ?? 0}
 			facetCounts={facetCounts}
 			facets={facets}
@@ -180,6 +192,13 @@ export function DealsTable() {
 					{ value: "open", label: "Open" },
 					{ value: "closed", label: "Closed" },
 				],
+			}}
+			selection={{
+				state: selection,
+				actions: (
+					<DealsBulkActions ids={selection.ids} onDone={selection.clear} />
+				),
+				rowLabel: (row) => row.name,
 			}}
 			getRowId={(row) => row.id}
 			loading={deals.isFetching}

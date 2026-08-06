@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { bulkIdsInput } from "../crm/bulk";
+import { recordFieldValues } from "../fields/fields.contracts";
 import { listInput } from "../trpc/list-input";
 
 export const companyListInput = listInput.extend({
@@ -31,6 +33,7 @@ const companyUpdateInput = z.object({
 	email: z.string().optional(),
 	linkedinUrl: z.string().optional(),
 	ownerId: z.string().nullable().optional(),
+	fields: recordFieldValues.optional(),
 });
 
 export type CompanyUpdateInput = z.infer<typeof companyUpdateInput>;
@@ -50,3 +53,11 @@ export const setPrimaryContactInput = z.object({
 export const companyOptionsInput = z.object({
 	q: z.string().default(""),
 });
+
+export const companyBulkInput = bulkIdsInput;
+
+export const companyBulkOwnerInput = bulkIdsInput.extend({
+	ownerId: z.string().nullable(),
+});
+
+export type CompanyBulkOwnerInput = z.infer<typeof companyBulkOwnerInput>;

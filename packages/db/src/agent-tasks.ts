@@ -7,6 +7,7 @@ export const TASK_KINDS = [
 	"recheck",
 	"company-profile",
 	"workspace-profile",
+	"field-backfill",
 ] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
@@ -32,5 +33,6 @@ export const PRIORITY = {
 	identify: 100,
 	sweep: 50,
 	companyProfile: 40,
+	fieldBackfill: 20,
 	recheck: 0,
 } as const;

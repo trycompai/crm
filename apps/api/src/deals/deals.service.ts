@@ -16,6 +16,7 @@ import {
 	ActivityStampService,
 	type StampTargets,
 } from "../crm/activity-stamp.service";
+import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
 import {
 	blankToNull,
 	decimalFromCents,
@@ -24,6 +25,7 @@ import {
 } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
+import { FieldsService } from "../fields/fields.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -40,6 +42,8 @@ import {
 } from "./deal-stage";
 import type {
 	ClosingWindow,
+	DealBulkOwnerInput,
+	DealBulkStageInput,
 	DealCreateInput,
 	DealListInput,
 	DealUpdateInput,
@@ -88,6 +92,7 @@ export class DealsService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
+		private readonly fields: FieldsService,
 	) {}
 
 	async list(input: DealListInput) {
@@ -128,6 +133,11 @@ export class DealsService {
 				this.conversion.unconverted(openWhere),
 			]);
 
+		const tableFields = await this.fields.tableValuesFor(
+			"DEAL",
+			rows.map((row) => row.id),
+		);
+
 		return {
 			rows: rows.map(
 				({
@@ -146,6 +156,7 @@ export class DealsService {
 					closedAt: closedAt?.toISOString() ?? null,
 					lastActivityAt: lastActivityAt?.toISOString() ?? null,
 					createdAt: createdAt.toISOString(),
+					fields: tableFields.get(row.id) ?? {},
 				}),
 			),
 			total,
@@ -206,6 +217,7 @@ export class DealsService {
 
 		return {
 			...rest,
+			fields: await this.fields.valuesFor("DEAL", id),
 			amountCents: toCents(amount),
 			baseAmountCents: toCents(baseAmount),
 			reportingCurrency: await this.conversion.reportingCurrency(),
@@ -258,6 +270,10 @@ export class DealsService {
 	}
 
 	async update(id: string, input: DealUpdateInput) {
+		if (input.fields) {
+			await this.fields.applyValues(this.db, "DEAL", id, input.fields);
+		}
+
 		const data: Prisma.DealUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
@@ -405,6 +421,50 @@ export class DealsService {
 		});
 
 		return { ...updated, changed: true };
+	}
+
+	async bulkAssignOwner(input: DealBulkOwnerInput): Promise<BulkResult> {
+		await requireOwner(this.db, input.ownerId);
+
+		const ids = [...new Set(input.ids)];
+		const { count } = await this.db.deal.updateMany({
+			where: { id: { in: ids } },
+			data: { ownerId: input.ownerId },
+		});
+
+		this.logger.log({
+			message: "Deals reassigned",
+			count,
+			ownerId: input.ownerId,
+		});
+
+		return {
+			requested: ids.length,
+			succeeded: count,
+			failed: ids.length - count,
+			message: null,
+		};
+	}
+
+	async bulkSetStage(
+		input: DealBulkStageInput,
+		actingUserId: string,
+	): Promise<BulkResult> {
+		const closedReason = input.closedReason?.trim();
+
+		if (LOSING.has(input.stage) && !closedReason) {
+			throw new BadRequestException(
+				"Say why they were lost — a closed-lost deal with no reason teaches nobody anything.",
+			);
+		}
+
+		return runBulk(input.ids, (id) =>
+			this.setStage({ id, stage: input.stage, closedReason }, actingUserId),
+		);
+	}
+
+	async bulkDelete(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.delete(id));
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {

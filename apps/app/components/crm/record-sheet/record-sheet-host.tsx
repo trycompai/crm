@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FieldsSheetHost } from "@/components/crm/fields/fields-sheet";
 import { CloseReasonDialog } from "@/components/crm/stage-change";
 import { DetailSheet } from "@/components/detail-sheet";
 import { CompanySheet } from "./company-sheet";
@@ -36,6 +37,8 @@ export function RecordSheetHost() {
 					<DealSheet key={recordKey(shown)} dealId={shown.id} />
 				) : null}
 			</DetailSheet>
+
+			<FieldsSheetHost />
 
 			<CloseReasonDialog />
 		</>

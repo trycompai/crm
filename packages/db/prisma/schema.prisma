@@ -1,4 +1,3 @@
-
 datasource db {
   provider = "postgresql"
 }
@@ -184,6 +183,7 @@ model Company {
   activities     Activity[]
   emailThreads   EmailThread[]
   calendarEvents CalendarEvent[]
+  fieldValues    FieldValue[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
@@ -240,6 +240,7 @@ model Contact {
   emailThreads    EmailThread[]
   calendarEvents  CalendarEvent[]
   eventAttendance CalendarAttendee[]
+  fieldValues     FieldValue[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -404,10 +405,11 @@ model Deal {
 
   lastActivityAt DateTime?
 
-  contacts   DealContact[]
-  activities Activity[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  contacts    DealContact[]
+  activities  Activity[]
+  fieldValues FieldValue[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -450,6 +452,99 @@ model DealContact {
   @@id([dealId, contactId])
   @@index([contactId])
   @@map("dealContact")
+}
+
+enum FieldEntity {
+  COMPANY
+  CONTACT
+  DEAL
+}
+
+enum FieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  CHECKBOX
+  SELECT
+  URL
+  EMAIL
+  PHONE
+  USER
+}
+
+model FieldDefinition {
+  id     String      @id @default(cuid())
+  entity FieldEntity
+  key    String
+  label  String
+  type   FieldType
+
+  agentFilled Boolean @default(true)
+  agentBrief  String?
+
+  required    Boolean @default(false)
+  showOnSheet Boolean @default(true)
+  showOnTable Boolean @default(false)
+  position    Int
+
+  archivedAt DateTime?
+
+  options FieldOption[]
+  values  FieldValue[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([entity, key])
+  @@index([entity, position])
+  @@map("fieldDefinition")
+}
+
+model FieldOption {
+  id       String          @id @default(cuid())
+  fieldId  String
+  field    FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  label    String
+  position Int
+
+  archivedAt DateTime?
+  values     FieldValue[]
+
+  @@index([fieldId, position])
+  @@map("fieldOption")
+}
+
+model FieldValue {
+  id      String          @id @default(cuid())
+  fieldId String
+  field   FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dealId    String?
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  text     String?
+  number   Decimal?     @db.Decimal(24, 4)
+  date     DateTime?
+  bool     Boolean?
+  optionId String?
+  option   FieldOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+  userId   String?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([fieldId, companyId])
+  @@unique([fieldId, contactId])
+  @@unique([fieldId, dealId])
+  @@index([fieldId, text])
+  @@index([fieldId, number])
+  @@index([fieldId, date])
+  @@index([optionId])
+  @@map("fieldValue")
 }
 
 model Activity {

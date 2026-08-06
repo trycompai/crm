@@ -1,5 +1,9 @@
-export function formatCount(count: number, noun: string): string {
-	return `${count} ${count === 1 ? noun : `${noun}s`}`;
+export function formatCount(
+	count: number,
+	noun: string,
+	plural = `${noun}s`,
+): string {
+	return `${count} ${count === 1 ? noun : plural}`;
 }
 
 const WELL_FORMED_CURRENCY_CODE = /^[A-Za-z]{3}$/;

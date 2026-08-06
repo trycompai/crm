@@ -20,8 +20,10 @@ import {
 	ActivityStampService,
 	type StampTargets,
 } from "../crm/activity-stamp.service";
+import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
 import { blankToNull, normalizeEmail, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { FieldsService } from "../fields/fields.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -32,6 +34,8 @@ import {
 	resolveOrderBy,
 } from "../trpc/list-input";
 import type {
+	ContactBulkCompanyInput,
+	ContactBulkOwnerInput,
 	ContactCreateInput,
 	ContactListInput,
 	ContactUpdateInput,
@@ -88,6 +92,7 @@ export type ContactRow = {
 	} | null;
 	lastActivityAt: string | null;
 	createdAt: string;
+	fields: Record<string, string | number | boolean | null>;
 };
 
 const SORTABLE: Record<
@@ -113,6 +118,7 @@ export class ContactsService {
 		private readonly agent: AgentTriggerService,
 		private readonly queue: AgentQueueService,
 		private readonly stamp: ActivityStampService,
+		private readonly fields: FieldsService,
 	) {}
 
 	async list(input: ContactListInput): Promise<ListResult<ContactRow>> {
@@ -143,11 +149,17 @@ export class ContactsService {
 			this.facetCounts(input),
 		]);
 
+		const tableFields = await this.fields.tableValuesFor(
+			"CONTACT",
+			rows.map((row) => row.id),
+		);
+
 		return {
 			rows: rows.map((row) => ({
 				...row,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),
+				fields: tableFields.get(row.id) ?? {},
 			})),
 			total,
 			facetCounts,
@@ -233,6 +245,7 @@ export class ContactsService {
 		return {
 			...rest,
 			company,
+			fields: await this.fields.valuesFor("CONTACT", id),
 			queued: await this.queue.isQueued({ contactId: id }),
 			createdAt: createdAt.toISOString(),
 			brief: brief
@@ -362,6 +375,10 @@ export class ContactsService {
 	}
 
 	async update(id: string, input: ContactUpdateInput) {
+		if (input.fields) {
+			await this.fields.applyValues(this.db, "CONTACT", id, input.fields);
+		}
+
 		const data: Prisma.ContactUpdateInput = {};
 
 		if (input.firstName !== undefined) data.firstName = input.firstName.trim();
@@ -407,6 +424,68 @@ export class ContactsService {
 		} catch (error) {
 			throw this.translate(error, id);
 		}
+	}
+
+	async bulkAssignOwner(input: ContactBulkOwnerInput): Promise<BulkResult> {
+		await requireOwner(this.db, input.ownerId);
+
+		const ids = [...new Set(input.ids)];
+		const { count } = await this.db.contact.updateMany({
+			where: { id: { in: ids } },
+			data: { ownerId: input.ownerId },
+		});
+
+		this.logger.log({
+			message: "Contacts reassigned",
+			count,
+			ownerId: input.ownerId,
+		});
+
+		return {
+			requested: ids.length,
+			succeeded: count,
+			failed: ids.length - count,
+			message: null,
+		};
+	}
+
+	async bulkSetCompany(input: ContactBulkCompanyInput): Promise<BulkResult> {
+		if (input.companyId) {
+			const company = await this.db.company.findUnique({
+				where: { id: input.companyId },
+				select: { id: true },
+			});
+			if (!company) {
+				throw new NotFoundException(`No company with id ${input.companyId}.`);
+			}
+		}
+
+		const ids = [...new Set(input.ids)];
+		const { count } = await this.db.contact.updateMany({
+			where: { id: { in: ids } },
+			data: { companyId: input.companyId },
+		});
+
+		this.logger.log({
+			message: "Contacts moved",
+			count,
+			companyId: input.companyId,
+		});
+
+		return {
+			requested: ids.length,
+			succeeded: count,
+			failed: ids.length - count,
+			message: null,
+		};
+	}
+
+	async bulkEnrich(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.enrich(id));
+	}
+
+	async bulkDelete(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.delete(id));
 	}
 
 	private async allowAgain(

@@ -1,6 +1,8 @@
 import { DealStage } from "@crm/db";
 import { z } from "zod";
+import { bulkIdsInput } from "../crm/bulk";
 import { currencyCode } from "../currency/currency.contracts";
+import { recordFieldValues } from "../fields/fields.contracts";
 import { listInput } from "../trpc/list-input";
 
 export const MAX_AMOUNT_CENTS = 99_999_999_999_999;
@@ -56,6 +58,7 @@ const dealUpdateInput = z.object({
 	amountCents,
 	currency: currencyCode.optional(),
 	expectedCloseDate: z.string().nullable().optional(),
+	fields: recordFieldValues.optional(),
 });
 
 export type DealUpdateInput = z.infer<typeof dealUpdateInput>;
@@ -74,3 +77,18 @@ export const setStageInput = z.object({
 });
 
 export type SetStageInput = z.infer<typeof setStageInput>;
+
+export const dealBulkInput = bulkIdsInput;
+
+export const dealBulkOwnerInput = bulkIdsInput.extend({
+	ownerId: z.string().min(1, "A deal needs an owner."),
+});
+
+export type DealBulkOwnerInput = z.infer<typeof dealBulkOwnerInput>;
+
+export const dealBulkStageInput = bulkIdsInput.extend({
+	stage: stageEnum,
+	closedReason: z.string().trim().optional(),
+});
+
+export type DealBulkStageInput = z.infer<typeof dealBulkStageInput>;

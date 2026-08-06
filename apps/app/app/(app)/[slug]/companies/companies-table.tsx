@@ -10,14 +10,17 @@ import {
 	EntityLogo,
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
+import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
 	ENRICHMENT_FACET_OPTIONS,
 	ENRICHMENT_POLL_MS,
 	EnrichmentIndicator,
 	isEnriching,
 } from "@/components/crm/enrichment-status";
+import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
@@ -25,6 +28,7 @@ import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { CompaniesBulkActions } from "./companies-bulk-actions";
 import { companiesSearchParams } from "./companies-search-params";
 
 type CompanyRow = RouterOutputs["companies"]["list"]["rows"][number];
@@ -157,6 +161,11 @@ export function CompaniesTable() {
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
 
+	const rows = companies.data?.rows ?? [];
+	const selection = useTableSelection(
+		useMemo(() => rows.map((row) => row.id), [rows]),
+	);
+
 	const facetCounts = companies.data?.facetCounts;
 
 	const facets: DataTableFacet[] = [
@@ -187,15 +196,25 @@ export function CompaniesTable() {
 		},
 	];
 
+	const fieldColumns = useFieldColumns<CompanyRow>("COMPANY");
+	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search companies by name or domain…" />}
-			columns={COLUMNS}
-			rows={companies.data?.rows ?? []}
+			columns={columns}
+			rows={rows}
 			total={companies.data?.total ?? 0}
 			facetCounts={facetCounts}
 			facets={facets}
+			selection={{
+				state: selection,
+				actions: (
+					<CompaniesBulkActions ids={selection.ids} onDone={selection.clear} />
+				),
+				rowLabel: (row) => row.name,
+			}}
 			getRowId={(row) => row.id}
 			loading={companies.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}

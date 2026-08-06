@@ -3,7 +3,13 @@ import { type Bloom, bloomClass } from "@crm/ui/lib/dither";
 import { cn } from "@crm/ui/lib/utils";
 import type * as React from "react";
 
-export type StatusTone = "neutral" | "info" | "success" | "warning" | "error";
+export type StatusTone =
+	| "neutral"
+	| "primary"
+	| "info"
+	| "success"
+	| "warning"
+	| "error";
 
 export type StatusSize = "default" | "sm";
 
@@ -14,6 +20,7 @@ const SIZE_CLASS: Record<StatusSize, string> = {
 
 const TONE_COLOR: Record<StatusTone, string> = {
 	neutral: "var(--color-muted-foreground)",
+	primary: "var(--color-primary)",
 	info: "var(--color-info)",
 	success: "var(--color-success)",
 	warning: "var(--color-warning)",
