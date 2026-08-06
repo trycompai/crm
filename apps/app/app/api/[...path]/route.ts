@@ -1,6 +1,7 @@
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { connection } from "next/server";
-import { API_URL } from "@/lib/env";
+
+const upstreamApiUrl = process.env.API_URL ?? "http://localhost:3001";
 
 function decode(buf: Buffer, encoding: string | null): Buffer {
 	const enc = (encoding ?? "").toLowerCase();
@@ -16,7 +17,7 @@ async function handler(request: Request): Promise<Response> {
 	await connection();
 
 	const url = new URL(request.url);
-	const target = `${API_URL}${url.pathname}${url.search}`;
+	const target = `${upstreamApiUrl}${url.pathname}${url.search}`;
 
 	const headers = new Headers(request.headers);
 	for (const header of [
@@ -51,12 +52,12 @@ async function handler(request: Request): Promise<Response> {
 		upstream = await fetch(target, init);
 	} catch (error) {
 		console.error(
-			`API proxy: ${API_URL} is not reachable for ${request.method} ${url.pathname}.`,
+			`API proxy: ${upstreamApiUrl} is not reachable for ${request.method} ${url.pathname}.`,
 			error,
 		);
 
 		return Response.json(
-			{ error: `The API at ${API_URL} is not reachable.` },
+			{ error: `The API at ${upstreamApiUrl} is not reachable.` },
 			{ status: 502 },
 		);
 	}
