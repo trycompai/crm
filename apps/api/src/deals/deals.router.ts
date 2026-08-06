@@ -11,9 +11,11 @@ import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
+	dealAddContactInput,
 	dealCreateInput,
 	dealIdInput,
 	dealListInput,
+	dealRemoveContactInput,
 	dealUpdateArgs,
 	setStageInput,
 } from "./deals.contracts";
@@ -55,5 +57,15 @@ export class DealsRouter {
 		@Input() input: z.infer<typeof setStageInput>,
 	) {
 		return this.deals.setStage(input, ctx.user.id);
+	}
+
+	@Mutation({ input: dealAddContactInput })
+	async addContact(@Input() input: z.infer<typeof dealAddContactInput>) {
+		return this.deals.addContact(input);
+	}
+
+	@Mutation({ input: dealRemoveContactInput })
+	async removeContact(@Input() input: z.infer<typeof dealRemoveContactInput>) {
+		return this.deals.removeContact(input);
 	}
 }

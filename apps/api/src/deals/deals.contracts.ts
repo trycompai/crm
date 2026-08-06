@@ -74,3 +74,18 @@ export const setStageInput = z.object({
 });
 
 export type SetStageInput = z.infer<typeof setStageInput>;
+
+export const dealAddContactInput = z.object({
+	dealId: z.string().min(1),
+	contactId: z.string().min(1),
+	role: z.string().trim().optional(),
+});
+
+export type DealAddContactInput = z.infer<typeof dealAddContactInput>;
+
+export const dealRemoveContactInput = z.object({
+	dealId: z.string().min(1),
+	contactId: z.string().min(1),
+});
+
+export type DealRemoveContactInput = z.infer<typeof dealRemoveContactInput>;

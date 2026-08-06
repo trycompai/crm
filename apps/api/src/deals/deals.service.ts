@@ -40,8 +40,10 @@ import {
 } from "./deal-stage";
 import type {
 	ClosingWindow,
+	DealAddContactInput,
 	DealCreateInput,
 	DealListInput,
+	DealRemoveContactInput,
 	DealUpdateInput,
 	SetStageInput,
 } from "./deals.contracts";
@@ -405,6 +407,122 @@ export class DealsService {
 		});
 
 		return { ...updated, changed: true };
+	}
+
+
+	async addContact(input: DealAddContactInput) {
+		const deal = await this.db.deal.findUnique({
+			where: { id: input.dealId },
+			select: { id: true, companyId: true },
+		});
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${input.dealId}.`);
+		}
+
+		const contact = await this.db.contact.findUnique({
+			where: { id: input.contactId },
+			select: {
+				id: true,
+				companyId: true,
+				firstName: true,
+				lastName: true,
+			},
+		});
+		if (!contact) {
+			throw new NotFoundException(`No contact with id ${input.contactId}.`);
+		}
+		if (contact.companyId !== deal.companyId) {
+			throw new BadRequestException(
+				"That contact does not work at the company on this deal.",
+			);
+		}
+
+		const role = blankToNull(input.role ?? "");
+
+		const link = await this.db.dealContact.upsert({
+			where: {
+				dealId_contactId: {
+					dealId: deal.id,
+					contactId: contact.id,
+				},
+			},
+			create: {
+				dealId: deal.id,
+				contactId: contact.id,
+				role,
+			},
+			update: {
+				role,
+			},
+			select: {
+				dealId: true,
+				contactId: true,
+				role: true,
+			},
+		});
+
+		await this.stamp.touch(
+			{ companyId: deal.companyId, dealId: deal.id, contactId: contact.id },
+			new Date(),
+		);
+
+		this.logger.log({
+			message: "Deal contact attached",
+			dealId: deal.id,
+			contactId: contact.id,
+		});
+
+		return link;
+	}
+
+	async removeContact(input: DealRemoveContactInput) {
+		const deal = await this.db.deal.findUnique({
+			where: { id: input.dealId },
+			select: { id: true, companyId: true },
+		});
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${input.dealId}.`);
+		}
+
+		try {
+			await this.db.dealContact.delete({
+				where: {
+					dealId_contactId: {
+						dealId: input.dealId,
+						contactId: input.contactId,
+					},
+				},
+			});
+		} catch (error) {
+			if (
+				error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+				error.code === "P2025"
+			) {
+				throw new NotFoundException("That person is not on this deal.");
+			}
+			throw error;
+		}
+
+		await this.stamp.touch(
+			{
+				companyId: deal.companyId,
+				dealId: deal.id,
+				contactId: input.contactId,
+			},
+			new Date(),
+		);
+
+		this.logger.log({
+			message: "Deal contact removed",
+			dealId: deal.id,
+			contactId: input.contactId,
+		});
+
+		return {
+			dealId: deal.id,
+			contactId: input.contactId,
+			removed: true as const,
+		};
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {
