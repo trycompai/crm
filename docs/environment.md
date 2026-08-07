@@ -16,6 +16,17 @@ and nothing that is not read. `packages/env` walks up to the workspace root and 
 - **The root marker is a `package.json` declaring `workspaces`** — stopping at the
   first `turbo.json` resolves the API's root to `apps/api`.
 
+## A new variable has three homes, not two
+
+`.env.example` and — if the API reads it — `env.validation.ts` are the two people
+remember. The third is **`globalPassThroughEnv` in the root `turbo.json`**, and it is
+the one that bites: Turborepo hides an undeclared variable from every task it runs, so
+a deployment that sets the variable perfectly still hands the code `undefined`, and
+nothing anywhere says so. That is how `MICROSOFT_CLIENT_ID` shipped with the sign-in
+button quietly missing. **`passThroughEnv`, never `env`** — a secret in `env` is a
+cache key, which means a cache miss on every rotation and the secret in the cache
+metadata. The root file's comment has the whole account.
+
 ## Required
 
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ALLOWED_SIGN_IN`. Everything else has a

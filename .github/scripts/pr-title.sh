@@ -30,13 +30,13 @@ scope_for() {
 
 type_for() {
 	local files=$1
-	if ! printf '%s\n' "$files" | grep -qvE '(^|/)(docs/|README|CONTRIBUTING|AGENTS|.*\.md$)'; then
+	if ! grep -qvE '(^|/)(docs/|README|CONTRIBUTING|AGENTS|.*\.md$)' <<<"$files"; then
 		printf 'docs'
-	elif ! printf '%s\n' "$files" | grep -qv '^\.github/'; then
+	elif ! grep -qv '^\.github/' <<<"$files"; then
 		printf 'ci'
-	elif ! printf '%s\n' "$files" | grep -qvE '(^|/)(test|tests|__tests__)/|\.spec\.|\.test\.'; then
+	elif ! grep -qvE '(^|/)(test|tests|__tests__)/|\.spec\.|\.test\.' <<<"$files"; then
 		printf 'test'
-	elif ! printf '%s\n' "$files" | grep -qvE '(^|/)(package\.json|bun\.lock|package-lock\.json)$'; then
+	elif ! grep -qvE '(^|/)(package\.json|bun\.lock|package-lock\.json)$' <<<"$files"; then
 		printf 'chore'
 	else
 		printf 'feat'
@@ -112,20 +112,21 @@ generate() {
 		echo "The model did not return a usable title — falling back to the branch name." >&2
 	fi
 
-	conventional=$(git log "$base..$head" --no-merges --reverse --format=%s |
+	conventional=$(
 		while IFS= read -r subject; do
 			if check "$subject"; then
 				printf '%s' "$subject"
 				break
 			fi
-		done)
+		done < <(git log "$base..$head" --no-merges --reverse --format=%s)
+	)
 	if [ -n "$conventional" ]; then
 		printf '%s\n' "$conventional"
 		return 0
 	fi
 
 	subject=$(subject_from_branch "$branch")
-	[ -n "$subject" ] || subject="update $(printf '%s\n' "$files" | head -1)"
+	[ -n "$subject" ] || subject="update ${files%%$'\n'*}"
 	if [ -n "$scope" ]; then
 		printf '%s(%s): %s\n' "$(type_for "$files")" "$scope" "$subject"
 	else

@@ -1,5 +1,5 @@
 import { isMicrosoftConfigured, signsInWithMicrosoft } from "@crm/auth";
-import { type Db, GoogleSyncStatus } from "@crm/db";
+import { type Db, GoogleSyncStatus, type Prisma } from "@crm/db";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -11,6 +11,8 @@ import {
 	type MicrosoftSyncSource,
 	SCOPE_FOR_SOURCE,
 } from "./microsoft.constants";
+
+const PURGE_TIMEOUT_MS = 60_000;
 
 export type SourceStatus = {
 	source: MicrosoftSyncSource;
@@ -67,9 +69,10 @@ export class MicrosoftConnectionService {
 
 		return {
 			configured: isMicrosoftConfigured(),
-			linked: accounts.some(
-				(account) => account.providerId === MICROSOFT_PROVIDER_ID,
-			),
+			linked:
+				accounts.some(
+					(account) => account.providerId === MICROSOFT_PROVIDER_ID,
+				) && sources.some((source) => source.connected),
 			required: signsInWithMicrosoft(accounts),
 			hasRefreshToken,
 			sources,
@@ -121,23 +124,38 @@ export class MicrosoftConnectionService {
 	}
 
 	async purgeSyncedData(userId: string): Promise<{ purged: number }> {
-		const threads = await this.db.emailThread.deleteMany({
-			where: {
-				messages: {
-					some: { syncedByUserId: userId, outlookMessageId: { not: null } },
-				},
+		const mine: Prisma.EmailMessageWhereInput = {
+			syncedByUserId: userId,
+			outlookMessageId: { not: null },
+		};
+
+		const purged = await this.db.$transaction(
+			async (tx) => {
+				const touched = await tx.emailMessage.findMany({
+					where: mine,
+					select: { threadId: true },
+					distinct: ["threadId"],
+				});
+
+				const threadIds = touched.map((row) => row.threadId);
+				const messages = await tx.emailMessage.deleteMany({ where: mine });
+
+				await tx.emailThread.deleteMany({
+					where: { id: { in: threadIds }, messages: { none: {} } },
+				});
+
+				await rebuildThreads(tx, threadIds);
+
+				return messages.count;
 			},
-		});
+			{ timeout: PURGE_TIMEOUT_MS },
+		);
 
 		await this.stamp.recomputeAll();
 
-		this.logger.log({
-			message: "Outlook data purged",
-			userId,
-			purged: threads.count,
-		});
+		this.logger.log({ message: "Outlook data purged", userId, purged });
 
-		return { purged: threads.count };
+		return { purged };
 	}
 
 	async revoke(userId: string): Promise<{ revoked: boolean }> {
@@ -160,5 +178,47 @@ export class MicrosoftConnectionService {
 		}
 
 		await this.state.setAutoCreate(userId, source, enabled);
+	}
+}
+
+async function rebuildThreads(
+	tx: Prisma.TransactionClient,
+	threadIds: string[],
+): Promise<void> {
+	if (threadIds.length === 0) return;
+
+	const remaining = await tx.emailMessage.findMany({
+		where: { threadId: { in: threadIds } },
+		select: { threadId: true, sentAt: true, subject: true, snippet: true },
+		orderBy: { sentAt: "asc" },
+	});
+
+	const byThread = new Map<string, typeof remaining>();
+
+	for (const message of remaining) {
+		const group = byThread.get(message.threadId);
+		if (group) group.push(message);
+		else byThread.set(message.threadId, [message]);
+	}
+
+	for (const [threadId, messages] of byThread) {
+		const first = messages.at(0);
+		const last = messages.at(-1);
+		if (!first || !last) continue;
+
+		await tx.emailThread.update({
+			where: { id: threadId },
+			data: {
+				messageCount: messages.length,
+				firstMessageAt: first.sentAt,
+				lastMessageAt: last.sentAt,
+				subject: first.subject,
+			},
+		});
+
+		await tx.activity.updateMany({
+			where: { emailThreadId: threadId },
+			data: { body: last.snippet, occurredAt: last.sentAt },
+		});
 	}
 }

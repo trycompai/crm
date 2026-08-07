@@ -69,6 +69,11 @@ function MicrosoftUnavailable() {
 function ConnectMicrosoft({ connectError }: { connectError?: string }) {
 	const [pending, setPending] = useState(false);
 
+	function fail(message?: string) {
+		setPending(false);
+		toast.error(message ?? "Could not reach Microsoft.");
+	}
+
 	async function handleConnect() {
 		setPending(true);
 
@@ -78,13 +83,10 @@ function ConnectMicrosoft({ connectError }: { connectError?: string }) {
 			provider: "microsoft",
 			scopes: [...MICROSOFT_SYNC_SCOPES],
 			callbackURL: `${origin}/settings/connections`,
-			errorCallbackURL: `${origin}/settings/connections`,
+			errorCallbackURL: `${origin}/settings/connections?provider=microsoft`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach Microsoft.");
-			setPending(false);
-		}
+		if (error) fail(error.message);
 	}
 
 	return (
@@ -106,9 +108,7 @@ function ConnectMicrosoft({ connectError }: { connectError?: string }) {
 						size="sm"
 						disabled={pending}
 						onClick={() => {
-							handleConnect().catch(() =>
-								toast.error("Could not reach Microsoft."),
-							);
+							handleConnect().catch(() => fail());
 						}}
 						type="button"
 					>

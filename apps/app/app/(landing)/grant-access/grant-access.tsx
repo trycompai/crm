@@ -33,6 +33,11 @@ export function GrantAccess({
 }) {
 	const [pending, setPending] = useState<MailboxProviderId | null>(null);
 
+	function fail(message?: string) {
+		setPending(null);
+		toast.error(message ?? "Could not reach the provider.");
+	}
+
 	async function handleGrant(provider: MailboxProviderId) {
 		setPending(provider);
 
@@ -45,10 +50,7 @@ export function GrantAccess({
 			errorCallbackURL: `${origin}/grant-access`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach the provider.");
-			setPending(null);
-		}
+		if (error) fail(error.message);
 	}
 
 	async function handleSignOut() {
@@ -75,9 +77,7 @@ export function GrantAccess({
 						className="w-full"
 						disabled={pending !== null}
 						onClick={() => {
-							handleGrant(provider).catch(() =>
-								toast.error("Could not reach the provider."),
-							);
+							handleGrant(provider).catch(() => fail());
 						}}
 						type="button"
 					>

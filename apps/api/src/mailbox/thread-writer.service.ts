@@ -3,9 +3,11 @@ import {
 	type Db,
 	EmailDirection,
 	type MailboxSyncModel as MailboxSync,
+	type Prisma,
+	Prisma as PrismaNamespace,
 	RecordSource,
 } from "@crm/db";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
 import type { SyncSource } from "./mailbox.constants";
@@ -31,6 +33,8 @@ export type IncomingMessage = {
 
 @Injectable()
 export class ThreadWriterService {
+	private readonly logger = new Logger(ThreadWriterService.name);
+
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly match: MailboxMatchService,
@@ -60,17 +64,33 @@ export class ThreadWriterService {
 	): Promise<boolean> {
 		const existing = await this.db.emailMessage.findUnique({
 			where: { rfcMessageId: parsed.rfcMessageId },
-			select: { id: true },
+			select: {
+				threadId: true,
+				thread: {
+					select: {
+						companyId: true,
+						contactId: true,
+						activity: { select: { id: true } },
+					},
+				},
+			},
 		});
-		if (existing) return false;
+		if (existing?.thread.activity) return false;
 
+		const repair = existing !== null;
 		const participants = [parsed.from, ...parsed.recipients];
 		const outbound = parsed.from.email === options.mailbox;
 
-		const thread = await this.db.emailThread.findUnique({
-			where: { rootMessageId: parsed.rootId },
-			select: { id: true, companyId: true, contactId: true },
-		});
+		const thread = existing
+			? {
+					id: existing.threadId,
+					companyId: existing.thread.companyId,
+					contactId: existing.thread.contactId,
+				}
+			: await this.db.emailThread.findUnique({
+					where: { rootMessageId: parsed.rootId },
+					select: { id: true, companyId: true, contactId: true },
+				});
 
 		let companyId = thread?.companyId ?? null;
 		let contactId = thread?.contactId ?? null;
@@ -98,70 +118,125 @@ export class ThreadWriterService {
 			}
 		}
 
-		const record = await this.db.emailThread.upsert({
-			where: { rootMessageId: parsed.rootId },
-			create: {
-				rootMessageId: parsed.rootId,
-				subject: parsed.subject,
-				companyId,
-				contactId,
-				firstMessageAt: parsed.sentAt,
-				lastMessageAt: parsed.sentAt,
-				messageCount: 0,
-			},
-			update: {},
-			select: { id: true, firstMessageAt: true, lastMessageAt: true },
+		let occurredAt: Date;
+
+		try {
+			occurredAt = await this.db.$transaction(async (tx) => {
+				const record = existing
+					? { id: existing.threadId }
+					: await tx.emailThread.upsert({
+							where: { rootMessageId: parsed.rootId },
+							create: {
+								rootMessageId: parsed.rootId,
+								subject: parsed.subject,
+								companyId,
+								contactId,
+								firstMessageAt: parsed.sentAt,
+								lastMessageAt: parsed.sentAt,
+								messageCount: 0,
+							},
+							update: {},
+							select: { id: true },
+						});
+
+				if (!repair) {
+					await tx.emailMessage.create({
+						data: {
+							threadId: record.id,
+							rfcMessageId: parsed.rfcMessageId,
+							syncedByUserId: row.userId,
+							gmailMessageId: parsed.gmailMessageId ?? null,
+							outlookMessageId: parsed.outlookMessageId ?? null,
+							outlookWebLink: parsed.outlookWebLink ?? null,
+							direction: outbound
+								? EmailDirection.OUTBOUND
+								: EmailDirection.INBOUND,
+							fromEmail: parsed.from.email,
+							fromName: parsed.from.name,
+							recipients: parsed.recipients,
+							subject: parsed.subject,
+							snippet: snippetOf(parsed.body),
+							body: parsed.body || null,
+							sentAt: parsed.sentAt,
+						},
+					});
+				}
+
+				const stats = await tx.emailMessage.aggregate({
+					where: { threadId: record.id },
+					_count: { _all: true },
+					_min: { sentAt: true },
+					_max: { sentAt: true },
+				});
+
+				const firstMessageAt = stats._min.sentAt ?? parsed.sentAt;
+				const lastMessageAt = stats._max.sentAt ?? parsed.sentAt;
+
+				await tx.emailThread.update({
+					where: { id: record.id },
+					data: {
+						messageCount: stats._count._all,
+						firstMessageAt,
+						lastMessageAt,
+						...(parsed.sentAt <= firstMessageAt
+							? { subject: parsed.subject }
+							: {}),
+					},
+				});
+
+				return this.project(tx, record.id, row.userId, {
+					subject: parsed.subject ?? "(no subject)",
+					snippet: snippetOf(parsed.body),
+					lastMessageAt,
+					companyId,
+					contactId,
+					origin: options.origin,
+				});
+			});
+		} catch (error) {
+			if (await this.storedElsewhere(error, parsed.rfcMessageId)) return false;
+			throw error;
+		}
+
+		await this.touch({ companyId, contactId }, occurredAt, parsed.rfcMessageId);
+
+		return !repair;
+	}
+
+	private async storedElsewhere(
+		error: unknown,
+		rfcMessageId: string,
+	): Promise<boolean> {
+		const duplicate =
+			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			error.code === "P2002";
+		if (!duplicate) return false;
+
+		const winner = await this.db.emailMessage.findFirst({
+			where: { rfcMessageId, thread: { activity: { isNot: null } } },
+			select: { id: true },
 		});
 
-		await this.db.emailMessage.create({
-			data: {
-				threadId: record.id,
-				rfcMessageId: parsed.rfcMessageId,
-				syncedByUserId: row.userId,
-				gmailMessageId: parsed.gmailMessageId ?? null,
-				outlookMessageId: parsed.outlookMessageId ?? null,
-				outlookWebLink: parsed.outlookWebLink ?? null,
-				direction: outbound ? EmailDirection.OUTBOUND : EmailDirection.INBOUND,
-				fromEmail: parsed.from.email,
-				fromName: parsed.from.name,
-				recipients: parsed.recipients,
-				subject: parsed.subject,
-				snippet: snippetOf(parsed.body),
-				body: parsed.body || null,
-				sentAt: parsed.sentAt,
-			},
-		});
+		return winner !== null;
+	}
 
-		const stats = await this.db.emailMessage.aggregate({
-			where: { threadId: record.id },
-			_count: { _all: true },
-			_min: { sentAt: true },
-			_max: { sentAt: true },
-		});
-
-		const firstMessageAt = stats._min.sentAt ?? parsed.sentAt;
-		const lastMessageAt = stats._max.sentAt ?? parsed.sentAt;
-
-		await this.db.emailThread.update({
-			where: { id: record.id },
-			data: {
-				messageCount: stats._count._all,
-				firstMessageAt,
-				lastMessageAt,
-				...(parsed.sentAt <= firstMessageAt ? { subject: parsed.subject } : {}),
-			},
-		});
-
-		await this.project(record.id, row.userId, {
-			subject: parsed.subject ?? "(no subject)",
-			snippet: snippetOf(parsed.body),
-			lastMessageAt,
-			companyId,
-			contactId,
-			origin: options.origin,
-		});
-
-		return true;
+	private async touch(
+		target: { companyId: string | null; contactId: string | null },
+		at: Date,
+		rfcMessageId: string,
+	): Promise<void> {
+		try {
+			await this.stamp.touch(target, at);
+		} catch (error) {
+			this.logger.error(
+				{
+					message: "An email was stored but its activity stamps were not moved",
+					rfcMessageId,
+					...target,
+				},
+				error instanceof Error ? error.stack : String(error),
+			);
+		}
 	}
 
 	private async hasOutboundInThread(
@@ -180,6 +255,7 @@ export class ThreadWriterService {
 	}
 
 	private async project(
+		tx: Prisma.TransactionClient,
 		emailThreadId: string,
 		userId: string,
 		summary: {
@@ -190,8 +266,8 @@ export class ThreadWriterService {
 			contactId: string | null;
 			origin: SyncSource;
 		},
-	): Promise<void> {
-		const activity = await this.db.activity.upsert({
+	): Promise<Date> {
+		const activity = await tx.activity.upsert({
 			where: { emailThreadId },
 			create: {
 				type: ActivityType.EMAIL,
@@ -211,9 +287,6 @@ export class ThreadWriterService {
 			select: { createdAt: true },
 		});
 
-		await this.stamp.touch(
-			{ companyId: summary.companyId, contactId: summary.contactId },
-			activity.createdAt,
-		);
+		return activity.createdAt;
 	}
 }

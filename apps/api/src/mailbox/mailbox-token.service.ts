@@ -113,32 +113,14 @@ export class MailboxTokenService {
 		userId: string,
 		providerId: MailboxProviderId,
 	): Promise<boolean> {
-		const account = await this.db.account.findFirst({
-			where: { userId, providerId },
-			select: { refreshToken: true, accessToken: true },
-		});
-
-		const token = account?.refreshToken ?? account?.accessToken;
-		if (!token) return false;
-
-		if (providerId === GOOGLE_PROVIDER_ID) {
-			const response = await fetch(GOOGLE_REVOKE_URL, {
-				method: "POST",
-				headers: { "content-type": "application/x-www-form-urlencoded" },
-				body: new URLSearchParams({ token }),
-			});
-
-			if (!response.ok) {
-				this.logger.warn({
-					message: "Google token revocation failed",
-					userId,
-					status: response.status,
-				});
-				return false;
-			}
+		if (
+			providerId === GOOGLE_PROVIDER_ID &&
+			!(await this.revokeWithGoogle(userId))
+		) {
+			return false;
 		}
 
-		await this.db.account.updateMany({
+		const cleared = await this.db.account.updateMany({
 			where: { userId, providerId },
 			data: {
 				accessToken: null,
@@ -149,8 +131,36 @@ export class MailboxTokenService {
 			},
 		});
 
+		if (cleared.count === 0) return false;
+
 		this.logger.log({ message: "Mailbox access revoked", userId, providerId });
 		return true;
+	}
+
+	private async revokeWithGoogle(userId: string): Promise<boolean> {
+		const account = await this.db.account.findFirst({
+			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+			select: { refreshToken: true, accessToken: true },
+		});
+
+		const token = account?.refreshToken ?? account?.accessToken;
+		if (!token) return true;
+
+		const response = await fetch(GOOGLE_REVOKE_URL, {
+			method: "POST",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ token }),
+		});
+
+		if (response.ok) return true;
+
+		this.logger.warn({
+			message: "Google token revocation failed",
+			userId,
+			status: response.status,
+		});
+
+		return false;
 	}
 }
 

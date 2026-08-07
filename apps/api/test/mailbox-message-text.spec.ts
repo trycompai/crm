@@ -7,6 +7,7 @@ import {
 } from "../src/google/gmail-mime";
 import {
 	decodeBase64Url,
+	firstMessageId,
 	normaliseMessageId,
 	rootMessageIdFrom,
 	snippetOf,
@@ -92,6 +93,70 @@ describe("plainTextBody", () => {
 		};
 
 		expect(plainTextBody(payload)).toBe("body text");
+	});
+
+	it("does not read the body out of a forwarded-email attachment", () => {
+		const payload: GmailPart = {
+			mimeType: "multipart/mixed",
+			parts: [
+				{
+					mimeType: "message/rfc822",
+					filename: "Fwd Pricing.eml",
+					parts: [
+						{
+							mimeType: "text/plain",
+							body: { data: encode("the forwarded original") },
+						},
+					],
+				},
+				{ mimeType: "text/plain", body: { data: encode("See attached.") } },
+			],
+		};
+
+		expect(plainTextBody(payload)).toBe("See attached.");
+	});
+
+	it("does not read the body out of an attachment declared by disposition", () => {
+		const payload: GmailPart = {
+			mimeType: "multipart/mixed",
+			parts: [
+				{
+					mimeType: "multipart/alternative",
+					headers: [
+						{ name: "Content-Disposition", value: 'attachment; filename=""' },
+					],
+					parts: [
+						{
+							mimeType: "text/plain",
+							body: { data: encode("inside the attachment") },
+						},
+					],
+				},
+				{
+					mimeType: "text/html",
+					body: { data: encode("<p>The real body</p>") },
+				},
+			],
+		};
+
+		expect(plainTextBody(payload)).toBe("The real body");
+	});
+
+	it("is empty when every candidate is inside an attachment", () => {
+		const payload: GmailPart = {
+			mimeType: "multipart/mixed",
+			parts: [
+				{
+					mimeType: "message/rfc822",
+					filename: "Fwd Pricing.eml",
+					parts: [
+						{ mimeType: "text/plain", body: { data: encode("forwarded") } },
+					],
+				},
+			],
+		};
+
+		expect(plainTextBody(payload)).toBe("");
 	});
 
 	it("is empty rather than undefined for an empty payload", () => {
@@ -221,6 +286,71 @@ describe("rootMessageIdFrom", () => {
 		expect(
 			rootMessageIdFrom({ references: null, inReplyTo: null, messageId: null }),
 		).toBeNull();
+	});
+
+	it("takes the first id when In-Reply-To carries a list", () => {
+		expect(
+			rootMessageIdFrom({
+				references: null,
+				inReplyTo: "<a@acme.com> <b@acme.com>",
+				messageId: "<reply@trycomp.ai>",
+			}),
+		).toBe("a@acme.com");
+	});
+
+	it("keeps a multi-id In-Reply-To on the same thread as the single-id copy", () => {
+		const listed = rootMessageIdFrom({
+			references: null,
+			inReplyTo: "<a@acme.com>\r\n\t<b@acme.com>",
+			messageId: "<reply-a@trycomp.ai>",
+		});
+		const single = rootMessageIdFrom({
+			references: null,
+			inReplyTo: "<a@acme.com>",
+			messageId: "<reply-b@trycomp.ai>",
+		});
+
+		expect(listed).toBe("a@acme.com");
+		expect(listed).toBe(single);
+	});
+
+	it("accepts a bracketless id in either header", () => {
+		expect(
+			rootMessageIdFrom({
+				references: "root@acme.com second@acme.com",
+				inReplyTo: null,
+				messageId: "<third@acme.com>",
+			}),
+		).toBe("root@acme.com");
+
+		expect(
+			rootMessageIdFrom({
+				references: null,
+				inReplyTo: "second@acme.com",
+				messageId: "<third@acme.com>",
+			}),
+		).toBe("second@acme.com");
+	});
+
+	it("ignores a blank References and threads on In-Reply-To", () => {
+		expect(
+			rootMessageIdFrom({
+				references: "   ",
+				inReplyTo: "<second@acme.com>",
+				messageId: "<third@acme.com>",
+			}),
+		).toBe("second@acme.com");
+	});
+});
+
+describe("firstMessageId", () => {
+	it("normalises a single bracketed id", () => {
+		expect(firstMessageId("<Abc@Acme.com>")).toBe("abc@acme.com");
+	});
+
+	it("returns null when there is no id at all", () => {
+		expect(firstMessageId("  ")).toBeNull();
+		expect(firstMessageId("<>")).toBeNull();
 	});
 });
 

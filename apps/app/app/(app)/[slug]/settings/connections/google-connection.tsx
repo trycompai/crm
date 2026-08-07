@@ -129,6 +129,11 @@ const CONNECT_ERRORS: Record<string, string> = {
 function ConnectGoogle({ connectError }: { connectError?: string }) {
 	const [pending, setPending] = useState(false);
 
+	function fail(message?: string) {
+		setPending(false);
+		toast.error(message ?? "Could not reach Google.");
+	}
+
 	async function handleConnect() {
 		setPending(true);
 
@@ -138,13 +143,10 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 			provider: "google",
 			scopes: [...SYNC_SCOPES],
 			callbackURL: `${origin}/settings/connections`,
-			errorCallbackURL: `${origin}/settings/connections`,
+			errorCallbackURL: `${origin}/settings/connections?provider=google`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach Google.");
-			setPending(false);
-		}
+		if (error) fail(error.message);
 	}
 
 	return (
@@ -165,7 +167,9 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 					<Button
 						size="sm"
 						disabled={pending}
-						onClick={handleConnect}
+						onClick={() => {
+							handleConnect().catch(() => fail());
+						}}
 						type="button"
 					>
 						{pending ? (

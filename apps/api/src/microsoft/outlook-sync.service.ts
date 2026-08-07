@@ -3,6 +3,7 @@ import {
 	type MailboxSyncModel as MailboxSync,
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
+import type { MailboxResult } from "../mailbox/mailbox-api.client";
 import type { MatchContext } from "../mailbox/mailbox-match.service";
 import { MailboxTokenService } from "../mailbox/mailbox-token.service";
 import {
@@ -20,6 +21,7 @@ import {
 import {
 	type GraphAddress,
 	GraphClient,
+	type GraphFolder,
 	type GraphMessage,
 } from "./graph.client";
 
@@ -31,6 +33,12 @@ const OVERLAP_MS = 1_000;
 const EXCLUDED_FOLDERS = ["junkemail", "deleteditems"] as const;
 
 const CONVERSATION_ROOT_PREFIX = "outlook-conversation:";
+
+type MailboxFailure<T> = Exclude<MailboxResult<T>, { outcome: "ok" }>;
+
+type ExcludedFolders =
+	| { outcome: "ok"; ids: Set<string> }
+	| { outcome: "lookup-failed"; failure: MailboxFailure<GraphFolder> };
 
 export type OutlookSyncOutcome = {
 	source: "outlook";
@@ -52,6 +60,8 @@ export class OutlookSyncService {
 	) {}
 
 	async sync(row: MailboxSync): Promise<OutlookSyncOutcome> {
+		const initializedAt = new Date();
+
 		const token = await this.tokens.accessTokenFor(row.userId, "outlook");
 
 		if (token.outcome === "not-connected") {
@@ -100,15 +110,18 @@ export class OutlookSyncService {
 		}
 
 		if (!row.cursor) {
-			return this.start(row);
+			return this.start(row, initializedAt);
 		}
 
 		return this.incremental(row, token.accessToken, mailbox, row.cursor);
 	}
 
-	private async start(row: MailboxSync): Promise<OutlookSyncOutcome> {
+	private async start(
+		row: MailboxSync,
+		initializedAt: Date,
+	): Promise<OutlookSyncOutcome> {
 		await this.state.settle(row.id, {
-			cursor: new Date().toISOString(),
+			cursor: initializedAt.toISOString(),
 			status: GoogleSyncStatus.RUNNING,
 		});
 
@@ -137,7 +150,12 @@ export class OutlookSyncService {
 			};
 		}
 
-		const excluded = await this.excludedFolderIds(accessToken);
+		const folders = await this.excludedFolderIds(accessToken);
+		if (folders.outcome !== "ok") {
+			return this.handleFailure(row, folders.failure);
+		}
+
+		const excluded = folders.ids;
 
 		let page = await this.graph.listMessages(accessToken, {
 			after: new Date(from.getTime() - OVERLAP_MS),
@@ -150,7 +168,8 @@ export class OutlookSyncService {
 		let furthest = from;
 
 		while (page.outcome === "ok") {
-			const messages = page.data.value ?? [];
+			const remaining = MAX_MESSAGES_PER_TICK - seen;
+			const messages = (page.data.value ?? []).slice(0, Math.max(remaining, 0));
 
 			for (const message of messages) {
 				seen += 1;
@@ -212,15 +231,25 @@ export class OutlookSyncService {
 		};
 	}
 
-	private async excludedFolderIds(accessToken: string): Promise<Set<string>> {
+	private async excludedFolderIds(
+		accessToken: string,
+	): Promise<ExcludedFolders> {
 		const ids = new Set<string>();
 
 		for (const name of EXCLUDED_FOLDERS) {
 			const folder = await this.graph.folder(accessToken, name);
-			if (folder.outcome === "ok" && folder.data.id) ids.add(folder.data.id);
+
+			if (folder.outcome === "ok") {
+				if (folder.data.id) ids.add(folder.data.id);
+				continue;
+			}
+
+			if (isMissingFolder(folder)) continue;
+
+			return { outcome: "lookup-failed", failure: folder };
 		}
 
-		return ids;
+		return { outcome: "ok", ids };
 	}
 
 	private parse(message: GraphMessage): IncomingMessage | null {
@@ -258,20 +287,23 @@ export class OutlookSyncService {
 	}
 
 	private rootIdOf(message: GraphMessage, internetMessageId: string): string {
-		const headers = message.internetMessageHeaders;
+		const headers = message.internetMessageHeaders ?? [];
 
-		if (headers && headers.length > 0) {
-			const value = (name: string): string | null => {
-				const wanted = name.toLowerCase();
-				const found = headers.find(
-					(entry) => entry.name?.toLowerCase() === wanted,
-				);
-				return found?.value?.trim() ?? null;
-			};
+		const value = (name: string): string | null => {
+			const wanted = name.toLowerCase();
+			const found = headers.find(
+				(entry) => entry.name?.toLowerCase() === wanted,
+			);
+			return found?.value?.trim() || null;
+		};
 
+		const references = value("references");
+		const inReplyTo = value("in-reply-to");
+
+		if (references || inReplyTo) {
 			const root = rootMessageIdFrom({
-				references: value("references"),
-				inReplyTo: value("in-reply-to"),
+				references,
+				inReplyTo,
 				messageId: internetMessageId,
 			});
 
@@ -327,6 +359,10 @@ export class OutlookSyncService {
 			reason: result.reason,
 		};
 	}
+}
+
+function isMissingFolder(failure: MailboxFailure<GraphFolder>): boolean {
+	return failure.outcome === "cursor-invalid";
 }
 
 function addressOf(entry: GraphAddress | undefined): Participant | null {

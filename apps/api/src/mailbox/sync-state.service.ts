@@ -7,6 +7,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import type { SyncSource } from "./mailbox.constants";
 
+export const SYNC_LEASE_MS = 300_000;
+
 @Injectable()
 export class SyncStateService {
 	private readonly logger = new Logger(SyncStateService.name);
@@ -30,11 +32,27 @@ export class SyncStateService {
 
 	async due(now: Date): Promise<MailboxSync[]> {
 		return this.db.mailboxSync.findMany({
-			where: {
-				status: { notIn: [GoogleSyncStatus.NEEDS_RECONNECT] },
-				OR: [{ retryAfter: null }, { retryAfter: { lte: now } }],
-			},
+			where: dueWhere(now),
 			orderBy: [{ lastSyncedAt: { sort: "asc", nulls: "first" } }],
+		});
+	}
+
+	async claim(row: MailboxSync, now: Date): Promise<boolean> {
+		const { count } = await this.db.mailboxSync.updateMany({
+			where: { id: row.id, updatedAt: row.updatedAt, ...dueWhere(now) },
+			data: {
+				status: GoogleSyncStatus.RUNNING,
+				retryAfter: new Date(now.getTime() + SYNC_LEASE_MS),
+			},
+		});
+
+		return count === 1;
+	}
+
+	async release(id: string): Promise<void> {
+		await this.db.mailboxSync.updateMany({
+			where: { id },
+			data: { retryAfter: null },
 		});
 	}
 
@@ -97,6 +115,7 @@ export class SyncStateService {
 				cursor: null,
 				status: GoogleSyncStatus.IDLE,
 				lastError: null,
+				retryAfter: null,
 			},
 		});
 	}
@@ -125,7 +144,11 @@ export class SyncStateService {
 	async markFailed(id: string, reason: string): Promise<void> {
 		await this.db.mailboxSync.update({
 			where: { id },
-			data: { status: GoogleSyncStatus.FAILED, lastError: reason },
+			data: {
+				status: GoogleSyncStatus.FAILED,
+				lastError: reason,
+				retryAfter: null,
+			},
 		});
 	}
 
@@ -145,4 +168,11 @@ export class SyncStateService {
 			where: { userId, ...(source ? { source } : {}) },
 		});
 	}
+}
+
+function dueWhere(now: Date) {
+	return {
+		status: { notIn: [GoogleSyncStatus.NEEDS_RECONNECT] },
+		OR: [{ retryAfter: null }, { retryAfter: { lte: now } }],
+	};
 }

@@ -16,6 +16,7 @@ export type TickSummary = {
 	attempted: number;
 	synced: number;
 	skipped: number;
+	rateLimited: number;
 	failed: number;
 	durationMs: number;
 };
@@ -38,6 +39,7 @@ export class MailboxSyncService {
 			attempted: 0,
 			synced: 0,
 			skipped: 0,
+			rateLimited: 0,
 			failed: 0,
 			durationMs: 0,
 		};
@@ -47,14 +49,16 @@ export class MailboxSyncService {
 
 		const due = await this.state.due(new Date());
 
-		for (const row of due) {
+		for (const [index, row] of due.entries()) {
 			if (Date.now() - startedAt > TICK_BUDGET_MS) {
 				this.logger.log({
 					message: "Sync tick budget reached",
-					remaining: due.length - summary.attempted,
+					remaining: due.length - index,
 				});
 				break;
 			}
+
+			if (!(await this.state.claim(row, new Date()))) continue;
 
 			summary.attempted += 1;
 
@@ -63,6 +67,9 @@ export class MailboxSyncService {
 
 				if (outcome === null || outcome.status === "skipped") {
 					summary.skipped += 1;
+					await this.state.release(row.id);
+				} else if (outcome.status === "rate-limited") {
+					summary.rateLimited += 1;
 				} else if (
 					outcome.status === "failed" ||
 					outcome.status === "reconnect"
@@ -97,6 +104,7 @@ export class MailboxSyncService {
 			attempted: summary.attempted,
 			synced: summary.synced,
 			skipped: summary.skipped,
+			rateLimited: summary.rateLimited,
 			failed: summary.failed,
 			durationMs: summary.durationMs,
 		});

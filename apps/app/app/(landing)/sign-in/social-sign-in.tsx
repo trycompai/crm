@@ -19,6 +19,11 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 
 	const { label, Logo } = PROVIDERS[provider];
 
+	function fail(message?: string) {
+		setPending(false);
+		toast.error(message ?? "Could not reach the sign-in service.");
+	}
+
 	async function handleClick() {
 		setPending(true);
 
@@ -30,10 +35,7 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 			errorCallbackURL: `${origin}/sign-in`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach the sign-in service.");
-			setPending(false);
-		}
+		if (error) fail(error.message);
 	}
 
 	return (
@@ -41,9 +43,7 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 			className="w-full"
 			disabled={pending}
 			onClick={() => {
-				handleClick().catch(() =>
-					toast.error("Could not reach the sign-in service."),
-				);
+				handleClick().catch(() => fail());
 			}}
 			type="button"
 			variant="outline"

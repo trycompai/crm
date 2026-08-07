@@ -45,11 +45,20 @@ function findPart(part: GmailPart, mimeType: string): GmailPart | null {
 	}
 
 	for (const child of part.parts ?? []) {
+		if (isAttachment(child)) continue;
+
 		const found = findPart(child, mimeType);
 		if (found) return found;
 	}
 
 	return null;
+}
+
+function isAttachment(part: GmailPart): boolean {
+	if (part.filename) return true;
+
+	const disposition = header(part.headers, "content-disposition");
+	return disposition?.toLowerCase().startsWith("attachment") ?? false;
 }
 
 export function rootMessageId(

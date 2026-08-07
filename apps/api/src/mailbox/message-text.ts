@@ -65,15 +65,21 @@ export type ThreadHeaders = {
 
 export function rootMessageIdFrom(headers: ThreadHeaders): string | null {
 	if (headers.references) {
-		const first = headers.references
-			.split(/\s+/)
-			.find((entry) => entry.startsWith("<"));
-		if (first) return normaliseMessageId(first);
+		const first = firstMessageId(headers.references);
+		if (first) return first;
 	}
 
-	if (headers.inReplyTo) return normaliseMessageId(headers.inReplyTo);
+	if (headers.inReplyTo) {
+		const first = firstMessageId(headers.inReplyTo);
+		if (first) return first;
+	}
 
 	return headers.messageId ? normaliseMessageId(headers.messageId) : null;
+}
+
+export function firstMessageId(value: string): string | null {
+	const found = value.match(/<[^<>]+>|[^\s<>]+/);
+	return found ? normaliseMessageId(found[0]) : null;
 }
 
 export function normaliseMessageId(value: string): string {

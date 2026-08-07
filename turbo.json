@@ -12,9 +12,13 @@
 	 * build, so the browser bundle was compiled with the localhost fallback and
 	 * every request from a deployed page went to the reader's own machine; and
 	 * `DATABASE_URL` was stripped from the agent build, where `eve build`
-	 * evaluates the authored modules and `@crm/db` throws without it.
+	 * evaluates the authored modules and `@crm/db` throws without it. The
+	 * `MICROSOFT_*` trio was the same omission again: undeclared, so
+	 * `microsoftCredentials()` read nothing, `isMicrosoftConfigured()` was
+	 * false, and the sign-in page dropped the Microsoft button with no error
+	 * anywhere. A configured `MICROSOFT_TENANT_ID` was ignored the same way.
 	 *
-	 * `globalPassThroughEnv` is the right list for both, because none of these
+	 * `globalPassThroughEnv` is the right list for all of them, because none
 	 * change what a build *produces* — they are read at runtime, or inlined from
 	 * the separately-declared public copy — so they must not become part of the
 	 * cache key. A secret in the cache key means a cache miss every rotation and
@@ -28,6 +32,9 @@
 		"ALLOWED_SIGN_IN",
 		"GOOGLE_CLIENT_ID",
 		"GOOGLE_CLIENT_SECRET",
+		"MICROSOFT_CLIENT_ID",
+		"MICROSOFT_CLIENT_SECRET",
+		"MICROSOFT_TENANT_ID",
 		"AUTH_COOKIE_DOMAIN",
 		"CRON_SECRET",
 		"REDIS_URL",
