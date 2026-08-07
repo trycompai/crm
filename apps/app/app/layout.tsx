@@ -5,6 +5,7 @@ import { cn } from "@crm/ui/lib/utils";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { LocalDateTimeHydrator } from "@/components/local-date-time";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TRPCReactProvider } from "@/lib/trpc/client";
 
@@ -54,6 +55,7 @@ export default function RootLayout({
 						</ThemeProvider>
 					</TRPCReactProvider>
 				</NuqsAdapter>
+				<LocalDateTimeHydrator />
 			</body>
 		</html>
 	);

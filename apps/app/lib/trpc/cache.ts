@@ -188,7 +188,7 @@ export function useCrmCache(): CrmCache {
 		conversationRemoved: (id) => {
 			for (const queryKey of [
 				trpc.conversations.builderById.queryKey({ id }),
-				trpc.conversations.events.queryKey({ id, limit: 5000 }),
+				trpc.conversations.events.queryKey({ id }),
 				trpc.conversations.shareStatus.queryKey({ id }),
 			]) {
 				void queryClient.invalidateQueries({

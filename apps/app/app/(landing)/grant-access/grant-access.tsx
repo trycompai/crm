@@ -1,23 +1,13 @@
 "use client";
 
-import { authClient, signOut } from "@crm/auth/client";
+import { authClient } from "@crm/auth/client";
 import { SYNC_SCOPES } from "@crm/auth/scopes";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useState } from "react";
 import { toast } from "sonner";
-
-async function signOutAndRedirect() {
-	const { error } = await signOut();
-
-	if (error) {
-		toast.error(error.message ?? "Could not sign out.");
-		return;
-	}
-
-	window.location.assign("/sign-in");
-}
+import { signOutAndRedirect } from "@/lib/sign-out";
 
 export function GrantAccess() {
 	const [pending, setPending] = useState(false);

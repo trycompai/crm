@@ -52,7 +52,7 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 
 				save.mutate({
 					name: String(form.get("name") ?? "").trim(),
-					slug: String(form.get("slug") ?? "").trim(),
+					slug: workspaceSlug(String(form.get("slug") ?? "")),
 					website: String(form.get("website") ?? "").trim(),
 				});
 			}}
@@ -89,8 +89,11 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 							value={slug}
 							onChange={(event) => {
 								slugEdited.current = true;
-								setSlug(workspaceSlug(event.target.value));
+								setSlug(workspaceSlugDraft(event.target.value));
 							}}
+							onBlur={() =>
+								setSlug((value) => (value ? workspaceSlug(value) : ""))
+							}
 							placeholder={workspaceSlug(placeholder)}
 							autoComplete="off"
 							autoCapitalize="off"
@@ -134,4 +137,12 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 			</Button>
 		</form>
 	);
+}
+
+function workspaceSlugDraft(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, "-")
+		.replace(/-{2,}/g, "-")
+		.replace(/^-+/, "");
 }

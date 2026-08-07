@@ -51,7 +51,7 @@ import {
 	DetailSheetStats,
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
-import { LocalDateTime } from "@/components/local-date-time";
+import { LocalDay } from "@/components/local-date-time";
 import { OPEN_STAGES } from "@/lib/deal-stage";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
 import { savingField } from "@/lib/pending-field";
@@ -120,17 +120,6 @@ const DEAL_COLUMNS = [
 	{ id: "close-date", header: "Close date", width: "w-[14%]" },
 	{ id: "owner", header: "Owner", width: "w-[14%]" },
 ];
-
-const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
-	month: "short",
-	day: "numeric",
-	year: "numeric",
-};
-
-const SHORT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
-	month: "short",
-	day: "numeric",
-};
 
 function nextClose(deals: CompanyDeal[]): string | null {
 	const dates = deals
@@ -299,11 +288,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 							<span className="tabular-nums">{openDeals.length}</span>
 						</DetailSheetStat>
 						<DetailSheetStat label="Next close">
-							{closing ? (
-								<LocalDateTime date={closing} options={SHORT_DATE_OPTIONS} />
-							) : (
-								<EmptyCellValue />
-							)}
+							{closing ? <LocalDay date={closing} /> : <EmptyCellValue />}
 						</DetailSheetStat>
 						<DetailSheetStat label="Owner">
 							<OwnerCell owner={company.owner} />
@@ -655,10 +640,7 @@ function CompanyDeals({
 						</TableCell>
 						<TableCell className="px-3 py-2.5 text-muted-foreground">
 							{deal.expectedCloseDate ? (
-								<LocalDateTime
-									date={deal.expectedCloseDate}
-									options={DATE_OPTIONS}
-								/>
+								<LocalDay date={deal.expectedCloseDate} />
 							) : (
 								<EmptyCellValue />
 							)}

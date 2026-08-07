@@ -15,7 +15,6 @@ export function ListSearch({ placeholder }: { placeholder: string }) {
 
 	return (
 		<ListSearchInput
-			key={q}
 			committed={q}
 			commit={(next) => setState({ q: next, page: 1 })}
 			placeholder={placeholder}

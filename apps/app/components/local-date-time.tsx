@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { InlineScript } from "./inline-script";
 
 const DAY_MS = 86_400_000;
@@ -15,6 +14,7 @@ const LOCAL_DAY_OPTIONS = {
 	day: "numeric",
 	year: "numeric",
 } as const;
+const LOCAL_DATE_TIME_SCRIPT = `{var s="time[data-local-date-kind]",f=function(n){try{var k=n.dataset.localDateKind,v=n.dataset.localDateValue,e=n.dataset.localDateEnd,o=JSON.parse(n.dataset.localDateOptions||"{}"),d=new Date(v),t=d.getTime(),x=Date.now()-t,a=Math.abs(x),r;if(k==="date-time")r=new Intl.DateTimeFormat(void 0,o).format(d);else if(k==="date-range")r=new Intl.DateTimeFormat(void 0,o).formatRange(d,new Date(e));else if(k==="day")r=new Intl.DateTimeFormat(void 0,o).format(new Date(v+"T00:00:00"));else if(k==="relative-date"){var z=new Date(),q=(Date.UTC(z.getFullYear(),z.getMonth(),z.getDate())-Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()))/${DAY_MS};r=new Intl.RelativeTimeFormat(void 0,{numeric:"auto"}).format(-q,"day")}else if(!Number.isFinite(t))r="—";else if(a<${MINUTE_MS})r="just now";else if(a>=${30 * DAY_MS})r=new Intl.DateTimeFormat(void 0,{month:"short",day:"numeric"}).format(d);else{var u=a<${HOUR_MS}?Math.floor(a/${MINUTE_MS})+"m":a<${DAY_MS}?Math.floor(a/${HOUR_MS})+"h":Math.floor(a/${DAY_MS})+"d";r=x<0?"in "+u:u+" ago"}n.textContent=r}catch{}};var c=function(r){if(r.nodeType===1&&r.matches&&r.matches(s))f(r);if(r.querySelectorAll)r.querySelectorAll(s).forEach(f)};c(document);new MutationObserver(function(m){m.forEach(function(r){r.addedNodes.forEach(c)})}).observe(document.documentElement,{childList:true,subtree:true})}`;
 
 export function LocalDateTime({
 	date,
@@ -23,16 +23,13 @@ export function LocalDateTime({
 	date: string;
 	options: Intl.DateTimeFormatOptions;
 }) {
-	const id = useId();
-	const formatter = getDateTimeFormatter(options);
-
 	return (
-		<>
-			<time id={id} dateTime={date} suppressHydrationWarning>
-				{formatter.format(new Date(date))}
-			</time>
-			<InlineScript html={dateScript(id, date, options)} />
-		</>
+		<LocalTime
+			kind="date-time"
+			date={date}
+			options={options}
+			fallback={getDateTimeFormatter(options).format(new Date(date))}
+		/>
 	);
 }
 
@@ -45,94 +42,87 @@ export function LocalDateTimeRange({
 	end: string;
 	options: Intl.DateTimeFormatOptions;
 }) {
-	const id = useId();
-	const formatter = getDateTimeFormatter(options);
-
 	return (
-		<>
-			<time id={id} dateTime={start} suppressHydrationWarning>
-				{formatter.formatRange(new Date(start), new Date(end))}
-			</time>
-			<InlineScript html={dateRangeScript(id, start, end, options)} />
-		</>
+		<LocalTime
+			kind="date-range"
+			date={start}
+			end={end}
+			options={options}
+			fallback={getDateTimeFormatter(options).formatRange(
+				new Date(start),
+				new Date(end),
+			)}
+		/>
 	);
 }
 
 export function LocalRelativeDate({ date }: { date: string }) {
-	const id = useId();
-
 	return (
-		<>
-			<time id={id} dateTime={date} suppressHydrationWarning>
-				{formatRelativeDate(date)}
-			</time>
-			<InlineScript html={relativeDateScript(id, date)} />
-		</>
+		<LocalTime
+			kind="relative-date"
+			date={date}
+			fallback={formatRelativeDate(date)}
+		/>
 	);
 }
 
 export function LocalRelativeTime({ date }: { date: string }) {
-	const id = useId();
-
 	return (
-		<>
-			<time id={id} dateTime={date} suppressHydrationWarning>
-				{formatRelativeTime(date)}
-			</time>
-			<InlineScript html={relativeTimeScript(id, date)} />
-		</>
+		<LocalTime
+			kind="relative-time"
+			date={date}
+			fallback={formatRelativeTime(date)}
+		/>
 	);
 }
 
 export function LocalDay({ date }: { date: string }) {
-	const id = useId();
 	const day = date.slice(0, 10);
-
 	return (
-		<>
-			<time id={id} dateTime={day} suppressHydrationWarning>
-				{getDateTimeFormatter(LOCAL_DAY_OPTIONS).format(dayDate(day))}
-			</time>
-			<InlineScript html={dayScript(id, day, LOCAL_DAY_OPTIONS)} />
-		</>
+		<LocalTime
+			kind="day"
+			date={day}
+			options={LOCAL_DAY_OPTIONS}
+			fallback={getDateTimeFormatter(LOCAL_DAY_OPTIONS).format(dayDate(day))}
+		/>
 	);
 }
 
-function dateScript(
-	id: string,
-	date: string,
-	options: Intl.DateTimeFormatOptions,
-): string {
-	return `{var n=document.getElementById(${json(id)});if(n)n.textContent=new Intl.DateTimeFormat(void 0,${json(options)}).format(new Date(${json(date)}))}`;
+export function LocalDateTimeHydrator() {
+	return <InlineScript html={LOCAL_DATE_TIME_SCRIPT} />;
 }
 
-function dateRangeScript(
-	id: string,
-	start: string,
-	end: string,
-	options: Intl.DateTimeFormatOptions,
-): string {
-	return `{var n=document.getElementById(${json(id)});if(n)n.textContent=new Intl.DateTimeFormat(void 0,${json(options)}).formatRange(new Date(${json(start)}),new Date(${json(end)}))}`;
-}
-
-function relativeDateScript(id: string, date: string): string {
-	return `{var n=document.getElementById(${json(id)});if(n){var d=Math.round((Date.now()-new Date(${json(date)}).getTime())/${DAY_MS});n.textContent=new Intl.RelativeTimeFormat(void 0,{numeric:"auto"}).format(-d,"day")}}`;
-}
-
-function relativeTimeScript(id: string, date: string): string {
-	return `{var n=document.getElementById(${json(id)}),t=new Date(${json(date)}).getTime();if(n&&Number.isFinite(t)){var d=Date.now()-t,a=Math.abs(d),v=a<${MINUTE_MS}?"just now":a<${HOUR_MS}?Math.round(a/${MINUTE_MS})+"m":a<${DAY_MS}?Math.round(a/${HOUR_MS})+"h":a<${30 * DAY_MS}?Math.round(a/${DAY_MS})+"d":new Intl.DateTimeFormat(void 0,{month:"short",day:"numeric"}).format(new Date(t));n.textContent=a<${30 * DAY_MS}&&a>=${MINUTE_MS}?(d<0?"in "+v:v+" ago"):v}}`;
-}
-
-function dayScript(
-	id: string,
-	day: string,
-	options: Intl.DateTimeFormatOptions,
-): string {
-	return `{var n=document.getElementById(${json(id)});if(n)n.textContent=new Intl.DateTimeFormat(void 0,${json(options)}).format(new Date(${json(`${day}T00:00:00`)}))}`;
+function LocalTime({
+	kind,
+	date,
+	end,
+	options,
+	fallback,
+}: {
+	kind: "date-time" | "date-range" | "day" | "relative-date" | "relative-time";
+	date: string;
+	end?: string;
+	options?: Intl.DateTimeFormatOptions;
+	fallback: string;
+}) {
+	return (
+		<time
+			dateTime={date}
+			data-local-date-kind={kind}
+			data-local-date-value={date}
+			data-local-date-end={end}
+			data-local-date-options={options ? JSON.stringify(options) : undefined}
+			suppressHydrationWarning
+		>
+			{fallback}
+		</time>
+	);
 }
 
 function formatRelativeDate(date: string): string {
-	const days = Math.round((Date.now() - new Date(date).getTime()) / DAY_MS);
+	const now = new Date();
+	const then = new Date(date);
+	const days = (calendarDay(now) - calendarDay(then)) / DAY_MS;
 	return relativeDateFormatter.format(-days, "day");
 }
 
@@ -150,11 +140,15 @@ function formatRelativeTime(date: string): string {
 
 	const distance =
 		absolute < HOUR_MS
-			? `${Math.round(absolute / MINUTE_MS)}m`
+			? `${Math.floor(absolute / MINUTE_MS)}m`
 			: absolute < DAY_MS
-				? `${Math.round(absolute / HOUR_MS)}h`
-				: `${Math.round(absolute / DAY_MS)}d`;
+				? `${Math.floor(absolute / HOUR_MS)}h`
+				: `${Math.floor(absolute / DAY_MS)}d`;
 	return difference < 0 ? `in ${distance}` : `${distance} ago`;
+}
+
+function calendarDay(date: Date): number {
+	return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function dayDate(day: string): Date {
@@ -166,15 +160,9 @@ function getDateTimeFormatter(
 ): Intl.DateTimeFormat {
 	const key = JSON.stringify(options);
 	const cached = dateTimeFormatters.get(key);
-	if (cached) {
-		return cached;
-	}
+	if (cached) return cached;
 
 	const formatter = new Intl.DateTimeFormat(undefined, options);
 	dateTimeFormatters.set(key, formatter);
 	return formatter;
-}
-
-function json(value: unknown): string {
-	return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
