@@ -16,7 +16,9 @@ permissions:
 jobs:
   conventional:
     name: conventional commit
-    if: github.event.pull_request.draft == false
+    if: >-
+      github.event.pull_request.draft == false &&
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

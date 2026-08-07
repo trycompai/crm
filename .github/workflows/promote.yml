@@ -34,13 +34,22 @@ jobs:
             exit 0
           fi
 
-          body=$(cat <<EOF
-          Everything on \`main\` that \`release\` does not have yet. Merging this ships it: the
-          commits below land on \`release\`, and release-please then opens a \`chore(release)\` pull
-          request that writes the changelog, bumps the version and cuts the tag.
+          pending=$(gh pr list --base main --state open --label "autorelease: pending" --limit 1 --json number,title --jq '.[0] | select(.) | "#\(.number) \(.title)"')
 
-          Merge it with a **merge commit**, not a squash — release-please reads these subjects to
-          work out the version, and a squash would flatten them into one.
+          if [ -n "$pending" ]; then
+            warning="**Merge $pending first.** It is the release pull request: it writes the changelog, bumps the version and cuts the tag on \`main\`. Merge it before this one and the tag lands on a commit \`release\` receives. Merge this one first and you ship the code untagged, and the version does not reach \`release\` until the next promotion."
+          else
+            warning="Nothing releasable is waiting — no version bump will ride along with this."
+          fi
+
+          body=$(cat <<EOF
+          Everything on \`main\` that \`release\` does not have yet. Merging this is what puts it in
+          front of users, because \`release\` is what a deploy and a plain clone both point at.
+
+          $warning
+
+          Merge it with a **merge commit**, not a squash: a squash would give \`release\` a new
+          commit of its own, and the tags on \`main\` would stop being ancestors of what you shipped.
 
           $(git log origin/release..origin/main --no-merges --reverse --format='- %s')
           EOF

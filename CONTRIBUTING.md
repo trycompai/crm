@@ -80,15 +80,13 @@ push a branch ──▶ PR opens by itself, titled from the diff
                         │
                   ◀── click 1: squash into main
                         │
-        `release: promote main` opens or updates itself
+        two pull requests open, and stay open, together
+          `chore(release): 0.2.0` ──▶ main
+          `release: promote main` ──▶ release
                         │
-                  ◀── click 2: merge it (a merge commit, not a squash)
+        ◀── click 2: the release PR — tag, notes, CHANGELOG.md
                         │
-                  release PR opens against `release`
-                        │
-                  ◀── click 3: merge it
-                        │
-              tag + GitHub Release + CHANGELOG.md
+        ◀── click 3: the promotion PR — `release` moves up
 ```
 
 **Pushing any branch that isn't `main` or `release` opens a pull request into `main`.** You do not
@@ -131,37 +129,38 @@ because the squashed commit body is left empty on purpose — the title is the w
 Nothing is released by merging to `main`, and nothing is pushed to `release` by hand. Both branches
 only ever move through a pull request, and shipping is two of them.
 
-**The promotion pull request — `release: promote main`.** Opened, and thereafter kept up to date,
-every time something lands on `main`. Its body is the list of commits `release` does not have yet,
-so it is a standing answer to "what is waiting to ship". **Merge it with a merge commit, not a
-squash** — `release` is only allowed to merge that way for a reason: release-please reads those
-individual commit subjects to work out the version, and a squash flattens them into one subject it
-cannot parse.
+Both open as soon as something lands on `main`, and both stay open and up to date until you use
+them — so the version you are about to cut is readable *before* you decide to ship it.
 
-**The release pull request — `chore(release): 0.2.0`.** Once the promotion lands,
-[release-please](https://github.com/googleapis/release-please) reads the newly promoted commits and
-opens this against `release`. Merging it writes `CHANGELOG.md`, bumps the version, tags `v0.2.0` and
-publishes the GitHub Release. So the notes are reviewable before they are public, and a stack of
-merges is one release rather than five.
+**The release pull request — `chore(release): 0.2.0`, into `main`.**
+[release-please](https://github.com/googleapis/release-please) accumulates every releasable commit
+into this one. Merging it writes `CHANGELOG.md`, bumps the version, tags `v0.2.0` and publishes the
+GitHub Release. The notes are reviewable before they are public, and a stack of merges is one
+release rather than five.
 
-`CHANGELOG.md`, the version in `package.json` and the release manifest therefore live on `release`
-and are not carried back to `main`. That is deliberate: `release` is the default branch, so it is
-the tree anyone landing on the repository reads, and `main` never touches those files — which is
-also why the promotion merge never conflicts on them.
+**The promotion pull request — `release: promote main`, into `release`.** Its body is the list of
+commits `release` does not have yet, so it is a standing answer to "what is waiting to ship".
+**Merge it with a merge commit, not a squash** — `release` only permits that method, because a
+squash would give `release` a commit of its own and the tags on `main` would stop being ancestors
+of what you shipped.
+
+**Merge the release one first.** Then the tag sits on a commit the promotion carries over, and
+`release` gets the code and its version together. The other order still works — it just ships
+untagged code and leaves the bump for the next promotion.
 
 Three consequences worth knowing:
 
 - **A release PR with nothing in it is not a bug.** A run of `chore:` and `test:` commits bumps
   nothing, so no PR appears. That is the type doing its job.
 - **Neither automated PR runs CI.** A PR opened by `GITHUB_TOKEN` cannot trigger workflows — that is
-  GitHub's own loop guard, not something to work around. It does not matter on `release`, which has
-  no required checks: the code being promoted was already green on `main`, and the release PR only
-  ever touches `CHANGELOG.md`, the root `version`, and the manifest.
-- **On `main` it does matter**, because `main` requires `check-types, lint, test` and
-  `conventional commit`. A branch you push yourself is fine — your push triggers CI and the auto-PR
-  inherits the result. Setting an `AUTOMATION_TOKEN` secret (a PAT or GitHub App token) makes the
+  GitHub's own loop guard, not something to work around. The promotion PR does not care, because
+  `release` has no required checks and the code was already green on `main`. The release PR targets
+  `main`, which does have them, so **an admin merges it past the missing checks** — safe, because it
+  only ever touches `CHANGELOG.md`, the root `version` and the manifest, none of which CI can judge.
+- **`AUTOMATION_TOKEN` removes that click.** A PAT or GitHub App token in that secret makes the
   automated PRs trigger CI like any other; every workflow already prefers it and falls back to
-  `GITHUB_TOKEN`. Until then, a repository admin can merge past a missing check.
+  `GITHUB_TOKEN`. A branch you push yourself never needed it — your own push triggers CI and the
+  auto-opened PR inherits the result.
 
 `main` is expected to be green when it is promoted, and the thing that guarantees that is **branch
 protection requiring the `check-types, lint, test` and `conventional commit` checks** — not the

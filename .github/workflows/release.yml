@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [release]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -24,7 +24,7 @@ jobs:
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
-          target-branch: release
+          target-branch: main
           token: ${{ secrets.AUTOMATION_TOKEN || secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Say what happened
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${TAG:-}" ]; then
-            echo "Released [$TAG]($URL)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Released [$TAG]($URL) — merge the promotion pull request to put it on \`release\`." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No tag this run — either the release pull request is still open, or nothing releasable landed." >> "$GITHUB_STEP_SUMMARY"
           fi
