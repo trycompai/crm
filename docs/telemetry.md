@@ -120,7 +120,7 @@ Each is only whether the key is set. `cap_context_dev` is whether an `AppSetting
 | `recheck_interval_days` | Their intervals, in day bands |
 | `agent_conversations` | How many `AgentConversation` rows exist |
 
-Tool names are matched against the twenty tools in `apps/agent/agent/tools/` and eve's own
+Tool names are matched against the twenty-four tools in `apps/agent/agent/tools/` and eve's own
 builtins. Anything else is counted as `other`. Task kinds are matched against `TASK_KINDS`.
 
 Tool counts are read from the `agentEvent` rows the audit hook already writes — the event `type`

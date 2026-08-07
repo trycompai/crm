@@ -106,13 +106,16 @@ export function permitted(
 }
 
 export const AGENT_TOOLS = [
+	"archive_field",
 	"enrich_company",
 	"fetch_contact_photo",
 	"find_contact_socials",
 	"get_contact_work_history",
 	"get_linkedin_profile",
 	"identify_contact",
+	"list_fields",
 	"list_outstanding_work",
+	"manage_fields",
 	"read_company_history",
 	"read_crm_history",
 	"read_deal_history",
@@ -124,6 +127,7 @@ export const AGENT_TOOLS = [
 	"schedule_recheck",
 	"search_crm",
 	"set_contact_socials",
+	"set_field_value",
 	"write_brief",
 	"write_workspace_profile",
 ] as const;
