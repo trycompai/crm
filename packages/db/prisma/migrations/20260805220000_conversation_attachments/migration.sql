@@ -70,7 +70,7 @@ SET message = jsonb_set(
                         'type', stored."mediaType",
                         'size', stored.size
                     )
-                    ELSE attachment.value - 'contentBase64'
+                    ELSE attachment.value
                 END
                 ORDER BY attachment.ordinality
             ),
