@@ -12,7 +12,8 @@ CREATE TABLE "agentBuilderArtifact" (
     "status" "AgentBuilderArtifactStatus" NOT NULL DEFAULT 'WRITING',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "agentBuilderArtifact_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "agentBuilderArtifact_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "agentBuilderArtifact_owner_present" CHECK ("conversationId" IS NOT NULL OR "versionId" IS NOT NULL)
 );
 
 CREATE UNIQUE INDEX "agentBuilderArtifact_conversation_path_revision_key" ON "agentBuilderArtifact"("conversationId", "path", "revision") WHERE "conversationId" IS NOT NULL;
