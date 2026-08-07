@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   open:
-    name: Open a draft pull request into main
+    name: Open a pull request into main
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -30,6 +30,7 @@ jobs:
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -45,23 +46,17 @@ jobs:
             exit 0
           fi
 
-          subject=$(git log "origin/main..origin/$BRANCH" --no-merges --reverse --format=%s | head -1)
-
-          if printf '%s' "$subject" | grep -Eq '^(feat|fix|perf|refactor|docs|revert|deps|chore|test|ci|build|style)(\([^)]+\))?!?: .+'; then
-            title="$subject"
-          else
-            title=$(printf '%s' "${BRANCH#*/}" | tr '_' ' ' | tr '-' ' ')
-          fi
+          title=$(.github/scripts/pr-title.sh generate "origin/main" "origin/$BRANCH" "$BRANCH")
 
           body=$(cat <<EOF
           Opened automatically when \`$BRANCH\` was pushed.
 
-          This pull request is squashed onto \`main\`, so **its title becomes the commit subject and the changelog line**. Make it a [Conventional Commit](https://www.conventionalcommits.org/) — \`feat(app): …\`, \`fix(api): …\` — before marking it ready for review, which is when the title is checked.
+          The title is written from the diff and rewritten as you push, because this is squashed onto \`main\` and the title becomes the commit subject and the changelog line. Retitle it yourself and it is yours — the automation stops touching it.
 
-          The type decides the version bump: \`feat\` is a minor, \`fix\` / \`perf\` / \`refactor\` / \`docs\` are a patch, a trailing \`!\` is a major, and \`chore\` / \`ci\` / \`test\` / \`build\` / \`style\` release nothing at all.
+          <!-- pr-title: $title -->
           EOF
           )
 
-          gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body"
+          gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
 
-          echo "Opened a draft pull request for \`$BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Opened a pull request for \`$BRANCH\` titled \`$title\`." >> "$GITHUB_STEP_SUMMARY"

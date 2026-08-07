@@ -10,7 +10,7 @@ import {
 	parseAddressList,
 	splitName,
 	workDomain,
-} from "../src/google/participants";
+} from "../src/mailbox/participants";
 
 const person = (email: string, name: string | null = null): Participant => ({
 	email,

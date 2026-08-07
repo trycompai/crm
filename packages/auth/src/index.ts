@@ -1,6 +1,6 @@
 export { type Auth, auth, type Session, type SessionUser } from "./auth";
 export { AUTH_COOKIE_PREFIX } from "./cookies";
-export { isGoogleConfigured } from "./env";
+export { isGoogleConfigured, isMicrosoftConfigured } from "./env";
 export {
 	canChangeRole,
 	canManageCurrency,
@@ -19,12 +19,22 @@ export {
 	GOOGLE_PROVIDER_ID,
 	hasSyncScopes,
 	IDENTITY_SCOPES,
-	needsGoogleGrant,
+	isMailboxProvider,
+	MAILBOX_PROVIDER_IDS,
+	type MailboxProviderId,
+	MICROSOFT_PROVIDER_ID,
+	MICROSOFT_SYNC_SCOPES,
+	mailboxGrantsNeeded,
+	needsMailboxGrant,
+	OUTLOOK_MAIL_SCOPE,
 	parseScopes,
 	REQUIRED_SCOPES,
 	type SignInAccount,
 	SYNC_SCOPES,
+	SYNC_SCOPES_FOR,
+	signsInOnlyWith,
 	signsInWithGoogle,
+	signsInWithMicrosoft,
 } from "./scopes";
 export { onSignedIn, type SignedInHandler } from "./signed-in";
 export {
