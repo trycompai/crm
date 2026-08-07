@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0](https://github.com/trycompai/crm/compare/v1.3.0...v1.4.0) (2026-08-07)
+
+
+### Features
+
+* **agent:** CMP-1 add sandboxed builder and runner runtimes ([#60](https://github.com/trycompai/crm/issues/60)) ([d033dbf](https://github.com/trycompai/crm/commit/d033dbf0a0bc966499454a402219b65130b6397a))
+* **app:** CMP-12 review agent drafts before deployment ([#63](https://github.com/trycompai/crm/issues/63)) ([51a4a11](https://github.com/trycompai/crm/commit/51a4a118432863980c88dc0f7c0d9e56aa4462ae))
+* **app:** CMP-46 add the private agent builder workspace ([#62](https://github.com/trycompai/crm/issues/62)) ([f64c88f](https://github.com/trycompai/crm/commit/f64c88fe9d3e1a72e67e630f01817f75cfddaedd))
+* **app:** CMP-47 add inline composer context ([57336ab](https://github.com/trycompai/crm/commit/57336abc2cc5d599aa1467bae0345482ac3de1d5))
+* **db:** CMP-1 persist durable custom agents ([#67](https://github.com/trycompai/crm/issues/67)) ([4e79f83](https://github.com/trycompai/crm/commit/4e79f837dba6654806a1d3f99632ec34343a2b6d))
+
+
+### Fixes
+
+* **app:** CMP-47 consolidate agent builder presentation ([#64](https://github.com/trycompai/crm/issues/64)) ([1809d27](https://github.com/trycompai/crm/commit/1809d277c31f64b2ea3dd44615175b47bcbbda34))
+* **app:** move chat beneath overview in icon rail ([#83](https://github.com/trycompai/crm/issues/83)) ([b63497d](https://github.com/trycompai/crm/commit/b63497d07c5c33d119b9d759c81341e422afd8cd))
+* **ci:** tag releases automatically and keep previews off the production schema ([#82](https://github.com/trycompai/crm/issues/82)) ([6078a84](https://github.com/trycompai/crm/commit/6078a84b4fa435914f77601dc2c6e67c28de4bc3))
+
+
+### Refactors
+
+* **app:** CMP-59 harden CRM UI foundations ([#61](https://github.com/trycompai/crm/issues/61)) ([d8123e6](https://github.com/trycompai/crm/commit/d8123e6dd6a02986d0a9211c68dfaa110cdc0901))
+
 ## [1.3.0](https://github.com/trycompai/crm/compare/v1.2.0...v1.3.0) (2026-08-07)
 
 
