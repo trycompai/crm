@@ -32,38 +32,6 @@ export class AgentAccessService {
 		return isWorkspaceRole(member.role) ? member.role : "member";
 	}
 
-	async assertCanManage(agentId: string, userId: string) {
-		const [role, agent] = await Promise.all([
-			this.assertMember(userId),
-			this.db.agentDefinition.findFirst({
-				where: { id: agentId, status: { not: "DELETED" } },
-				select: {
-					id: true,
-					createdById: true,
-					status: true,
-					name: true,
-					description: true,
-				},
-			}),
-		]);
-
-		if (!agent) {
-			throw new NotFoundException(`No agent with id ${agentId}.`);
-		}
-
-		if (isPrivateAgentDraft(agent.status) && agent.createdById !== userId) {
-			throw new NotFoundException(`No agent with id ${agentId}.`);
-		}
-
-		if (agent.createdById !== userId && !isWorkspaceAdmin(role)) {
-			throw new ForbiddenException(
-				"Only the creator or a workspace admin can change this agent.",
-			);
-		}
-
-		return agent;
-	}
-
 	async assertCanManageInTransaction(
 		tx: Prisma.TransactionClient,
 		agentId: string,
