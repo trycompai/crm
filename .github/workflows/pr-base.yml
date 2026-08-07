@@ -16,6 +16,9 @@ permissions:
 jobs:
   retarget:
     name: Retarget onto main
+    if: >-
+      github.event.pull_request.head.ref != 'main' &&
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

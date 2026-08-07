@@ -65,12 +65,13 @@ A few things that trip people up:
 ## Shipping a change
 
 **Start from `main`, which is not the default branch.** `release` is the default so that a plain
-clone runs the last tagged release, but nothing is ever merged into it — it is fast-forwarded onto
-the tag and that is all. Run `git switch main && git pull` before you branch. If you open a pull
-request by hand, pass `--base main`; one opened against `release` is retargeted to `main`
-automatically, so this costs you a comment rather than a rebase.
+clone runs the last tagged release; the only things that ever merge into it are the two release
+pull requests below. Run `git switch main && git pull` before you branch. If you open a pull request
+by hand, pass `--base main`; one opened against `release` is retargeted to `main` automatically, so
+this costs you a comment rather than a rebase.
 
-Push a branch and the rest is mechanical. There are exactly two things you click.
+Push a branch and the rest is mechanical. There are exactly three things you click, and every one
+of them is a pull request — neither `main` nor `release` accepts a direct push.
 
 ```
 push a branch ──▶ PR opens by itself, titled from the diff
@@ -79,11 +80,15 @@ push a branch ──▶ PR opens by itself, titled from the diff
                         │
                   ◀── click 1: squash into main
                         │
-                  release PR opens or updates itself
+        `release: promote main` opens or updates itself
                         │
-                  ◀── click 2: merge it
+                  ◀── click 2: merge it (a merge commit, not a squash)
                         │
-        tag + GitHub Release + CHANGELOG.md, and `release` moves up
+                  release PR opens against `release`
+                        │
+                  ◀── click 3: merge it
+                        │
+              tag + GitHub Release + CHANGELOG.md
 ```
 
 **Pushing any branch that isn't `main` or `release` opens a pull request into `main`.** You do not
@@ -123,30 +128,42 @@ because the squashed commit body is left empty on purpose — the title is the w
 
 ## Releases
 
-Nothing is released by merging to `main`. Merging opens or updates a single
-`chore(release): 0.2.0` pull request from [release-please](https://github.com/googleapis/release-please)
-that accumulates the changelog and bumps the version; **merging that PR** is what tags `v0.2.0`,
-publishes the GitHub Release, and writes `CHANGELOG.md`. So the notes are reviewable before they are
-public, and a stack of merges is one release rather than five.
+Nothing is released by merging to `main`, and nothing is pushed to `release` by hand. Both branches
+only ever move through a pull request, and shipping is two of them.
 
-Once the tag exists, the `release` branch is fast-forwarded onto it automatically. `release` is
-therefore never anything but the last released commit, which is what makes it safe to point a
-production deploy at. There is no second pull request to merge — the release PR was the gate.
+**The promotion pull request — `release: promote main`.** Opened, and thereafter kept up to date,
+every time something lands on `main`. Its body is the list of commits `release` does not have yet,
+so it is a standing answer to "what is waiting to ship". **Merge it with a merge commit, not a
+squash** — `release` is only allowed to merge that way for a reason: release-please reads those
+individual commit subjects to work out the version, and a squash flattens them into one subject it
+cannot parse.
+
+**The release pull request — `chore(release): 0.2.0`.** Once the promotion lands,
+[release-please](https://github.com/googleapis/release-please) reads the newly promoted commits and
+opens this against `release`. Merging it writes `CHANGELOG.md`, bumps the version, tags `v0.2.0` and
+publishes the GitHub Release. So the notes are reviewable before they are public, and a stack of
+merges is one release rather than five.
+
+`CHANGELOG.md`, the version in `package.json` and the release manifest therefore live on `release`
+and are not carried back to `main`. That is deliberate: `release` is the default branch, so it is
+the tree anyone landing on the repository reads, and `main` never touches those files — which is
+also why the promotion merge never conflicts on them.
 
 Three consequences worth knowing:
 
 - **A release PR with nothing in it is not a bug.** A run of `chore:` and `test:` commits bumps
   nothing, so no PR appears. That is the type doing its job.
-- **The release PR does not run CI.** A PR opened by `GITHUB_TOKEN` cannot trigger workflows — that
-  is GitHub's own loop guard, not something to work around. It is safe because the PR only ever
-  touches `CHANGELOG.md`, the root `version`, and the release manifest, and because CI runs again on
-  `main` after it lands. The same guard is why an auto-opened draft PR shows no checks until you
-  push to it or mark it ready.
-- **An `AUTOMATION_TOKEN` secret removes that caveat.** A PAT or GitHub App token makes both the
-  release PR and the auto-opened PR trigger CI like any other. Every workflow already prefers it and
-  falls back to `GITHUB_TOKEN`, so it is an upgrade rather than a requirement.
+- **Neither automated PR runs CI.** A PR opened by `GITHUB_TOKEN` cannot trigger workflows — that is
+  GitHub's own loop guard, not something to work around. It does not matter on `release`, which has
+  no required checks: the code being promoted was already green on `main`, and the release PR only
+  ever touches `CHANGELOG.md`, the root `version`, and the manifest.
+- **On `main` it does matter**, because `main` requires `check-types, lint, test` and
+  `conventional commit`. A branch you push yourself is fine — your push triggers CI and the auto-PR
+  inherits the result. Setting an `AUTOMATION_TOKEN` secret (a PAT or GitHub App token) makes the
+  automated PRs trigger CI like any other; every workflow already prefers it and falls back to
+  `GITHUB_TOKEN`. Until then, a repository admin can merge past a missing check.
 
-`main` is expected to be green when a tag is cut, and the thing that guarantees that is **branch
+`main` is expected to be green when it is promoted, and the thing that guarantees that is **branch
 protection requiring the `check-types, lint, test` and `conventional commit` checks** — not the
 release workflow, which cannot wait on a run in another workflow.
 

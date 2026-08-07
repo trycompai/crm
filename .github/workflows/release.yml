@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [release]
   workflow_dispatch:
 
 concurrency:
@@ -18,39 +18,23 @@ jobs:
     name: Release pull request, tag and notes
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    outputs:
-      released: ${{ steps.release.outputs.release_created }}
-      tag: ${{ steps.release.outputs.tag_name }}
-      sha: ${{ steps.release.outputs.sha }}
-      url: ${{ steps.release.outputs.html_url }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
-          target-branch: main
+          target-branch: release
           token: ${{ secrets.AUTOMATION_TOKEN || secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
-  promote:
-    name: Fast-forward release
-    needs: release-please
-    if: needs.release-please.outputs.released == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Move release to ${{ needs.release-please.outputs.tag }}
+      - name: Say what happened
         env:
-          SHA: ${{ needs.release-please.outputs.sha }}
-          TAG: ${{ needs.release-please.outputs.tag }}
-          URL: ${{ needs.release-please.outputs.url }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+          URL: ${{ steps.release.outputs.html_url }}
         run: |
           set -euo pipefail
-          git push origin "$SHA:refs/heads/release"
-          echo "\`release\` now points at [$TAG]($URL)." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TAG:-}" ]; then
+            echo "Released [$TAG]($URL)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No tag this run — either the release pull request is still open, or nothing releasable landed." >> "$GITHUB_STEP_SUMMARY"
+          fi

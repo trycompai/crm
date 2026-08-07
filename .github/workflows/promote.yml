@@ -1,0 +1,57 @@
+name: Promote
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  promote:
+    name: Pull request from main into release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Open or update the promotion pull request
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "$(git rev-list --count origin/release..origin/main)" = "0" ]; then
+            echo "\`release\` already has everything on \`main\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          Everything on \`main\` that \`release\` does not have yet. Merging this ships it: the
+          commits below land on \`release\`, and release-please then opens a \`chore(release)\` pull
+          request that writes the changelog, bumps the version and cuts the tag.
+
+          Merge it with a **merge commit**, not a squash — release-please reads these subjects to
+          work out the version, and a squash would flatten them into one.
+
+          $(git log origin/release..origin/main --no-merges --reverse --format='- %s')
+          EOF
+          )
+
+          existing=$(gh pr list --base release --head main --state open --limit 1 --json number --jq '.[0].number // ""')
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body "$body"
+            echo "Updated promotion pull request #$existing." >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base release --head main --title "release: promote main" --body "$body"
+            echo "Opened a promotion pull request into \`release\`." >> "$GITHUB_STEP_SUMMARY"
+          fi

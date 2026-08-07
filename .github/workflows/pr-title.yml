@@ -3,6 +3,7 @@ name: PR title
 on:
   pull_request:
     types: [opened, edited, reopened, ready_for_review, synchronize]
+    branches: [main]
 
 concurrency:
   group: pr-title-${{ github.event.pull_request.number }}
