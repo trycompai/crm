@@ -41,6 +41,17 @@ bun run test
 
 All three run on CI, and `bun run format` fixes most of what `lint` complains about.
 
+**A `pre-push` hook runs them for you**, so a push that would fail CI fails on your machine
+instead, where the feedback is in seconds rather than minutes. `bun install` wires it up — the
+hooks live in `.githooks/` and `prepare` points `core.hooksPath` at them, so there is nothing to
+install and no hook manager in the dependency tree. Turbo caches, so a second push that changed
+nothing relevant is nearly free.
+
+It needs the Postgres from `docker compose up -d`, because the API and telemetry tests are real
+integration tests. When you need to push past it — a WIP branch, a docker-less machine, a red test
+you are deliberately pushing to ask about — `git push --no-verify` skips it, and `CRM_SKIP_HOOKS=1`
+skips it for a whole shell.
+
 A few things that trip people up:
 
 - **The tRPC router type is generated, and committed.** If the app can't see a procedure you just
