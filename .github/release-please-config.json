@@ -25,7 +25,6 @@
 		}
 	},
 	"bootstrap-sha": "64f154b086cbad6cac232357dc21c954543ef217",
-	"separate-pull-requests": false,
-	"pull-request-title-pattern": "chore(release): ${version}",
+	"separate-pull-requests": true,
 	"pull-request-header": "The changelog below is what will be published as the release notes. Edit the commit subjects, not this PR body — the body is regenerated on every push to main. Merge this before the promotion pull request, so the tag lands on the commit `release` receives."
 }
