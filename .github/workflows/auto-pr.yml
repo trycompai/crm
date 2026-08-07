@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   open:
-    name: Open a draft pull request into main
+    name: Open a pull request into main
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -51,12 +51,12 @@ jobs:
           body=$(cat <<EOF
           Opened automatically when \`$BRANCH\` was pushed.
 
-          The title was written from the diff, and rewritten from the finished diff when you mark this ready for review. Edit it if you can say it better — a title that is already a [Conventional Commit](https://www.conventionalcommits.org/) is left alone.
+          The title is written from the diff and rewritten as you push, because this is squashed onto \`main\` and the title becomes the commit subject and the changelog line. Retitle it yourself and it is yours — the automation stops touching it.
 
-          It matters because this pull request is squashed onto \`main\`: **the title becomes the commit subject and the changelog line**, and the type decides the version bump — \`feat\` is a minor, \`fix\` / \`perf\` / \`refactor\` / \`docs\` are a patch, a trailing \`!\` is a major, and \`chore\` / \`ci\` / \`test\` / \`build\` / \`style\` release nothing at all.
+          <!-- pr-title: $title -->
           EOF
           )
 
-          gh pr create --draft --base main --head "$BRANCH" --title "$title" --body "$body"
+          gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
 
-          echo "Opened a draft pull request for \`$BRANCH\` titled \`$title\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Opened a pull request for \`$BRANCH\` titled \`$title\`." >> "$GITHUB_STEP_SUMMARY"
