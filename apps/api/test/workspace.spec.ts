@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { isWorkspaceEmail } from "@crm/auth/workspace";
-import { externalParticipants } from "../src/google/participants";
+import { externalParticipants } from "../src/mailbox/participants";
 
 beforeEach(() => {
 	process.env.ALLOWED_SIGN_IN = "acme.com";

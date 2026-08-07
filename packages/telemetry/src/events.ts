@@ -3,6 +3,7 @@ import {
 	permittedErrorClass,
 	permittedModelId,
 	permittedRoute,
+	permittedSyncErrorSource,
 	permittedSyncSource,
 	permittedTaskKind,
 	permittedTool,
@@ -80,7 +81,7 @@ export function agentError(input: {
 export function syncError(input: { error: unknown; source: string }): void {
 	capture(SYNC_ERROR, {
 		error_class: permittedErrorClass(input.error),
-		error_source: "google_sync",
+		error_source: permittedSyncErrorSource(input.source),
 		sync_source: permittedSyncSource(input.source),
 	});
 }
