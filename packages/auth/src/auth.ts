@@ -7,7 +7,12 @@ import { organization } from "better-auth/plugins/organization";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
 import { ensureWorkspaceMembership } from "./organization";
-import { SYNC_SCOPES } from "./scopes";
+import {
+	GOOGLE_PROVIDER_ID,
+	MICROSOFT_PROVIDER_ID,
+	MICROSOFT_SYNC_SCOPES,
+	SYNC_SCOPES,
+} from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import {
 	hasSignInAllowList,
@@ -29,6 +34,24 @@ if (env.google) {
 	};
 }
 
+if (env.microsoft) {
+	socialProviders.microsoft = {
+		clientId: env.microsoft.clientId,
+		clientSecret: env.microsoft.clientSecret,
+		tenantId: env.microsoft.tenantId,
+
+		scope: [...MICROSOFT_SYNC_SCOPES],
+
+		prompt: "select_account",
+
+		disableProfilePhoto: true,
+
+		mapProfileToUser: (profile) => ({
+			email: profile.email ?? profile.preferred_username ?? profile.upn,
+		}),
+	};
+}
+
 export const auth = betterAuth({
 	appName: "CRM",
 
@@ -45,7 +68,7 @@ export const auth = betterAuth({
 	account: {
 		accountLinking: {
 			enabled: true,
-			trustedProviders: ["google"],
+			trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID],
 		},
 	},
 

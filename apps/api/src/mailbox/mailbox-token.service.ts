@@ -1,12 +1,18 @@
-import { auth, type SignInAccount } from "@crm/auth";
+import {
+	auth,
+	type MailboxProviderId,
+	parseScopes,
+	type SignInAccount,
+} from "@crm/auth";
 import { type Db } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	GOOGLE_PROVIDER_ID,
+	PROVIDER_FOR_SOURCE,
 	SCOPE_FOR_SOURCE,
 	type SyncSource,
-} from "./google.constants";
+} from "./mailbox.constants";
 
 export type TokenFailure =
 	| { outcome: "needs-reconnect"; reason: string }
@@ -14,29 +20,32 @@ export type TokenFailure =
 
 export type TokenResult = { outcome: "ok"; accessToken: string } | TokenFailure;
 
+const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+
 @Injectable()
-export class GoogleTokenService {
-	private readonly logger = new Logger(GoogleTokenService.name);
+export class MailboxTokenService {
+	private readonly logger = new Logger(MailboxTokenService.name);
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async grantedScopes(userId: string): Promise<string[]> {
+	async grantedScopes(
+		userId: string,
+		providerId: MailboxProviderId,
+	): Promise<Set<string>> {
 		const account = await this.db.account.findFirst({
-			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+			where: { userId, providerId },
 			select: { scope: true },
 		});
 
-		return (
-			account?.scope
-				?.split(",")
-				.map((scope) => scope.trim())
-				.filter(Boolean) ?? []
-		);
+		return parseScopes(account?.scope);
 	}
 
 	async isConnected(userId: string, source: SyncSource): Promise<boolean> {
-		const scopes = await this.grantedScopes(userId);
-		return scopes.includes(SCOPE_FOR_SOURCE[source]);
+		const scopes = await this.grantedScopes(
+			userId,
+			PROVIDER_FOR_SOURCE[source],
+		);
+		return scopes.has(SCOPE_FOR_SOURCE[source]);
 	}
 
 	async signInAccounts(userId: string): Promise<SignInAccount[]> {
@@ -46,9 +55,12 @@ export class GoogleTokenService {
 		});
 	}
 
-	async hasRefreshToken(userId: string): Promise<boolean> {
+	async hasRefreshToken(
+		userId: string,
+		providerId: MailboxProviderId,
+	): Promise<boolean> {
 		const account = await this.db.account.findFirst({
-			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+			where: { userId, providerId },
 			select: { refreshToken: true },
 		});
 
@@ -59,6 +71,8 @@ export class GoogleTokenService {
 		userId: string,
 		source: SyncSource,
 	): Promise<TokenResult> {
+		const providerId = PROVIDER_FOR_SOURCE[source];
+
 		if (!(await this.isConnected(userId, source))) {
 			return {
 				outcome: "not-connected",
@@ -68,58 +82,64 @@ export class GoogleTokenService {
 
 		try {
 			const { accessToken } = await auth.api.getAccessToken({
-				body: { providerId: GOOGLE_PROVIDER_ID, userId },
+				body: { providerId, userId },
 			});
 
 			if (!accessToken) {
 				return {
 					outcome: "needs-reconnect",
-					reason: "Google returned no access token.",
+					reason: `${label(providerId)} returned no access token.`,
 				};
 			}
 
 			return { outcome: "ok", accessToken };
 		} catch (error) {
 			this.logger.warn({
-				message: "Google token refresh failed",
+				message: "Mailbox token refresh failed",
 				userId,
+				providerId,
 				source,
 				reason: error instanceof Error ? error.message : String(error),
 			});
 
 			return {
 				outcome: "needs-reconnect",
-				reason: "Google would not refresh the access token.",
+				reason: `${label(providerId)} would not refresh the access token.`,
 			};
 		}
 	}
 
-	async revoke(userId: string): Promise<boolean> {
+	async revoke(
+		userId: string,
+		providerId: MailboxProviderId,
+	): Promise<boolean> {
 		const account = await this.db.account.findFirst({
-			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+			where: { userId, providerId },
 			select: { refreshToken: true, accessToken: true },
 		});
 
 		const token = account?.refreshToken ?? account?.accessToken;
 		if (!token) return false;
 
-		const response = await fetch("https://oauth2.googleapis.com/revoke", {
-			method: "POST",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
-			body: new URLSearchParams({ token }),
-		});
-
-		if (!response.ok) {
-			this.logger.warn({
-				message: "Google token revocation failed",
-				userId,
-				status: response.status,
+		if (providerId === GOOGLE_PROVIDER_ID) {
+			const response = await fetch(GOOGLE_REVOKE_URL, {
+				method: "POST",
+				headers: { "content-type": "application/x-www-form-urlencoded" },
+				body: new URLSearchParams({ token }),
 			});
-			return false;
+
+			if (!response.ok) {
+				this.logger.warn({
+					message: "Google token revocation failed",
+					userId,
+					status: response.status,
+				});
+				return false;
+			}
 		}
 
 		await this.db.account.updateMany({
-			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+			where: { userId, providerId },
 			data: {
 				accessToken: null,
 				refreshToken: null,
@@ -129,7 +149,11 @@ export class GoogleTokenService {
 			},
 		});
 
-		this.logger.log({ message: "Google access revoked", userId });
+		this.logger.log({ message: "Mailbox access revoked", userId, providerId });
 		return true;
 	}
+}
+
+function label(providerId: MailboxProviderId): string {
+	return providerId === GOOGLE_PROVIDER_ID ? "Google" : "Microsoft";
 }

@@ -1,6 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import { GoogleApiClient, type GoogleResult } from "./google-api.client";
-import type { GmailPart } from "./mime";
+import {
+	MailboxApiClient,
+	type MailboxResult,
+} from "../mailbox/mailbox-api.client";
+import type { GmailPart } from "./gmail-mime";
 
 const BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -39,9 +42,9 @@ export const WORK_MAIL_QUERY =
 
 @Injectable()
 export class GmailClient {
-	constructor(private readonly api: GoogleApiClient) {}
+	constructor(private readonly api: MailboxApiClient) {}
 
-	async profile(accessToken: string): Promise<GoogleResult<Profile>> {
+	async profile(accessToken: string): Promise<MailboxResult<Profile>> {
 		return this.api.get<Profile>(`${BASE}/profile`, accessToken);
 	}
 
@@ -53,7 +56,7 @@ export class GmailClient {
 			pageToken?: string;
 			maxResults?: number;
 		},
-	): Promise<GoogleResult<MessageList>> {
+	): Promise<MailboxResult<MessageList>> {
 		const after = Math.floor(options.after.getTime() / 1000);
 		const before = Math.ceil(options.before.getTime() / 1000);
 
@@ -67,7 +70,7 @@ export class GmailClient {
 	async listHistory(
 		accessToken: string,
 		options: { startHistoryId: string; pageToken?: string },
-	): Promise<GoogleResult<HistoryList>> {
+	): Promise<MailboxResult<HistoryList>> {
 		return this.api.get<HistoryList>(`${BASE}/history`, accessToken, {
 			startHistoryId: options.startHistoryId,
 			historyTypes: "messageAdded",
@@ -79,7 +82,7 @@ export class GmailClient {
 	async getMessage(
 		accessToken: string,
 		id: string,
-	): Promise<GoogleResult<GmailMessage>> {
+	): Promise<MailboxResult<GmailMessage>> {
 		return this.api.get<GmailMessage>(`${BASE}/messages/${id}`, accessToken, {
 			format: "full",
 		});

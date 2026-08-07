@@ -653,9 +653,11 @@ model EmailMessage {
   threadId String
   thread   EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  rfcMessageId   String  @unique
-  syncedByUserId String?
-  gmailMessageId String?
+  rfcMessageId     String  @unique
+  syncedByUserId   String?
+  gmailMessageId   String?
+  outlookMessageId String?
+  outlookWebLink   String?
 
   direction  EmailDirection
   fromEmail  String

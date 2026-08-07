@@ -5,7 +5,7 @@ import { AppIconRail, AppIconRailFallback } from "@/components/app-icon-rail";
 import { QuickSwitcher } from "@/components/crm/quick-switcher";
 import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host";
 import { MobileNavProvider } from "@/components/mobile-nav";
-import { requireGoogleAccess } from "@/lib/session";
+import { requireMailboxAccess } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
@@ -43,7 +43,7 @@ async function WorkspaceHeader({
 	params,
 }: Pick<LayoutProps<"/[slug]">, "params">) {
 	const [{ user }, { slug }] = await Promise.all([
-		requireGoogleAccess(),
+		requireMailboxAccess(),
 		params,
 	]);
 

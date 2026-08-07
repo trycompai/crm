@@ -1,15 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import {
-	decodeBase64Url,
 	type GmailPart,
 	header,
-	normaliseMessageId,
 	plainTextBody,
 	rootMessageId,
+} from "../src/google/gmail-mime";
+import {
+	decodeBase64Url,
+	normaliseMessageId,
+	rootMessageIdFrom,
 	snippetOf,
 	stripHtml,
 	stripQuotedHistory,
-} from "../src/google/mime";
+} from "../src/mailbox/message-text";
 
 const encode = (text: string): string =>
 	Buffer.from(text, "utf8")
@@ -184,6 +187,40 @@ describe("rootMessageId", () => {
 		];
 
 		expect(rootMessageId(repA)).toBe(rootMessageId(repB));
+	});
+});
+
+describe("rootMessageIdFrom", () => {
+	it("gives a Gmail copy and an Outlook copy of one thread the same root", () => {
+		const viaGmailHeaders = rootMessageId([
+			{ name: "References", value: "<root@acme.com> <second@acme.com>" },
+			{ name: "Message-ID", value: "<third@trycomp.ai>" },
+		]);
+
+		const viaGraphFields = rootMessageIdFrom({
+			references: "<root@acme.com> <second@acme.com>",
+			inReplyTo: "<second@acme.com>",
+			messageId: "<fourth@trycomp.ai>",
+		});
+
+		expect(viaGraphFields).toBe("root@acme.com");
+		expect(viaGraphFields).toBe(viaGmailHeaders);
+	});
+
+	it("falls back to its own id when Graph returned no headers at all", () => {
+		expect(
+			rootMessageIdFrom({
+				references: null,
+				inReplyTo: null,
+				messageId: "<only@acme.com>",
+			}),
+		).toBe("only@acme.com");
+	});
+
+	it("is null when there is nothing to thread on", () => {
+		expect(
+			rootMessageIdFrom({ references: null, inReplyTo: null, messageId: null }),
+		).toBeNull();
 	});
 });
 

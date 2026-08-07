@@ -5,7 +5,7 @@ import {
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
-import type { SyncSource } from "./google.constants";
+import type { SyncSource } from "./mailbox.constants";
 
 @Injectable()
 export class SyncStateService {
@@ -19,8 +19,13 @@ export class SyncStateService {
 		});
 	}
 
-	async listForUser(userId: string): Promise<MailboxSync[]> {
-		return this.db.mailboxSync.findMany({ where: { userId } });
+	async listForUser(
+		userId: string,
+		sources?: readonly SyncSource[],
+	): Promise<MailboxSync[]> {
+		return this.db.mailboxSync.findMany({
+			where: { userId, ...(sources ? { source: { in: [...sources] } } : {}) },
+		});
 	}
 
 	async due(now: Date): Promise<MailboxSync[]> {
