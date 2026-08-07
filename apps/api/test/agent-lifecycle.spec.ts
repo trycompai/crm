@@ -198,6 +198,47 @@ describe("agent lifecycle", () => {
 			}),
 		).toBe(0);
 		await db.agentDefinition.delete({ where: { id: agentId } });
+
+		const reverse = await createAgent();
+		const reverseVersionId = reverse.versions[0]?.id;
+		if (!reverseVersionId) throw new Error("Missing reverse version");
+		const reverseConversation = await db.agentConversation.create({
+			data: { kind: "BUILDER", userId },
+			select: { id: true },
+		});
+		const reverseShared = await db.agentBuilderArtifact.create({
+			data: {
+				conversationId: reverseConversation.id,
+				versionId: reverseVersionId,
+				path: "agent/reverse-shared.ts",
+				language: "typescript",
+				content: "reverse shared",
+				revision: 1,
+			},
+			select: { id: true },
+		});
+
+		await db.agentVersion.delete({ where: { id: reverseVersionId } });
+
+		expect(
+			await db.agentBuilderArtifact.findUnique({
+				where: { id: reverseShared.id },
+			}),
+		).toMatchObject({
+			conversationId: reverseConversation.id,
+			versionId: null,
+		});
+
+		await db.agentConversation.delete({
+			where: { id: reverseConversation.id },
+		});
+
+		expect(
+			await db.agentBuilderArtifact.findUnique({
+				where: { id: reverseShared.id },
+			}),
+		).toBeNull();
+		await db.agentDefinition.delete({ where: { id: reverse.agentId } });
 	});
 
 	it("returns stable private and team contracts while auditing metadata edits", async () => {
