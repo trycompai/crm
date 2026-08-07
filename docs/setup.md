@@ -16,6 +16,14 @@ bun run dev                 # app :3000, api :3001, agent :2000
 Prisma from the repo root: `db:generate`, `db:migrate`, `db:push`, `db:reset`,
 `db:seed`, `db:studio`, `db:deploy`.
 
+`dev` depends on `^dev:prepare`, so every start applies pending migrations and
+regenerates the Prisma client before a single server boots. That is why the first
+run needs `db:migrate` only for the seed that follows it. When the database and
+`schema.prisma` have diverged past what `migrate deploy` can reconcile,
+`dev:prepare` stops the whole run rather than starting servers against a schema
+they do not match — reconcile with `db:migrate`, or `db:reset` when the divergence
+is an edited migration that has already been applied.
+
 ## Google Cloud
 
 - **Enable the Gmail API and the Google Calendar API** on the project.
@@ -45,9 +53,12 @@ inventory, including a `diagnostics` count that finds files eve silently ignored
 
 The agent package's default `dev` command is interactive `eve dev`. The root
 Turbo task marks it interactive, so select the agent pane and press Enter before
-using the eve TUI. Run `bun run --filter=agent dev:headless` when a terminal
+using the eve TUI. Run `turbo run dev:headless --filter=agent` when a terminal
 cannot render the TUI; that uses `eve dev --no-ui`, and the Turbo pane is the
 record because only interactive development writes `.eve/logs/` for `eve logs`.
+Reach for the Turbo task rather than `bun run --filter=agent dev:headless`: the
+package script alone skips `dev:prepare`, so the agent would start against
+unmigrated tables.
 
 `hooks/activity.ts` is the replacement narration, **to stderr** (the TUI hides
 stdout), printing shape everywhere and argument contents outside production only. It
