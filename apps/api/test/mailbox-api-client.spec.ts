@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { GoogleApiClient } from "../src/google/google-api.client";
+import { MailboxApiClient } from "../src/mailbox/mailbox-api.client";
 
 const realFetch = globalThis.fetch;
 
@@ -19,10 +19,10 @@ function stub(
 		})) as unknown as typeof fetch;
 }
 
-const client = new GoogleApiClient();
+const client = new MailboxApiClient();
 const call = () => client.get<unknown>("https://example.test/x", "token");
 
-describe("GoogleApiClient", () => {
+describe("MailboxApiClient", () => {
 	it("returns the payload on success", async () => {
 		stub(200, { ok: true });
 		expect(await call()).toEqual({ outcome: "ok", data: { ok: true } });

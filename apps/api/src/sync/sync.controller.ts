@@ -10,7 +10,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
-import { GoogleSyncService } from "./google-sync.service";
+import { MailboxSyncService } from "./mailbox-sync.service";
 
 @Controller("internal/sync")
 export class SyncController {
@@ -18,25 +18,37 @@ export class SyncController {
 	private readonly secret: string | undefined;
 
 	constructor(
-		private readonly sync: GoogleSyncService,
+		private readonly sync: MailboxSyncService,
 		config: ConfigService<EnvironmentVariables, true>,
 	) {
 		this.secret = config.get("CRON_SECRET", { infer: true });
 	}
 
+	@Get("mailboxes")
+	@AllowAnonymous()
+	async mailboxesViaGet(@Headers("authorization") authorization?: string) {
+		return this.run(authorization);
+	}
+
+	@Post("mailboxes")
+	@AllowAnonymous()
+	async mailboxesViaPost(@Headers("authorization") authorization?: string) {
+		return this.run(authorization);
+	}
+
 	@Get("google")
 	@AllowAnonymous()
 	async googleViaGet(@Headers("authorization") authorization?: string) {
-		return this.google(authorization);
+		return this.run(authorization);
 	}
 
 	@Post("google")
 	@AllowAnonymous()
 	async googleViaPost(@Headers("authorization") authorization?: string) {
-		return this.google(authorization);
+		return this.run(authorization);
 	}
 
-	private async google(authorization?: string) {
+	private async run(authorization?: string) {
 		if (!this.secret) {
 			this.logger.error({
 				message: "CRON_SECRET is not set — refusing to run the sync route.",

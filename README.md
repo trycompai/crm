@@ -149,9 +149,9 @@ A [Turborepo](https://turborepo.dev) monorepo on [Bun](https://bun.com), deploye
 | **Model** | [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) — no provider SDK, and OIDC on Vercel means no key to manage |
 | **Sandbox** | [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) in production, Docker or microsandbox locally |
 | **Front end** | [Next.js](https://nextjs.org) App Router · [shadcn/ui](https://ui.shadcn.com) · [nuqs](https://nuqs.dev) for URL state |
-| **API** | [NestJS](https://nestjs.com) with [nestjs-trpc](https://nestjs-trpc.io) — HTTP, auth, tRPC, Google sync |
+| **API** | [NestJS](https://nestjs.com) with [nestjs-trpc](https://nestjs-trpc.io) — HTTP, auth, tRPC, mailbox sync |
 | **Data** | [Prisma](https://prisma.io) · Postgres ([Neon](https://neon.tech)) · optional Redis ([Upstash](https://upstash.com)) |
-| **Auth** | [Better Auth](https://better-auth.com), Google-only, one allow-list |
+| **Auth** | [Better Auth](https://better-auth.com) — Google, Microsoft, or your own IdP; one allow-list |
 | **Files** | [Vercel Blob](https://vercel.com/docs/vercel-blob) — mirrors profile pictures so they survive the source going away |
 | **Tooling** | [Biome](https://biomejs.dev) · TypeScript everywhere |
 
@@ -166,7 +166,7 @@ reproduces the view.
 | --- | --- |
 | `apps/agent` | The research agent — tools, skills, schedules, sandbox |
 | `apps/app` | Next.js front end · :3000 |
-| `apps/api` | NestJS API — HTTP, auth, tRPC, Google sync · :3001 |
+| `apps/api` | NestJS API — HTTP, auth, tRPC, mailbox sync · :3001 |
 | `packages/db` | Prisma schema, migrations, shared Postgres client |
 | `packages/auth` | Better Auth config and the sign-in allow-list |
 | `packages/ui` | shadcn/ui components, the Tailwind theme |
@@ -191,7 +191,7 @@ You need [Bun](https://bun.com) and Docker.
 
 ```sh
 git clone https://github.com/trycompai/crm.git && cd crm
-cp .env.example .env          # then fill in the four values below
+cp .env.example .env          # then fill in the values below
 bun install
 
 docker compose up -d          # Postgres on :5432
@@ -204,7 +204,12 @@ bun run dev
 The app is on [localhost:3000](http://localhost:3000), the API on
 [localhost:3001](http://localhost:3001).
 
-### The four values
+That clone gives you `release`, the default branch and the last tagged release — what you
+want if you are running this. `main` is where unreleased work lands: green, but not cut
+yet. If you are here to send a pull request, `git switch main` first and read
+[CONTRIBUTING](./CONTRIBUTING.md).
+
+### The values to set
 
 Open `.env` and set these. Everything else in the file is optional and commented out.
 
@@ -213,6 +218,11 @@ Open `.env` and set these. Everything else in the file is optional and commented
 | `BETTER_AUTH_SECRET`                       | `openssl rand -base64 32`                                             |
 | `ALLOWED_SIGN_IN`                          | Your email domain, e.g. `acme.com`. Or one address, e.g. `you@gmail.com`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below. Both or neither.             |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | A Microsoft Entra app registration — below. Both or neither. |
+
+**Pick at least one of Google and Microsoft**, or add your own identity provider on
+**Settings → SSO** once you are in. Setting both is fine and common: the sign-in page
+offers both buttons, and each rep's mail is read from whichever they signed in with.
 
 `DATABASE_URL` already matches the `docker compose` Postgres, so leave it alone unless
 you brought your own.
@@ -226,12 +236,52 @@ you brought your own.
 4. Copy the client ID and secret into `.env`.
 
 Google is the sign-in method a clone starts with, and the same client reads Gmail and
-Calendar — so almost every install wants it. It is nonetheless the one of the four that
-the API will still boot without: an install that signs in through its own identity
-provider, added on **Settings → SSO**, leaves both empty and gets no Google button and
-no mail sync. Set them together or not at all; half a pair is a button that fails at
-Google. If your account is on a Google Workspace domain, set the consent screen to
-**Internal** and nobody outside your org can even reach the prompt.
+Calendar — so most installs want it. The API will nonetheless boot without it: an
+install that signs in with Microsoft, or through its own identity provider added on
+**Settings → SSO**, leaves both empty and gets no Google button and no Gmail sync. Set
+them together or not at all; half a pair is a button that fails at Google. If your
+account is on a Google Workspace domain, set the consent screen to **Internal** and
+nobody outside your org can even reach the prompt.
+
+</details>
+
+<details>
+<summary><strong>Getting the Microsoft app registration</strong></summary>
+
+1. [Azure portal](https://portal.azure.com) → **Microsoft Entra ID** → **App
+   registrations** → **New registration**. Microsoft's own walkthrough is
+   [Register an application](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app#register-an-application).
+2. Under **Supported account types**, pick **Accounts in this organizational directory
+   only** if everyone signing in is on your tenant. Anything wider is fine too —
+   `ALLOWED_SIGN_IN` still decides who gets an account — but the narrow choice turns
+   outsiders away at Microsoft rather than at our door.
+3. Set the **Redirect URI** to **Web** and
+   `http://localhost:3001/api/auth/callback/microsoft`. In production this is
+   `https://<your-api-host>/api/auth/callback/microsoft` — the API's origin, not the
+   app's, because the API is what serves `/api/auth/*`.
+4. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated
+   permissions** → tick **User.Read** and **Mail.Read**. `offline_access` is requested
+   at sign-in and needs no entry here. If your tenant requires admin consent, click
+   **Grant admin consent** so reps are not each asked.
+5. **Certificates & secrets** → **New client secret**. Copy the **Value**, not the
+   Secret ID — the value is shown once and never again.
+6. **Overview** → copy the **Application (client) ID**.
+7. Put the two into `.env` as `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`.
+
+`Mail.Read` is read-only: the CRM can list and read messages and can never send,
+reply, move or delete. Reading is forward-only — the first check records the current
+time and imports nothing, so connecting an old mailbox does not dump years of mail into
+the CRM.
+
+To refuse other tenants at Microsoft rather than relying on `ALLOWED_SIGN_IN`, set
+`MICROSOFT_TENANT_ID` to your tenant's GUID (**Overview** → **Directory (tenant) ID**).
+It defaults to `common`, which accepts any work, school or personal Microsoft account
+and leaves the allow-list to sort them out. `organizations` is the middle setting: any
+work or school account, no personal ones.
+
+Microsoft client secrets expire — 24 months at most, and 6 months by default. Note the
+expiry somewhere, because the symptom of a lapsed one is every rep's mail quietly
+failing to sync.
 
 </details>
 
@@ -251,7 +301,7 @@ ALLOWED_SIGN_IN="you@gmail.com"                  # a one-person install
 environment variables always win, so on a hosting platform you configure it there and
 the file is purely a local convenience.
 
-Beyond the four values above, everything is optional and the app runs without any
+Beyond the values above, everything is optional and the app runs without any
 of it. [`.env.example`](./.env.example) is the full list with a note on each; the
 short version:
 
@@ -262,7 +312,7 @@ short version:
 | `RAPIDAPI_KEY` | Lets the agent read LinkedIn profiles for identity. |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
 | `REDIS_URL` | A shared cache. Without it, per-instance and in-memory. |
-| `CRON_SECRET` | Guards the Gmail/Calendar sync route. Required to use it. |
+| `CRON_SECRET` | Guards the mailbox sync route. Required to use it. |
 | `CRM_TELEMETRY_DISABLED` | Set to `1` and this install reports nothing. `DO_NOT_TRACK` too. |
 
 ## Tasks
@@ -282,7 +332,7 @@ short version:
 
 Scope any of them with a Turborepo filter: `bun run dev --filter=api`.
 
-Because Google is the only door, there is no way to get a session from a terminal —
+Because sign-in goes through an identity provider, there is no way to get a session from a terminal —
 `dev:session` writes the rows Better Auth would have written and prints the cookie it
 would have set. It refuses to run with `NODE_ENV=production`.
 
@@ -295,9 +345,10 @@ mismatch is a redirect loop rather than an error.
 
 Set `API_URL` and `APP_URL` to the real origins, and if the two are on different
 subdomains of one parent, set `AUTH_COOKIE_DOMAIN` to the parent so one cookie covers
-both. Add `http://your-api-host/api/auth/callback/google` to the OAuth client's
+both. Add `http://your-api-host/api/auth/callback/google` — and, if you use Microsoft,
+`http://your-api-host/api/auth/callback/microsoft` — to the provider's
 redirect URIs. Set `CRON_SECRET` and point a scheduler at
-`POST /internal/sync/google` to keep the mailbox sync running.
+`POST /internal/sync/mailboxes` to keep the mailbox sync running.
 
 `apps/api/src/generated/server.ts` is committed and `build` must never regenerate it —
 the generator needs a newer GLIBC than most build images have. Regenerate locally and

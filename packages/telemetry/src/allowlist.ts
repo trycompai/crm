@@ -220,12 +220,32 @@ export function permittedTaskKind(kind: string | null | undefined): string {
 	return kind && TASK_KIND_SET.has(kind) ? kind : OTHER;
 }
 
-export const SYNC_SOURCES = ["gmail", "calendar"] as const;
+export const SYNC_SOURCES = ["gmail", "calendar", "outlook"] as const;
+
+export type TelemetrySyncSource = (typeof SYNC_SOURCES)[number];
 
 const SYNC_SOURCE_SET = new Set<string>(SYNC_SOURCES);
 
 export function permittedSyncSource(source: string | null | undefined): string {
 	return source && SYNC_SOURCE_SET.has(source) ? source : OTHER;
+}
+
+const MAILBOX_SYNC = "mailbox_sync";
+
+const SYNC_ERROR_SOURCES: Record<TelemetrySyncSource, string> = {
+	gmail: "google_sync",
+	calendar: "google_sync",
+	outlook: "microsoft_sync",
+};
+
+export function permittedSyncErrorSource(
+	source: string | null | undefined,
+): string {
+	const name = permittedSyncSource(source);
+
+	return name === OTHER
+		? MAILBOX_SYNC
+		: SYNC_ERROR_SOURCES[name as TelemetrySyncSource];
 }
 
 const ROUTE_SHAPE = /^\/[A-Za-z0-9/_:.*-]*$/;

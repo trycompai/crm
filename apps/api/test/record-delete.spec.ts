@@ -10,7 +10,7 @@ import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { EnrichmentLogService } from "../src/crm/enrichment-log.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { FieldsService } from "../src/fields/fields.service";
-import { GoogleMatchService } from "../src/google/google-match.service";
+import { MailboxMatchService } from "../src/mailbox/mailbox-match.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "record-delete-spec";
 const domain = `delete-${suffix}.test`;
@@ -52,7 +52,7 @@ const companies = new CompaniesService(
 	conversion,
 	fields,
 );
-const match = new GoogleMatchService(db, directory, agent, log);
+const match = new MailboxMatchService(db, directory, agent, log);
 
 async function matchContext() {
 	const internal = await match.internalIdentity();
