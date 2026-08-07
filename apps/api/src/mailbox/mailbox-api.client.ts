@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 
-export type GoogleResult<T> =
+export type MailboxResult<T> =
 	| { outcome: "ok"; data: T }
 	| { outcome: "cursor-invalid"; reason: string }
 	| { outcome: "unauthorized"; reason: string }
@@ -13,14 +13,14 @@ const MIN_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
 
 @Injectable()
-export class GoogleApiClient {
-	private readonly logger = new Logger(GoogleApiClient.name);
+export class MailboxApiClient {
+	private readonly logger = new Logger(MailboxApiClient.name);
 
 	async get<T>(
 		url: string,
 		accessToken: string,
 		params: Record<string, string | number | boolean | undefined> = {},
-	): Promise<GoogleResult<T>> {
+	): Promise<MailboxResult<T>> {
 		const target = new URL(url);
 		for (const [key, value] of Object.entries(params)) {
 			if (value !== undefined) target.searchParams.set(key, String(value));
@@ -55,7 +55,7 @@ export class GoogleApiClient {
 	private async interpret<T>(
 		response: Response,
 		path: string,
-	): Promise<GoogleResult<T>> {
+	): Promise<MailboxResult<T>> {
 		if (response.ok) {
 			return { outcome: "ok", data: (await response.json()) as T };
 		}
@@ -90,7 +90,7 @@ export class GoogleApiClient {
 			default: {
 				const retryable = response.status >= 500;
 				this.logger.warn({
-					message: "Google API call failed",
+					message: "Mailbox API call failed",
 					path,
 					status: response.status,
 					retryable,
@@ -113,10 +113,13 @@ export class GoogleApiClient {
 	private async reason(response: Response): Promise<string> {
 		try {
 			const body = (await response.json()) as {
-				error?: { message?: string; status?: string };
+				error?: { message?: string; status?: string; code?: string };
 			};
 			return (
-				body.error?.message ?? body.error?.status ?? `HTTP ${response.status}`
+				body.error?.message ??
+				body.error?.status ??
+				body.error?.code ??
+				`HTTP ${response.status}`
 			);
 		} catch {
 			return `HTTP ${response.status}`;

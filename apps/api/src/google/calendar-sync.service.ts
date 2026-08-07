@@ -10,15 +10,18 @@ import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
 import {
+	MailboxMatchService,
+	type MatchContext,
+} from "../mailbox/mailbox-match.service";
+import { MailboxTokenService } from "../mailbox/mailbox-token.service";
+import { isMachineAddress, type Participant } from "../mailbox/participants";
+import { SyncStateService } from "../mailbox/sync-state.service";
+import {
 	CalendarClient,
 	conferenceUrl,
 	eventTime,
 	type GoogleEvent,
 } from "./calendar.client";
-import { GoogleMatchService, type MatchContext } from "./google-match.service";
-import { GoogleTokenService } from "./google-token.service";
-import { isMachineAddress, type Participant } from "./participants";
-import { SyncStateService } from "./sync-state.service";
 
 const MAX_PAGES_PER_TICK = 5;
 
@@ -40,8 +43,8 @@ export class CalendarSyncService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly calendar: CalendarClient,
-		private readonly tokens: GoogleTokenService,
-		private readonly match: GoogleMatchService,
+		private readonly tokens: MailboxTokenService,
+		private readonly match: MailboxMatchService,
 		private readonly state: SyncStateService,
 		private readonly stamp: ActivityStampService,
 		private readonly agent: AgentTriggerService,

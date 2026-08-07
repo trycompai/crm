@@ -26,6 +26,7 @@ export type CrmCache = {
 	conversationRemoved(id: string): Promise<void>;
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
+	microsoft(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
@@ -217,6 +218,19 @@ export function useCrmCache(): CrmCache {
 		google: (options) =>
 			run(
 				[trpc.google.status.queryKey()],
+				[
+					...activityKeys(),
+					...listKeys(),
+					trpc.companies.byId.queryKey(),
+					trpc.contacts.byId.queryKey(),
+					trpc.dashboard.summary.queryKey(),
+				],
+				options,
+			),
+
+		microsoft: (options) =>
+			run(
+				[trpc.microsoft.status.queryKey()],
 				[
 					...activityKeys(),
 					...listKeys(),
