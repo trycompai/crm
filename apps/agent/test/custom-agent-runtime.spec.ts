@@ -21,7 +21,10 @@ import {
 	builderDraftToolInput,
 	draftInputFromTool,
 } from "../agent/subagents/agent_builder/lib/draft-input";
-import { recordBuilderActions } from "../agent/subagents/agent_builder/lib/execution-state";
+import {
+	finishBuilderDraftSave,
+	recordBuilderActions,
+} from "../agent/subagents/agent_builder/lib/execution-state";
 
 const context = (purpose?: string, commandType?: string) => ({
 	session: {
@@ -223,27 +226,35 @@ describe("agent builder execution guard", () => {
 	it("bounds save attempts and permits only final output after saving", () => {
 		const initial = {
 			turnId: null,
+			stepIndex: null,
 			callIds: [],
+			stepCallIds: [],
 			saveCallIds: [],
+			savePending: false,
 			saved: false,
 		};
-		const first = recordBuilderActions(initial, "turn-1", [
+		const first = recordBuilderActions(initial, "turn-1", 0, [
 			{
 				kind: "tool-call",
 				callId: "save-1",
 				toolName: "save_agent_draft",
 			},
 		]);
-		const second = recordBuilderActions(first, "turn-1", [
-			{
-				kind: "tool-call",
-				callId: "save-2",
-				toolName: "save_agent_draft",
-			},
-		]);
+		const second = recordBuilderActions(
+			finishBuilderDraftSave(first, false),
+			"turn-1",
+			1,
+			[
+				{
+					kind: "tool-call",
+					callId: "save-2",
+					toolName: "save_agent_draft",
+				},
+			],
+		);
 
 		expect(() =>
-			recordBuilderActions(second, "turn-1", [
+			recordBuilderActions(finishBuilderDraftSave(second, false), "turn-1", 2, [
 				{
 					kind: "tool-call",
 					callId: "save-3",
@@ -251,8 +262,10 @@ describe("agent builder execution guard", () => {
 				},
 			]),
 		).toThrow("draft-save budget");
+
+		const saved = finishBuilderDraftSave(first, true);
 		expect(() =>
-			recordBuilderActions({ ...first, saved: true }, "turn-1", [
+			recordBuilderActions(saved, "turn-2", 0, [
 				{
 					kind: "tool-call",
 					callId: "write-1",
@@ -261,7 +274,7 @@ describe("agent builder execution guard", () => {
 			]),
 		).toThrow("already saved");
 		expect(() =>
-			recordBuilderActions({ ...first, saved: true }, "turn-1", [
+			recordBuilderActions(saved, "turn-2", 0, [
 				{
 					kind: "tool-call",
 					callId: "final-1",
@@ -269,6 +282,47 @@ describe("agent builder execution guard", () => {
 				},
 			]),
 		).not.toThrow();
+	});
+
+	it("requires draft saving to run by itself", () => {
+		const initial = {
+			turnId: null,
+			stepIndex: null,
+			callIds: [],
+			stepCallIds: [],
+			saveCallIds: [],
+			savePending: false,
+			saved: false,
+		};
+
+		expect(() =>
+			recordBuilderActions(initial, "turn-1", 0, [
+				{
+					kind: "tool-call",
+					callId: "save-1",
+					toolName: "save_agent_draft",
+				},
+				{
+					kind: "tool-call",
+					callId: "write-1",
+					toolName: "write_agent_file",
+				},
+			]),
+		).toThrow("Wait for save_agent_draft");
+		expect(() =>
+			recordBuilderActions(initial, "turn-1", 0, [
+				{
+					kind: "tool-call",
+					callId: "write-1",
+					toolName: "write_agent_file",
+				},
+				{
+					kind: "tool-call",
+					callId: "save-1",
+					toolName: "save_agent_draft",
+				},
+			]),
+		).toThrow("by itself");
 	});
 });
 
@@ -361,5 +415,47 @@ describe("agent builder draft input", () => {
 				],
 			}).success,
 		).toBe(false);
+	});
+
+	it("trims trigger metadata and rejects blank text", () => {
+		const base = {
+			name: "Renewal prep",
+			description: "Prepare a renewal call brief.",
+			instructions:
+				"Run manually. Read workspace deals and summarize renewal risks for review.",
+			recordScope: "WORKSPACE" as const,
+			resources: [],
+			integrations: [],
+			actions: [
+				{
+					type: "run.summary" as const,
+					provider: "crm" as const,
+					summary: "  Write a reviewable renewal brief  ",
+				},
+			],
+		};
+
+		expect(
+			builderDraftToolInput.safeParse({
+				...base,
+				trigger: {
+					type: "MANUAL",
+					name: "   ",
+					summary: "Run before a renewal call",
+				},
+			}).success,
+		).toBe(false);
+
+		const parsed = builderDraftToolInput.parse({
+			...base,
+			trigger: {
+				type: "MANUAL",
+				name: "  Prepare renewal brief  ",
+				summary: "  Run before a renewal call  ",
+			},
+		});
+		expect(parsed.trigger.name).toBe("Prepare renewal brief");
+		expect(parsed.trigger.summary).toBe("Run before a renewal call");
+		expect(parsed.actions[0]?.summary).toBe("Write a reviewable renewal brief");
 	});
 });

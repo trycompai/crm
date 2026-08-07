@@ -4,7 +4,7 @@ import { requireBuilderAttribute } from "../../../lib/session-purpose";
 import { builderDraftToolInput, draftInputFromTool } from "../lib/draft-input";
 import {
 	assertBuilderDraftOpen,
-	markBuilderDraftSaved,
+	markBuilderDraftSaveFinished,
 } from "../lib/execution-state";
 
 export default defineTool({
@@ -18,7 +18,7 @@ export default defineTool({
 			requireBuilderAttribute(ctx, "userId"),
 			draftInputFromTool(input),
 		);
-		if (result.saved) markBuilderDraftSaved();
+		markBuilderDraftSaveFinished(result.saved);
 		return result;
 	},
 });

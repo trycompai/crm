@@ -220,9 +220,11 @@ delegation paths for custom agents.
 - **Creation requires the current `CREATE_AGENT` turn.** Every builder tool checks the
   purpose and command type in session auth. A normal builder chat cannot create a
   draft by prompt alone.
-- **Builder output is typed.** `needs_input` carries one question and its choices for
-  the parent to surface through eve HITL. `draft_ready` carries the immutable version
-  ids. The specialist cannot ask directly because its `ask_question` is disabled.
+- **Builder clarification is durable HITL.** The specialist calls eve's built-in
+  `ask_question` directly; descendant input requests are proxied to the root channel,
+  and the same child turn resumes when the user answers. The authored
+  `tools/ask_question.ts` disable override must stay absent. Builder task output is
+  typed as `draft_ready` and carries the immutable version ids only after save.
 - **Empty never means all.** A version chooses `SELECTED` or `WORKSPACE` record scope.
   Selected scope requires at least one record tagged in that private conversation;
   workspace scope is an explicit grant and cannot also list selected records.
@@ -244,9 +246,10 @@ delegation paths for custom agents.
   and current run state. Every runner tool also checks the `team-agent` purpose and
   revalidates scope and action permission.
 - **No generic execution surface.** Both specialists disable shell, file, arbitrary
-  web, todo and direct-question built-ins. CRM access exists only through their small
-  authored tool sets. Tool code runs in the trusted app runtime; the sandbox remains
-  isolated and deny-all.
+  web and todo built-ins. The runner also disables direct questions; the builder keeps
+  only `ask_question` for durable clarification. CRM access exists only through their
+  small authored tool sets. Tool code runs in the trusted app runtime; the sandbox
+  remains isolated and deny-all.
 
 Runner manifests fail closed when either the explicit record-scope mode or an
 activity type grant is missing. Versions created before these typed permissions were

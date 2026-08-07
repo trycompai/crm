@@ -9,8 +9,8 @@ const recordResource = z.object({
 
 const trigger = z.object({
 	type: z.enum(["MANUAL", "SCHEDULE"]),
-	name: z.string().min(1).max(120),
-	summary: z.string().min(1).max(240),
+	name: z.string().trim().min(1).max(120),
+	summary: z.string().trim().min(1).max(240),
 	nextRunAt: z.string().nullish(),
 	intervalMinutes: z.number().int().min(1).max(525_600).nullish(),
 });
@@ -19,7 +19,7 @@ const action = z.discriminatedUnion("type", [
 	z.object({
 		type: z.literal("crm.activity.create"),
 		provider: z.literal("crm"),
-		summary: z.string().min(1).max(240),
+		summary: z.string().trim().min(1).max(240),
 		activityTypes: z
 			.array(z.enum(["NOTE", "TASK"]))
 			.min(1)
@@ -28,7 +28,7 @@ const action = z.discriminatedUnion("type", [
 	z.object({
 		type: z.literal("run.summary"),
 		provider: z.literal("crm"),
-		summary: z.string().min(1).max(240),
+		summary: z.string().trim().min(1).max(240),
 	}),
 ]);
 
