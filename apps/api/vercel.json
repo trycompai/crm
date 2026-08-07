@@ -2,7 +2,7 @@
 	"$schema": "https://openapi.vercel.sh/vercel.json",
 	"crons": [
 		{
-			"path": "/internal/sync/google",
+			"path": "/internal/sync/mailboxes",
 			"schedule": "*/5 * * * *"
 		},
 		{

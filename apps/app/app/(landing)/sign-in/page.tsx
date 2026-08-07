@@ -1,17 +1,22 @@
+import type { MailboxProviderId } from "@crm/auth/scopes";
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { Suspense } from "react";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { getSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { GoogleSignIn } from "./google-sign-in";
+import { SocialSignIn } from "./social-sign-in";
 import { type SsoProvider, SsoSignIn } from "./sso-sign-in";
 
 export const metadata: Metadata = {
 	title: "Sign in",
 };
 
-type SignInOptions = { google: boolean; providers: SsoProvider[] };
+type SignInOptions = {
+	google: boolean;
+	microsoft: boolean;
+	providers: SsoProvider[];
+};
 
 async function signInOptions(): Promise<SignInOptions | null> {
 	try {
@@ -59,14 +64,22 @@ async function SignIn({
 		redirect("/");
 	}
 
-	const google = options?.google ?? true;
+	const configured: MailboxProviderId[] = [];
+	if (options?.google ?? true) configured.push("google");
+	if (options?.microsoft ?? false) configured.push("microsoft");
+
 	const providers = options?.providers ?? [];
 
-	const insistOnGoogle = method === "google" && google;
-	const showSso = providers.length > 0 && !insistOnGoogle;
-	const showGoogle = google && (providers.length === 0 || insistOnGoogle);
+	const insisted = configured.find((provider) => provider === method);
+	const showSso = providers.length > 0 && insisted === undefined;
+	const social =
+		insisted !== undefined
+			? [insisted]
+			: providers.length === 0
+				? configured
+				: [];
 
-	if (!showSso && !showGoogle) {
+	if (!showSso && social.length === 0) {
 		return (
 			<>
 				<AuthHeading
@@ -75,9 +88,10 @@ async function SignIn({
 				/>
 
 				<p className="text-center text-muted-foreground text-sm/5">
-					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the root .env file
-					and restart. Your own identity provider can be added from Settings
-					once somebody is signed in.
+					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — or MICROSOFT_CLIENT_ID
+					and MICROSOFT_CLIENT_SECRET — in the root .env file and restart. Your
+					own identity provider can be added from Settings once somebody is
+					signed in.
 				</p>
 			</>
 		);
@@ -91,7 +105,9 @@ async function SignIn({
 			/>
 
 			{showSso ? <SsoSignIn providers={providers} /> : null}
-			{showGoogle ? <GoogleSignIn /> : null}
+			{social.map((provider) => (
+				<SocialSignIn key={provider} provider={provider} />
+			))}
 		</>
 	);
 }

@@ -1,0 +1,52 @@
+name: PR base
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+    branches: [release]
+
+concurrency:
+  group: pr-base-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  retarget:
+    name: Retarget onto main
+    if: >-
+      github.event.pull_request.head.ref != 'main' &&
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Move the pull request to main
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          gh pr edit "$NUMBER" --base main
+
+          echo "Retargeted #$NUMBER from \`release\` onto \`main\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: marocchino/sticky-pull-request-comment@v2
+        continue-on-error: true
+        with:
+          header: pr-base
+          message: |
+            **Retargeted this onto `main`.**
+
+            `release` is the default branch so that a plain clone runs the last tagged release, but nothing merges into it — it is fast-forwarded onto the tag by the Release workflow and that is all. Changes go to `main`, and reach `release` when a release is cut.
+
+            Nothing is wrong with your branch. If the diff now shows commits that are already on `main`, rebase and force-push:
+
+            ```sh
+            git fetch origin main
+            git rebase origin/main
+            git push --force-with-lease
+            ```

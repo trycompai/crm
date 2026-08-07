@@ -3,6 +3,7 @@ name: PR title
 on:
   pull_request:
     types: [opened, edited, reopened, ready_for_review, synchronize]
+    branches: [main]
 
 concurrency:
   group: pr-title-${{ github.event.pull_request.number }}
@@ -15,12 +16,61 @@ permissions:
 jobs:
   conventional:
     name: conventional commit
-    if: github.event.pull_request.draft == false
+    if: >-
+      github.event.pull_request.draft == false &&
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Write the title from the diff
+        id: autotitle
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACTION: ${{ github.event.action }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          body=$(printf '%s' "$BODY" | tr -d '\r')
+          written=$(printf '%s\n' "$body" | sed -n 's/^<!-- pr-title: \(.*\) -->$/\1/p' | head -1)
+
+          if ! .github/scripts/pr-title.sh check "$TITLE"; then
+            reason="it is not a release note"
+          elif [ "$ACTION" != "edited" ] && [ -n "$written" ] && [ "$written" = "$TITLE" ]; then
+            reason="the diff has moved and nobody has retitled it"
+          else
+            echo "\`$TITLE\` is yours — leaving it alone." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          title=$(.github/scripts/pr-title.sh generate "$BASE_SHA" "$HEAD_SHA" "$BRANCH")
+
+          if [ "$title" = "$TITLE" ]; then
+            echo "\`$TITLE\` still describes the diff." >> "$GITHUB_STEP_SUMMARY"
+            echo "written=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          body=$(printf '%s\n\n<!-- pr-title: %s -->\n' \
+            "$(printf '%s\n' "$body" | grep -v '^<!-- pr-title: ' || true)" "$title")
+          gh pr edit "$NUMBER" --title "$title" --body "$body"
+
+          echo "written=true" >> "$GITHUB_OUTPUT"
+          echo "Retitled #$NUMBER to \`$title\`, because $reason." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: amannn/action-semantic-pull-request@v6
         id: lint
+        if: steps.autotitle.outputs.written != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
