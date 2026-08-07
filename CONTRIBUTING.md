@@ -81,7 +81,7 @@ push a branch ──▶ PR opens by itself, titled from the diff
                   ◀── click 1: squash into main
                         │
         two pull requests open, and stay open, together
-          `chore(release): 0.2.0` ──▶ main
+          `chore(main): release 0.2.0` ──▶ main
           `release: promote main` ──▶ release
                         │
         ◀── click 2: the release PR — tag, notes, CHANGELOG.md
@@ -132,7 +132,7 @@ only ever move through a pull request, and shipping is two of them.
 Both open as soon as something lands on `main`, and both stay open and up to date until you use
 them — so the version you are about to cut is readable *before* you decide to ship it.
 
-**The release pull request — `chore(release): 0.2.0`, into `main`.**
+**The release pull request — `chore(main): release 0.2.0`, into `main`.**
 [release-please](https://github.com/googleapis/release-please) accumulates every releasable commit
 into this one. Merging it writes `CHANGELOG.md`, bumps the version, tags `v0.2.0` and publishes the
 GitHub Release. The notes are reviewable before they are public, and a stack of merges is one
@@ -168,17 +168,24 @@ release workflow, which cannot wait on a run in another workflow.
 
 ### When it jams
 
-The Release workflow reports success even when it has done nothing, so the symptom of a jam is
-silence: merges land, no release PR appears. Read the log rather than the status. Two failures have
-actually happened here:
+A jam used to be silent — the workflow reported success while doing nothing, and the symptom was
+merges landing with no release PR behind them. **The workflow now fails when a merged release PR
+carries `autorelease: pending`**, which is the state every jam ends in, so the Actions tab tells you
+within a minute of the merge that shipped it. Read the log rather than the status anyway. Two
+failures have actually happened here:
 
 - **`There are untagged, merged release PRs outstanding - aborting`.** A release PR was merged but
   never tagged, and release-please refuses to move past it — every later run aborts on the same PR,
   which is how this repo sat from `v1.0.0` in August with no tags at all. Fix it by hand: create the
   tag and GitHub Release at the release PR's merge commit, then swap that PR's
   `autorelease: pending` label for `autorelease: tagged`. The next run picks up where it left off.
-  The usual cause is a release PR whose title does not match `pull-request-title-pattern`, because
-  the version is parsed back out of that title — so do not edit the pattern with a release PR open.
+  The cause was `separate-pull-requests: false` with one package: the Merge plugin renamed the
+  release branch from `release-please--branches--main--components--crm` to
+  `release-please--branches--main`, and the tagging step reads the component back out of that branch
+  name and compares it against the package name. `undefined` never equalled `crm`, so nothing was
+  ever tagged automatically — `v1.0.0` through `v1.3.0` were all cut by hand. **A second package
+  will bring the Merge plugin back**, and with it this bug: give the packages components in the tag,
+  or check that a merged release PR still gets `autorelease: tagged`.
 - **`commit could not be parsed`, in bulk.** Non-conventional subjects reached `main`. They are not
   errors, they are silently missing changelog lines. The squash-only merge policy and the
   `conventional commit` check exist to stop this; if you see it again, one of the two has been

@@ -98,6 +98,21 @@ the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
    auto-loads the working directory's `.env` while Prisma's CLI only sees
    `@crm/env/load`.
 
+## Migrations run on the production deploy, and nowhere else
+
+`apps/api/scripts/build-func.mjs` runs `prisma migrate deploy` during the crm-api
+build, gated on `VERCEL_ENV === "production"`. The schema therefore moves when the
+promotion pull request merges and `release` deploys — with the code that needs it,
+and once rather than once per branch.
+
+Preview deploys share the production database: `DATABASE_URL` is a single value
+across production, preview and development. Until that changes, **a preview of a
+branch that adds a migration runs against a database without those tables** — it
+builds, and the pages that touch them fail. Test schema changes locally, where
+`bun run dev` migrates for you. Before the gate existed the reverse was true and
+worse: every preview applied its own migrations to the production database, so on
+2026-08-07 the live schema ran six migrations ahead of the live code all day.
+
 ## Secrets hygiene
 
 `.gitignore` ignores `.env` and `.env.*` with one negation for `.env.example`, so

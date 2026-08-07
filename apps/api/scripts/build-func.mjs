@@ -164,7 +164,9 @@ writeFileSync(
 
 console.log(`✓ built ${outDir}`);
 
-const directDatabaseUrl = !process.env.VERCEL
+const isProductionDeployment = process.env.VERCEL_ENV === "production";
+
+const directDatabaseUrl = !isProductionDeployment
 	? undefined
 	: process.env.DIRECT_DATABASE_URL ||
 		process.env.POSTGRES_URL_NON_POOLING ||
@@ -173,6 +175,10 @@ const directDatabaseUrl = !process.env.VERCEL
 
 if (!process.env.VERCEL) {
 	console.log("• not a Vercel build — skipping migrations");
+} else if (!isProductionDeployment) {
+	console.log(
+		`• ${process.env.VERCEL_ENV || "non-production"} deployment — skipping migrations, only production applies them`,
+	);
 } else if (!directDatabaseUrl) {
 	console.log("• no database URL at build time — skipping migrations");
 } else {
