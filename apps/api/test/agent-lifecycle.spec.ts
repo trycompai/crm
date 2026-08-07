@@ -132,6 +132,74 @@ async function createAgent(versionCount = 1, status = "DRAFT" as const) {
 }
 
 describe("agent lifecycle", () => {
+	it("deletes artifacts with their final owning record", async () => {
+		const { agentId, versions } = await createAgent();
+		const versionId = versions[0]?.id;
+		if (!versionId) throw new Error("Missing version");
+		const conversation = await db.agentConversation.create({
+			data: { kind: "BUILDER", userId },
+			select: { id: true },
+		});
+		const [conversationOnly, versionOnly, shared] = await Promise.all([
+			db.agentBuilderArtifact.create({
+				data: {
+					conversationId: conversation.id,
+					path: "agent/conversation-only.ts",
+					language: "typescript",
+					content: "conversation",
+					revision: 1,
+				},
+				select: { id: true },
+			}),
+			db.agentBuilderArtifact.create({
+				data: {
+					versionId,
+					path: "agent/version-only.ts",
+					language: "typescript",
+					content: "version",
+					revision: 1,
+				},
+				select: { id: true },
+			}),
+			db.agentBuilderArtifact.create({
+				data: {
+					conversationId: conversation.id,
+					versionId,
+					path: "agent/shared.ts",
+					language: "typescript",
+					content: "shared",
+					revision: 1,
+				},
+				select: { id: true },
+			}),
+		]);
+
+		await db.agentConversation.delete({ where: { id: conversation.id } });
+
+		expect(
+			await db.agentBuilderArtifact.findUnique({
+				where: { id: conversationOnly.id },
+			}),
+		).toBeNull();
+		expect(
+			await db.agentBuilderArtifact.findUnique({
+				where: { id: versionOnly.id },
+			}),
+		).toMatchObject({ conversationId: null, versionId });
+		expect(
+			await db.agentBuilderArtifact.findUnique({ where: { id: shared.id } }),
+		).toMatchObject({ conversationId: null, versionId });
+
+		await db.agentVersion.delete({ where: { id: versionId } });
+
+		expect(
+			await db.agentBuilderArtifact.count({
+				where: { id: { in: [versionOnly.id, shared.id] } },
+			}),
+		).toBe(0);
+		await db.agentDefinition.delete({ where: { id: agentId } });
+	});
+
 	it("returns stable private and team contracts while auditing metadata edits", async () => {
 		const { agentId, versions } = await createAgent();
 		const versionId = versions[0]?.id;

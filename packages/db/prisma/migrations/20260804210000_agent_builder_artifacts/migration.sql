@@ -23,3 +23,29 @@ CREATE INDEX "agentBuilderArtifact_versionId_path_idx" ON "agentBuilderArtifact"
 
 ALTER TABLE "agentBuilderArtifact" ADD CONSTRAINT "agentBuilderArtifact_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "agentConversation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "agentBuilderArtifact" ADD CONSTRAINT "agentBuilderArtifact_versionId_fkey" FOREIGN KEY ("versionId") REFERENCES "agentVersion"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE FUNCTION "deleteConversationOnlyBuilderArtifacts"()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM "agentBuilderArtifact"
+    WHERE "conversationId" = OLD.id AND "versionId" IS NULL;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "deleteConversationOnlyBuilderArtifacts"
+BEFORE DELETE ON "agentConversation"
+FOR EACH ROW EXECUTE FUNCTION "deleteConversationOnlyBuilderArtifacts"();
+
+CREATE FUNCTION "deleteVersionOnlyBuilderArtifacts"()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM "agentBuilderArtifact"
+    WHERE "versionId" = OLD.id AND "conversationId" IS NULL;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "deleteVersionOnlyBuilderArtifacts"
+BEFORE DELETE ON "agentVersion"
+FOR EACH ROW EXECUTE FUNCTION "deleteVersionOnlyBuilderArtifacts"();
