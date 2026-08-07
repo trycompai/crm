@@ -460,9 +460,21 @@ async function validateDraft(
 			.filter((resource) => resource.kind !== "integration")
 			.map((resource) => `${resource.kind}:${resource.id}`),
 	);
+	const taggedRecordLabels = new Map(
+		taggedResources
+			.filter((resource) => resource.kind !== "integration")
+			.map((resource) => [`${resource.kind}:${resource.id}`, resource.label]),
+	);
 	for (const resource of recordResources) {
-		if (!taggedRecordKeys.has(`${resource.kind}:${resource.id}`)) {
+		const key = `${resource.kind}:${resource.id}`;
+		if (!taggedRecordKeys.has(key)) {
 			issues.push(`${resource.label} was not tagged in this builder chat.`);
+			continue;
+		}
+		if (taggedRecordLabels.get(key) !== resource.label) {
+			issues.push(
+				`${resource.kind} ${resource.id} must use its exact tagged label.`,
+			);
 		}
 	}
 

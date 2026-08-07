@@ -10,30 +10,15 @@ export default defineAgent({
 		fallback: DEFAULT_AGENT_MODEL.id,
 		events: { "session.started": () => selectedModel() },
 	}),
-	outputSchema: z.discriminatedUnion("status", [
-		z.object({
-			status: z.literal("needs_input"),
-			question: z.string().min(1).max(500),
-			options: z
-				.array(
-					z.object({
-						id: z.string().min(1).max(80),
-						label: z.string().min(1).max(120),
-					}),
-				)
-				.max(4),
-			allowFreeform: z.boolean(),
-		}),
-		z.object({
-			status: z.literal("draft_ready"),
-			summary: z.string().min(1).max(1000),
-			agentId: z.string().min(1),
-			versionId: z.string().min(1),
-		}),
-	]),
+	outputSchema: z.object({
+		status: z.literal("draft_ready"),
+		summary: z.string().min(1).max(1000),
+		agentId: z.string().min(1),
+		versionId: z.string().min(1),
+	}),
 	limits: {
-		maxInputTokensPerSession: 250_000,
-		maxOutputTokensPerSession: 20_000,
+		maxInputTokensPerSession: 100_000,
+		maxOutputTokensPerSession: 10_000,
 		sessionTimeoutMs: 24 * 60 * 60 * 1000,
 	},
 });
