@@ -30,9 +30,9 @@ async function PrefetchedAgentChat({
 	const sharedChat = isSharedChatToken(chatId);
 
 	const initialData = sharedChat
-		? await queryClient.fetchQuery(
-				trpc.conversations.shared.queryOptions({ token: chatId }),
-			)
+		? await queryClient
+				.fetchQuery(trpc.conversations.shared.queryOptions({ token: chatId }))
+				.catch(() => null)
 		: await queryClient.fetchQuery(
 				trpc.conversations.builderById.queryOptions({
 					id: chatId,

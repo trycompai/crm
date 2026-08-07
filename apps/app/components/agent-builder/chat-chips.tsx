@@ -99,6 +99,7 @@ export function ChatAttachmentChip({
 	attachment: ChatChipAttachment;
 	onRemove?: () => void;
 }) {
+	const label = `${attachment.name} · ${formatBytes(attachment.size)}`;
 	const image = isPreviewableImage(attachment.type)
 		? (attachment.previewUrl ??
 			(attachment.contentBase64
@@ -123,9 +124,7 @@ export function ChatAttachmentChip({
 				)}
 			</AttachmentMedia>
 			<AttachmentContent>
-				<AttachmentTitle title={attachment.name}>
-					{attachment.name} · {formatBytes(attachment.size)}
-				</AttachmentTitle>
+				<AttachmentTitle title={label}>{label}</AttachmentTitle>
 			</AttachmentContent>
 			{onRemove ? (
 				<AttachmentActions>

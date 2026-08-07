@@ -99,7 +99,7 @@ export function AgentBuilderChat({
 	initialData,
 }: {
 	conversationId: string;
-	initialData: Conversation | SharedConversation;
+	initialData: Conversation | SharedConversation | null;
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -120,7 +120,10 @@ export function AgentBuilderChat({
 	const shared = useQuery({
 		...trpc.conversations.shared.queryOptions({ token: conversationId }),
 		enabled: sharedChat,
-		initialData: sharedChat ? (initialData as SharedConversation) : undefined,
+		initialData:
+			sharedChat && initialData
+				? (initialData as SharedConversation)
+				: undefined,
 		refetchInterval: (query) =>
 			sharedConversationNeedsPolling(query.state.data) ? 5000 : false,
 	});
@@ -180,11 +183,18 @@ export function AgentBuilderChat({
 	);
 
 	if (sharedChat) {
-		return (
-			<SharedAgentChat
-				conversation={shared.data ?? (initialData as SharedConversation)}
-			/>
-		);
+		if (shared.isPending) {
+			return (
+				<main
+					className="flex flex-1 items-center justify-center p-8"
+					aria-busy="true"
+				>
+					<span className="text-muted-foreground text-sm">Opening chat…</span>
+				</main>
+			);
+		}
+		if (shared.isError || !shared.data) return <ChatUnavailable />;
+		return <SharedAgentChat conversation={shared.data} />;
 	}
 
 	if (conversation.isError && !conversation.data) {

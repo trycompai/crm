@@ -62,7 +62,6 @@ function AgentCodeWorkspaceSurface({
 }) {
 	const [mode, setMode] = useState<"code" | "changes">("code");
 	const { resolvedTheme } = useTheme();
-	const themeType = resolvedTheme === "dark" ? "dark" : "light";
 	const { model } = useFileTree({
 		paths,
 		initialExpansion: "open",
@@ -80,6 +79,20 @@ function AgentCodeWorkspaceSurface({
 	const showChanges = mode === "changes" && previous !== null;
 
 	if (!artifact) return null;
+	if (resolvedTheme !== "light" && resolvedTheme !== "dark") {
+		return (
+			<section
+				aria-label="Generated agent files"
+				aria-busy="true"
+				className="h-[412px] overflow-hidden rounded-lg bg-muted/40"
+			>
+				<span role="status" className="sr-only">
+					Loading agent code
+				</span>
+			</section>
+		);
+	}
+	const themeType = resolvedTheme;
 
 	const file = {
 		name: artifact.path,
