@@ -22,6 +22,14 @@ import {
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { Markdown } from "@crm/ui/components/markdown";
+import {
+	MessageScroller,
+	MessageScrollerButton,
+	MessageScrollerContent,
+	MessageScrollerItem,
+	MessageScrollerProvider,
+	MessageScrollerViewport,
+} from "@crm/ui/components/message-scroller";
 import { Reasoning } from "@crm/ui/components/reasoning";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { cn } from "@crm/ui/lib/utils";
@@ -282,84 +290,125 @@ export function AgentBuilderChat({
 				creatingAgent={creatingAgent}
 			/>
 
-			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6 sm:gap-5 sm:px-5 sm:py-9">
-					{timeline.map((item) =>
-						item.kind === "submission" ? (
-							<UserSubmission
-								key={item.id}
-								submission={item.submission}
-								failed={item.submission.status === "FAILED"}
-								error={item.submission.errorMessage}
-							/>
-						) : (
-							<AssistantMessage
-								key={item.id}
-								conversation={data}
-								message={item.message}
-								answeredQuestionIds={answeredQuestionIds}
-							/>
-						),
-					)}
+			<MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+				<MessageScroller className="flex-1">
+					<MessageScrollerViewport>
+						<MessageScrollerContent
+							aria-busy={working}
+							className="mx-auto w-full max-w-3xl gap-4 px-4 py-6 sm:gap-5 sm:px-5 sm:py-9"
+						>
+							{timeline.map((item) => (
+								<MessageScrollerItem
+									key={item.id}
+									messageId={item.id}
+									scrollAnchor={item.kind === "submission"}
+								>
+									{item.kind === "submission" ? (
+										<UserSubmission
+											submission={item.submission}
+											failed={item.submission.status === "FAILED"}
+											error={item.submission.errorMessage}
+										/>
+									) : (
+										<AssistantMessage
+											conversation={data}
+											message={item.message}
+											answeredQuestionIds={answeredQuestionIds}
+										/>
+									)}
+								</MessageScrollerItem>
+							))}
 
-					{working && creatingAgent ? (
-						<BuildingAgentCard
-							conversationId={conversationId}
-							sessionId={data.sessionId}
-							artifacts={data.builderArtifacts}
-							startedAt={submissions.at(-1)?.createdAt ?? null}
-						/>
-					) : null}
+							{working && creatingAgent ? (
+								<MessageScrollerItem
+									messageId={`building-agent:${conversationId}`}
+								>
+									<BuildingAgentCard
+										conversationId={conversationId}
+										sessionId={data.sessionId}
+										artifacts={data.builderArtifacts}
+										startedAt={submissions.at(-1)?.createdAt ?? null}
+									/>
+								</MessageScrollerItem>
+							) : null}
 
-					{creatingAgent && data.builderArtifacts.length > 0 ? (
-						<AgentCodeWorkspace
-							artifacts={data.builderArtifacts}
-							working={working}
-							versionId={artifactVersion}
-						/>
-					) : null}
+							{creatingAgent && data.builderArtifacts.length > 0 ? (
+								<MessageScrollerItem
+									messageId={`agent-workspace:${conversationId}`}
+								>
+									<AgentCodeWorkspace
+										artifacts={data.builderArtifacts}
+										working={working}
+										versionId={artifactVersion}
+									/>
+								</MessageScrollerItem>
+							) : null}
 
-					{!working &&
-					failure &&
-					creatingAgent &&
-					!reviewVersion &&
-					data.agent?.status !== "LIVE" ? (
-						<BuilderFailureCard
-							failure={failure}
-							creatingAgent
-							retrying={submit.isPending}
-							onRetry={retryPrompt ? () => send(retryPrompt) : null}
-						/>
-					) : null}
+							{!working &&
+							failure &&
+							creatingAgent &&
+							!reviewVersion &&
+							data.agent?.status !== "LIVE" ? (
+								<MessageScrollerItem
+									messageId={`builder-failure:${conversationId}`}
+								>
+									<BuilderFailureCard
+										failure={failure}
+										creatingAgent
+										retrying={submit.isPending}
+										onRetry={retryPrompt ? () => send(retryPrompt) : null}
+									/>
+								</MessageScrollerItem>
+							) : null}
 
-					{!working && failure && !creatingAgent ? (
-						<BuilderFailureCard
-							failure={failure}
-							creatingAgent={false}
-							retrying={submit.isPending}
-							onRetry={retryPrompt ? () => send(retryPrompt) : null}
-						/>
-					) : null}
+							{!working && failure && !creatingAgent ? (
+								<MessageScrollerItem
+									messageId={`builder-failure:${conversationId}`}
+								>
+									<BuilderFailureCard
+										failure={failure}
+										creatingAgent={false}
+										retrying={submit.isPending}
+										onRetry={retryPrompt ? () => send(retryPrompt) : null}
+									/>
+								</MessageScrollerItem>
+							) : null}
 
-					{creatingAgent && !working && reviewVersion ? (
-						<ReviewAgentCard conversation={data} versionId={reviewVersion} />
-					) : null}
+							{creatingAgent && !working && reviewVersion ? (
+								<MessageScrollerItem
+									messageId={`review-agent:${conversationId}`}
+								>
+									<ReviewAgentCard
+										conversation={data}
+										versionId={reviewVersion}
+									/>
+								</MessageScrollerItem>
+							) : null}
 
-					{creatingAgent && data.agent?.status === "LIVE" && !reviewVersion ? (
-						<DeployedAgentCard
-							conversation={data}
-							onFollowUp={(message) =>
-								send({
-									commandType: "CHAT",
-									message,
-									resources: [],
-									attachments: [],
-								})
-							}
-						/>
-					) : null}
-				</div>
-			</div>
+							{creatingAgent &&
+							data.agent?.status === "LIVE" &&
+							!reviewVersion ? (
+								<MessageScrollerItem
+									messageId={`deployed-agent:${conversationId}`}
+								>
+									<DeployedAgentCard
+										conversation={data}
+										onFollowUp={(message) =>
+											send({
+												commandType: "CHAT",
+												message,
+												resources: [],
+												attachments: [],
+											})
+										}
+									/>
+								</MessageScrollerItem>
+							) : null}
+						</MessageScrollerContent>
+					</MessageScrollerViewport>
+					<MessageScrollerButton />
+				</MessageScroller>
+			</MessageScrollerProvider>
 
 			<div className="min-h-0 shrink overflow-y-auto overscroll-contain border-t px-4 py-3 sm:px-5">
 				<div className="mx-auto w-full max-w-3xl">
@@ -463,43 +512,63 @@ function SharedAgentChat({
 				<span className="text-muted-foreground text-xs">Read-only</span>
 			</header>
 
-			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6 sm:gap-5 sm:px-5 sm:py-9">
-					<div className="rounded-lg border bg-card px-4 py-3 text-sm">
-						<p className="font-medium">Shared by {conversation.ownerName}</p>
-						<p className="mt-1 text-muted-foreground text-xs">
-							You can read this builder chat, but only its owner can continue or
-							change it.
-						</p>
-					</div>
+			<MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+				<MessageScroller className="flex-1">
+					<MessageScrollerViewport>
+						<MessageScrollerContent
+							aria-busy={working}
+							className="mx-auto w-full max-w-3xl gap-4 px-4 py-6 sm:gap-5 sm:px-5 sm:py-9"
+						>
+							<MessageScrollerItem messageId="shared-chat-notice">
+								<div className="rounded-lg border bg-card px-4 py-3 text-sm">
+									<p className="font-medium">
+										Shared by {conversation.ownerName}
+									</p>
+									<p className="mt-1 text-muted-foreground text-xs">
+										You can read this builder chat, but only its owner can
+										continue or change it.
+									</p>
+								</div>
+							</MessageScrollerItem>
 
-					{timeline.map((item) =>
-						item.kind === "submission" ? (
-							<UserSubmission
-								key={item.id}
-								submission={item.submission}
-								failed={item.submission.status === "FAILED"}
-								error={item.submission.errorMessage}
-							/>
-						) : (
-							<AssistantMessage
-								key={item.id}
-								conversation={null}
-								message={item.message}
-								answeredQuestionIds={answeredQuestionIds}
-							/>
-						),
-					)}
+							{timeline.map((item) => (
+								<MessageScrollerItem
+									key={item.id}
+									messageId={item.id}
+									scrollAnchor={item.kind === "submission"}
+								>
+									{item.kind === "submission" ? (
+										<UserSubmission
+											submission={item.submission}
+											failed={item.submission.status === "FAILED"}
+											error={item.submission.errorMessage}
+										/>
+									) : (
+										<AssistantMessage
+											conversation={null}
+											message={item.message}
+											answeredQuestionIds={answeredQuestionIds}
+										/>
+									)}
+								</MessageScrollerItem>
+							))}
 
-					{conversation.builderArtifacts.length > 0 ? (
-						<AgentCodeWorkspace
-							artifacts={conversation.builderArtifacts}
-							working={working}
-							versionId={artifactVersion}
-						/>
-					) : null}
-				</div>
-			</div>
+							{conversation.builderArtifacts.length > 0 ? (
+								<MessageScrollerItem
+									messageId={`agent-workspace:${conversation.id}`}
+								>
+									<AgentCodeWorkspace
+										artifacts={conversation.builderArtifacts}
+										working={working}
+										versionId={artifactVersion}
+									/>
+								</MessageScrollerItem>
+							) : null}
+						</MessageScrollerContent>
+					</MessageScrollerViewport>
+					<MessageScrollerButton />
+				</MessageScroller>
+			</MessageScrollerProvider>
 		</main>
 	);
 }
