@@ -16,6 +16,17 @@ and nothing that is not read. `packages/env` walks up to the workspace root and 
 - **The root marker is a `package.json` declaring `workspaces`** — stopping at the
   first `turbo.json` resolves the API's root to `apps/api`.
 
+## A new variable has three homes, not two
+
+`.env.example` and — if the API reads it — `env.validation.ts` are the two people
+remember. The third is **`globalPassThroughEnv` in the root `turbo.json`**, and it is
+the one that bites: Turborepo hides an undeclared variable from every task it runs, so
+a deployment that sets the variable perfectly still hands the code `undefined`, and
+nothing anywhere says so. That is how `MICROSOFT_CLIENT_ID` shipped with the sign-in
+button quietly missing. **`passThroughEnv`, never `env`** — a secret in `env` is a
+cache key, which means a cache miss on every rotation and the secret in the cache
+metadata. The root file's comment has the whole account.
+
 ## Required
 
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ALLOWED_SIGN_IN`. Everything else has a
@@ -24,6 +35,16 @@ localhost default or is genuinely optional.
 **`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`** are the sign-in button *and* the
 Gmail/Calendar sync — optional, so an SSO-only install needn't create a Google project,
 but **set together or not at all** (`packages/auth/src/env.ts` throws on one).
+
+**`MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET`** are the same bargain for Entra
+ID: the other sign-in button *and* the Outlook mail sync, one app registration, the
+same pair rule. **`MICROSOFT_TENANT_ID`** defaults to `common` and is the only one of
+the three that is genuinely optional on its own — set it to your tenant's GUID to
+refuse other tenants at Microsoft instead of at `ALLOWED_SIGN_IN`. There is **no
+Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
+
+**Neither pair is required, but an install wants one of them or an SSO provider** —
+with none, the sign-in page says so by name rather than rendering nothing.
 
 **`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
@@ -106,30 +127,41 @@ General — an admin who cannot redeploy cannot set a variable.
   check that cannot be made is not a failed check** — `unknown` saves anyway and logs it
   unverified.
 
-## Gmail and Calendar sync
+## Mailbox sync
 
-Always on, on the existing Google provider, so there is no extra redirect URI. Scopes
-are requested at sign-in and gated by `requireGoogleAccess()`, because granular consent
-lets a user untick one and still sign in.
+Always on, on whichever social provider is configured, so there is no extra redirect
+URI beyond the sign-in one. Scopes are requested at sign-in and gated by
+`requireMailboxAccess()`, because granular consent lets a user untick one and still
+sign in.
 
-**An SSO rep is not gated** — `needsGoogleGrant` (`@crm/auth`) walls only an account
-whose *sole* sign-in row is Google. It cannot be "has the scopes": an SSO rep has no
-Google account to grant on, and `revoke()` keeps the `account` row, so trying the
-optional feature and revoking would lock them out. They connect from Settings →
-Connections, posting the same `linkSocial` call.
+**An SSO rep is not gated** — `needsMailboxGrant` (`@crm/auth`) walls only an account
+whose sign-in rows are *all* mailbox providers. It cannot be "has the scopes": an SSO
+rep has no Google or Microsoft account to grant on, and `revoke()` keeps the `account`
+row, so trying the optional feature and revoking would lock them out. They connect from
+Settings → Connections, posting the same `linkSocial` call.
+
+**One granted mailbox is enough.** A rep with both providers linked who granted Google
+is not asked for Outlook; `mailboxGrantsNeeded` names the ones still outstanding and
+`/grant-access` offers exactly those buttons.
+
+**Microsoft's granted scopes come back fully qualified** —
+`https://graph.microsoft.com/Mail.Read`, not `Mail.Read`. `parseScopes` is the one
+canonicaliser and strips that prefix, so the comparison is against the bare permission
+everywhere.
 
 **Sync is forward-only** — Gmail records the current `historyId` on its first pass and
-imports nothing; Calendar reads from `now`.
+imports nothing, Calendar reads from `now`, and Outlook records `now` as its cursor.
 
-**`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/google` and
-`/internal/sync/rates`; both **fail closed when unset**. **Crons live in
-`apps/api/vercel.json`** — Google `*/5 * * * *`, rates daily. Minute-level schedules
-need a Pro plan; on Hobby it silently becomes daily.
+**`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
+`/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is
+kept as an alias of the first, so an existing deployment's cron does not break on
+deploy. **Crons live in `apps/api/vercel.json`** — mailboxes `*/5 * * * *`, rates
+daily. Minute-level schedules need a Pro plan; on Hobby it silently becomes daily.
 
 Deliberate absences: **no `GOOGLE_SYNC_ENABLED`** (a switch that can disable a mandatory
 feature is only ever wrong), **no `GOOGLE_WORKSPACE_DOMAIN`** (`ALLOWED_SIGN_IN` already
 says who is internal — two sources is how a colleague becomes a lead), **no
-`GMAIL_BACKFILL_DAYS`**, **no rate provider variable**.
+`GMAIL_BACKFILL_DAYS`**, **no `OUTLOOK_BACKFILL_DAYS`**, **no rate provider variable**.
 
 ## Telemetry is on, and turning it off is one variable
 
@@ -157,4 +189,4 @@ is sent. No client is constructed, so there is no queue waiting to flush later.
 - **Cache TTL** — `DEFAULT_TTL_MS` (60s) in `cache.module.ts`; `CACHE_TTL_MS` overrides.
 - **Redis** — optional; without `REDIS_URL` the cache is per-instance in-memory, which
   is wrong for multi-instance.
-- **Sign-in method** — Google is in code; an IdP is a row (SSO, in `api.md`).
+- **Sign-in method** — Google and Microsoft are in code; an IdP is a row (SSO, in `api.md`).

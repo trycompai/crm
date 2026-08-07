@@ -1,5 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { GoogleApiClient, type GoogleResult } from "./google-api.client";
+import {
+	MailboxApiClient,
+	type MailboxResult,
+} from "../mailbox/mailbox-api.client";
 
 const EVENTS_URL =
 	"https://www.googleapis.com/calendar/v3/calendars/primary/events";
@@ -54,12 +57,12 @@ export type EventsQuery = {
 
 @Injectable()
 export class CalendarClient {
-	constructor(private readonly api: GoogleApiClient) {}
+	constructor(private readonly api: MailboxApiClient) {}
 
 	async listEvents(
 		accessToken: string,
 		query: EventsQuery,
-	): Promise<GoogleResult<EventsPage>> {
+	): Promise<MailboxResult<EventsPage>> {
 		const window = query.syncToken
 			? {}
 			: { timeMin: query.timeMin, timeMax: query.timeMax };

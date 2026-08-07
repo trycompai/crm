@@ -1,7 +1,7 @@
 import { DEFAULT_WORKSPACE_NAME } from "@crm/auth";
 import type { Metadata } from "next";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
-import { requireGoogleAccess } from "@/lib/session";
+import { requireMailboxAccess } from "@/lib/session";
 import { OnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export const instant = false;
 
 export default async function OnboardingPage() {
-	await requireGoogleAccess();
+	await requireMailboxAccess();
 
 	return (
 		<AuthShell>

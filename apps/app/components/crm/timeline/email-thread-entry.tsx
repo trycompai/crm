@@ -69,14 +69,14 @@ export function EmailThreadEntry({
 									direction={message.direction}
 									body={message.body}
 									action={
-										message.gmailUrl ? (
+										message.mailboxUrl ? (
 											<a
-												href={message.gmailUrl}
+												href={message.mailboxUrl}
 												target="_blank"
 												rel="noreferrer"
 												className="text-muted-foreground underline underline-offset-3 hover:text-foreground"
 											>
-												Open in Gmail
+												Open in {message.mailboxName}
 											</a>
 										) : null
 									}

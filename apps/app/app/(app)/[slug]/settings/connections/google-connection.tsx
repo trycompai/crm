@@ -106,16 +106,16 @@ function GoogleUnavailable() {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Google</CardTitle>
+				<CardTitle>
+					<div className="flex items-center gap-2">
+						Google
+						<StatusIndicator size="sm" tone="neutral" label="Not configured" />
+					</div>
+				</CardTitle>
 				<CardDescription>
-					Gmail and Calendar sync needs a Google OAuth client, and this install
-					does not have one. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in
-					the root .env file and restart.
+					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the root .env file
+					and restart.
 				</CardDescription>
-
-				<CardAction>
-					<StatusIndicator size="sm" tone="neutral" label="Not configured" />
-				</CardAction>
 			</CardHeader>
 		</Card>
 	);
@@ -129,6 +129,11 @@ const CONNECT_ERRORS: Record<string, string> = {
 function ConnectGoogle({ connectError }: { connectError?: string }) {
 	const [pending, setPending] = useState(false);
 
+	function fail(message?: string) {
+		setPending(false);
+		toast.error(message ?? "Could not reach Google.");
+	}
+
 	async function handleConnect() {
 		setPending(true);
 
@@ -138,32 +143,47 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 			provider: "google",
 			scopes: [...SYNC_SCOPES],
 			callbackURL: `${origin}/settings/connections`,
-			errorCallbackURL: `${origin}/settings/connections`,
+			errorCallbackURL: `${origin}/settings/connections?provider=google`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach Google.");
-			setPending(false);
-		}
+		if (error) fail(error.message);
 	}
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Google</CardTitle>
+				<CardTitle>
+					<div className="flex items-center gap-2">
+						Google
+						<StatusIndicator size="sm" tone="neutral" label="Not connected" />
+					</div>
+				</CardTitle>
 				<CardDescription>
-					Connect Gmail and Calendar, and new meetings and email threads are
-					added to the matching company as they happen. It is read-only —
-					nothing is ever sent on your behalf.
+					Read-only Gmail and Calendar. Only conversations with companies in the
+					CRM are stored.
 				</CardDescription>
 
 				<CardAction>
-					<StatusIndicator size="sm" tone="neutral" label="Not connected" />
+					<Button
+						size="sm"
+						disabled={pending}
+						onClick={() => {
+							handleConnect().catch(() => fail());
+						}}
+						type="button"
+					>
+						{pending ? (
+							<Spinner data-icon="inline-start" />
+						) : (
+							<GoogleLogo data-icon="inline-start" className="size-4" />
+						)}
+						Connect
+					</Button>
 				</CardAction>
 			</CardHeader>
 
-			<CardContent>
-				{connectError ? (
+			{connectError ? (
+				<CardContent>
 					<Alert variant="destructive">
 						<Icon icon={Warning} />
 						<AlertTitle>Google did not finish connecting</AlertTitle>
@@ -172,22 +192,8 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 								"Google returned an error before the connection was made. Try again."}
 						</AlertDescription>
 					</Alert>
-				) : null}
-
-				<Button disabled={pending} onClick={handleConnect} type="button">
-					{pending ? (
-						<Spinner data-icon="inline-start" />
-					) : (
-						<GoogleLogo data-icon="inline-start" className="size-4" />
-					)}
-					Connect Google
-				</Button>
-
-				<p className="text-muted-foreground text-xs">
-					Only conversations with companies in the CRM are stored. Personal mail
-					is discarded without being saved.
-				</p>
-			</CardContent>
+				</CardContent>
+			) : null}
 		</Card>
 	);
 }
@@ -273,19 +279,22 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Google</CardTitle>
+				<CardTitle>
+					<div className="flex items-center gap-2">
+						Google
+						<StatusIndicator
+							size="sm"
+							tone={healthy ? "success" : "warning"}
+							label={healthy ? "Connected" : "Needs attention"}
+						/>
+					</div>
+				</CardTitle>
 				<CardDescription>
-					New meetings and email threads are added to the matching company as
-					they happen.
+					Meetings and email threads land on the matching company as they
+					happen.
 				</CardDescription>
 
 				<CardAction>
-					<StatusIndicator
-						size="sm"
-						tone={healthy ? "success" : "warning"}
-						label={healthy ? "Connected" : "Needs attention"}
-					/>
-
 					<Button
 						variant="contrast"
 						size="sm"

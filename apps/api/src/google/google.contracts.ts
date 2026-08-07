@@ -1,12 +1,8 @@
 import { z } from "zod";
-import { SYNC_SOURCES } from "./google.constants";
-
-export const syncSourceInput = z.object({
-	source: z.enum(SYNC_SOURCES),
-});
+import { GOOGLE_SYNC_SOURCES } from "./google.constants";
 
 export const setAutoCreateInput = z.object({
-	source: z.enum(SYNC_SOURCES),
+	source: z.enum(GOOGLE_SYNC_SOURCES),
 	enabled: z.boolean(),
 });
 
