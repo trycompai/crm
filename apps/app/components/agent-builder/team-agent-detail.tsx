@@ -103,7 +103,7 @@ export function TeamAgentDetail({
 		initialData: initialRuns,
 		refetchInterval: (query) =>
 			query.state.data?.some((run) =>
-				["QUEUED", "RUNNING"].includes(run.status),
+				["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"].includes(run.status),
 			)
 				? 2500
 				: false,
@@ -116,13 +116,19 @@ export function TeamAgentDetail({
 		Promise.all([
 			queryClient.invalidateQueries({ queryKey: trpc.agents.byId.pathKey() }),
 			queryClient.invalidateQueries({ queryKey: trpc.agents.list.pathKey() }),
+			queryClient.invalidateQueries({
+				queryKey: trpc.agents.activity.pathKey(),
+			}),
 		]);
 	const runNow = useMutation(
 		trpc.agents.runNow.mutationOptions({
 			onSuccess: async () => {
-				await queryClient.invalidateQueries({
-					queryKey: trpc.agents.history.pathKey(),
-				});
+				await Promise.all([
+					invalidate(),
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.history.pathKey(),
+					}),
+				]);
 				setTab("runs");
 				toast.success("Agent run queued.");
 			},
@@ -276,20 +282,30 @@ export function TeamAgentDetail({
 			</PageShellHeader>
 
 			<PageShellContent className="min-h-0">
-				<div className="flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b sm:gap-6">
+				<div
+					role="tablist"
+					aria-label="Agent details"
+					className="flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b sm:gap-6"
+				>
 					<TabButton
+						tab="overview"
 						active={tab === "overview"}
 						onClick={() => setTab("overview")}
 					>
 						Overview
 					</TabButton>
-					<TabButton active={tab === "runs"} onClick={() => setTab("runs")}>
+					<TabButton
+						tab="runs"
+						active={tab === "runs"}
+						onClick={() => setTab("runs")}
+					>
 						Runs{" "}
 						<span className="font-mono text-muted-foreground">
 							{data.runCount}
 						</span>
 					</TabButton>
 					<TabButton
+						tab="activity"
 						active={tab === "activity"}
 						onClick={() => setTab("activity")}
 					>
@@ -300,10 +316,32 @@ export function TeamAgentDetail({
 					</TabButton>
 				</div>
 
-				{tab === "overview" ? <AgentOverview agent={data} /> : null}
-				{tab === "runs" ? <AgentRuns runs={runs.data ?? []} /> : null}
+				{tab === "overview" ? (
+					<div
+						role="tabpanel"
+						id="agent-overview-panel"
+						aria-labelledby="agent-overview-tab"
+					>
+						<AgentOverview agent={data} />
+					</div>
+				) : null}
+				{tab === "runs" ? (
+					<div
+						role="tabpanel"
+						id="agent-runs-panel"
+						aria-labelledby="agent-runs-tab"
+					>
+						<AgentRuns runs={runs.data ?? []} />
+					</div>
+				) : null}
 				{tab === "activity" ? (
-					<AgentActivity activity={activity.data ?? []} />
+					<div
+						role="tabpanel"
+						id="agent-activity-panel"
+						aria-labelledby="agent-activity-tab"
+					>
+						<AgentActivity activity={activity.data ?? []} />
+					</div>
 				) : null}
 			</PageShellContent>
 		</PageShell>
@@ -412,17 +450,23 @@ function DeleteAgentAction({
 }
 
 function TabButton({
+	tab,
 	active,
 	onClick,
 	children,
 }: {
+	tab: AgentTab;
 	active: boolean;
 	onClick: () => void;
 	children: React.ReactNode;
 }) {
 	return (
 		<button
+			id={`agent-${tab}-tab`}
 			type="button"
+			role="tab"
+			aria-selected={active}
+			aria-controls={`agent-${tab}-panel`}
 			onClick={onClick}
 			className={cn(
 				"flex h-8 items-center gap-2 border-b-2 border-transparent text-muted-foreground text-sm outline-none hover:text-foreground focus-visible:text-foreground",
@@ -491,6 +535,9 @@ function AgentRuns({ runs }: { runs: Runs }) {
 	const visible = runs.filter(
 		(run) => outcome === "ALL" || run.status === outcome,
 	);
+	const runNumbers = new Map(
+		runs.map((run, index) => [run.id, runs.length - index]),
+	);
 
 	return (
 		<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
@@ -506,10 +553,12 @@ function AgentRuns({ runs }: { runs: Runs }) {
 					<option value="FAILED">Failed</option>
 					<option value="RUNNING">Running</option>
 					<option value="QUEUED">Queued</option>
+					<option value="WAITING_FOR_APPROVAL">Waiting for approval</option>
+					<option value="CANCELLED">Cancelled</option>
 				</select>
 			</div>
 
-			{visible.map((run, index) => (
+			{visible.map((run) => (
 				<div
 					key={run.id}
 					className="min-w-0 overflow-hidden rounded-lg border bg-card"
@@ -524,7 +573,7 @@ function AgentRuns({ runs }: { runs: Runs }) {
 						<span className="min-w-0 flex-1">
 							<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
 								<span className="font-semibold text-sm">
-									Run #{String(runs.length - index).padStart(3, "0")}
+									Run #{String(runNumbers.get(run.id)).padStart(3, "0")}
 								</span>
 								<span
 									className={cn(

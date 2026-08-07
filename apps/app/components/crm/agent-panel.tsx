@@ -247,9 +247,12 @@ function Thread({
 							{messages.map((message) => (
 								<MessageScrollerItem key={message.id} messageId={message.id}>
 									<div className="space-y-3">
-										{message.items.map((item) => (
-											<Item key={item.id} item={item} />
-										))}
+										{message.items.map((item) =>
+											item.kind === "asked" &&
+											item.question.requestId === question?.requestId ? null : (
+												<Item key={item.id} item={item} />
+											),
+										)}
 									</div>
 								</MessageScrollerItem>
 							))}

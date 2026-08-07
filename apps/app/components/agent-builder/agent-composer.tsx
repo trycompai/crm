@@ -237,10 +237,15 @@ function composerReducer(
 }
 
 function attachmentKey(attachment: ChatChipAttachment): string {
-	return (
-		attachment.id ?? `${attachment.name}:${attachment.type}:${attachment.size}`
-	);
+	if (attachment.id) return attachment.id;
+	const existing = attachmentKeys.get(attachment);
+	if (existing) return existing;
+	const key = crypto.randomUUID();
+	attachmentKeys.set(attachment, key);
+	return key;
 }
+
+const attachmentKeys = new WeakMap<ChatChipAttachment, string>();
 
 export function AgentComposer({
 	mode,

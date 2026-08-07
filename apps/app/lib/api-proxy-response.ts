@@ -5,10 +5,13 @@ export async function bufferedProxyResponse(
 	headers: Headers,
 	method: string,
 ): Promise<Response> {
+	const responseHeaders = new Headers(headers);
+	responseHeaders.delete("content-encoding");
+	responseHeaders.delete("content-length");
 	const init: ResponseInit = {
 		status: upstream.status,
 		statusText: upstream.statusText,
-		headers,
+		headers: responseHeaders,
 	};
 	if (!responseCanHaveBody(method, upstream.status)) {
 		return new Response(null, init);

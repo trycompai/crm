@@ -85,39 +85,41 @@ export function SkeletonSwap({
 				aria-label={label}
 				className={cn("relative grid min-w-0", className)}
 			>
-			<m.div
-				className="col-start-1 row-start-1 min-w-0"
-				initial={false}
-				animate={{
-					opacity: showSkeleton ? 0 : 1,
-					scale: reduced || !showSkeleton ? 1 : 0.99,
-					filter: reduced || !showSkeleton ? "blur(0px)" : "blur(3px)",
-				}}
-				transition={reduced ? INSTANT : CROSSFADE}
-				style={{
-					transformOrigin: "top left",
-					pointerEvents: showSkeleton ? "none" : undefined,
-				}}
-			>
-				{children}
-			</m.div>
-			<m.div
-				aria-hidden
-				className="pointer-events-none col-start-1 row-start-1 min-w-0"
-				initial={false}
-				animate={{
-					opacity: showSkeleton ? 1 : 0,
-					filter: reduced || showSkeleton ? "blur(0px)" : "blur(3px)",
-				}}
-				transition={reduced ? INSTANT : CROSSFADE}
-			>
-				{skeleton ?? <DefaultSkeleton />}
-			</m.div>
-			{label ? (
-				<span role="status" aria-live="polite" className="sr-only">
-					{loading ? "" : `${label} loaded`}
-				</span>
-			) : null}
+				<m.div
+					inert={showSkeleton ? true : undefined}
+					aria-hidden={showSkeleton}
+					className="col-start-1 row-start-1 min-w-0"
+					initial={false}
+					animate={{
+						opacity: showSkeleton ? 0 : 1,
+						scale: reduced || !showSkeleton ? 1 : 0.99,
+						filter: reduced || !showSkeleton ? "blur(0px)" : "blur(3px)",
+					}}
+					transition={reduced ? INSTANT : CROSSFADE}
+					style={{
+						transformOrigin: "top left",
+						pointerEvents: showSkeleton ? "none" : undefined,
+					}}
+				>
+					{children}
+				</m.div>
+				<m.div
+					aria-hidden
+					className="pointer-events-none col-start-1 row-start-1 min-w-0"
+					initial={false}
+					animate={{
+						opacity: showSkeleton ? 1 : 0,
+						filter: reduced || showSkeleton ? "blur(0px)" : "blur(3px)",
+					}}
+					transition={reduced ? INSTANT : CROSSFADE}
+				>
+					{skeleton ?? <DefaultSkeleton />}
+				</m.div>
+				{label ? (
+					<span role="status" aria-live="polite" className="sr-only">
+						{loading ? "" : `${label} loaded`}
+					</span>
+				) : null}
 			</div>
 		</LazyMotion>
 	);

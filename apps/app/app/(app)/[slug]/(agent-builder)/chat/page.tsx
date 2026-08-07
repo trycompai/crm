@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AgentBuilderHome } from "@/components/agent-builder/agent-builder-home";
 import { requireSession } from "@/lib/session";
+import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
 export const metadata: Metadata = { title: "Chat" };
@@ -26,7 +27,11 @@ async function ChatHome() {
 		queryClient.prefetchQuery(trpc.google.status.queryOptions()),
 	]);
 
-	return <AgentBuilderHome name={session.user.name} />;
+	return (
+		<HydrateClient>
+			<AgentBuilderHome name={session.user.name} />
+		</HydrateClient>
+	);
 }
 
 function ChatHomeFallback() {

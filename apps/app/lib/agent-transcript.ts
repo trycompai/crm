@@ -348,7 +348,9 @@ export function latestTurnFailure(
 	for (let index = events.length - 1; index >= 0; index -= 1) {
 		const event = events[index];
 		if (!event) continue;
-		if (event.type === "turn.completed") return null;
+		if (event.type === "turn.completed" || event.type === "turn.started") {
+			return null;
+		}
 		if (event.type !== "turn.failed" && event.type !== "session.failed") {
 			continue;
 		}

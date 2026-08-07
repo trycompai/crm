@@ -1,5 +1,4 @@
 import { Skeleton } from "@crm/ui/components/skeleton";
-import { Suspense } from "react";
 import { AgentBuilderSidebar } from "./agent-builder-sidebar";
 
 type SidebarData = React.ComponentProps<
@@ -15,12 +14,14 @@ export function AgentBuilderShell({
 }) {
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1">
-			<Suspense fallback={<AgentBuilderSidebarFallback />}>
+			{sidebarData ? (
 				<AgentBuilderSidebar
 					className="hidden w-[213px] flex-none border-r md:flex"
 					initialData={sidebarData}
 				/>
-			</Suspense>
+			) : (
+				<AgentBuilderSidebarFallback />
+			)}
 			<div className="flex min-w-0 flex-1 flex-col">{children}</div>
 		</div>
 	);
@@ -28,7 +29,10 @@ export function AgentBuilderShell({
 
 function AgentBuilderSidebarFallback() {
 	return (
-		<aside className="hidden w-[213px] flex-none flex-col border-r p-4 md:flex">
+		<aside
+			aria-busy="true"
+			className="hidden w-[213px] flex-none flex-col border-r p-4 md:flex"
+		>
 			<div className="flex h-7 items-center pl-2 font-medium text-xs">
 				Chats
 			</div>

@@ -40,10 +40,11 @@ describe("API proxy responses", () => {
 			new Response(gzipSync("hello"), {
 				headers: { "content-encoding": "gzip" },
 			}),
-			new Headers(),
+			new Headers({ "content-encoding": "gzip" }),
 			"GET",
 		);
 
 		expect(await response.text()).toBe("hello");
+		expect(response.headers.has("content-encoding")).toBe(false);
 	});
 });

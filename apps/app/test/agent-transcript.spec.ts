@@ -512,6 +512,15 @@ describe("latestTurnFailure", () => {
 		).toBeNull();
 	});
 
+	it("clears an earlier failure when a retry starts", () => {
+		expect(
+			latestTurnFailure([
+				{ type: "turn.failed", data: { message: "Provider unavailable" } },
+				{ type: "turn.started", data: {} },
+			]),
+		).toBeNull();
+	});
+
 	it("recognizes a model restricted to paid Gateway credits", () => {
 		expect(
 			latestTurnFailure([
