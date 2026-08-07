@@ -13,6 +13,7 @@ import {
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { latestBuilderArtifacts } from "@/lib/agent-builder-state";
+import { useHydrated } from "@/lib/use-hydrated";
 
 export type AgentCodeArtifact = {
 	id: string;
@@ -61,6 +62,7 @@ function AgentCodeWorkspaceSurface({
 	working: boolean;
 }) {
 	const [mode, setMode] = useState<"code" | "changes">("code");
+	const hydrated = useHydrated();
 	const { resolvedTheme } = useTheme();
 	const { model } = useFileTree({
 		paths,
@@ -79,7 +81,7 @@ function AgentCodeWorkspaceSurface({
 	const showChanges = mode === "changes" && previous !== null;
 
 	if (!artifact) return null;
-	if (resolvedTheme !== "light" && resolvedTheme !== "dark") {
+	if (!hydrated || (resolvedTheme !== "light" && resolvedTheme !== "dark")) {
 		return (
 			<section
 				aria-label="Generated agent files"
