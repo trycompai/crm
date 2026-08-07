@@ -53,12 +53,18 @@ A few things that trip people up:
 
 ## Shipping a change
 
+**Start from `main`, which is not the default branch.** `release` is the default so that a plain
+clone runs the last tagged release, but nothing is ever merged into it — it is fast-forwarded onto
+the tag and that is all. Run `git switch main && git pull` before you branch. If you open a pull
+request by hand, pass `--base main`; one opened against `release` is retargeted to `main`
+automatically, so this costs you a comment rather than a rebase.
+
 Push a branch and the rest is mechanical. There are exactly two things you click.
 
 ```
-push a branch ──▶ draft PR opens by itself
+push a branch ──▶ draft PR opens by itself, titled from the diff
                         │
-                  you title it, mark it ready, CI runs
+                  you mark it ready, it retitles, CI runs
                         │
                   ◀── click 1: squash into main
                         │
@@ -71,15 +77,24 @@ push a branch ──▶ draft PR opens by itself
 
 **Pushing any branch that isn't `main` or `release` opens a draft pull request into `main`.** You do
 not create it, and re-pushing does not create a second one. If you close it on purpose it stays
-closed. The title is guessed from your first commit subject, which is usually wrong — fixing it is
-the one thing the automation cannot do for you.
+closed.
 
 **The pull request title is the release note.** The repo squashes, so the title becomes the commit
 subject on `main`, and that subject is the line somebody reads in the changelog six months from now.
-Write it for them, not for the diff. It has to be a
-[Conventional Commit](https://www.conventionalcommits.org/) — `feat(api): …`, `fix(db): …` — and the
-`PR title` check enforces that the moment the PR leaves draft. Drafts are deliberately exempt, so an
-auto-opened PR does not sit there red while you are still working.
+It has to be a [Conventional Commit](https://www.conventionalcommits.org/) — `feat(api): …`,
+`fix(db): …`.
+
+**You do not write it.** `.github/scripts/pr-title.sh` reads the diff and writes one when the PR is
+opened, and writes it again from the finished diff when you mark the PR ready for review. It only
+ever overwrites a title that isn't already a usable release note, so if you retitle the PR yourself
+that title stands. The `PR title` check is what's left: a guard on your edit, not a chore.
+
+The script reaches a model over the `ANTHROPIC_API_KEY` secret, and without it falls back to the
+changed paths and the branch name — a valid title, and a duller one. Set the secret if you want the
+changelog to read well; nothing breaks if you don't.
+
+Drafts are exempt from the check, so an auto-opened PR does not sit there red while you are still
+working.
 
 The type decides both the version bump and the heading it appears under:
 

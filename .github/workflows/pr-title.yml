@@ -19,8 +19,37 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Write the title if it is not a release note
+        id: autotitle
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TITLE: ${{ github.event.pull_request.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if .github/scripts/pr-title.sh check "$TITLE"; then
+            echo "\`$TITLE\` is already a release note — leaving it alone." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          title=$(.github/scripts/pr-title.sh generate "$BASE_SHA" "$HEAD_SHA" "$BRANCH")
+          gh pr edit "$NUMBER" --title "$title"
+
+          echo "written=true" >> "$GITHUB_OUTPUT"
+          echo "Retitled #$NUMBER to \`$title\`." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: amannn/action-semantic-pull-request@v6
         id: lint
+        if: steps.autotitle.outputs.written != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

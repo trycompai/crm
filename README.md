@@ -204,6 +204,11 @@ bun run dev
 The app is on [localhost:3000](http://localhost:3000), the API on
 [localhost:3001](http://localhost:3001).
 
+That clone gives you `release`, the default branch and the last tagged release — what you
+want if you are running this. `main` is where unreleased work lands: green, but not cut
+yet. If you are here to send a pull request, `git switch main` first and read
+[CONTRIBUTING](./CONTRIBUTING.md).
+
 ### The values to set
 
 Open `.env` and set these. Everything else in the file is optional and commented out.
