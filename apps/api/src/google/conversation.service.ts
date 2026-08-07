@@ -30,6 +30,7 @@ export class ConversationService {
 						snippet: true,
 						sentAt: true,
 						gmailMessageId: true,
+						outlookWebLink: true,
 					},
 				},
 			},
@@ -52,9 +53,14 @@ export class ConversationService {
 				sentAt: message.sentAt.toISOString(),
 				recipients: recipientsOf(message.recipients),
 				fromImageUrl: faces.get(message.fromEmail.toLowerCase()) ?? null,
-				gmailUrl: message.gmailMessageId
+				mailboxUrl: message.gmailMessageId
 					? `https://mail.google.com/mail/u/0/#all/${message.gmailMessageId}`
-					: null,
+					: message.outlookWebLink,
+				mailboxName: message.gmailMessageId
+					? "Gmail"
+					: message.outlookWebLink
+						? "Outlook"
+						: null,
 			})),
 		};
 	}

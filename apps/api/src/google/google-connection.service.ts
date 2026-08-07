@@ -1,21 +1,23 @@
 import { isGoogleConfigured, signsInWithGoogle } from "@crm/auth";
-import { type Db, GoogleSyncStatus } from "@crm/db";
+import { type Db, GoogleSyncStatus, type Prisma } from "@crm/db";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { normalizeDomain } from "../companies/domain";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
+import { MailboxMatchService } from "../mailbox/mailbox-match.service";
+import { MailboxTokenService } from "../mailbox/mailbox-token.service";
+import { SyncStateService } from "../mailbox/sync-state.service";
 import {
 	GOOGLE_PROVIDER_ID,
+	GOOGLE_SYNC_SOURCES,
+	type GoogleSyncSource,
 	SCOPE_FOR_SOURCE,
-	SYNC_SOURCES,
-	type SyncSource,
 } from "./google.constants";
-import { GoogleMatchService } from "./google-match.service";
-import { GoogleTokenService } from "./google-token.service";
-import { SyncStateService } from "./sync-state.service";
+
+const PURGE_TIMEOUT_MS = 60_000;
 
 export type SourceStatus = {
-	source: SyncSource;
+	source: GoogleSyncSource;
 	connected: boolean;
 	status: GoogleSyncStatus | null;
 	lastSyncedAt: string | null;
@@ -37,9 +39,9 @@ export class GoogleConnectionService {
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
-		private readonly tokens: GoogleTokenService,
+		private readonly tokens: MailboxTokenService,
 		private readonly state: SyncStateService,
-		private readonly match: GoogleMatchService,
+		private readonly match: MailboxMatchService,
 		private readonly stamp: ActivityStampService,
 	) {}
 
@@ -47,17 +49,17 @@ export class GoogleConnectionService {
 		await this.onConnected(userId);
 
 		const [granted, rows, hasRefreshToken, accounts] = await Promise.all([
-			this.tokens.grantedScopes(userId),
-			this.state.listForUser(userId),
-			this.tokens.hasRefreshToken(userId),
+			this.tokens.grantedScopes(userId, GOOGLE_PROVIDER_ID),
+			this.state.listForUser(userId, GOOGLE_SYNC_SOURCES),
+			this.tokens.hasRefreshToken(userId, GOOGLE_PROVIDER_ID),
 			this.tokens.signInAccounts(userId),
 		]);
 
 		const bySource = new Map(rows.map((row) => [row.source, row]));
 
-		const sources = SYNC_SOURCES.map((source): SourceStatus => {
+		const sources = GOOGLE_SYNC_SOURCES.map((source): SourceStatus => {
 			const row = bySource.get(source);
-			const connected = granted.includes(SCOPE_FOR_SOURCE[source]);
+			const connected = granted.has(SCOPE_FOR_SOURCE[source]);
 
 			return {
 				source,
@@ -71,9 +73,9 @@ export class GoogleConnectionService {
 
 		return {
 			configured: isGoogleConfigured(),
-			linked: accounts.some(
-				(account) => account.providerId === GOOGLE_PROVIDER_ID,
-			),
+			linked:
+				accounts.some((account) => account.providerId === GOOGLE_PROVIDER_ID) &&
+				sources.some((source) => source.connected),
 			required: signsInWithGoogle(accounts),
 			hasRefreshToken,
 			sources,
@@ -82,16 +84,16 @@ export class GoogleConnectionService {
 
 	async onConnected(userId: string): Promise<void> {
 		const [granted, existing] = await Promise.all([
-			this.tokens.grantedScopes(userId),
-			this.state.listForUser(userId),
+			this.tokens.grantedScopes(userId, GOOGLE_PROVIDER_ID),
+			this.state.listForUser(userId, GOOGLE_SYNC_SOURCES),
 		]);
 
 		const known = new Set(existing.map((row) => row.source));
 
 		const added: string[] = [];
 
-		for (const source of SYNC_SOURCES) {
-			if (!granted.includes(SCOPE_FOR_SOURCE[source])) continue;
+		for (const source of GOOGLE_SYNC_SOURCES) {
+			if (!granted.has(SCOPE_FOR_SOURCE[source])) continue;
 			if (known.has(source)) continue;
 
 			await this.state.ensure(userId, source, {
@@ -109,8 +111,8 @@ export class GoogleConnectionService {
 	async reconcileAll(): Promise<void> {
 		const accounts = await this.db.account.findMany({
 			where: {
-				providerId: "google",
-				OR: SYNC_SOURCES.map((source) => ({
+				providerId: GOOGLE_PROVIDER_ID,
+				OR: GOOGLE_SYNC_SOURCES.map((source) => ({
 					scope: { contains: SCOPE_FOR_SOURCE[source] },
 				})),
 			},
@@ -123,31 +125,56 @@ export class GoogleConnectionService {
 	}
 
 	async purgeSyncedData(userId: string): Promise<{ purged: number }> {
-		const [threads, events] = await this.db.$transaction([
-			this.db.emailThread.deleteMany({
-				where: { messages: { some: { syncedByUserId: userId } } },
-			}),
-			this.db.calendarEvent.deleteMany({ where: { syncedByUserId: userId } }),
-		]);
+		const mine: Prisma.EmailMessageWhereInput = {
+			syncedByUserId: userId,
+			gmailMessageId: { not: null },
+		};
+
+		const purged = await this.db.$transaction(
+			async (tx) => {
+				const touched = await tx.emailMessage.findMany({
+					where: mine,
+					select: { threadId: true },
+					distinct: ["threadId"],
+				});
+
+				const threadIds = touched.map((row) => row.threadId);
+				const messages = await tx.emailMessage.deleteMany({ where: mine });
+
+				await tx.emailThread.deleteMany({
+					where: { id: { in: threadIds }, messages: { none: {} } },
+				});
+
+				await rebuildThreads(tx, threadIds);
+
+				const events = await tx.calendarEvent.deleteMany({
+					where: { syncedByUserId: userId },
+				});
+
+				return messages.count + events.count;
+			},
+			{ timeout: PURGE_TIMEOUT_MS },
+		);
 
 		await this.stamp.recomputeAll();
 
-		const purged = threads.count + events.count;
-
-		this.logger.log({ message: "Synced data purged", userId, purged });
+		this.logger.log({ message: "Google data purged", userId, purged });
 
 		return { purged };
 	}
 
 	async revoke(userId: string): Promise<{ revoked: boolean }> {
-		await this.state.remove(userId);
-		const revoked = await this.tokens.revoke(userId);
+		for (const source of GOOGLE_SYNC_SOURCES) {
+			await this.state.remove(userId, source);
+		}
+
+		const revoked = await this.tokens.revoke(userId, GOOGLE_PROVIDER_ID);
 		return { revoked };
 	}
 
 	async setAutoCreate(
 		userId: string,
-		source: SyncSource,
+		source: GoogleSyncSource,
 		enabled: boolean,
 	): Promise<void> {
 		const row = await this.state.get(userId, source);
@@ -203,5 +230,47 @@ export class GoogleConnectionService {
 		});
 
 		return { domain: normalised, purged: threads.count + events.count };
+	}
+}
+
+async function rebuildThreads(
+	tx: Prisma.TransactionClient,
+	threadIds: string[],
+): Promise<void> {
+	if (threadIds.length === 0) return;
+
+	const remaining = await tx.emailMessage.findMany({
+		where: { threadId: { in: threadIds } },
+		select: { threadId: true, sentAt: true, subject: true, snippet: true },
+		orderBy: { sentAt: "asc" },
+	});
+
+	const byThread = new Map<string, typeof remaining>();
+
+	for (const message of remaining) {
+		const group = byThread.get(message.threadId);
+		if (group) group.push(message);
+		else byThread.set(message.threadId, [message]);
+	}
+
+	for (const [threadId, messages] of byThread) {
+		const first = messages.at(0);
+		const last = messages.at(-1);
+		if (!first || !last) continue;
+
+		await tx.emailThread.update({
+			where: { id: threadId },
+			data: {
+				messageCount: messages.length,
+				firstMessageAt: first.sentAt,
+				lastMessageAt: last.sentAt,
+				subject: first.subject,
+			},
+		});
+
+		await tx.activity.updateMany({
+			where: { emailThreadId: threadId },
+			data: { body: last.snippet, occurredAt: last.sentAt },
+		});
 	}
 }

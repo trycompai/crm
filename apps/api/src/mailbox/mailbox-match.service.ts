@@ -39,8 +39,8 @@ export type MatchRequest = {
 };
 
 @Injectable()
-export class GoogleMatchService {
-	private readonly logger = new Logger(GoogleMatchService.name);
+export class MailboxMatchService {
+	private readonly logger = new Logger(MailboxMatchService.name);
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
@@ -191,7 +191,7 @@ export class GoogleMatchService {
 		});
 
 		this.logger.log({
-			message: "Company auto-created from Google sync",
+			message: "Company auto-created from mailbox sync",
 			companyId,
 			domain,
 			source: request.source,

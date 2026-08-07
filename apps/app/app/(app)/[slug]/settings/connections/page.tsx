@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { GoogleConnection } from "./google-connection";
+import { MicrosoftConnection } from "./microsoft-connection";
 
 export const metadata: Metadata = {
 	title: "Connections",
@@ -49,18 +50,30 @@ async function Connections({
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 
-	const [{ error }] = await Promise.all([
+	const [{ error, provider }] = await Promise.all([
 		searchParams,
 		queryClient.prefetchQuery(trpc.google.status.queryOptions()),
+		queryClient.prefetchQuery(trpc.microsoft.status.queryOptions()),
 	]);
+
+	const connectError = first(error);
+	const failed = first(provider);
 
 	return (
 		<HydrateClient>
 			<div className="flex max-w-3xl flex-col gap-6">
 				<GoogleConnection
-					connectError={Array.isArray(error) ? error[0] : error}
+					connectError={failed === "google" ? connectError : undefined}
+				/>
+
+				<MicrosoftConnection
+					connectError={failed === "microsoft" ? connectError : undefined}
 				/>
 			</div>
 		</HydrateClient>
 	);
+}
+
+function first(value: string | string[] | undefined): string | undefined {
+	return Array.isArray(value) ? value[0] : value;
 }
