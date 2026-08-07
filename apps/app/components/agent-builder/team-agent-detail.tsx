@@ -375,6 +375,8 @@ function DraftAgentActions({
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 	const workspaceUrl = useWorkspaceUrl();
+	const deployable =
+		version?.status === "READY" || version?.status === "DEPLOYED";
 	const deploy = useMutation(
 		trpc.agents.deploy.mutationOptions({
 			onSuccess: async () => {
@@ -384,6 +386,9 @@ function DraftAgentActions({
 					}),
 					queryClient.invalidateQueries({
 						queryKey: trpc.agents.list.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.activity.pathKey(),
 					}),
 					queryClient.invalidateQueries({
 						queryKey: trpc.conversations.builderById.pathKey(),
@@ -399,7 +404,7 @@ function DraftAgentActions({
 	);
 	const deployAction = useAsyncAction({
 		action: async () => {
-			if (!version) return;
+			if (!version || !deployable) return;
 			await deploy.mutateAsync({
 				id: agentId,
 				versionId: version.id,
@@ -421,7 +426,7 @@ function DraftAgentActions({
 				</Button>
 			) : null}
 			<Button
-				disabled={!version || deployAction.pending}
+				disabled={!deployable || deployAction.pending}
 				aria-busy={deployAction.pending}
 				onClick={() => deployAction.run()}
 			>
@@ -584,7 +589,9 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 		? manifest.actions.map(recordOf)
 		: [];
 	const actionSummaries = actions
-		.map((action) => textOf(action.summary, ""))
+		.map((action) =>
+			textOf(action.summary, textOf(action.type, "Configured action")),
+		)
 		.filter(Boolean);
 	const access = Array.isArray(manifest.access)
 		? manifest.access.filter(
