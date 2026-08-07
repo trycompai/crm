@@ -4,6 +4,7 @@
 	"license": "MIT",
 	"version": "1.1.0",
 	"scripts": {
+		"prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
 		"build": "turbo run build",
 		"dev": "turbo run dev",
 		"lint": "turbo run lint",
