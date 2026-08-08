@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { builderTaskMarkdown } from "../agent/instructions/task";
+import { recordBuilderDelegation } from "../agent/lib/builder-delegation";
 import {
 	builderCommandType,
 	builderDeliveryMessage,
@@ -16,6 +17,14 @@ import {
 	requireBuilderAttribute,
 	requireTeamAgentAttribute,
 } from "../agent/lib/session-purpose";
+import {
+	builderDraftToolInput,
+	draftInputFromTool,
+} from "../agent/subagents/agent_builder/lib/draft-input";
+import {
+	finishBuilderDraftSave,
+	recordBuilderActions,
+} from "../agent/subagents/agent_builder/lib/execution-state";
 
 const context = (purpose?: string, commandType?: string) => ({
 	session: {
@@ -149,11 +158,8 @@ describe("builder command routing", () => {
 	it("delegates only the explicit creation command to the agent builder", () => {
 		const creation = builderTaskMarkdown("CREATE_AGENT");
 		expect(creation).toContain("Call agent_builder exactly once");
-		expect(creation).toContain("call ask_question");
-		expect(creation).toContain("exactly one decision at a time");
-		expect(creation).toContain(
-			"Do not interrupt a sufficiently specific request",
-		);
+		expect(creation).toContain("Never retry agent_builder in the same turn");
+		expect(creation).toContain("asks any essential clarification directly");
 		const chat = builderTaskMarkdown("CHAT");
 		expect(chat).toContain("Do not call agent_builder");
 		expect(chat).toContain("call ask_question");
@@ -169,5 +175,379 @@ describe("builder command routing", () => {
 		expect(untitled).toContain("call set_chat_title once");
 		expect(untitled).toContain("three to seven words");
 		expect(builderTaskMarkdown("CHAT", false)).not.toContain("set_chat_title");
+	});
+});
+
+describe("builder delegation guard", () => {
+	it("allows one idempotent builder delegation per turn", () => {
+		const first = recordBuilderDelegation(
+			{ turnId: null, callIds: [] },
+			"turn-1",
+			[
+				{
+					kind: "subagent-call",
+					callId: "call-1",
+					subagentName: "agent_builder",
+				},
+			],
+		);
+
+		expect(
+			recordBuilderDelegation(first, "turn-1", [
+				{
+					kind: "subagent-call",
+					callId: "call-1",
+					subagentName: "agent_builder",
+				},
+			]),
+		).toEqual(first);
+		expect(() =>
+			recordBuilderDelegation(first, "turn-1", [
+				{
+					kind: "subagent-call",
+					callId: "call-2",
+					subagentName: "agent_builder",
+				},
+			]),
+		).toThrow("only once");
+		expect(
+			recordBuilderDelegation(first, "turn-2", [
+				{
+					kind: "subagent-call",
+					callId: "call-2",
+					subagentName: "agent_builder",
+				},
+			]),
+		).toEqual({ turnId: "turn-2", callIds: ["call-2"] });
+	});
+});
+
+describe("agent builder execution guard", () => {
+	it("bounds save attempts and permits only final output after saving", () => {
+		const initial = {
+			turnId: null,
+			stepIndex: null,
+			callIds: [],
+			stepCallIds: [],
+			saveCallIds: [],
+			savePending: false,
+			saved: false,
+		};
+		const first = recordBuilderActions(initial, "turn-1", 0, [
+			{
+				kind: "tool-call",
+				callId: "save-1",
+				toolName: "save_agent_draft",
+			},
+		]);
+		const second = recordBuilderActions(
+			finishBuilderDraftSave(first, false),
+			"turn-1",
+			1,
+			[
+				{
+					kind: "tool-call",
+					callId: "save-2",
+					toolName: "save_agent_draft",
+				},
+			],
+		);
+
+		expect(() =>
+			recordBuilderActions(finishBuilderDraftSave(second, false), "turn-1", 2, [
+				{
+					kind: "tool-call",
+					callId: "save-3",
+					toolName: "save_agent_draft",
+				},
+			]),
+		).toThrow("draft-save budget");
+
+		const saved = finishBuilderDraftSave(first, true);
+		expect(() =>
+			recordBuilderActions(saved, "turn-2", 0, [
+				{
+					kind: "tool-call",
+					callId: "write-1",
+					toolName: "write_agent_file",
+				},
+			]),
+		).toThrow("already saved");
+		expect(() =>
+			recordBuilderActions(saved, "turn-2", 0, [
+				{
+					kind: "tool-call",
+					callId: "final-1",
+					toolName: "final_output",
+				},
+			]),
+		).not.toThrow();
+	});
+
+	it("requires draft saving to run by itself", () => {
+		const initial = {
+			turnId: null,
+			stepIndex: null,
+			callIds: [],
+			stepCallIds: [],
+			saveCallIds: [],
+			savePending: false,
+			saved: false,
+		};
+
+		expect(() =>
+			recordBuilderActions(initial, "turn-1", 0, [
+				{
+					kind: "tool-call",
+					callId: "save-1",
+					toolName: "save_agent_draft",
+				},
+				{
+					kind: "tool-call",
+					callId: "write-1",
+					toolName: "write_agent_file",
+				},
+			]),
+		).toThrow("Wait for save_agent_draft");
+		expect(() =>
+			recordBuilderActions(initial, "turn-1", 0, [
+				{
+					kind: "tool-call",
+					callId: "write-1",
+					toolName: "write_agent_file",
+				},
+				{
+					kind: "tool-call",
+					callId: "save-1",
+					toolName: "save_agent_draft",
+				},
+			]),
+		).toThrow("by itself");
+	});
+});
+
+describe("agent builder draft input", () => {
+	it("separates canonical integrations from exact CRM resources", () => {
+		const parsed = builderDraftToolInput.parse({
+			name: "Renewal prep",
+			description: "Prepare a renewal call brief.",
+			instructions:
+				"Run manually. Read the selected deal and summarize renewal risks for review.",
+			trigger: {
+				type: "MANUAL",
+				name: "Prepare renewal brief",
+				summary: "Run before a renewal call",
+			},
+			recordScope: "SELECTED",
+			resources: [{ kind: "deal", id: "deal-1", label: "Acme renewal" }],
+			integrations: ["gmail", "calendar"],
+			actions: [
+				{
+					type: "run.summary",
+					provider: "crm",
+					summary: "Write a reviewable renewal brief",
+				},
+			],
+		});
+
+		expect(draftInputFromTool(parsed)).toMatchObject({
+			resources: [
+				{ kind: "deal", id: "deal-1", label: "Acme renewal" },
+				{ kind: "integration", id: "google:gmail", label: "Gmail" },
+				{
+					kind: "integration",
+					id: "google:calendar",
+					label: "Google Calendar",
+				},
+			],
+			access: [
+				"Read selected CRM records",
+				"Read connected Gmail messages",
+				"Read connected Google Calendar events",
+			],
+		});
+	});
+
+	it("rejects guessed integration resource objects", () => {
+		const result = builderDraftToolInput.safeParse({
+			name: "Renewal prep",
+			description: "Prepare a renewal call brief.",
+			instructions:
+				"Run manually. Read the selected deal and summarize renewal risks for review.",
+			trigger: {
+				type: "MANUAL",
+				name: "Prepare renewal brief",
+				summary: "Run before a renewal call",
+			},
+			recordScope: "SELECTED",
+			resources: [{ kind: "integration", id: "gmail", label: "gmail" }],
+			integrations: [],
+			actions: [
+				{
+					type: "run.summary",
+					provider: "crm",
+					summary: "Write a reviewable renewal brief",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+		expect(
+			builderDraftToolInput.safeParse({
+				name: "Renewal prep",
+				description: "Prepare a renewal call brief.",
+				instructions:
+					"Run manually. Read workspace deals and summarize renewal risks for review.",
+				trigger: {
+					type: "MANUAL",
+					name: "Prepare renewal brief",
+					summary: "Run before a renewal call",
+				},
+				recordScope: "WORKSPACE",
+				resources: [],
+				integrations: ["crm"],
+				actions: [
+					{
+						type: "run.summary",
+						provider: "crm",
+						summary: "Write a reviewable renewal brief",
+					},
+				],
+			}).success,
+		).toBe(false);
+	});
+
+	it("trims trigger metadata and rejects blank text", () => {
+		const base = {
+			name: "Renewal prep",
+			description: "Prepare a renewal call brief.",
+			instructions:
+				"Run manually. Read workspace deals and summarize renewal risks for review.",
+			recordScope: "WORKSPACE" as const,
+			resources: [],
+			integrations: [],
+			actions: [
+				{
+					type: "run.summary" as const,
+					provider: "crm" as const,
+					summary: "  Write a reviewable renewal brief  ",
+				},
+			],
+		};
+
+		expect(
+			builderDraftToolInput.safeParse({
+				...base,
+				trigger: {
+					type: "MANUAL",
+					name: "   ",
+					summary: "Run before a renewal call",
+				},
+			}).success,
+		).toBe(false);
+
+		const parsed = builderDraftToolInput.parse({
+			...base,
+			trigger: {
+				type: "MANUAL",
+				name: "  Prepare renewal brief  ",
+				summary: "  Run before a renewal call  ",
+			},
+		});
+		expect(parsed.trigger.name).toBe("Prepare renewal brief");
+		expect(parsed.trigger.summary).toBe("Run before a renewal call");
+		expect(parsed.actions[0]?.summary).toBe("Write a reviewable renewal brief");
+	});
+});
+
+describe("agent builder draft access", () => {
+	const draft = (actions: unknown[]) =>
+		builderDraftToolInput.parse({
+			name: "Handoff",
+			description: "Hand new customers to onboarding.",
+			instructions:
+				"Run on demand. Read closed-won deals and record the handoff for onboarding.",
+			trigger: {
+				type: "MANUAL",
+				name: "Run handoff",
+				summary: "Run for new customers",
+			},
+			recordScope: "WORKSPACE",
+			resources: [],
+			integrations: [],
+			actions,
+		});
+
+	it("declares the writes a draft was granted, not just its reads", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE", "TASK"],
+					},
+				]),
+			).access,
+		).toEqual([
+			"Read workspace CRM records",
+			"Write notes on CRM records",
+			"Create tasks on CRM records",
+		]);
+	});
+
+	it("only declares the activity types actually granted", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE"],
+					},
+				]),
+			).access,
+		).toEqual(["Read workspace CRM records", "Write notes on CRM records"]);
+	});
+
+	it("keeps a read-only draft read-only", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "run.summary",
+						provider: "crm",
+						summary: "Return a run summary",
+					},
+				]),
+			).access,
+		).toEqual(["Read workspace CRM records"]);
+	});
+
+	it("does not repeat an activity type granted by two actions", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE"],
+					},
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log a follow-up",
+						activityTypes: ["NOTE", "TASK"],
+					},
+				]),
+			).access,
+		).toEqual([
+			"Read workspace CRM records",
+			"Write notes on CRM records",
+			"Create tasks on CRM records",
+		]);
 	});
 });
