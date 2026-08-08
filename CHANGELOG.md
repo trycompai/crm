@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/trycompai/crm/compare/v1.5.0...v1.5.1) (2026-08-08)
+
+
+### Fixes
+
+* **api:** warn when the deployed schema does not match schema.prisma ([#88](https://github.com/trycompai/crm/issues/88)) ([f445c68](https://github.com/trycompai/crm/commit/f445c68a815ad1635498591daa494d18d9508ccf))
+
 ## [1.5.0](https://github.com/trycompai/crm/compare/v1.4.0...v1.5.0) (2026-08-08)
 
 
