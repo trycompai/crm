@@ -5,7 +5,6 @@ import Application from "@carbon/icons-react/es/Application";
 import ArrowRight from "@carbon/icons-react/es/ArrowRight";
 import Building from "@carbon/icons-react/es/Building";
 import Checkmark from "@carbon/icons-react/es/Checkmark";
-import CheckmarkFilled from "@carbon/icons-react/es/CheckmarkFilled";
 import Copy from "@carbon/icons-react/es/Copy";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Play from "@carbon/icons-react/es/Play";
@@ -19,7 +18,9 @@ import {
 	AsyncButtonContent,
 	useAsyncAction,
 } from "@crm/ui/components/async-action";
+import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
+import { DotMatrix } from "@crm/ui/components/dot-matrix";
 import { Icon } from "@crm/ui/components/icon";
 import { Markdown } from "@crm/ui/components/markdown";
 import {
@@ -37,7 +38,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Client, type MessageStreamEvent } from "eve/client";
 import type { EveMessage, EveMessageInputRequest } from "eve/react";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import {
 	AgentClarificationComposer,
@@ -55,16 +56,16 @@ import {
 	latestCompletedArtifactVersionId,
 	reviewVersionId,
 } from "@/lib/agent-builder-state";
+import { toolLabel } from "@/lib/agent-tool-display";
 import {
 	type AgentTurnFailure,
 	conversationTimeline,
-	dealListResultOf,
 	eventStreamSettled,
 	latestTurnFailure,
-	mergeDealListResultPages,
 	messagesFromEvents,
 	pendingQuestion,
 	splitMarkdownTable,
+	type TranscriptItem,
 	toTranscript,
 } from "@/lib/agent-transcript";
 import { isSharedChatToken } from "@/lib/chat-route";
@@ -73,13 +74,17 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 import { AgentCodeWorkspace } from "./agent-code-workspace";
 import { AgentComposer, type BuilderPrompt } from "./agent-composer";
+import {
+	agentResultSkeleton,
+	agentResultsByItem,
+	hasAgentResult,
+} from "./agent-result";
 import { AgentScopeBadges } from "./agent-scope-badges";
 import {
 	ChatAttachmentChip,
 	ChatCommandChip,
 	ChatReferenceChip,
 } from "./chat-chips";
-import { DealListResultTable } from "./deal-list-result";
 import { DeleteChatAction } from "./delete-chat-action";
 import { ShareChatDialog } from "./share-chat-dialog";
 
@@ -87,6 +92,12 @@ type Conversation = RouterOutputs["conversations"]["builderById"];
 type SharedConversation = RouterOutputs["conversations"]["shared"];
 
 const BUILDER_STEPS = ["Scope", "Instructions", "Manifest", "Review"] as const;
+const BUILDER_STEP_ARTIFACTS = [
+	null,
+	"agent/instructions.md",
+	"agent/manifest.json",
+	"agent/README.md",
+] as const;
 type DraftVersion = {
 	id: string;
 	status: string;
@@ -282,6 +293,11 @@ export function AgentBuilderChat({
 									: [event],
 						}))
 					}
+					onEnded={() =>
+						setLiveStream((current) =>
+							current?.key === streamKey ? null : current,
+						)
+					}
 				/>
 			) : null}
 			<ChatHeader
@@ -439,20 +455,23 @@ function BuilderEventFollower({
 	sessionId,
 	onSnapshot,
 	onEvent,
+	onEnded,
 }: {
 	conversationId: string;
 	sessionId: string;
 	onSnapshot: (events: readonly MessageStreamEvent[]) => void;
 	onEvent: (event: MessageStreamEvent) => void;
+	onEnded: () => void;
 }) {
 	useMountEffect(() => {
 		const controller = new AbortController();
-		const session = new Client({
+		const client = new Client({
 			headers: { "x-crm-builder-conversation": conversationId },
 			host: "",
-		}).session({ sessionId, streamIndex: 0 });
+		});
 
 		const follow = async () => {
+			const session = client.session({ sessionId, streamIndex: 0 });
 			const snapshot = await session.snapshot({ signal: controller.signal });
 			if (controller.signal.aborted) return;
 			onSnapshot(snapshot.events);
@@ -466,16 +485,52 @@ function BuilderEventFollower({
 			}
 		};
 
-		void follow().catch((error: unknown) => {
-			if (!controller.signal.aborted) {
-				console.error(error);
-			}
-		});
+		void follow()
+			.catch((error: unknown) => {
+				if (!controller.signal.aborted) console.error(error);
+			})
+			.finally(() => {
+				if (!controller.signal.aborted) onEnded();
+			});
 
 		return () => controller.abort();
 	});
 
 	return null;
+}
+
+function withoutTable(text: string): string {
+	const { before, after } = splitMarkdownTable(text);
+	return [before, after].filter(Boolean).join("\n\n").trim();
+}
+
+function AgentToolStep({
+	item,
+}: {
+	item: Extract<TranscriptItem, { kind: "did" }>;
+}) {
+	return (
+		<div className="flex min-w-0 flex-col gap-1">
+			<div className="flex min-w-0 items-start gap-2 text-sm">
+				{item.pending ? (
+					<DotMatrix decorative className="mt-0.5" />
+				) : item.tone === "warning" ? (
+					<Icon icon={WarningAlt} className="size-3.5 text-warning" />
+				) : (
+					<Icon icon={Checkmark} className="size-3.5 text-ring" />
+				)}
+				<span className="min-w-0 wrap-break-word">{toolLabel(item)}</span>
+			</div>
+			{item.errorText ? (
+				<p className="pl-[22px] wrap-break-word text-destructive text-xs leading-5">
+					{item.errorText}
+				</p>
+			) : null}
+			{hasAgentResult(item.tool) && item.pending
+				? agentResultSkeleton(item.tool)
+				: null}
+		</div>
+	);
 }
 
 function appendEvent(
@@ -707,130 +762,57 @@ function AssistantMessage({
 		if (item.kind === "said") textParts.push(item.text);
 	}
 	const markdown = textParts.join("\n\n");
-	const activity = transcript.items.filter(
-		(item) => item.kind === "reasoned" || item.kind === "did",
-	);
-	const reasoningCount = activity.filter(
-		(item) => item.kind === "reasoned",
-	).length;
-	const toolCount = activity.filter((item) => item.kind === "did").length;
-	const dealResults = mergeDealListResultPages(
-		activity.flatMap((item) => {
-			if (item.kind !== "did" || item.tool !== "list_deals") return [];
-			const result = dealListResultOf(item.output);
-			return result ? [result] : [];
-		}),
-	);
-	const dealMarkdown =
-		dealResults.length > 0 ? splitMarkdownTable(markdown) : null;
-	const streaming =
-		message.metadata?.status === "streaming" ||
-		activity.some(
-			(item) =>
-				(item.kind === "reasoned" && item.streaming) ||
-				(item.kind === "did" && item.pending),
-		);
-	const reasoningLabel =
-		reasoningCount > 0 && toolCount > 0
-			? "Reasoning and activity"
-			: reasoningCount > 0
-				? "Reasoning"
-				: "Activity";
+	const results = agentResultsByItem(transcript.items);
 
 	return (
 		<div className="flex w-full min-w-0 max-w-[640px] flex-col gap-2">
-			{activity.length > 0 ? (
-				<Reasoning isStreaming={streaming} label={reasoningLabel}>
-					<div className="flex flex-col gap-3">
-						{activity.map((item) => {
-							if (item.kind === "reasoned") {
-								return (
-									<Markdown key={item.id} className="wrap-break-word leading-5">
-										{item.text}
-									</Markdown>
-								);
-							}
-
-							return (
-								<div key={item.id} className="flex min-w-0 items-start gap-2">
-									{item.pending ? (
-										<Icon
-											icon={Renew}
-											className="size-3.5 animate-spin"
-											motion="none"
-										/>
-									) : item.tone === "warning" ? (
-										<Icon icon={WarningAlt} className="size-3.5 text-warning" />
-									) : (
-										<Icon icon={Checkmark} className="size-3.5 text-ring" />
-									)}
-									<span className="min-w-0 wrap-break-word">{item.label}</span>
-								</div>
-							);
-						})}
-					</div>
-				</Reasoning>
-			) : null}
-			{dealMarkdown ? (
-				<>
-					{dealMarkdown.before ? (
-						<Markdown className="wrap-break-word text-sm leading-5">
-							{dealMarkdown.before}
-						</Markdown>
-					) : null}
-					{dealResults.map((result) => (
-						<DealListResultTable
-							key={JSON.stringify(result.criteria)}
-							result={result}
-						/>
-					))}
-					{dealMarkdown.after ? (
-						<Markdown className="wrap-break-word text-sm leading-5">
-							{dealMarkdown.after}
-						</Markdown>
-					) : null}
-					{transcript.items.map((item) =>
-						item.kind === "asked" &&
-						(conversation === null ||
-							answeredQuestionIds.has(item.question.requestId)) ? (
-							<FollowUpTranscriptItem
-								key={item.id}
-								question={item.question}
-								answered={answeredQuestionIds.has(item.question.requestId)}
-							/>
-						) : null,
-					)}
-				</>
-			) : (
-				transcript.items.map((item) => {
-					if (item.kind === "said") {
-						const text = item.text;
-						if (!text) return null;
-
-						return (
-							<Markdown
-								key={item.id}
-								className="wrap-break-word text-sm leading-5"
-							>
-								{text}
+			{transcript.items.map((item) => {
+				if (item.kind === "reasoned") {
+					return (
+						<Reasoning
+							key={item.id}
+							isStreaming={item.streaming}
+							label="Reasoning"
+						>
+							<Markdown className="wrap-break-word leading-5">
+								{item.text}
 							</Markdown>
-						);
-					}
+						</Reasoning>
+					);
+				}
 
-					if (item.kind === "asked") {
-						return conversation === null ||
-							answeredQuestionIds.has(item.question.requestId) ? (
-							<FollowUpTranscriptItem
-								key={item.id}
-								question={item.question}
-								answered={answeredQuestionIds.has(item.question.requestId)}
-							/>
-						) : null;
-					}
+				if (item.kind === "did") {
+					return (
+						<Fragment key={item.id}>
+							<AgentToolStep item={item} />
+							{results.get(item.id)}
+						</Fragment>
+					);
+				}
 
-					return null;
-				})
-			)}
+				if (item.kind === "said") {
+					const text = results.size > 0 ? withoutTable(item.text) : item.text;
+					if (!text) return null;
+
+					return (
+						<Markdown
+							key={item.id}
+							className="wrap-break-word text-sm leading-5"
+						>
+							{text}
+						</Markdown>
+					);
+				}
+
+				return conversation === null ||
+					answeredQuestionIds.has(item.question.requestId) ? (
+					<FollowUpTranscriptItem
+						key={item.id}
+						question={item.question}
+						answered={answeredQuestionIds.has(item.question.requestId)}
+					/>
+				) : null;
+			})}
 			{markdown ? (
 				conversation ? (
 					<ResponseActions
@@ -974,80 +956,91 @@ function BuildingAgentCard({
 		onError: () => toast.error("The agent could not be stopped. Try again."),
 	});
 
+	const writingPath =
+		artifacts.find((artifact) => artifact.status === "WRITING")?.path ?? null;
+
 	return (
-		<div className="w-full max-w-sm">
-			<div className="overflow-hidden rounded-lg bg-muted/40">
-				<div className="flex items-center gap-3 px-4 pt-4 pb-2">
-					<Icon
-						icon={Renew}
-						className="size-3.5 animate-spin text-ring"
-						motion="none"
-					/>
+		<div className="w-full max-w-lg">
+			<div className="overflow-hidden rounded-lg border bg-card">
+				<div className="flex items-center gap-2 px-4 pt-4">
 					<span className="min-w-0 flex-1 font-medium text-sm">
 						Building the agent
 					</span>
-					<span className="font-mono text-muted-foreground text-xs">
+					<span className="shrink-0 font-mono text-muted-foreground text-xs">
 						{completed} of 4
 					</span>
 				</div>
-				<ol
-					className="flex flex-col gap-1 px-3 py-3"
-					aria-label="Agent creation"
-				>
+				<ol className="flex flex-col gap-1 p-3" aria-label="Agent creation">
 					{BUILDER_STEPS.map((label, index) => {
 						const done = index < completed;
 						const active =
 							index === completed && completed < BUILDER_STEPS.length;
+						const artifact = BUILDER_STEP_ARTIFACTS[index];
 
 						return (
 							<li
 								key={label}
 								className={cn(
-									"flex min-h-9 min-w-0 items-center gap-3 rounded-md px-2.5 py-2",
-									active && "bg-background",
+									"flex min-h-8 min-w-0 flex-col justify-center gap-1 rounded-md px-2",
+									active && "bg-muted py-2",
 								)}
 								aria-current={active ? "step" : undefined}
 							>
-								<span
-									className={cn(
-										"flex size-5 shrink-0 items-center justify-center text-[11px]",
-										(done || active) && "text-ring",
-										!done && !active && "text-muted-foreground",
-									)}
-								>
-									{done ? (
-										<Icon icon={Checkmark} className="size-3.5" />
-									) : active ? (
-										<Icon
-											icon={Renew}
-											className="size-3.5 animate-spin"
-											motion="none"
-										/>
-									) : (
-										index + 1
-									)}
-								</span>
-								<span
-									className={cn(
-										"min-w-0 flex-1 wrap-break-word text-xs",
-										!done && !active && "text-muted-foreground",
-									)}
-								>
-									{label}
-								</span>
-								<span className="shrink-0 text-muted-foreground text-[11px]">
-									{done ? "Done" : active ? "Working" : "Queued"}
-								</span>
+								<div className="flex min-w-0 items-center gap-2">
+									<span
+										className={cn(
+											"flex size-5 shrink-0 items-center justify-center font-mono text-xs",
+											(done || active) && "text-ring",
+											!done && !active && "text-muted-foreground",
+										)}
+									>
+										{done ? (
+											<Icon icon={Checkmark} className="size-3.5" />
+										) : active ? (
+											<DotMatrix decorative />
+										) : (
+											index + 1
+										)}
+									</span>
+									<span
+										className={cn(
+											"min-w-0 flex-1 wrap-break-word text-sm",
+											!done && !active && "text-muted-foreground",
+										)}
+									>
+										{label}
+									</span>
+									<span
+										className={cn(
+											"shrink-0 text-xs",
+											done && artifact && "font-mono",
+											active ? "text-foreground" : "text-muted-foreground",
+										)}
+									>
+										{done && artifact
+											? artifact.replace("agent/", "")
+											: done
+												? "Done"
+												: active
+													? "Working"
+													: "Queued"}
+									</span>
+								</div>
+								{active && writingPath ? (
+									<p className="pl-7 font-mono text-muted-foreground text-xs">
+										Writing {writingPath}
+									</p>
+								) : null}
 							</li>
 						);
 					})}
 				</ol>
-				<footer className="flex min-h-12 items-center gap-3 bg-background/55 px-4 py-2.5">
+				<footer className="flex items-center gap-2 border-t bg-muted px-4 py-3">
 					<p className="min-w-0 flex-1 text-pretty text-muted-foreground text-xs">
 						Runs in the background
 					</p>
 					<Button
-						variant="ghost"
+						variant="outline"
 						size="sm"
 						disabled={!sessionId || stop.pending}
 						aria-busy={stop.pending}
@@ -1145,47 +1138,67 @@ function ReviewAgentCard({
 			<p className="max-w-[640px] text-pretty text-sm leading-5">
 				Your private draft is ready to review.
 			</p>
-			<div className="overflow-hidden rounded-lg border bg-card">
-				<div className="border-b px-4 py-3 sm:px-5 sm:py-4">
-					<h2 className="wrap-break-word font-medium text-sm">
-						{manifest.name ?? agent.name}
-					</h2>
-					<p className="mt-0.5 wrap-break-word text-pretty text-muted-foreground text-xs">
-						{manifest.description ??
-							agent.description ??
-							"A durable agent for your team."}
-					</p>
+			<AgentCardShell name={manifest.name ?? agent.name} status="Private">
+				<div className="flex flex-col gap-2 p-4">
+					<ReviewRow label="When" value={manifest.trigger} />
+					<ReviewRow label="Find" value={manifest.looksAt} />
+					<ReviewRow label="Then" value={manifest.action} />
+					<ReviewRow label="Scope">
+						<AgentScopeBadges
+							scopes={manifest.access}
+							fallback="Bounded CRM read access"
+						/>
+					</ReviewRow>
 				</div>
-				<ReviewRow label="Trigger" value={manifest.trigger} />
-				<ReviewRow label="Looks at" value={manifest.looksAt} />
-				<ReviewRow label="Action" value={manifest.action} />
-				<ReviewRow label="Access">
-					<AgentScopeBadges
-						scopes={manifest.access}
-						fallback="Bounded CRM read access"
-					/>
-				</ReviewRow>
-				<p className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5">
-					Runs in an isolated sandbox. CRM access is limited to the scopes
-					above, and credentials never enter the sandbox.
-				</p>
-				<div className="flex min-h-14 flex-col items-stretch gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
-					<p className="text-pretty text-muted-foreground text-xs">
-						Review the draft before sharing it with your team.
-					</p>
-					<div className="sm:shrink-0">
-						<Button asChild>
-							<Link
-								href={workspaceUrl(`/agents/${agent.id}`)}
-								transitionTypes={["nav-forward"]}
-							>
-								View agent details
-								<Icon icon={ArrowRight} data-icon="inline-end" />
-							</Link>
-						</Button>
-					</div>
-				</div>
+				<AgentCardFooter note="Sandboxed · credentials never enter the sandbox">
+					<Button asChild size="sm">
+						<Link
+							href={workspaceUrl(`/agents/${agent.id}`)}
+							transitionTypes={["nav-forward"]}
+						>
+							View details
+							<Icon icon={ArrowRight} data-icon="inline-end" />
+						</Link>
+					</Button>
+				</AgentCardFooter>
+			</AgentCardShell>
+		</div>
+	);
+}
+
+function AgentCardShell({
+	name,
+	status,
+	children,
+}: {
+	name: string;
+	status: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg border bg-card">
+			<div className="flex items-center gap-2 px-4 pt-4">
+				<h2 className="min-w-0 flex-1 wrap-break-word font-medium text-sm">
+					{name}
+				</h2>
+				<Badge variant="token">{status}</Badge>
 			</div>
+			{children}
+		</div>
+	);
+}
+
+function AgentCardFooter({
+	note,
+	children,
+}: {
+	note: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex flex-col items-stretch gap-3 border-t bg-muted px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+			<p className="text-pretty text-muted-foreground text-xs">{note}</p>
+			<div className="sm:shrink-0">{children}</div>
 		</div>
 	);
 }
@@ -1196,15 +1209,15 @@ function ReviewRow({
 	children,
 }: {
 	label: string;
-	value?: string;
+	value?: ReactNode;
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex min-h-8 flex-col items-start gap-0.5 border-b px-4 py-2 last:border-b-0 sm:flex-row sm:items-center sm:gap-4 sm:px-5 sm:py-1.5">
-			<span className="text-muted-foreground text-xs sm:w-[104px] sm:shrink-0">
+		<div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-4">
+			<span className="text-muted-foreground text-sm leading-5 sm:w-16 sm:shrink-0">
 				{label}
 			</span>
-			<div className="min-w-0 flex-1 wrap-break-word font-medium text-sm">
+			<div className="min-w-0 flex-1 wrap-break-word font-medium text-sm leading-5">
 				{children ?? value}
 			</div>
 		</div>
@@ -1246,33 +1259,16 @@ function DeployedAgentCard({
 
 	return (
 		<div className="flex flex-col gap-[18px]">
-			<div className="space-y-1">
+			<div className="flex flex-col gap-1">
 				<p className="text-sm leading-5">{agent.name} is live.</p>
 				<p className="text-muted-foreground text-sm leading-5">
 					I created the Eve agent, applied its bounded CRM and integration
 					access, and scheduled its first run.
 				</p>
 			</div>
-			<div className="overflow-hidden rounded-lg border bg-card">
-				<div className="flex flex-col items-start gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-5 sm:py-4">
-					<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-						<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-							<Icon icon={CheckmarkFilled} className="size-3.5 text-ring" />
-							<h2 className="min-w-0 wrap-break-word font-medium text-sm">
-								{agent.name}
-							</h2>
-							<span className="text-muted-foreground text-xs">Live</span>
-						</div>
-						<p className="wrap-break-word text-muted-foreground text-xs">
-							Team agent · created by {agent.createdBy.name}
-						</p>
-					</div>
-					<Button asChild variant="outline" size="sm">
-						<Link href={workspaceUrl(`/agents/${agent.id}`)}>Open agent</Link>
-					</Button>
-				</div>
-				<div className="grid border-b sm:grid-cols-3">
-					<DeployedStat
+			<AgentCardShell name={agent.name} status="Live">
+				<div className="flex flex-col gap-2 p-4">
+					<ReviewRow
 						label="Next run"
 						value={
 							nextRun ? (
@@ -1290,39 +1286,37 @@ function DeployedAgentCard({
 							)
 						}
 					/>
-					<DeployedStat
-						label="Execution"
-						value="Eve runtime · isolated sandbox"
-					/>
-					<DeployedStat
-						label="Available to"
-						value="Everyone on the team"
-						last
-					/>
+					<ReviewRow label="Runs in" value="Eve runtime · isolated sandbox" />
+					<ReviewRow label="Owner" value={`Team · ${agent.createdBy.name}`} />
 				</div>
-				<div className="flex min-h-12 flex-col items-start gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-2">
-					<p className="text-pretty text-muted-foreground text-xs">
-						The chat remains private. The agent is now team-owned.
-					</p>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={runAction.pending}
-						aria-busy={runAction.pending}
-						onClick={() => runAction.run()}
-					>
-						<AsyncButtonContent
-							status={runAction.status}
-							pendingLabel="Queueing"
-							successLabel="Queued"
-							errorLabel="Try again"
+				<AgentCardFooter note="The chat stays private. The agent is team-owned.">
+					<div className="flex items-center gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={runAction.pending}
+							aria-busy={runAction.pending}
+							onClick={() => runAction.run()}
 						>
-							<Icon icon={Play} data-icon="inline-start" />
-							Run now
-						</AsyncButtonContent>
-					</Button>
-				</div>
-			</div>
+							<AsyncButtonContent
+								status={runAction.status}
+								pendingLabel="Queueing"
+								successLabel="Queued"
+								errorLabel="Try again"
+							>
+								<Icon icon={Play} data-icon="inline-start" />
+								Run now
+							</AsyncButtonContent>
+						</Button>
+						<Button asChild size="sm">
+							<Link href={workspaceUrl(`/agents/${agent.id}`)}>
+								Open agent
+								<Icon icon={ArrowRight} data-icon="inline-end" />
+							</Link>
+						</Button>
+					</div>
+				</AgentCardFooter>
+			</AgentCardShell>
 
 			<div>
 				<p className="flex h-7 items-center text-muted-foreground text-sm">
@@ -1347,30 +1341,6 @@ function DeployedAgentCard({
 					),
 				)}
 			</div>
-		</div>
-	);
-}
-
-function DeployedStat({
-	label,
-	value,
-	last = false,
-}: {
-	label: string;
-	value: ReactNode;
-	last?: boolean;
-}) {
-	return (
-		<div
-			className={cn(
-				"flex min-w-0 flex-col justify-center gap-1 px-4 py-3 sm:px-5",
-				!last && "border-b sm:border-r sm:border-b-0",
-			)}
-		>
-			<span className="text-muted-foreground text-xs">{label}</span>
-			<span className="min-w-0 wrap-break-word font-medium text-sm sm:truncate">
-				{value}
-			</span>
 		</div>
 	);
 }
