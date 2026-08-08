@@ -18,11 +18,13 @@ export type TranscriptItem =
 			kind: "did";
 			id: string;
 			label: string;
+			input: Record<string, unknown> | null;
 			output: unknown;
 			tone: Tone;
 			pending: boolean;
 			sources: Source[];
 			tool: string;
+			errorText: string | null;
 	  };
 
 export type Tone = "neutral" | "success" | "warning";
@@ -239,7 +241,9 @@ export function toTranscript(
 							kind: "did",
 							id,
 							label: describe(part),
+							input: input(part),
 							output: output(part),
+							errorText: errorTextOf(part),
 							tone: outcomeTone(part),
 							pending:
 								state === "input-streaming" ||
@@ -382,6 +386,18 @@ function output(part: EveMessagePart): Record<string, unknown> | null {
 		: null;
 }
 
+function input(part: EveMessagePart): Record<string, unknown> | null {
+	return "input" in part && part.input && typeof part.input === "object"
+		? (part.input as Record<string, unknown>)
+		: null;
+}
+
+function errorTextOf(part: EveMessagePart): string | null {
+	if (!("errorText" in part)) return null;
+	const text = part.errorText;
+	return typeof text === "string" && text.trim() ? text : null;
+}
+
 function recordOf(value: unknown): Record<string, unknown> {
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -472,6 +488,34 @@ export function dealListResultOf(value: unknown): DealListResult | null {
 		deals: deals as DealListItem[],
 		hasMore: result.hasMore === true,
 	};
+}
+
+export function groupDealListPages(
+	pages: readonly { itemId: string; value: DealListResult }[],
+): { itemId: string; value: DealListResult }[] {
+	const groups = new Map<
+		string,
+		{ itemId: string; value: DealListResult; order: number }
+	>();
+
+	for (const [index, page] of pages.entries()) {
+		const key = JSON.stringify(page.value.criteria);
+		const previous = groups.get(key);
+		const [merged] = mergeDealListResultPages(
+			previous ? [previous.value, page.value] : [page.value],
+		);
+		if (!merged) continue;
+
+		groups.set(key, {
+			itemId: page.itemId,
+			value: merged,
+			order: previous?.order ?? index,
+		});
+	}
+
+	return [...groups.values()]
+		.sort((left, right) => left.order - right.order)
+		.map(({ itemId, value }) => ({ itemId, value }));
 }
 
 export function mergeDealListResultPages(

@@ -660,3 +660,61 @@ describe("every tool has a line of English", () => {
 		}
 	});
 });
+
+describe("tool call details", () => {
+	it("keeps the tool input so the label can describe the work", () => {
+		const [row] = toTranscript([
+			message([
+				tool("write_agent_file", {
+					input: { path: "agent/manifest.json" },
+					output: {},
+				}),
+			]),
+		]);
+
+		expect(row?.items[0]).toMatchObject({
+			kind: "did",
+			input: { path: "agent/manifest.json" },
+		});
+	});
+
+	it("surfaces the failure text instead of dropping it", () => {
+		const [row] = toTranscript([
+			message([
+				tool("write_agent_file", {
+					state: "output-error",
+					errorText: "Draft is closed.",
+				}),
+			]),
+		]);
+
+		expect(row?.items[0]).toMatchObject({
+			kind: "did",
+			errorText: "Draft is closed.",
+		});
+	});
+
+	it("leaves errorText null when the call succeeded", () => {
+		const [row] = toTranscript([
+			message([tool("write_agent_file", { output: {} })]),
+		]);
+
+		expect(row?.items[0]).toMatchObject({ kind: "did", errorText: null });
+	});
+
+	it("keeps text, tools and text in the order they happened", () => {
+		const [row] = toTranscript([
+			message([
+				{ type: "text", text: "Looking." },
+				tool("write_agent_file", { input: { path: "a" }, output: {} }),
+				{ type: "text", text: "Done." },
+			]),
+		]);
+
+		expect(row?.items.map((item) => item.kind)).toEqual([
+			"said",
+			"did",
+			"said",
+		]);
+	});
+});
