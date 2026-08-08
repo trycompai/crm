@@ -12,6 +12,7 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	dealAttachContactInput,
+	dealBoardInput,
 	dealBulkInput,
 	dealBulkOwnerInput,
 	dealBulkStageInput,
@@ -21,6 +22,7 @@ import {
 	dealDetachContactInput,
 	dealIdInput,
 	dealListInput,
+	dealReorderInput,
 	dealUpdateArgs,
 	setStageInput,
 } from "./deals.contracts";
@@ -34,6 +36,19 @@ export class DealsRouter {
 	@Query({ input: dealListInput })
 	async list(@Input() input: z.infer<typeof dealListInput>) {
 		return this.deals.list(input);
+	}
+
+	@Query({ input: dealBoardInput })
+	async board(@Input() input: z.infer<typeof dealBoardInput>) {
+		return this.deals.board(input);
+	}
+
+	@Mutation({ input: dealReorderInput })
+	async reorder(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealReorderInput>,
+	) {
+		return this.deals.reorder(input, ctx.user.id);
 	}
 
 	@Query({ input: dealIdInput })

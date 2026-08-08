@@ -14,8 +14,10 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { CreateDealSheet } from "./create-deal-sheet";
+import { DealsBoard } from "./deals-board";
 import { dealsSearchParams } from "./deals-search-params";
 import { DealsTable } from "./deals-table";
+import { DealsViewSwitch, DealsViewToggle } from "./deals-view-toggle";
 
 export const metadata: Metadata = {
 	title: "Deals",
@@ -34,6 +36,7 @@ export default function DealsPage({
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
+					<DealsViewToggle />
 					<CreateDealSheet />
 				</PageShellActions>
 			</PageShellHeader>
@@ -67,7 +70,7 @@ async function Deals({
 
 	return (
 		<HydrateClient>
-			<DealsTable />
+			<DealsViewSwitch list={<DealsTable />} board={<DealsBoard />} />
 		</HydrateClient>
 	);
 }

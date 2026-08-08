@@ -7,6 +7,7 @@ import { AgentModule } from "./agent/agent.module";
 import { AuthModule } from "./auth/auth.module";
 import { BackfillModule } from "./backfill/backfill.module";
 import { AppCacheModule } from "./cache/cache.module";
+import { ClientAccountsModule } from "./client-accounts/client-accounts.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { validateEnv } from "./config/env.validation";
 import { ContactsModule } from "./contacts/contacts.module";
@@ -17,6 +18,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { DatabaseModule } from "./database/database.module";
 import { DealsModule } from "./deals/deals.module";
 import { FieldsModule } from "./fields/fields.module";
+import { FormsModule } from "./forms/forms.module";
 import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
 import { LoggingModule } from "./logging/logging.module";
@@ -25,11 +27,13 @@ import { MailboxModule } from "./mailbox/mailbox.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
+import { SmsModule } from "./sms/sms.module";
 import { SsoModule } from "./sso/sso.module";
 import { SyncModule } from "./sync/sync.module";
 import { TelemetryModule } from "./telemetry/telemetry.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
+import { WorkflowsModule } from "./workflows/workflows.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 
 @Module({
@@ -67,6 +71,10 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		SsoModule,
 		BackfillModule,
 		TelemetryModule,
+		ClientAccountsModule,
+		SmsModule,
+		FormsModule,
+		WorkflowsModule,
 	],
 })
 export class AppModule {}

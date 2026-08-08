@@ -37,18 +37,21 @@ import {
 	FACET_ALL,
 	FACET_UNASSIGNED,
 	type ListResult,
+	ownerFilter,
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
 import type {
 	ClosingWindow,
 	DealAttachContactInput,
+	DealBoardInput,
 	DealBulkOwnerInput,
 	DealBulkStageInput,
 	DealContactRoleInput,
 	DealCreateInput,
 	DealDetachContactInput,
 	DealListInput,
+	DealReorderInput,
 	DealUpdateInput,
 	SetStageInput,
 } from "./deals.contracts";
@@ -360,6 +363,111 @@ export class DealsService {
 		});
 
 		return { id, name: deleted.name };
+	}
+
+	async board(input: DealBoardInput) {
+		const where: Prisma.DealWhereInput = {};
+		if (input.owner !== FACET_ALL) {
+			const f = ownerFilter(input.owner);
+			if (f) Object.assign(where, f);
+		}
+		if (input.clientAccountId !== FACET_ALL) {
+			where.clientAccountId = input.clientAccountId;
+		}
+		const rows = await this.db.deal.findMany({
+			where,
+			orderBy: [{ stage: "asc" }, { boardOrder: "asc" }, { createdAt: "desc" }],
+			select: {
+				id: true,
+				name: true,
+				stage: true,
+				boardOrder: true,
+				amount: true,
+				currency: true,
+				baseAmount: true,
+				expectedCloseDate: true,
+				company: { select: COMPANY_SELECT },
+				owner: { select: OWNER_SELECT },
+				tags: true,
+				clientAccountId: true,
+			},
+		});
+		const base = await this.conversion.reportingCurrency();
+		const columns: Record<
+			string,
+			{
+				stage: string;
+				total: number;
+				valueCents: number | null;
+				deals: Array<{
+					id: string;
+					name: string;
+					stage: string;
+					amountCents: number | null;
+					baseAmountCents: number | null;
+					currency: string;
+					company: (typeof rows)[number]["company"];
+					owner: (typeof rows)[number]["owner"];
+					expectedCloseDate: string | null;
+					tags: string[];
+				}>;
+			}
+		> = {};
+		for (const row of rows) {
+			const col = columns[row.stage] ?? {
+				stage: row.stage,
+				total: 0,
+				valueCents: 0,
+				deals: [],
+			};
+			col.total += 1;
+			const bc = toCents(row.baseAmount);
+			if (bc !== null) col.valueCents = (col.valueCents ?? 0) + bc;
+			col.deals.push({
+				id: row.id,
+				name: row.name,
+				stage: row.stage,
+				amountCents: toCents(row.amount),
+				baseAmountCents: toCents(row.baseAmount),
+				currency: row.currency,
+				company: row.company,
+				owner: row.owner,
+				expectedCloseDate: row.expectedCloseDate?.toISOString() ?? null,
+				tags: row.tags,
+			});
+			columns[row.stage] = col;
+		}
+		return {
+			columns,
+			reportingCurrency: base,
+		};
+	}
+
+	async reorder(input: DealReorderInput, actingUserId: string) {
+		const deal = await this.db.deal.findUnique({
+			where: { id: input.id },
+			select: { id: true, stage: true, boardOrder: true },
+		});
+		if (!deal) throw new NotFoundException(`No deal with id ${input.id}.`);
+		if (deal.stage !== input.stage) {
+			await this.setStage(
+				{
+					id: input.id,
+					stage: input.stage,
+					closedReason: LOSING.has(input.stage) ? "moved on board" : undefined,
+				},
+				actingUserId,
+			);
+		}
+		await this.db.deal.update({
+			where: { id: input.id },
+			data: { boardOrder: input.orderInStage },
+		});
+		return {
+			id: input.id,
+			stage: input.stage,
+			orderInStage: input.orderInStage,
+		};
 	}
 
 	async setStage(input: SetStageInput, actingUserId: string) {

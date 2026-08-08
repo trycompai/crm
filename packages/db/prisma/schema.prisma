@@ -128,6 +128,9 @@ enum ActivityType {
   TASK
   STAGE_CHANGE
   ENRICHMENT
+  SMS
+  FORM_SUBMISSION
+  WORKFLOW
 }
 
 enum EnrichmentStatus {
@@ -252,6 +255,11 @@ model Company {
   primaryContactId String?  @unique
   primaryContact   Contact? @relation("PrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
 
+  clientAccountId  String?
+  clientAccount    ClientAccount? @relation("ClientAccountCompanies", fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  tags             String[]  @default([])
+
   enrichmentStatus EnrichmentStatus   @default(PENDING)
   enrichedAt       DateTime?
   enrichmentError  String?
@@ -274,6 +282,7 @@ model Company {
   @@index([ownerId])
   @@index([name])
   @@index([lastActivityAt])
+  @@index([clientAccountId])
   @@map("company")
 }
 
@@ -315,6 +324,13 @@ model Contact {
   owner     User?    @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   primaryOf Company? @relation("PrimaryContact")
 
+  clientAccountId String?
+  clientAccount   ClientAccount? @relation("ClientAccountContacts", fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  tags      String[] @default([])
+  smsThreads SmsThread[]
+  formSubmissions FormSubmission[]
+
   source RecordSource @default(MANUAL)
 
   lastActivityAt DateTime?
@@ -331,6 +347,7 @@ model Contact {
   @@index([companyId])
   @@index([ownerId])
   @@index([lastActivityAt])
+  @@index([clientAccountId])
   @@map("contact")
 }
 
@@ -853,6 +870,12 @@ model Deal {
   fxRate       Decimal?  @db.Decimal(20, 10)
   fxRateAt     DateTime?
 
+  clientAccountId String?
+  clientAccount   ClientAccount? @relation("ClientAccountDeals", fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  boardOrder   Int      @default(0)
+  tags         String[] @default([])
+
   lastActivityAt DateTime?
 
   contacts    DealContact[]
@@ -868,6 +891,8 @@ model Deal {
   @@index([lastActivityAt])
   @@index([baseAmount])
   @@index([currency])
+  @@index([clientAccountId])
+  @@index([stage, boardOrder])
   @@map("deal")
 }
 
@@ -1314,4 +1339,293 @@ model SsoProvider {
 
   @@unique([providerId])
   @@map("ssoProvider")
+}
+
+// ============================================================
+// Zayn Scales agency modules
+// ============================================================
+
+enum ClientAccountStatus {
+  ACTIVE
+  ONBOARDING
+  PAUSED
+  CHURNED
+}
+
+model ClientAccount {
+  id          String              @id @default(cuid())
+  name        String
+  slug        String              @unique
+  status      ClientAccountStatus @default(ACTIVE)
+  logoUrl     String?
+  brandColor  String?
+  website     String?
+  industry    String?
+  timezone    String?
+  monthlyRetainerCents BigInt?
+  currency    String              @default("USD")
+  startedAt   DateTime?
+  churnedAt   DateTime?
+  notes       String?
+  tags        String[]            @default([])
+
+  companies   Company[]           @relation("ClientAccountCompanies")
+  contacts    Contact[]           @relation("ClientAccountContacts")
+  deals       Deal[]              @relation("ClientAccountDeals")
+  forms       FormDefinition[]
+  workflows   WorkflowDefinition[]
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([status])
+  @@index([name])
+  @@map("clientAccount")
+}
+
+enum SmsDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SmsStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+model SmsThread {
+  id             String   @id @default(cuid())
+  contactId      String?
+  contact        Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  ourNumber      String
+  theirNumber    String
+  lastMessageAt  DateTime @default(now())
+  lastPreview    String?
+  unreadCount    Int      @default(0)
+  clientAccountId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages       SmsMessage[]
+
+  @@unique([ourNumber, theirNumber])
+  @@index([contactId, lastMessageAt])
+  @@index([lastMessageAt])
+  @@index([clientAccountId])
+  @@map("smsThread")
+}
+
+model SmsMessage {
+  id             String       @id @default(cuid())
+  threadId       String
+  thread         SmsThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  direction      SmsDirection
+  status         SmsStatus    @default(RECEIVED)
+  body           String
+  providerSid    String?      @unique
+  errorCode      String?
+  errorMessage   String?
+  sentAt         DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  @@index([threadId, sentAt])
+  @@map("smsMessage")
+}
+
+enum FormFieldType {
+  TEXT
+  LONG_TEXT
+  EMAIL
+  PHONE
+  NUMBER
+  SELECT
+  CHECKBOX
+  DATE
+  URL
+}
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model FormDefinition {
+  id              String     @id @default(cuid())
+  name            String
+  slug            String     @unique
+  description     String?
+  status          FormStatus @default(DRAFT)
+  redirectUrl     String?
+  submitButtonLabel String   @default("Submit")
+  successMessage  String     @default("Thanks — we'll be in touch.")
+
+  clientAccountId String?
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  createDeal      Boolean    @default(true)
+  dealStage       String?
+  tagsToApply     String[]   @default([])
+  workflowIdOnSubmit String?
+
+  fields          FormField[]
+  submissions     FormSubmission[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([status])
+  @@index([clientAccountId])
+  @@map("formDefinition")
+}
+
+model FormField {
+  id         String        @id @default(cuid())
+  formId     String
+  form       FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  type       FormFieldType
+  required   Boolean       @default(false)
+  placeholder String?
+  helpText   String?
+  options    String[]      @default([])
+  position   Int
+
+  @@unique([formId, key])
+  @@index([formId, position])
+  @@map("formField")
+}
+
+model FormSubmission {
+  id         String   @id @default(cuid())
+  formId     String
+  form       FormDefinition @relation(fields: [formId], references: [id], onDelete: Cascade)
+  data       Json
+  contactId  String?
+  contact    Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  ipAddress  String?
+  userAgent  String?
+  referrer   String?
+  createdAt  DateTime @default(now())
+
+  @@index([formId, createdAt])
+  @@index([contactId, createdAt])
+  @@map("formSubmission")
+}
+
+enum WorkflowTriggerKind {
+  CONTACT_CREATED
+  DEAL_STAGE_CHANGED
+  FORM_SUBMITTED
+  SMS_RECEIVED
+  SCHEDULE
+  MANUAL
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model WorkflowDefinition {
+  id            String              @id @default(cuid())
+  name          String
+  description   String?
+  status        WorkflowStatus      @default(DRAFT)
+  triggerKind   WorkflowTriggerKind
+  triggerConfig Json                @default("{}")
+  steps         Json                @default("[]")
+
+  clientAccountId String?
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+
+  runs          WorkflowRun[]
+  lastRunAt     DateTime?
+  runCount      Int                 @default(0)
+
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([status, triggerKind])
+  @@index([clientAccountId])
+  @@map("workflowDefinition")
+}
+
+model WorkflowRun {
+  id          String            @id @default(cuid())
+  workflowId  String
+  workflow    WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  status      WorkflowRunStatus @default(QUEUED)
+  triggerData Json
+  contextData Json              @default("{}")
+  currentStep Int               @default(0)
+  contactId   String?
+  dealId      String?
+  companyId   String?
+  errorMessage String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([workflowId, createdAt])
+  @@index([status])
+  @@index([contactId])
+  @@map("workflowRun")
+}
+
+model BookingLink {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  ownerId        String
+  title          String
+  description    String?
+  durationMinutes Int     @default(30)
+  bufferMinutes  Int      @default(15)
+  location       String?
+  timezone       String   @default("UTC")
+  color          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  bookings       Booking[]
+
+  @@index([ownerId])
+  @@map("bookingLink")
+}
+
+model Booking {
+  id            String   @id @default(cuid())
+  linkId        String
+  link          BookingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  name          String
+  email         String
+  phone         String?
+  startsAt      DateTime
+  endsAt        DateTime
+  timezone      String
+  notes         String?
+  cancelledAt   DateTime?
+  contactId     String?
+  createdAt     DateTime @default(now())
+
+  @@index([linkId, startsAt])
+  @@index([contactId])
+  @@map("booking")
 }

@@ -10,6 +10,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { AgencyKpis } from "./agency-kpis";
 import { DashboardSummary } from "./dashboard-summary";
 import {
 	OverviewGreeting,
@@ -61,7 +62,10 @@ async function Summary({
 
 	return (
 		<HydrateClient>
-			<DashboardSummary />
+			<div className="flex flex-col gap-6">
+				<AgencyKpis />
+				<DashboardSummary />
+			</div>
 		</HydrateClient>
 	);
 }

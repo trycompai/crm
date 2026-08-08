@@ -5,9 +5,13 @@ import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Chat from "@carbon/icons-react/es/Chat";
 import Close from "@carbon/icons-react/es/Close";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
+import Document from "@carbon/icons-react/es/Document";
+import Email from "@carbon/icons-react/es/Email";
+import FlowConnection from "@carbon/icons-react/es/FlowConnection";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Settings from "@carbon/icons-react/es/Settings";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import Workspace from "@carbon/icons-react/es/Workspace";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import {
@@ -47,6 +51,7 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 		related: ["/agents"],
 	},
+	{ title: "Clients", href: "/clients", icon: Workspace, match: "prefix" },
 	{ title: "Companies", href: "/companies", icon: Building, match: "prefix" },
 	{
 		title: "Contacts",
@@ -55,6 +60,14 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Inbox", href: "/inbox", icon: Email, match: "prefix" },
+	{ title: "Forms", href: "/forms", icon: Document, match: "prefix" },
+	{
+		title: "Workflows",
+		href: "/workflows",
+		icon: FlowConnection,
+		match: "prefix",
+	},
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 

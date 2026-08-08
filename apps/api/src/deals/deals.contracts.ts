@@ -70,6 +70,21 @@ export const dealUpdateArgs = z.object({
 
 export const dealIdInput = z.object({ id: z.string() });
 
+export const dealBoardInput = z.object({
+	owner: z.string().default("all"),
+	clientAccountId: z.string().default("all"),
+});
+
+export type DealBoardInput = z.infer<typeof dealBoardInput>;
+
+export const dealReorderInput = z.object({
+	id: z.string(),
+	stage: stageEnum,
+	orderInStage: z.number().int().min(0),
+});
+
+export type DealReorderInput = z.infer<typeof dealReorderInput>;
+
 export const setStageInput = z.object({
 	id: z.string(),
 	stage: stageEnum,
