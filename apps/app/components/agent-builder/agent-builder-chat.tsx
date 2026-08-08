@@ -957,8 +957,11 @@ function BuildingAgentCard({
 	});
 
 	const writingPath =
-		artifacts.find((artifact) => artifact.status === "WRITING")?.path ?? null;
-
+\t\tartifacts.find(
+\t\t\t(artifact) =>
+\t\t\t\tartifact.status === "WRITING" &&
+\t\t\t\t(!startedAt || artifact.createdAt >= startedAt),
+\t\t)?.path ?? null;
 	return (
 		<div className="w-full max-w-lg">
 			<div className="overflow-hidden rounded-lg border bg-card">
