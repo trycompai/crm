@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/trycompai/crm/compare/v1.4.0...v1.5.0) (2026-08-08)
+
+
+### Features
+
+* **agent:** bound agent builder retries and improve chat scrolling ([#89](https://github.com/trycompai/crm/issues/89)) ([7780f81](https://github.com/trycompai/crm/commit/7780f81a219813fcf54e6b5dd612a7d40e31d32b))
+
+
+### Fixes
+
+* **agent:** declare granted write actions in draft access summary ([#93](https://github.com/trycompai/crm/issues/93)) ([ad4f9f3](https://github.com/trycompai/crm/commit/ad4f9f31c81fd6bdad89abb6adb5a208d51c19ed))
+* **app:** render agent transcript chronologically with anchored tool results ([#92](https://github.com/trycompai/crm/issues/92)) ([0e68e45](https://github.com/trycompai/crm/commit/0e68e45909182c875ea58ba18fb89d9a87032e11))
+
 ## [1.4.0](https://github.com/trycompai/crm/compare/v1.3.0...v1.4.0) (2026-08-07)
 
 
