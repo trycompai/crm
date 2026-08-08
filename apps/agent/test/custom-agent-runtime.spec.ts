@@ -459,3 +459,95 @@ describe("agent builder draft input", () => {
 		expect(parsed.actions[0]?.summary).toBe("Write a reviewable renewal brief");
 	});
 });
+
+describe("agent builder draft access", () => {
+	const draft = (actions: unknown[]) =>
+		builderDraftToolInput.parse({
+			name: "Handoff",
+			description: "Hand new customers to onboarding.",
+			instructions:
+				"Run on demand. Read closed-won deals and record the handoff for onboarding.",
+			trigger: {
+				type: "MANUAL",
+				name: "Run handoff",
+				summary: "Run for new customers",
+			},
+			recordScope: "WORKSPACE",
+			resources: [],
+			integrations: [],
+			actions,
+		});
+
+	it("declares the writes a draft was granted, not just its reads", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE", "TASK"],
+					},
+				]),
+			).access,
+		).toEqual([
+			"Read workspace CRM records",
+			"Write notes on CRM records",
+			"Create tasks on CRM records",
+		]);
+	});
+
+	it("only declares the activity types actually granted", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE"],
+					},
+				]),
+			).access,
+		).toEqual(["Read workspace CRM records", "Write notes on CRM records"]);
+	});
+
+	it("keeps a read-only draft read-only", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "run.summary",
+						provider: "crm",
+						summary: "Return a run summary",
+					},
+				]),
+			).access,
+		).toEqual(["Read workspace CRM records"]);
+	});
+
+	it("does not repeat an activity type granted by two actions", () => {
+		expect(
+			draftInputFromTool(
+				draft([
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the handoff brief",
+						activityTypes: ["NOTE"],
+					},
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log a follow-up",
+						activityTypes: ["NOTE", "TASK"],
+					},
+				]),
+			).access,
+		).toEqual([
+			"Read workspace CRM records",
+			"Write notes on CRM records",
+			"Create tasks on CRM records",
+		]);
+	});
+});

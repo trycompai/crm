@@ -45,6 +45,13 @@ export const builderDraftToolInput = z.object({
 
 type BuilderDraftToolInput = z.infer<typeof builderDraftToolInput>;
 
+const ACTIVITY_ACCESS = {
+	NOTE: "Write notes on CRM records",
+	TASK: "Create tasks on CRM records",
+} as const;
+
+const ACTIVITY_ORDER = ["NOTE", "TASK"] as const;
+
 const INTEGRATIONS = {
 	gmail: { kind: "integration", id: "google:gmail", label: "Gmail" },
 	calendar: {
@@ -59,6 +66,11 @@ export function draftInputFromTool(
 ): DraftAgentInput {
 	const { integrations: requestedIntegrations, ...draft } = input;
 	const integrations = [...new Set(requestedIntegrations)];
+	const activityTypes = new Set(
+		input.actions.flatMap((entry) =>
+			entry.type === "crm.activity.create" ? entry.activityTypes : [],
+		),
+	);
 	const access = [
 		input.recordScope === "WORKSPACE"
 			? "Read workspace CRM records"
@@ -67,6 +79,9 @@ export function draftInputFromTool(
 			integration === "gmail"
 				? "Read connected Gmail messages"
 				: "Read connected Google Calendar events",
+		),
+		...ACTIVITY_ORDER.filter((type) => activityTypes.has(type)).map(
+			(type) => ACTIVITY_ACCESS[type],
 		),
 	];
 
