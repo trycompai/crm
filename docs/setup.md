@@ -113,6 +113,28 @@ builds, and the pages that touch them fail. Test schema changes locally, where
 worse: every preview applied its own migrations to the production database, so on
 2026-08-07 the live schema ran six migrations ahead of the live code all day.
 
+### `migrate deploy` is not proof the schema is right
+
+The build follows the deploy with `prisma migrate diff --exit-code` against
+`schema.prisma` and shouts in the build log when they disagree. **`No pending
+migrations to apply` only means `_prisma_migrations` has a row for every file** —
+it says nothing about what the tables actually look like.
+
+They came apart once. A `prisma db push` shaped production from a laptop, the
+migration rows were recorded as applied without their SQL ever running, and
+`agentConversationAttachment` went live without its `position` column. Every deploy
+reported nothing pending, for days, while `conversations.builderById` returned 500.
+The tell is an object in the database that no migration defines — there was an
+`agentConversationAttachment_submissionId_createdAt_idx` that appears in no
+migration file, only in a `db push` of an older schema.
+
+Reconciling is one command, and it is worth reading before running:
+
+```sh
+DATABASE_URL="…" bunx prisma migrate diff \
+  --from-config-datasource --to-schema prisma/schema.prisma --script
+```
+
 ## Secrets hygiene
 
 `.gitignore` ignores `.env` and `.env.*` with one negation for `.env.example`, so
