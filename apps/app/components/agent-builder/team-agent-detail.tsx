@@ -394,7 +394,9 @@ export function TeamAgentDetail({
 									clientRequestId: crypto.randomUUID(),
 								})
 							}
-							retrying={retryRun.isPending}
+							retryingRunId={
+								retryRun.isPending ? retryRun.variables?.runId : undefined
+							}
 						/>
 					</div>
 				) : null}
@@ -716,13 +718,13 @@ function AgentRuns({
 	onCancel,
 	cancelling,
 	onRetry,
-	retrying,
+	retryingRunId,
 }: {
 	runs: Runs;
 	onCancel: (runId: string) => void;
 	cancelling: boolean;
 	onRetry: (runId: string) => void;
-	retrying: boolean;
+	retryingRunId?: string;
 }) {
 	const [outcome, setOutcome] = useState("ALL");
 	const [expanded, setExpanded] = useState<string | null>(null);
@@ -814,7 +816,7 @@ function AgentRuns({
 								<Button
 									variant="outline"
 									size="sm"
-									disabled={retrying}
+									disabled={retryingRunId === run.id}
 									onClick={() => onRetry(run.id)}
 								>
 									<Icon icon={Renew} data-icon="inline-start" />

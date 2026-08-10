@@ -20,6 +20,7 @@ export const DISPATCH = {
 
 	run: {
 		batch: 20,
+		maxPasses: 5,
 		deliveryLeaseMs: 5 * MINUTE_MS,
 		actionLeaseMs: 5 * MINUTE_MS,
 		executionTimeoutMs: 20 * MINUTE_MS,

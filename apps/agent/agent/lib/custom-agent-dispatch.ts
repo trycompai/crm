@@ -405,9 +405,27 @@ export async function pendingAgentRunIds(): Promise<string[]> {
 
 export async function drainAgentRuns(send: SendFn): Promise<number> {
 	await queueDueAgentRuns();
-	const ids = await pendingAgentRunIds();
-	await Promise.all(ids.map((id) => dispatchAgentRun(id, send)));
-	return ids.length;
+
+	let dispatched = 0;
+	for (let pass = 0; pass < DISPATCH.run.maxPasses; pass += 1) {
+		const ids = await pendingAgentRunIds();
+		if (ids.length === 0) break;
+
+		await Promise.all(
+			ids.map((id) =>
+				dispatchAgentRun(id, send).catch((error) => {
+					console.error(
+						`[agent] run ${id} could not be dispatched: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				}),
+			),
+		);
+		dispatched += ids.length;
+	}
+
+	return dispatched;
 }
 
 export async function dispatchAgentRun(runId: string, send: SendFn) {
