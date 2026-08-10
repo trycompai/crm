@@ -216,6 +216,9 @@ export function TeamAgentDetail({
 	const displayedVersionNumber =
 		data.currentVersion?.number ?? data.reviewVersion?.number;
 	const enabledTriggers = data.triggers.filter((trigger) => trigger.enabled);
+	const canRunManually =
+		enabledTriggers.length === 0 ||
+		enabledTriggers.some((trigger) => trigger.type !== "EVENT");
 	const nextRun =
 		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
 	const triggerSummary =
@@ -256,7 +259,7 @@ export function TeamAgentDetail({
 									name={displayedName}
 									version={data.reviewVersion}
 								/>
-							) : (
+							) : canRunManually ? (
 								<Button
 									variant="outline"
 									disabled={data.status !== "LIVE" || runAction.pending}
@@ -273,7 +276,7 @@ export function TeamAgentDetail({
 										Run now
 									</AsyncButtonContent>
 								</Button>
-							)}
+							) : null}
 							{!isDraft && data.canManage && data.status === "LIVE" ? (
 								<Button
 									variant="outline"

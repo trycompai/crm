@@ -85,13 +85,6 @@ export const agentManifest = z
 			}
 			actionTypes.add(action.type);
 		}
-		if (!actionTypes.has(AGENT_ACTION_TYPES.RUN_SUMMARY)) {
-			context.addIssue({
-				code: "custom",
-				path: ["actions"],
-				message: "A run.summary action is required",
-			});
-		}
 	});
 
 export type SlackDestination = z.infer<typeof slackDestination>;

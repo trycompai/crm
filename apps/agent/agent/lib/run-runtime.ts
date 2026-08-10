@@ -669,7 +669,11 @@ function slackActionErrorCode(message: string): string {
 
 export async function stageRunResult(
 	runId: string,
-	input: { summary: string; result?: Record<string, unknown> | null },
+	input: {
+		summary: string;
+		result?: Record<string, unknown> | null;
+		noActionNeeded?: { reason: string } | null;
+	},
 ) {
 	return db.$transaction(async (tx) => {
 		const run = await lockAgentRun(tx, runId);
@@ -677,17 +681,32 @@ export async function stageRunResult(
 			throw new Error(`This agent run already ended with ${run.status}.`);
 		}
 
-		await assertRunSummaryAllowed(tx, run.versionId);
+		const result = {
+			...(input.result ?? {}),
+			...(input.noActionNeeded
+				? { noActionNeeded: input.noActionNeeded.reason }
+				: {}),
+		};
+
 		await tx.agentRun.update({
 			where: { id: runId },
 			data: {
 				summary: input.summary,
-				result: (input.result ?? {}) as Prisma.InputJsonValue,
+				result: result as Prisma.InputJsonValue,
 			},
 		});
 
 		return { id: run.id, status: "RUNNING" as const };
 	});
+}
+
+export function runReportedNoActionNeeded(result: unknown): boolean {
+	return (
+		typeof result === "object" &&
+		result !== null &&
+		!Array.isArray(result) &&
+		typeof (result as Record<string, unknown>).noActionNeeded === "string"
+	);
 }
 
 export async function finishRun(
@@ -702,7 +721,9 @@ export async function finishRun(
 		if (run.status !== "RUNNING") {
 			throw new Error(`This agent run already ended with ${run.status}.`);
 		}
-		const actionFailure = await requiredActionFailure(tx, run);
+		const actionFailure = runReportedNoActionNeeded(input.result)
+			? null
+			: await requiredActionFailure(tx, run);
 		if (actionFailure) {
 			return failLockedRun(tx, run, actionFailure.code, actionFailure.message);
 		}
@@ -869,23 +890,6 @@ async function failLockedRun(
 	});
 
 	return { id: run.id, status: "FAILED" as const };
-}
-
-async function assertRunSummaryAllowed(
-	tx: Prisma.TransactionClient,
-	versionId: string,
-): Promise<void> {
-	const version = await tx.agentVersion.findUniqueOrThrow({
-		where: { id: versionId },
-		select: { manifest: true },
-	});
-	if (
-		!manifestActions(version.manifest).some(
-			(action) => action.type === "run.summary",
-		)
-	) {
-		throw new Error("Agent version does not allow a run summary.");
-	}
 }
 
 function manifestDataScope(value: unknown): {
