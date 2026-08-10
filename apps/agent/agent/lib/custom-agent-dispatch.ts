@@ -695,7 +695,34 @@ async function lockBuilderConversation(
 	return conversation ?? null;
 }
 
+export const RUN_TIMED_OUT = "RUN_TIMED_OUT";
+
+async function timeOutOverrunningRuns() {
+	const overrun = new Date(Date.now() - DISPATCH.run.executionTimeoutMs);
+	const rows = await db.agentRun.findMany({
+		where: {
+			status: "RUNNING",
+			sessionId: { not: null },
+			startedAt: { lt: overrun },
+		},
+		orderBy: [{ startedAt: "asc" }, { id: "asc" }],
+		take: RUN_BATCH * 3,
+		select: { id: true },
+	});
+
+	const minutes = Math.round(DISPATCH.run.executionTimeoutMs / 60_000);
+	for (const row of rows) {
+		await failRun(
+			row.id,
+			RUN_TIMED_OUT,
+			`This run passed ${minutes} minutes without finishing and was stopped.`,
+		).catch(() => {});
+	}
+}
+
 async function recoverAgentRuns() {
+	await timeOutOverrunningRuns();
+
 	const stale = new Date(Date.now() - RUN_DELIVERY_LEASE_MS);
 	const rows = await db.agentRun.findMany({
 		where: {

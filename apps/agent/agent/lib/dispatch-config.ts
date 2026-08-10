@@ -22,6 +22,7 @@ export const DISPATCH = {
 		batch: 20,
 		deliveryLeaseMs: 5 * MINUTE_MS,
 		actionLeaseMs: 5 * MINUTE_MS,
+		executionTimeoutMs: 20 * MINUTE_MS,
 	},
 
 	task: {
@@ -31,5 +32,6 @@ export const DISPATCH = {
 	sweep: {
 		timeoutMs: 4 * MINUTE_MS,
 		staleQueueMs: 5 * MINUTE_MS,
+		startTimeoutMs: MINUTE_MS,
 	},
 } as const;

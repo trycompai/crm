@@ -2,6 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
 import { queueEventAgentRuns } from "./custom-agent-dispatch";
+import { withDeadline } from "./deadline";
 import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
@@ -123,7 +124,11 @@ export async function runResearchLane(
 		tasks.map(async (task) => {
 			try {
 				await markRunning(task);
-				const session = await start(task);
+				const session = await withDeadline(
+					start(task),
+					DISPATCH.sweep.startTimeoutMs,
+					"The agent did not accept this task in time.",
+				);
 				await noteSession(task.id, session.id);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
