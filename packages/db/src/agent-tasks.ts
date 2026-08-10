@@ -8,11 +8,18 @@ export const TASK_KINDS = [
 	"company-profile",
 	"workspace-profile",
 	"field-backfill",
+	"slack-people-match",
+	"agent-event",
 ] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
 
-export const DIRECT_KINDS = ["brand", "portrait"] as const;
+export const DIRECT_KINDS = [
+	"brand",
+	"portrait",
+	"slack-people-match",
+	"agent-event",
+] as const;
 
 export type DirectKind = (typeof DIRECT_KINDS)[number];
 
@@ -35,4 +42,6 @@ export const PRIORITY = {
 	companyProfile: 40,
 	fieldBackfill: 20,
 	recheck: 0,
+	slackPeople: 150,
+	event: 700,
 } as const;

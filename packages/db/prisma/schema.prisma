@@ -40,6 +40,7 @@ model User {
   conversationShares      AgentConversationShare[]      @relation("ConversationShareCreator")
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
+  slackMemberMatch        SlackMemberMatch?
 
   members     Member[]
   invitations Invitation[]
@@ -48,6 +49,33 @@ model User {
 
   @@unique([email])
   @@map("user")
+}
+
+model SlackMemberMatch {
+  id                  String   @id @default(cuid())
+  crmUserId           String   @unique
+  crmUser             User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
+  slackUserId         String?
+  slackHandle         String?
+  slackEmail          String?
+  explicitlyUnmatched Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([slackUserId])
+  @@map("slackMemberMatch")
+}
+
+model SlackChannel {
+  id          String   @id
+  name        String
+  memberCount Int?
+  available   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([available, name])
+  @@map("slackChannel")
 }
 
 model Session {
@@ -398,9 +426,11 @@ model AgentTask {
   id        String  @id @default(cuid())
   contactId String?
   companyId String?
+  dealId    String?
 
-  kind   String
-  reason String
+  kind    String
+  reason  String
+  payload Json?
 
   priority Int @default(0)
   budget   Int @default(4)
@@ -418,20 +448,24 @@ model AgentTask {
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
+  @@index([dealId])
   @@map("agentTask")
 }
 
 model AgentEvent {
-  id        String  @id
-  sessionId String
-  contactId String?
-  type      String
-  data      Json
+  id             String             @id
+  sessionId      String
+  contactId      String?
+  conversationId String?
+  conversation   AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  type           String
+  data           Json
 
   emittedAt DateTime
 
   @@index([sessionId, emittedAt])
   @@index([contactId, emittedAt])
+  @@index([conversationId, emittedAt])
   @@map("agentEvent")
 }
 
@@ -453,9 +487,10 @@ model AgentConversation {
   agentId String?
   agent   AgentDefinition? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
-  sessionId         String? @unique
-  continuationToken String?
-  streamIndex       Int     @default(0)
+  sessionId           String? @unique
+  continuationToken   String?
+  streamIndex         Int     @default(0)
+  pendingInputRequest Json?
 
   title        String?
   messageCount Int     @default(0)
@@ -469,6 +504,7 @@ model AgentConversation {
   shares           AgentConversationShare[]
   submissions      AgentConversationSubmission[]
   feedback         AgentConversationFeedback[]
+  events           AgentEvent[]
   createdVersions  AgentVersion[]                @relation("AgentVersionSourceConversation")
   builderArtifacts AgentBuilderArtifact[]
 
