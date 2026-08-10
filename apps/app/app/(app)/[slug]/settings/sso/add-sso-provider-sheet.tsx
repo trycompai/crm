@@ -44,9 +44,11 @@ const EMPTY = {
 	clientSecret: "",
 };
 
-function AddButton({ disabled }: { disabled?: boolean }) {
+// SheetTrigger asChild clones this with onClick/ref/aria-*; spread them through
+// or the trigger is inert and the sheet never opens.
+function AddButton({ disabled, ...props }: React.ComponentProps<typeof Button>) {
 	return (
-		<Button disabled={disabled}>
+		<Button disabled={disabled} {...props}>
 			<Icon icon={Add} data-icon="inline-start" />
 			Add provider
 		</Button>
