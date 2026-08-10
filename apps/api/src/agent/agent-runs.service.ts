@@ -24,6 +24,8 @@ const CANCELLABLE_STATUSES: readonly AgentRunStatus[] = [
 	"WAITING_FOR_APPROVAL",
 ];
 
+const RUN_EVENT_LIMIT = 200;
+
 const CANCELLED_BY_USER = "CANCELLED_BY_USER";
 
 const CANCELLED_MESSAGE = "A workspace member stopped this run.";
@@ -61,6 +63,7 @@ export class AgentRunsService {
 				version: { select: { id: true, number: true } },
 				events: {
 					orderBy: { sequence: "asc" },
+					take: RUN_EVENT_LIMIT,
 					select: {
 						id: true,
 						sequence: true,
