@@ -533,6 +533,7 @@ export async function postRunSlackMessage(
 			clientMessageId,
 			fetch,
 			abortSignal,
+			() => assertRunActive(runId),
 		);
 		const messageId = `${posted.channel}:${posted.ts}`;
 		await db.agentAction.update({
@@ -572,6 +573,7 @@ export async function sendSlackMessage(
 	clientMessageId: string,
 	fetcher: typeof fetch = fetch,
 	abortSignal?: AbortSignal,
+	beforePost?: () => Promise<void>,
 ): Promise<{ channel: string; ts: string }> {
 	let channel = destination.id;
 	if (destination.kind === "user") {
@@ -588,6 +590,7 @@ export async function sendSlackMessage(
 		}
 		channel = conversation.id;
 	}
+	await beforePost?.();
 
 	const data = await slackApiRequest(
 		fetcher,
@@ -605,6 +608,16 @@ export async function sendSlackMessage(
 	}
 
 	return { channel: data.channel, ts: data.ts };
+}
+
+async function assertRunActive(runId: string): Promise<void> {
+	const run = await db.agentRun.findUnique({
+		where: { id: runId },
+		select: { status: true },
+	});
+	if (run?.status !== "RUNNING") {
+		throw new Error("This agent run is not active.");
+	}
 }
 
 async function slackApiRequest(

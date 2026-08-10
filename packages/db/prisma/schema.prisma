@@ -58,7 +58,6 @@ model SlackMemberMatch {
   slackUserId         String?
   slackHandle         String?
   slackEmail          String?
-  explicitlyUnmatched Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

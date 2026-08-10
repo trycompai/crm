@@ -35,7 +35,6 @@ export async function runSlackPeopleMatch(): Promise<string> {
 			return email ? [[email, member]] : [];
 		}),
 	);
-	const byId = new Map(availableMembers.map((member) => [member.id, member]));
 	const crmMembers = await db.member.findMany({
 		where: { organizationId: WORKSPACE_ID },
 		select: {
@@ -43,11 +42,6 @@ export async function runSlackPeopleMatch(): Promise<string> {
 				select: {
 					id: true,
 					email: true,
-					slackMemberMatch: {
-						select: {
-							slackUserId: true,
-						},
-					},
 				},
 			},
 		},
@@ -55,10 +49,7 @@ export async function runSlackPeopleMatch(): Promise<string> {
 
 	let matched = 0;
 	for (const { user } of crmMembers) {
-		const preserved = user.slackMemberMatch?.slackUserId
-			? byId.get(user.slackMemberMatch.slackUserId)
-			: null;
-		const slack = preserved ?? byEmail.get(user.email.trim().toLowerCase());
+		const slack = byEmail.get(user.email.trim().toLowerCase());
 		const slackHandle = slack ? `@${slack.name || slack.id}` : null;
 		await db.slackMemberMatch.upsert({
 			where: { crmUserId: user.id },
@@ -72,7 +63,6 @@ export async function runSlackPeopleMatch(): Promise<string> {
 				slackUserId: slack?.id ?? null,
 				slackHandle,
 				slackEmail: slack?.profile?.email ?? null,
-				explicitlyUnmatched: false,
 			},
 		});
 		if (slack) matched += 1;

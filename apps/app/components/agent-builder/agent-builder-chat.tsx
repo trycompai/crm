@@ -66,7 +66,6 @@ import {
 	eventStreamSettled,
 	latestTurnFailure,
 	messagesFromEvents,
-	pendingQuestion,
 	splitMarkdownTable,
 	type TranscriptItem,
 	toTranscript,
@@ -262,8 +261,7 @@ export function AgentBuilderChat({
 		agentMessages,
 	);
 	const answeredQuestionIds = questionResponseIds(submissions);
-	const waitingQuestion =
-		data.pendingQuestion ?? pendingQuestion(agentMessages);
+	const waitingQuestion = data.pendingQuestion;
 	const question =
 		waitingQuestion &&
 		!hasQueuedQuestionResponse(submissions, waitingQuestion.requestId)

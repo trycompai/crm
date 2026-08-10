@@ -237,7 +237,9 @@ describe("deployed Slack actions", () => {
 
 	it("posts with a stable Slack replay id", async () => {
 		const requests: Array<{ url: string; body: unknown }> = [];
+		const order: string[] = [];
 		const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			order.push(String(input));
 			requests.push({
 				url: String(input),
 				body: JSON.parse(String(init?.body)),
@@ -254,6 +256,10 @@ describe("deployed Slack actions", () => {
 				"A deal just closed.",
 				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
 				fetcher,
+				undefined,
+				async () => {
+					order.push("guard");
+				},
 			),
 		).toEqual({ channel: "D123", ts: "123.456" });
 		expect(requests).toEqual([
@@ -269,6 +275,11 @@ describe("deployed Slack actions", () => {
 					client_msg_id: "7d3e8854-79f9-48dd-a933-8cfb5994f99e",
 				},
 			},
+		]);
+		expect(order).toEqual([
+			"https://slack.com/api/conversations.open",
+			"guard",
+			"https://slack.com/api/chat.postMessage",
 		]);
 	});
 
