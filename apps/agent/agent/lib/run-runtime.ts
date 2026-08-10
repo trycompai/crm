@@ -9,6 +9,7 @@ import {
 } from "./agent-actions";
 import { parseAgentManifest } from "./agent-manifest";
 import { readCrmHistory } from "./crm";
+import { DISPATCH } from "./dispatch-config";
 import { searchCrm } from "./lookup";
 import {
 	type LockedAgentRun,
@@ -17,7 +18,7 @@ import {
 } from "./run-state";
 import { slackAccessToken } from "./slack-connection";
 
-const ACTION_LEASE_MS = 5 * 60_000;
+const ACTION_LEASE_MS = DISPATCH.run.actionLeaseMs;
 
 type RunResource = {
 	kind: "integration" | "company" | "contact" | "deal";

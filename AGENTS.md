@@ -42,6 +42,155 @@ rules and skills you read.
   installed version. Read the relevant guide before writing eve code rather than
   working from memory — guessing typechecks, builds, and then behaves differently.
 
+## Report every issue. Use ASD-STE100
+
+Do not bury a known problem inside a paragraph. A problem inside prose is a
+problem nobody reads. Report **every** issue, including ones you caused, in a
+list at the end of your reply.
+
+Write it in **ASD-STE100** (Simplified Technical English):
+
+- One idea per sentence. Maximum 20 words.
+- Active voice. Present tense. No conditionals.
+- One word for one meaning. Do not use synonyms for variety.
+- Say the effect, not only the cause.
+- No hedging: never "may", "might", "possibly", "somewhat".
+
+Use exactly this shape:
+
+```
+## Issues
+
+1. BROKEN — Slack is not connected. Agents that post to Slack fail.
+   Fix: connect Slack in Settings → Connections.
+2. RISK — A run longer than 5 minutes is cancelled. Work is lost.
+   Fix: not done. Needs a separate execution lease.
+3. NOT DONE — The manual run button shows on event-only agents.
+```
+
+Rules for the list:
+
+- One line for the problem. One line for the fix.
+- Start each with **BROKEN**, **RISK**, **NOT DONE**, or **UNKNOWN**.
+- **BROKEN** is failing now. **RISK** fails later. **NOT DONE** is unbuilt.
+  **UNKNOWN** is not investigated.
+- If you introduced it, write **I caused this** on the fix line.
+- Zero issues? Write `## Issues` then `None.`
+
+**Don't** — bury it in prose:
+
+> The fix works well. One honest limit: abandoning a sweep unblocks the queue but
+> doesn't cancel the underlying hung promise, so it leaks until restart.
+
+**Do** — put it in the list:
+
+> 1. RISK — An abandoned sweep leaks its promise. Memory grows until restart.
+>    Fix: not done. Needs cancellation in `receive()`. I caused this.
+
+## Constants belong in one file per area, not beside their first use
+
+A number that someone will want to tune goes in a named config module for its
+area. It does not go at the top of whichever file happened to need it first.
+Somebody changing a timeout must not have to know which file to open.
+
+**Don't** — one constant per file, found only by grep:
+
+```ts
+// dispatch.ts
+const DRAIN_TIMEOUT_MS = 4 * 60_000;
+// crm.ts
+const STALE_QUEUE_MS = 5 * 60_000;
+// tasks.ts
+const LEASE_MS = 10 * 60_000;
+```
+
+**Do** — one object, grouped by concern, imported where used:
+
+```ts
+// dispatch-config.ts
+export const DISPATCH = {
+  sweep: { timeoutMs: 4 * MINUTE_MS, staleQueueMs: 5 * MINUTE_MS },
+  task: { leaseMs: 10 * MINUTE_MS },
+} as const;
+```
+
+`apps/agent/agent/lib/dispatch-config.ts` is the pattern. Rules:
+
+- Group by concern, not by file that uses it.
+- Derive units from one base (`MINUTE_MS`). Never write `4 * 60_000` twice.
+- `as const`, so the values are literal types.
+- No magic numbers inline. If it is tunable, it belongs in the config.
+- One convention across the codebase. Do not invent a local style for one file.
+
+## Parse at the boundary, never pass `Record<string, unknown>` around
+
+Untyped data — a Prisma `Json` column, a webhook body, an API response — is
+parsed into a **domain type at the moment it enters the process**, with Zod, in a
+module that owns that shape. Every consumer downstream receives the parsed type
+and nothing else. `Record<string, unknown>`, `unknown` casts and one-off
+`recordOf()` helpers are how a shape becomes unknowable and a typo becomes a
+runtime bug two files away.
+
+**Don't** — reach into raw JSON, re-deriving the shape at each call site:
+
+```ts
+function manifestActions(value: unknown) {
+  const actions = recordOf(value).actions;
+  return Array.isArray(actions) ? actions.map(recordOf) : [];
+}
+
+const slack = manifestActions(version.manifest).find(
+  (action) => action.type === "slack.message.post",
+);
+const id = (slack?.destination as Record<string, unknown>)?.id;
+```
+
+Nothing here is checked. `destination` may be missing, `id` may be a number, and
+the compiler cannot help. Rename a field and every one of these silently returns
+`undefined`.
+
+**Do** — one schema, parsed once, at the read:
+
+```ts
+export const agentManifestAction = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal(AGENT_ACTION_TYPES.SLACK_MESSAGE_POST),
+    provider: z.literal("slack"),
+    summary: z.string(),
+    destination: z.object({
+      kind: z.enum(["channel", "user"]),
+      resolution: z.enum(["derived", "chosen"]),
+      id: z.string().trim().min(1).max(120).optional(),
+      label: z.string().trim().min(1).max(120),
+    }),
+  }),
+]);
+
+export type AgentManifest = z.infer<typeof agentManifest>;
+
+export function parseAgentManifest(value: unknown): AgentManifest { … }
+```
+
+```ts
+const manifest = parseAgentManifest(version.manifest);
+const slack = manifest.actions.find(
+  (action) => action.type === "slack.message.post",
+);
+const id = slack?.destination.id;
+```
+
+`apps/agent/agent/lib/agent-manifest.ts` is the pattern. Rules that follow from
+it:
+
+- The schema describes what is **actually stored**, not the loosest thing that
+  parses. If a test fixture fails the schema, fix the fixture — a fixture that
+  omits required fields is testing data that cannot exist.
+- Parse failure is a real error with a real message. Do not swallow it into an
+  empty array, because "unreadable manifest" and "no actions" are different
+  problems and only one of them is the user's fault.
+- Derive types with `z.infer`. Never hand-write an interface beside a schema;
+  they drift.
+
 ## Design
 
 @docs/design.md

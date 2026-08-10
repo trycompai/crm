@@ -1,5 +1,6 @@
 import { db, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS, RETIRED_OUTCOME } from "@crm/db/agent-tasks";
+import { DISPATCH } from "./dispatch-config";
 
 export type LeasedTask = {
 	id: string;
@@ -23,7 +24,7 @@ export type TaskSubject = {
 	kind: string;
 };
 
-const LEASE_MS = 10 * 60_000;
+const LEASE_MS = DISPATCH.task.leaseMs;
 
 export { DIRECT_KINDS, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 

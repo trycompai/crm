@@ -2,6 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
 import { queueEventAgentRuns } from "./custom-agent-dispatch";
+import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
@@ -16,12 +17,12 @@ import {
 	type TaskSubject,
 } from "./tasks";
 
-export const VISIBLE_BATCH = 60;
-export const VISIBLE_CONCURRENCY = 6;
-export const VISIBLE_LEASE_MS = 2 * 60_000;
+export const VISIBLE_BATCH = DISPATCH.visible.batch;
+export const VISIBLE_CONCURRENCY = DISPATCH.visible.concurrency;
+export const VISIBLE_LEASE_MS = DISPATCH.visible.leaseMs;
 
-export const RESEARCH_BATCH = 12;
-export const RESEARCH_LEASE_MS = 30 * 60_000;
+export const RESEARCH_BATCH = DISPATCH.research.batch;
+export const RESEARCH_LEASE_MS = DISPATCH.research.leaseMs;
 
 export async function retireAbandoned(): Promise<void> {
 	let abandoned: TaskSubject[] = [];
@@ -148,7 +149,7 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 	};
 }
 
-export const DRAIN_TIMEOUT_MS = 4 * 60_000;
+export const DRAIN_TIMEOUT_MS = DISPATCH.sweep.timeoutMs;
 
 let lastSweepStartedAt: Date | null = null;
 let lastSweepFinishedAt: Date | null = null;

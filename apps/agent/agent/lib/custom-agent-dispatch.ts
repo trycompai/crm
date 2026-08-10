@@ -2,6 +2,7 @@ import { db, Prisma } from "@crm/db";
 import { CRM_EVENT_CATALOG, isCrmEventType } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import type { SendFn } from "eve/channels";
+import { DISPATCH } from "./dispatch-config";
 import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
 import {
 	isTerminalRunStatus,
@@ -10,11 +11,11 @@ import {
 } from "./run-state";
 import type { LeasedTask } from "./tasks";
 
-const BUILDER_BATCH = 20;
-const RUN_BATCH = 20;
-const MAX_BUILDER_ATTEMPTS = 3;
-const BUILDER_LEASE_MS = 5 * 60_000;
-const RUN_DELIVERY_LEASE_MS = 5 * 60_000;
+const BUILDER_BATCH = DISPATCH.builder.batch;
+const RUN_BATCH = DISPATCH.run.batch;
+const MAX_BUILDER_ATTEMPTS = DISPATCH.builder.maxAttempts;
+const BUILDER_LEASE_MS = DISPATCH.builder.leaseMs;
+const RUN_DELIVERY_LEASE_MS = DISPATCH.run.deliveryLeaseMs;
 
 export async function pendingBuilderSubmissionIds(): Promise<string[]> {
 	await recoverBuilderSubmissions();

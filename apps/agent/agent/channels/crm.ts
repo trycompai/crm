@@ -23,13 +23,14 @@ import {
 	drainAll,
 	taskAuth,
 } from "../lib/dispatch";
+import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
 import { finishRun } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
-const STALE_QUEUE_MS = 5 * 60_000;
+const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
 
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();

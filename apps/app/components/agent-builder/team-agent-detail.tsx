@@ -7,6 +7,7 @@ import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
 import Pause from "@carbon/icons-react/es/Pause";
 import Play from "@carbon/icons-react/es/Play";
 import TrashCan from "@carbon/icons-react/es/TrashCan";
+import WarningAlt from "@carbon/icons-react/es/WarningAlt";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -44,6 +45,7 @@ import {
 	PageShellHeading,
 	PageShellTitle,
 } from "@/components/page-shell";
+import { runFailureReason } from "@/lib/agent-run-failure";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -760,6 +762,17 @@ function AgentRuns({
 									{humanStatus(run.triggerType)} · {formatDate(run.createdAt)} ·
 									Version {run.version.number}
 								</span>
+								{run.status === "FAILED" || run.status === "CANCELLED" ? (
+									<span className="mt-1.5 flex min-w-0 items-start gap-2 rounded-md bg-destructive/10 px-2.5 py-1.5">
+										<Icon
+											icon={WarningAlt}
+											className="mt-px size-3.5 shrink-0 text-destructive"
+										/>
+										<span className="min-w-0 wrap-break-word text-destructive text-xs leading-5">
+											{runFailureReason(run.errorCode, run.errorMessage)}
+										</span>
+									</span>
+								) : null}
 							</span>
 							<span className="flex min-w-0 items-center justify-between gap-3 font-mono text-muted-foreground text-xs sm:shrink-0 sm:justify-start sm:gap-4">
 								<span>{duration(run.startedAt, run.finishedAt)}</span>
