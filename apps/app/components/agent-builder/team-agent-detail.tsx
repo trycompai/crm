@@ -811,7 +811,7 @@ function AgentRuns({
 							</span>
 						</button>
 
-						{!run.canCancel && run.status !== "SUCCEEDED" ? (
+						{run.status === "FAILED" || run.status === "CANCELLED" ? (
 							<span className="flex shrink-0 items-center pr-4 sm:pr-5">
 								<Button
 									variant="outline"
