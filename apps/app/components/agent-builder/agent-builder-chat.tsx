@@ -241,9 +241,6 @@ export function AgentBuilderChat({
 	const pendingSubmissions = sending.filter(
 		(item) => !confirmedRequestIds.has(item.clientRequestId),
 	);
-	if (pendingSubmissions.length !== sending.length) {
-		setSending(pendingSubmissions);
-	}
 	const persistedEvents = (events.data ??
 		[]) as unknown as MessageStreamEvent[];
 	const streamKey = builderSessionStreamKey(
@@ -296,7 +293,7 @@ export function AgentBuilderChat({
 				clientRequestId,
 				...prompt,
 			});
-		} catch {
+		} finally {
 			setSending((current) =>
 				current.filter((item) => item.clientRequestId !== clientRequestId),
 			);
