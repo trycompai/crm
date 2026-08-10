@@ -255,10 +255,11 @@ describe("deployed Slack actions", () => {
 				{ kind: "user", id: "U123", label: "@grim" },
 				"A deal just closed.",
 				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
-				fetcher,
-				undefined,
-				async () => {
-					order.push("guard");
+				{
+					fetcher,
+					beforePost: async () => {
+						order.push("guard");
+					},
 				},
 			),
 		).toEqual({ channel: "D123", ts: "123.456" });
@@ -293,7 +294,7 @@ describe("deployed Slack actions", () => {
 				{ kind: "channel", id: "C123", label: "#alerts" },
 				"A deal just closed.",
 				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
-				fetcher,
+				{ fetcher },
 			),
 		).rejects.toThrow("Invite the app");
 	});

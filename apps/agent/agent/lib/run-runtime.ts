@@ -531,9 +531,10 @@ export async function postRunSlackMessage(
 			destination,
 			text,
 			clientMessageId,
-			fetch,
-			abortSignal,
-			() => assertRunActive(runId),
+			{
+				abortSignal,
+				beforePost: () => assertRunActive(runId),
+			},
 		);
 		const messageId = `${posted.channel}:${posted.ts}`;
 		await db.agentAction.update({
@@ -571,10 +572,13 @@ export async function sendSlackMessage(
 	destination: { kind: "channel" | "user"; id: string; label: string },
 	text: string,
 	clientMessageId: string,
-	fetcher: typeof fetch = fetch,
-	abortSignal?: AbortSignal,
-	beforePost?: () => Promise<void>,
+	options: {
+		fetcher?: typeof fetch;
+		abortSignal?: AbortSignal;
+		beforePost?: () => Promise<void>;
+	} = {},
 ): Promise<{ channel: string; ts: string }> {
+	const { fetcher = fetch, abortSignal, beforePost } = options;
 	let channel = destination.id;
 	if (destination.kind === "user") {
 		const opened = await slackApiRequest(
