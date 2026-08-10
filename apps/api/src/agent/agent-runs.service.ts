@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Db } from "@crm/db";
+import { type Db, Prisma } from "@crm/db";
 import type { AgentRunStatus } from "@crm/db/enums";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import {
@@ -12,7 +12,11 @@ import {
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentTriggerService } from "./agent-trigger.service";
-import type { AgentCancelRunInput, AgentRunNowInput } from "./agents.contracts";
+import type {
+	AgentCancelRunInput,
+	AgentRetryRunInput,
+	AgentRunNowInput,
+} from "./agents.contracts";
 
 const CANCELLABLE_STATUSES: readonly AgentRunStatus[] = [
 	"QUEUED",
@@ -220,6 +224,97 @@ export class AgentRunsService {
 					actorId: userId,
 					type: "run.requested",
 					summary: "Requested a manual run",
+					requestId: input.clientRequestId,
+				},
+			});
+
+			return created;
+		});
+
+		this.trigger.deployedAgentRunQueued();
+		return run;
+	}
+
+	async retryRun(input: AgentRetryRunInput, userId: string) {
+		await this.access.assertMember(userId);
+
+		const run = await this.db.$transaction(async (tx) => {
+			await lockIdempotencyKey(tx, input.clientRequestId);
+			const replay = await tx.agentRun.findUnique({
+				where: { idempotencyKey: input.clientRequestId },
+				select: { id: true, agentId: true },
+			});
+			if (replay) {
+				this.assertReplayMatches(replay.agentId, input.id);
+				return { id: replay.id };
+			}
+
+			const previous = await tx.agentRun.findUnique({
+				where: { id: input.runId },
+				select: {
+					agentId: true,
+					status: true,
+					triggerId: true,
+					triggerType: true,
+					input: true,
+				},
+			});
+			if (!previous || previous.agentId !== input.id) {
+				throw new NotFoundException(`No run with id ${input.runId}.`);
+			}
+			if (CANCELLABLE_STATUSES.includes(previous.status)) {
+				throw new ConflictException("This run has not finished yet.");
+			}
+
+			const [agent] = await tx.$queryRaw<
+				Array<{ id: string; status: string; currentVersionId: string | null }>
+			>`
+					SELECT id, status, "currentVersionId"
+					FROM "agentDefinition"
+					WHERE id = ${input.id}
+					FOR UPDATE
+				`;
+			if (!agent || agent.status === "DELETED") {
+				throw new NotFoundException(`No agent with id ${input.id}.`);
+			}
+			if (agent.status !== "LIVE" || !agent.currentVersionId) {
+				throw new BadRequestException("This agent is not live yet.");
+			}
+
+			const active = await tx.agentRun.findFirst({
+				where: { agentId: input.id, status: { in: [...CANCELLABLE_STATUSES] } },
+				select: { id: true },
+			});
+			if (active) {
+				throw new ConflictException(
+					"This agent already has an active run. Stop it or wait for it to finish.",
+				);
+			}
+
+			const created = await tx.agentRun.create({
+				data: {
+					agentId: input.id,
+					versionId: agent.currentVersionId,
+					initiatedById: userId,
+					triggerId: previous.triggerId,
+					triggerType: previous.triggerType,
+					input: previous.input ?? Prisma.DbNull,
+					idempotencyKey: input.clientRequestId,
+					correlationId: randomUUID(),
+					events: { create: { sequence: 0, type: "run.queued", data: {} } },
+				},
+				select: { id: true },
+			});
+
+			await tx.agentAuditEvent.create({
+				data: {
+					agentId: input.id,
+					versionId: agent.currentVersionId,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "run.requested",
+					summary: `Retried run ${input.runId}`,
 					requestId: input.clientRequestId,
 				},
 			});

@@ -19,6 +19,13 @@ export const agentRunNowInput = agentIdInput.extend({
 
 export type AgentRunNowInput = z.infer<typeof agentRunNowInput>;
 
+export const agentRetryRunInput = agentIdInput.extend({
+	runId: z.string().min(1),
+	clientRequestId: z.uuid(),
+});
+
+export type AgentRetryRunInput = z.infer<typeof agentRetryRunInput>;
+
 export const agentCancelRunInput = agentIdInput.extend({
 	runId: z.string().min(1),
 });

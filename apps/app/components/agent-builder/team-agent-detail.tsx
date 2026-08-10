@@ -6,6 +6,7 @@ import Download from "@carbon/icons-react/es/Download";
 import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
 import Pause from "@carbon/icons-react/es/Pause";
 import Play from "@carbon/icons-react/es/Play";
+import Renew from "@carbon/icons-react/es/Renew";
 import TrashCan from "@carbon/icons-react/es/TrashCan";
 import WarningAlt from "@carbon/icons-react/es/WarningAlt";
 import {
@@ -151,6 +152,15 @@ export function TeamAgentDetail({
 	const resume = useMutation(
 		trpc.agents.resume.mutationOptions({
 			onSuccess: invalidate,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const retryRun = useMutation(
+		trpc.agents.retryRun.mutationOptions({
+			onSuccess: async () => {
+				await invalidate();
+				toast.success("Run queued again.");
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -377,6 +387,14 @@ export function TeamAgentDetail({
 							runs={runs.data ?? []}
 							onCancel={(runId) => cancelRun.mutate({ id: agentId, runId })}
 							cancelling={cancelRun.isPending}
+							onRetry={(runId) =>
+								retryRun.mutate({
+									id: agentId,
+									runId,
+									clientRequestId: crypto.randomUUID(),
+								})
+							}
+							retrying={retryRun.isPending}
 						/>
 					</div>
 				) : null}
@@ -697,10 +715,14 @@ function AgentRuns({
 	runs,
 	onCancel,
 	cancelling,
+	onRetry,
+	retrying,
 }: {
 	runs: Runs;
 	onCancel: (runId: string) => void;
 	cancelling: boolean;
+	onRetry: (runId: string) => void;
+	retrying: boolean;
 }) {
 	const [outcome, setOutcome] = useState("ALL");
 	const [expanded, setExpanded] = useState<string | null>(null);
@@ -786,6 +808,20 @@ function AgentRuns({
 								/>
 							</span>
 						</button>
+
+						{!run.canCancel && run.status !== "SUCCEEDED" ? (
+							<span className="flex shrink-0 items-center pr-4 sm:pr-5">
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={retrying}
+									onClick={() => onRetry(run.id)}
+								>
+									<Icon icon={Renew} data-icon="inline-start" />
+									Retry
+								</Button>
+							</span>
+						) : null}
 
 						{run.canCancel ? (
 							<span className="flex shrink-0 items-center pr-4 sm:pr-5">
