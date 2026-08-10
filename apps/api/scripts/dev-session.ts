@@ -62,6 +62,27 @@ await db.session.upsert({
 	update: { expiresAt },
 });
 
-console.log(`${COOKIE_NAME}=${await signCookieValue(token)}`);
+const cookieValue = await signCookieValue(token);
+const cookie = `${COOKIE_NAME}=${cookieValue}`;
+const appUrl =
+	process.env.APP_URL?.split(",")[0]?.trim() ?? "http://localhost:3000";
+
+console.log(cookie);
+console.log();
+console.log(`Signed in as ${email}. To load the session in your browser:`);
+console.log();
+console.log(`  1. Open ${appUrl}`);
+console.log(
+	"  2. Open the browser console (View → Developer → JavaScript Console)",
+);
+console.log("  3. Paste this line and press Enter:");
+console.log();
+console.log(
+	`     document.cookie = "${cookie}; path=/; max-age=${SESSION_DAYS * 24 * 60 * 60}"`,
+);
+console.log();
+console.log("  4. Reload the page.");
+console.log();
+console.log(`The session expires in ${SESSION_DAYS} days.`);
 
 await db.$disconnect();
