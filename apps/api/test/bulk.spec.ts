@@ -10,6 +10,7 @@ import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "bulk-spec";
 const domain = `bulk-${suffix}.test`;
@@ -18,15 +19,16 @@ const secondOwnerId = `second-owner-${suffix}`;
 const ours = { OR: [{ email: { endsWith: `@${domain}` } }] };
 
 const agent = {
-	contactCreated: async () => undefined,
-	companyCreated: async () => undefined,
+	contactEnrichmentRequested: async () => undefined,
+	companyEnrichmentRequested: async () => undefined,
 	companyRequested: async () => undefined,
+	withCrmEvents: withDiscardedCrmEvents,
 } as unknown as AgentTriggerService;
 
 const stamp = new ActivityStampService(db);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);
-const directory = new CompanyDirectoryService(db, agent);
+const directory = new CompanyDirectoryService(agent);
 
 const fields = new FieldsService(db, agent);
 const contacts = new ContactsService(
@@ -46,7 +48,7 @@ const companies = new CompaniesService(
 	conversion,
 	fields,
 );
-const deals = new DealsService(db, stamp, conversion, fields);
+const deals = new DealsService(db, agent, stamp, conversion, fields);
 
 let companyId: string;
 

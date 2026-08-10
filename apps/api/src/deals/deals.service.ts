@@ -18,6 +18,7 @@ import {
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
+import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	ActivityStampService,
 	type StampTargets,
@@ -102,6 +103,7 @@ export class DealsService {
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
+		private readonly agent: AgentTriggerService,
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
@@ -246,20 +248,37 @@ export class DealsService {
 		);
 
 		try {
-			const deal = await this.db.deal.create({
-				data: {
-					name: input.name.trim(),
-					companyId: input.companyId,
-					ownerId: input.ownerId,
-					stage,
-					stageChangedAt: now,
-					closedAt: closed ? now : null,
-					amount: fromCents(input.amountCents),
-					currency,
-					...fx,
-					expectedCloseDate: parseDate(input.expectedCloseDate),
-				},
-				select: { id: true, name: true, companyId: true },
+			const deal = await this.agent.withCrmEvents(async (tx, emit) => {
+				const created = await tx.deal.create({
+					data: {
+						name: input.name.trim(),
+						companyId: input.companyId,
+						ownerId: input.ownerId,
+						stage,
+						stageChangedAt: now,
+						closedAt: closed ? now : null,
+						amount: fromCents(input.amountCents),
+						currency,
+						...fx,
+						expectedCloseDate: parseDate(input.expectedCloseDate),
+					},
+					select: { id: true, name: true, companyId: true },
+				});
+				await emit({
+					type: "deal.created",
+					record: { kind: "deal", id: created.id },
+					occurredAt: now,
+					data: { companyId: created.companyId, stage },
+				});
+				if (closed) {
+					await emit({
+						type: "deal.closed",
+						record: { kind: "deal", id: created.id },
+						occurredAt: now,
+						data: { companyId: created.companyId, from: null, to: stage },
+					});
+				}
+				return created;
 			});
 
 			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
@@ -339,6 +358,7 @@ export class DealsService {
 		try {
 			deleted = await this.db.$transaction(async (tx) => {
 				const targets = await this.stamp.targetsOf({ dealId: id }, tx);
+				await tx.agentTask.deleteMany({ where: { dealId: id } });
 
 				const deal = await tx.deal.delete({
 					where: { id },
@@ -363,31 +383,38 @@ export class DealsService {
 	}
 
 	async setStage(input: SetStageInput, actingUserId: string) {
-		const deal = await this.db.deal.findUnique({
-			where: { id: input.id },
-			select: { id: true, stage: true, companyId: true },
-		});
-
-		if (!deal) {
-			throw new NotFoundException(`No deal with id ${input.id}.`);
-		}
-
-		if (deal.stage === input.stage) {
-			return { id: deal.id, stage: deal.stage, changed: false };
-		}
-
 		const closedReason = input.closedReason?.trim();
-		if (LOSING.has(input.stage) && !closedReason) {
-			throw new BadRequestException(
-				"Say why it was lost — a closed-lost deal with no reason teaches nobody anything.",
-			);
-		}
-
-		const now = new Date();
 		const closed = isClosedStage(input.stage);
+		const transition = await this.agent.withCrmEvents(async (tx, emit) => {
+			const [deal] = await tx.$queryRaw<
+				Array<{ id: string; stage: DealStage; companyId: string }>
+			>`
+				SELECT id, stage, "companyId"
+				FROM deal
+				WHERE id = ${input.id}
+				FOR UPDATE
+			`;
 
-		const [updated] = await this.db.$transaction([
-			this.db.deal.update({
+			if (!deal) {
+				throw new NotFoundException(`No deal with id ${input.id}.`);
+			}
+
+			if (deal.stage === input.stage) {
+				return {
+					changed: false as const,
+					deal,
+					updated: { id: deal.id, stage: deal.stage },
+					now: null,
+				};
+			}
+			if (LOSING.has(input.stage) && !closedReason) {
+				throw new BadRequestException(
+					"Say why it was lost — a closed-lost deal with no reason teaches nobody anything.",
+				);
+			}
+
+			const now = new Date();
+			const updated = await tx.deal.update({
 				where: { id: input.id },
 				data: {
 					stage: input.stage,
@@ -396,8 +423,8 @@ export class DealsService {
 					closedReason: closed ? (closedReason ?? null) : null,
 				},
 				select: { id: true, stage: true },
-			}),
-			this.db.activity.create({
+			});
+			await tx.activity.create({
 				data: {
 					type: ActivityType.STAGE_CHANGE,
 					subject: "Stage changed",
@@ -408,13 +435,48 @@ export class DealsService {
 					createdById: actingUserId,
 					meta: { from: deal.stage, to: input.stage },
 				},
-			}),
-		]);
+			});
+			await emit({
+				type: "deal.stage.changed",
+				record: { kind: "deal", id: deal.id },
+				occurredAt: now,
+				data: { companyId: deal.companyId, from: deal.stage, to: input.stage },
+			});
+			if (!isClosedStage(deal.stage) && closed) {
+				await emit({
+					type: "deal.closed",
+					record: { kind: "deal", id: deal.id },
+					occurredAt: now,
+					data: {
+						companyId: deal.companyId,
+						from: deal.stage,
+						to: input.stage,
+					},
+				});
+			}
+			if (isClosedStage(deal.stage) && !closed) {
+				await emit({
+					type: "deal.opened",
+					record: { kind: "deal", id: deal.id },
+					occurredAt: now,
+					data: {
+						companyId: deal.companyId,
+						from: deal.stage,
+						to: input.stage,
+					},
+				});
+			}
 
-		await this.stamp.touch(
-			{ companyId: deal.companyId, dealId: deal.id },
-			new Date(),
-		);
+			return { changed: true as const, deal, updated, now };
+		});
+
+		if (!transition.changed) {
+			return { ...transition.updated, changed: false };
+		}
+
+		const { deal, updated, now } = transition;
+
+		await this.stamp.touch({ companyId: deal.companyId, dealId: deal.id }, now);
 
 		this.logger.log({
 			message: "Deal stage changed",

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
@@ -13,9 +13,13 @@ const memberId = `agent-run-member-${suffix}`;
 let agentId = "";
 let versionId = "";
 let pokeCount = 0;
+let cancelPokes: string[] = [];
 const trigger = {
 	deployedAgentRunQueued() {
 		pokeCount += 1;
+	},
+	deployedAgentRunCancelled(runId: string) {
+		cancelPokes.push(runId);
 	},
 } as AgentTriggerService;
 const service = new AgentRunsService(db, new AgentAccessService(db), trigger);
@@ -112,6 +116,22 @@ afterAll(async () => {
 	}
 	await db.member.deleteMany({ where: { id: memberId } });
 	await db.user.deleteMany({ where: { id: { in: [userId, outsiderId] } } });
+});
+
+afterEach(async () => {
+	if (!agentId) return;
+	await db.agentRun.updateMany({
+		where: {
+			agentId,
+			status: { in: ["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"] },
+		},
+		data: {
+			status: "CANCELLED",
+			errorCode: "TEST_CLEANUP",
+			errorMessage: "Settled between tests.",
+			finishedAt: new Date(),
+		},
+	});
 });
 
 describe("manual agent runs", () => {
@@ -249,6 +269,38 @@ describe("manual agent runs", () => {
 		expect(pokeCount).toBe(beforePokeCount + 4);
 	});
 
+	it("rejects a second manual run while the first is active", async () => {
+		const first = await service.runNow(
+			{ id: agentId, clientRequestId: crypto.randomUUID() },
+			userId,
+		);
+
+		let error: Error | null = null;
+		try {
+			await service.runNow(
+				{ id: agentId, clientRequestId: crypto.randomUUID() },
+				userId,
+			);
+		} catch (caught) {
+			error = caught as Error;
+		}
+
+		expect(error?.message).toBe(
+			"This agent already has an active run. Stop it or wait for it to finish.",
+		);
+		expect(
+			await db.agentRun.count({
+				where: {
+					agentId,
+					status: { in: ["QUEUED", "RUNNING", "WAITING_FOR_APPROVAL"] },
+				},
+			}),
+		).toBe(1);
+		expect(
+			await db.agentRun.findUniqueOrThrow({ where: { id: first.id } }),
+		).toMatchObject({ status: "QUEUED" });
+	});
+
 	it("checks workspace membership before replaying an existing request", async () => {
 		const clientRequestId = crypto.randomUUID();
 		await service.runNow({ id: agentId, clientRequestId }, userId);
@@ -299,5 +351,160 @@ describe("manual agent runs", () => {
 		expect(
 			await db.agentRun.count({ where: { idempotencyKey: clientRequestId } }),
 		).toBe(1);
+	});
+});
+
+describe("cancelling a run", () => {
+	async function queuedRun() {
+		const { id } = await service.runNow(
+			{ id: agentId, clientRequestId: crypto.randomUUID() },
+			userId,
+		);
+		cancelPokes = [];
+		return id;
+	}
+
+	it("settles a queued run and asks the agent to drop the turn", async () => {
+		const runId = await queuedRun();
+
+		const result = await service.cancelRun({ id: agentId, runId }, userId);
+
+		expect(result).toMatchObject({ id: runId, status: "CANCELLED" });
+		expect(result.cancelled).toBe(true);
+		expect(cancelPokes).toEqual([runId]);
+
+		const run = await db.agentRun.findUniqueOrThrow({
+			where: { id: runId },
+			select: { status: true, errorCode: true, finishedAt: true },
+		});
+		expect(run.status).toBe("CANCELLED");
+		expect(run.errorCode).toBe("CANCELLED_BY_USER");
+		expect(run.finishedAt).not.toBeNull();
+	});
+
+	it("records one terminal event and one audit event", async () => {
+		const runId = await queuedRun();
+		await service.cancelRun({ id: agentId, runId }, userId);
+
+		const events = await db.agentRunEvent.findMany({
+			where: { runId, type: "run.cancelled" },
+			select: { id: true },
+		});
+		expect(events).toHaveLength(1);
+		expect(events[0]?.id).toBe(`run-terminal:${runId}:cancelled`);
+
+		expect(
+			await db.agentAuditEvent.count({
+				where: { agentId, type: "run.cancelled", requestId: runId },
+			}),
+		).toBe(1);
+	});
+
+	it("cancels outstanding actions so nothing is left running", async () => {
+		const runId = await queuedRun();
+		await db.agentAction.createMany({
+			data: [
+				{
+					agentId,
+					runId,
+					type: "crm.activity.create",
+					provider: "crm",
+					summary: "Planned note",
+					status: "PLANNED",
+					idempotencyKey: `${runId}:planned`,
+					requestHash: "planned",
+				},
+				{
+					agentId,
+					runId,
+					type: "slack.message.post",
+					provider: "slack",
+					summary: "Already posted",
+					status: "SUCCEEDED",
+					idempotencyKey: `${runId}:done`,
+					requestHash: "done",
+				},
+			],
+		});
+
+		await service.cancelRun({ id: agentId, runId }, userId);
+
+		const actions = await db.agentAction.findMany({
+			where: { runId },
+			orderBy: { idempotencyKey: "asc" },
+			select: { status: true },
+		});
+		expect(actions.map((action) => action.status)).toEqual([
+			"SUCCEEDED",
+			"CANCELLED",
+		]);
+	});
+
+	it("is idempotent and never pokes twice", async () => {
+		const runId = await queuedRun();
+		await service.cancelRun({ id: agentId, runId }, userId);
+		cancelPokes = [];
+
+		const again = await service.cancelRun({ id: agentId, runId }, userId);
+
+		expect(again.cancelled).toBe(false);
+		expect(again.status).toBe("CANCELLED");
+		expect(cancelPokes).toEqual([]);
+		expect(
+			await db.agentRunEvent.count({ where: { runId, type: "run.cancelled" } }),
+		).toBe(1);
+	});
+
+	it("leaves a finished run alone", async () => {
+		const runId = await queuedRun();
+		await db.agentRun.update({
+			where: { id: runId },
+			data: { status: "SUCCEEDED", finishedAt: new Date() },
+		});
+
+		const result = await service.cancelRun({ id: agentId, runId }, userId);
+
+		expect(result).toMatchObject({ status: "SUCCEEDED", cancelled: false });
+		expect(cancelPokes).toEqual([]);
+	});
+
+	it("refuses a run id that belongs to another agent", async () => {
+		const runId = await queuedRun();
+		const other = await db.agentDefinition.create({
+			data: { name: "Unrelated", status: "LIVE", createdById: userId },
+			select: { id: true },
+		});
+
+		let error: Error | null = null;
+		try {
+			await service.cancelRun({ id: other.id, runId }, userId);
+		} catch (caught) {
+			error = caught as Error;
+		}
+		expect(error?.message).toBe(`No run with id ${runId}.`);
+	});
+
+	it("refuses a caller who is not a workspace member", async () => {
+		const runId = await queuedRun();
+
+		let error: Error | null = null;
+		try {
+			await service.cancelRun({ id: agentId, runId }, outsiderId);
+		} catch (caught) {
+			error = caught as Error;
+		}
+		expect(error?.message).toBe("You are not a member of this workspace.");
+	});
+
+	it("reports cancellable runs to the caller who may stop them", async () => {
+		const runId = await queuedRun();
+
+		const history = await service.list(agentId, 50, userId);
+		const row = history.find((run) => run.id === runId);
+		expect(row?.canCancel).toBe(true);
+
+		await service.cancelRun({ id: agentId, runId }, userId);
+		const settled = await service.list(agentId, 50, userId);
+		expect(settled.find((run) => run.id === runId)?.canCancel).toBe(false);
 	});
 });

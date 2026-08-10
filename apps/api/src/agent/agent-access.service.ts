@@ -79,7 +79,7 @@ export class AgentAccessService {
 	}
 
 	async assertCanRead(agentId: string, userId: string) {
-		await this.assertMember(userId);
+		const role = await this.assertMember(userId);
 		const agent = await this.db.agentDefinition.findFirst({
 			where: { id: agentId, status: { not: "DELETED" } },
 			select: {
@@ -94,6 +94,10 @@ export class AgentAccessService {
 			throw new NotFoundException(`No agent with id ${agentId}.`);
 		}
 
-		return agent;
+		return {
+			...agent,
+			role,
+			canManage: agent.createdById === userId || isWorkspaceAdmin(role),
+		};
 	}
 }

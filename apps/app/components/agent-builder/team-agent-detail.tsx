@@ -9,6 +9,7 @@ import Play from "@carbon/icons-react/es/Play";
 import TrashCan from "@carbon/icons-react/es/TrashCan";
 import {
 	AlertDialog,
+	AlertDialogAction,
 	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
@@ -151,6 +152,22 @@ export function TeamAgentDetail({
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	const cancelRun = useMutation(
+		trpc.agents.cancelRun.mutationOptions({
+			onSuccess: async (result) => {
+				await Promise.all([
+					invalidate(),
+					queryClient.invalidateQueries({
+						queryKey: trpc.agents.history.pathKey(),
+					}),
+				]);
+				toast.success(
+					result.cancelled ? "Run stopped." : "That run had already finished.",
+				);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const runAction = useAsyncAction({
 		action: () =>
 			runNow.mutateAsync({
@@ -198,7 +215,11 @@ export function TeamAgentDetail({
 		: (data.description ?? "A durable team automation.");
 	const displayedVersionNumber =
 		data.currentVersion?.number ?? data.reviewVersion?.number;
-	const nextRun = data.triggers.find((trigger) => trigger.enabled)?.nextRunAt;
+	const enabledTriggers = data.triggers.filter((trigger) => trigger.enabled);
+	const nextRun =
+		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
+	const triggerSummary =
+		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
 
 	return (
 		<PageShell className="min-h-0">
@@ -219,14 +240,14 @@ export function TeamAgentDetail({
 				<PageShellActions className="col-start-1 row-start-3 justify-self-start sm:col-start-2 sm:row-start-1 sm:justify-self-end">
 					<div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
 						<span className="text-muted-foreground text-xs">
-							{isDraft ? "Visibility" : "Next run"}
+							{isDraft ? "Visibility" : "Trigger"}
 						</span>
 						<span className="font-mono text-sm">
 							{isDraft
 								? "Private draft"
 								: nextRun
 									? formatDate(nextRun)
-									: "Manual only"}
+									: triggerSummary}
 						</span>
 						<div className="mt-1 flex flex-wrap gap-2">
 							{isDraft && data.canManage ? (
@@ -301,7 +322,7 @@ export function TeamAgentDetail({
 				<div
 					role="tablist"
 					aria-label="Agent details"
-					className="flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b sm:gap-6"
+					className="sticky top-0 z-10 flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b bg-background sm:gap-6"
 				>
 					<TabButton
 						tab="overview"
@@ -347,7 +368,11 @@ export function TeamAgentDetail({
 						id="agent-runs-panel"
 						aria-labelledby="agent-runs-tab"
 					>
-						<AgentRuns runs={runs.data ?? []} />
+						<AgentRuns
+							runs={runs.data ?? []}
+							onCancel={(runId) => cancelRun.mutate({ id: agentId, runId })}
+							cancelling={cancelRun.isPending}
+						/>
 					</div>
 				) : null}
 				{tab === "activity" ? (
@@ -585,7 +610,13 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 	);
 	const manifest = recordOf(version.manifest);
 	const sandbox = recordOf(version.sandboxPolicy);
-	const trigger = recordOf(manifest.trigger);
+	const manifestTriggers = Array.isArray(manifest.triggers)
+		? manifest.triggers.map(recordOf)
+		: [];
+	const manifestTriggerSummary = manifestTriggers
+		.map((trigger) => textOf(trigger.summary, textOf(trigger.name, "")))
+		.filter(Boolean)
+		.join(" · ");
 	const actions = Array.isArray(manifest.actions)
 		? manifest.actions.map(recordOf)
 		: [];
@@ -623,7 +654,8 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 				label="Triggers"
 				value={
 					agent.triggers.map((trigger) => trigger.name).join(" · ") ||
-					textOf(trigger.summary, "Manual only")
+					manifestTriggerSummary ||
+					"Manual only"
 				}
 			/>
 			<DetailRow
@@ -656,9 +688,18 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 	);
 }
 
-function AgentRuns({ runs }: { runs: Runs }) {
+function AgentRuns({
+	runs,
+	onCancel,
+	cancelling,
+}: {
+	runs: Runs;
+	onCancel: (runId: string) => void;
+	cancelling: boolean;
+}) {
 	const [outcome, setOutcome] = useState("ALL");
 	const [expanded, setExpanded] = useState<string | null>(null);
+	const [confirming, setConfirming] = useState<string | null>(null);
 	const visible = runs.filter(
 		(run) => outcome === "ALL" || run.status === outcome,
 	);
@@ -690,50 +731,94 @@ function AgentRuns({ runs }: { runs: Runs }) {
 					key={run.id}
 					className="min-w-0 overflow-hidden rounded-lg border bg-card"
 				>
-					<button
-						type="button"
-						onClick={() =>
-							setExpanded((current) => (current === run.id ? null : run.id))
-						}
-						className="flex min-h-14 w-full min-w-0 flex-col items-stretch gap-3 px-4 py-3 text-left outline-none hover:bg-muted/40 focus-visible:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-5 sm:py-2"
-					>
-						<span className="min-w-0 flex-1">
-							<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-								<span className="font-semibold text-sm">
-									Run #{String(runNumbers.get(run.id)).padStart(3, "0")}
+					<div className="flex min-w-0 items-stretch">
+						<button
+							type="button"
+							onClick={() =>
+								setExpanded((current) => (current === run.id ? null : run.id))
+							}
+							className="flex min-h-14 w-full min-w-0 flex-col items-stretch gap-3 px-4 py-3 text-left outline-none hover:bg-muted/40 focus-visible:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-5 sm:py-2"
+						>
+							<span className="min-w-0 flex-1">
+								<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+									<span className="font-semibold text-sm">
+										Run #{String(runNumbers.get(run.id)).padStart(3, "0")}
+									</span>
+									<span
+										className={cn(
+											"text-muted-foreground text-xs",
+											run.status === "FAILED" && "text-destructive",
+										)}
+									>
+										{humanStatus(run.status)}
+									</span>
 								</span>
-								<span
-									className={cn(
-										"text-muted-foreground text-xs",
-										run.status === "FAILED" && "text-destructive",
-									)}
+								<span className="mt-1 block wrap-break-word font-mono text-muted-foreground text-xs leading-5 sm:mt-0">
+									{humanStatus(run.triggerType)} · {formatDate(run.createdAt)} ·
+									Version {run.version.number}
+								</span>
+							</span>
+							<span className="flex min-w-0 items-center justify-between gap-3 font-mono text-muted-foreground text-xs sm:shrink-0 sm:justify-start sm:gap-4">
+								<span>{duration(run.startedAt, run.finishedAt)}</span>
+								<span>
+									{run.actions.length} external{" "}
+									{run.actions.length === 1 ? "action" : "actions"}
+								</span>
+								<Icon
+									icon={expanded === run.id ? ChevronUp : ChevronDown}
+									className="size-3.5"
+								/>
+							</span>
+						</button>
+
+						{run.canCancel ? (
+							<span className="flex shrink-0 items-center pr-4 sm:pr-5">
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={cancelling}
+									onClick={() => setConfirming(run.id)}
 								>
-									{humanStatus(run.status)}
-								</span>
+									Stop
+								</Button>
 							</span>
-							<span className="mt-1 block wrap-break-word font-mono text-muted-foreground text-xs leading-5 sm:mt-0">
-								{humanStatus(run.triggerType)} · {formatDate(run.createdAt)} ·
-								Version {run.version.number}
-							</span>
-						</span>
-						<span className="flex min-w-0 items-center justify-between gap-3 font-mono text-muted-foreground text-xs sm:shrink-0 sm:justify-start sm:gap-4">
-							<span>{duration(run.startedAt, run.finishedAt)}</span>
-							<span>
-								{run.actions.length} external{" "}
-								{run.actions.length === 1 ? "action" : "actions"}
-							</span>
-							<Icon
-								icon={expanded === run.id ? ChevronUp : ChevronDown}
-								className="size-3.5"
-							/>
-						</span>
-					</button>
+						) : null}
+					</div>
 
 					{expanded === run.id ? (
 						<ExpandedRun run={run as unknown as RunRow} />
 					) : null}
 				</div>
 			))}
+
+			<AlertDialog
+				open={confirming !== null}
+				onOpenChange={(open) => setConfirming(open ? confirming : null)}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Stop this run?</AlertDialogTitle>
+						<AlertDialogDescription>
+							The agent stops where it is and the run is recorded as cancelled.
+							Anything it has already done — a note, a task, a Slack message —
+							stays done.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep running</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={() => {
+								if (confirming) onCancel(confirming);
+								setConfirming(null);
+							}}
+						>
+							Stop run
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			{visible.length === 0 ? (
 				<p className="py-12 text-center text-muted-foreground text-sm">

@@ -1,4 +1,4 @@
-import { db, type Prisma } from "@crm/db";
+import { db, Prisma } from "@crm/db";
 import { defineHook } from "eve/hooks";
 import { currentFocus } from "../lib/focus";
 import { lockAgentRun } from "../lib/run-state";
@@ -16,6 +16,9 @@ export default defineHook({
 			try {
 				const data = ("data" in event ? (event.data ?? {}) : {}) as object;
 				const emittedAt = event.meta?.at ? new Date(event.meta.at) : new Date();
+				const purpose = purposeOf(ctx);
+				const conversationId =
+					purpose === "builder" ? attribute(ctx, "conversationId") : null;
 				await db.$transaction(async (tx) => {
 					await tx.agentEvent.createMany({
 						data: [
@@ -23,6 +26,7 @@ export default defineHook({
 								id,
 								sessionId: ctx.session.id,
 								contactId: currentFocus().contactId,
+								conversationId,
 								type: event.type,
 								data,
 								emittedAt,
@@ -31,7 +35,6 @@ export default defineHook({
 						skipDuplicates: true,
 					});
 
-					const purpose = purposeOf(ctx);
 					if (purpose === "builder") {
 						await persistBuilderLifecycle(tx, event, ctx.session.id, ctx);
 					}
@@ -71,6 +74,10 @@ async function persistBuilderLifecycle(
 			await tx.agentConversationSubmission.updateMany({
 				where: { id: submissionId, conversationId },
 				data: { status: "ACCEPTED", acceptedAt: new Date() },
+			});
+			await tx.agentConversation.updateMany({
+				where: { id: conversationId, kind: "BUILDER" },
+				data: { pendingInputRequest: Prisma.DbNull },
 			});
 		}
 	}

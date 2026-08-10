@@ -296,14 +296,23 @@ export class CompaniesService {
 			}
 		}
 
-		const company = await this.db.company.create({
-			data: {
-				name: input.name.trim(),
-				domain,
-				website: domain ? `https://${domain}` : null,
-				ownerId: input.ownerId ?? null,
-			},
-			select: { id: true, name: true, domain: true },
+		const company = await this.agent.withCrmEvents(async (tx, emit) => {
+			const created = await tx.company.create({
+				data: {
+					name: input.name.trim(),
+					domain,
+					website: domain ? `https://${domain}` : null,
+					ownerId: input.ownerId ?? null,
+				},
+				select: { id: true, name: true, domain: true, createdAt: true },
+			});
+			await emit({
+				type: "company.created",
+				record: { kind: "company", id: created.id },
+				occurredAt: created.createdAt,
+				data: { name: created.name, domain: created.domain },
+			});
+			return created;
 		});
 
 		this.logger.log({
@@ -312,11 +321,11 @@ export class CompaniesService {
 			domain: company.domain,
 		});
 
-		await this.agent.companyCreated(company.id);
+		await this.agent.companyEnrichmentRequested(company.id);
 
 		void this.favicon.backfill(company.id, company.domain);
 
-		return company;
+		return { id: company.id, name: company.name, domain: company.domain };
 	}
 
 	async update(id: string, input: CompanyUpdateInput) {
@@ -380,7 +389,7 @@ export class CompaniesService {
 			});
 
 			if (data.enrichmentStatus === "PENDING") {
-				await this.agent.companyCreated(
+				await this.agent.companyEnrichmentRequested(
 					id,
 					"Domain changed — anything we knew was about a different company",
 				);

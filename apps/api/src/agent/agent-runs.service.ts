@@ -1,15 +1,28 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "@crm/db";
+import type { AgentRunStatus } from "@crm/db/enums";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import {
 	BadRequestException,
+	ConflictException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentTriggerService } from "./agent-trigger.service";
-import type { AgentRunNowInput } from "./agents.contracts";
+import type { AgentCancelRunInput, AgentRunNowInput } from "./agents.contracts";
+
+const CANCELLABLE_STATUSES: readonly AgentRunStatus[] = [
+	"QUEUED",
+	"RUNNING",
+	"WAITING_FOR_APPROVAL",
+];
+
+const CANCELLED_BY_USER = "CANCELLED_BY_USER";
+
+const CANCELLED_MESSAGE = "A workspace member stopped this run.";
 
 @Injectable()
 export class AgentRunsService {
@@ -20,7 +33,7 @@ export class AgentRunsService {
 	) {}
 
 	async list(agentId: string, limit: number, userId: string) {
-		await this.readableAgent(agentId, userId);
+		const agent = await this.readableAgent(agentId, userId);
 
 		const rows = await this.db.agentRun.findMany({
 			where: { agentId },
@@ -77,6 +90,9 @@ export class AgentRunsService {
 
 		return rows.map((run) => ({
 			...run,
+			canCancel:
+				CANCELLABLE_STATUSES.includes(run.status) &&
+				(agent.canManage || run.initiatedBy?.id === userId),
 			costUsd: run.costUsd?.toString() ?? null,
 			createdAt: run.createdAt.toISOString(),
 			startedAt: run.startedAt?.toISOString() ?? null,
@@ -167,6 +183,19 @@ export class AgentRunsService {
 				throw new BadRequestException("This agent is not live yet.");
 			}
 
+			const active = await tx.agentRun.findFirst({
+				where: {
+					agentId: input.id,
+					status: { in: [...CANCELLABLE_STATUSES] },
+				},
+				select: { id: true },
+			});
+			if (active) {
+				throw new ConflictException(
+					"This agent already has an active run. Stop it or wait for it to finish.",
+				);
+			}
+
 			const created = await tx.agentRun.create({
 				data: {
 					agentId: input.id,
@@ -200,6 +229,106 @@ export class AgentRunsService {
 
 		this.trigger.deployedAgentRunQueued();
 		return run;
+	}
+
+	async cancelRun(input: AgentCancelRunInput, userId: string) {
+		const agent = await this.readableAgent(input.id, userId);
+
+		const outcome = await this.db.$transaction(async (tx) => {
+			const [run] = await tx.$queryRaw<
+				Array<{
+					id: string;
+					agentId: string;
+					versionId: string;
+					status: AgentRunStatus;
+					initiatedById: string | null;
+					nextEventSequence: number;
+				}>
+			>`
+				SELECT id, "agentId", "versionId", status, "initiatedById", "nextEventSequence"
+				FROM "agentRun"
+				WHERE id = ${input.runId}
+				FOR UPDATE
+			`;
+
+			if (!run || run.agentId !== input.id) {
+				throw new NotFoundException(`No run with id ${input.runId}.`);
+			}
+
+			if (!agent.canManage && run.initiatedById !== userId) {
+				throw new ForbiddenException(
+					"Only the person who started this run, or a workspace admin, can stop it.",
+				);
+			}
+
+			if (!CANCELLABLE_STATUSES.includes(run.status)) {
+				return { id: run.id, status: run.status, cancelled: false };
+			}
+
+			const sequence = run.nextEventSequence + 1;
+			const finishedAt = new Date();
+
+			await tx.agentRun.update({
+				where: { id: run.id },
+				data: {
+					status: "CANCELLED",
+					errorCode: CANCELLED_BY_USER,
+					errorMessage: CANCELLED_MESSAGE,
+					finishedAt,
+					nextEventSequence: sequence,
+				},
+			});
+
+			await tx.agentAction.updateMany({
+				where: { runId: run.id, status: { in: ["PLANNED", "RUNNING"] } },
+				data: {
+					status: "CANCELLED",
+					errorCode: CANCELLED_BY_USER,
+					errorMessage: CANCELLED_MESSAGE,
+					completedAt: finishedAt,
+				},
+			});
+
+			await tx.agentRunEvent.create({
+				data: {
+					id: `run-terminal:${run.id}:cancelled`,
+					runId: run.id,
+					sequence,
+					type: "run.cancelled",
+					data: { reason: "user.cancelled" },
+					emittedAt: finishedAt,
+				},
+			});
+
+			await tx.agentAuditEvent.upsert({
+				where: {
+					agentId_type_requestId: {
+						agentId: run.agentId,
+						type: "run.cancelled",
+						requestId: run.id,
+					},
+				},
+				create: {
+					agentId: run.agentId,
+					versionId: run.versionId,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "run.cancelled",
+					summary: "Stopped a run",
+					requestId: run.id,
+				},
+				update: {},
+			});
+
+			return { id: run.id, status: "CANCELLED" as const, cancelled: true };
+		});
+
+		if (outcome.cancelled) {
+			this.trigger.deployedAgentRunCancelled(outcome.id);
+		}
+
+		return outcome;
 	}
 
 	private async readableAgent(agentId: string, userId: string) {

@@ -1,19 +1,24 @@
 import { timingSafeEqual } from "node:crypto";
-import { EnrichmentStatus } from "@crm/db";
+import { EnrichmentStatus, Prisma } from "@crm/db";
 import { defineChannel, POST } from "eve/channels";
+import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
 	builderIdFromToken,
+	builderToken,
+	cancelRun,
 	dispatchAgentRun,
 	dispatchBuilderSubmission,
 	drainAgentRuns,
 	drainBuilder,
 	failRun,
 	runIdFromToken,
+	runToken,
 } from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
 import { finishRun } from "../lib/run-runtime";
+import { attribute } from "../lib/session-purpose";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
@@ -52,12 +57,15 @@ export default defineChannel({
 			}
 
 			waitUntil(
-				drainAll((task) =>
-					send(brief(task), {
-						auth: taskAuth(task),
-						continuationToken: taskToken(task.id),
-					}),
-				),
+				(async () => {
+					await drainAll((task) =>
+						send(brief(task), {
+							auth: taskAuth(task),
+							continuationToken: taskToken(task.id),
+						}),
+					);
+					await drainAgentRuns(send);
+				})(),
 			);
 
 			return new Response(null, { status: 202 });
@@ -87,6 +95,24 @@ export default defineChannel({
 			},
 		),
 
+		POST("/internal/crm/cancel-run", async (request, { cancel }) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const body = (await request.json().catch(() => null)) as {
+				runId?: unknown;
+			} | null;
+			const runId = typeof body?.runId === "string" ? body.runId.trim() : null;
+			if (!runId) {
+				return Response.json({ error: "No run id was sent." }, { status: 400 });
+			}
+
+			return Response.json(
+				await cancel({ continuationToken: runToken(runId) }),
+			);
+		}),
+
 		POST("/internal/crm/verify-key", async (request) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
@@ -111,6 +137,14 @@ export default defineChannel({
 	],
 
 	events: {
+		async "input.requested"(data, channel, ctx) {
+			await persistBuilderInputRequest(
+				data,
+				channel.continuationToken,
+				attribute(ctx, "conversationId"),
+			);
+		},
+
 		async "message.completed"(data, channel) {
 			const conversationId = builderIdFromToken(channel.continuationToken);
 			if (!conversationId || !data.message?.trim()) return;
@@ -141,7 +175,7 @@ export default defineChannel({
 			await import("@crm/db").then(({ db }) =>
 				db.agentConversation.updateMany({
 					where: { id: conversationId, kind: "BUILDER" },
-					data: { continuationToken: channel.continuationToken },
+					data: { continuationToken: builderToken(conversationId) },
 				}),
 			);
 		},
@@ -159,11 +193,34 @@ export default defineChannel({
 				return;
 			}
 
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
+					},
+				});
+				return;
+			}
+
 			const runId = runIdFromToken(channel.continuationToken);
 			if (runId) await failRun(runId, "TURN_FAILED", reason);
 		},
 
 		async "session.completed"(_data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: { pendingInputRequest: Prisma.DbNull },
+				});
+				return;
+			}
+
 			const runId = runIdFromToken(channel.continuationToken);
 			if (!runId) return;
 
@@ -172,11 +229,43 @@ export default defineChannel({
 				where: { id: runId },
 				select: { status: true, summary: true, result: true },
 			});
-			if (run?.status === "RUNNING") {
+			if (run?.status !== "RUNNING") return;
+
+			try {
 				await finishRun(runId, {
 					summary: run.summary ?? "The agent run completed.",
 					result: recordOf(run.result),
 				});
+			} catch (error) {
+				await failRun(
+					runId,
+					"NEVER_SETTLED",
+					error instanceof Error ? error.message : String(error),
+				).catch(() => {});
+			}
+		},
+
+		async "turn.cancelled"(_data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
+					},
+				});
+				return;
+			}
+
+			const runId = runIdFromToken(channel.continuationToken);
+			if (runId) {
+				await cancelRun(
+					runId,
+					"CANCELLED",
+					"The run was stopped before it finished.",
+				);
 			}
 		},
 
@@ -187,7 +276,8 @@ export default defineChannel({
 				await db.agentConversation.updateMany({
 					where: { id: conversationId, kind: "BUILDER" },
 					data: {
-						continuationToken: channel.continuationToken,
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
 						lastAssistantAt: new Date(),
 						lastMessageAt: new Date(),
 					},

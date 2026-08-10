@@ -1,10 +1,24 @@
-import type { Db, FieldEntity } from "@crm/db";
+import { type Db, type FieldEntity, Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
+import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
+import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { bridge } from "./bridge";
 
 const POKE_TIMEOUT_MS = 2_000;
+
+export type CrmEventInput = {
+	[Type in CrmEventType]: {
+		type: Type;
+		record: {
+			kind: (typeof CRM_EVENT_CATALOG)[Type]["recordKind"];
+			id: string;
+		};
+		occurredAt: Date;
+		data: Prisma.InputJsonObject;
+	};
+}[CrmEventType];
 
 @Injectable()
 export class AgentTriggerService {
@@ -12,7 +26,7 @@ export class AgentTriggerService {
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async companyCreated(
+	async companyEnrichmentRequested(
 		companyId: string,
 		reason = "New company",
 	): Promise<void> {
@@ -60,7 +74,10 @@ export class AgentTriggerService {
 		});
 	}
 
-	async contactCreated(contactId: string, reason: string): Promise<void> {
+	async contactEnrichmentRequested(
+		contactId: string,
+		reason: string,
+	): Promise<void> {
 		await this.enqueue({
 			contactId,
 			kind: "identify",
@@ -68,6 +85,45 @@ export class AgentTriggerService {
 			priority: PRIORITY.identify,
 			budget: 4,
 		});
+	}
+
+	async slackPeopleRequested(reason: string, required = false): Promise<void> {
+		await this.enqueue(
+			{
+				kind: "slack-people-match",
+				reason,
+				priority: PRIORITY.slackPeople,
+				budget: 1,
+			},
+			required,
+		);
+	}
+
+	async withCrmEvents<Result>(
+		work: (
+			tx: Prisma.TransactionClient,
+			emit: (input: CrmEventInput) => Promise<void>,
+		) => Promise<Result>,
+	): Promise<Result> {
+		const queued: CrmEventInput[] = [];
+		const result = await this.db.$transaction((tx) =>
+			work(tx, async (input) => {
+				await this.createEventTask(tx, input);
+				queued.push(input);
+			}),
+		);
+
+		for (const input of queued) {
+			this.logger.log({
+				message: "Agent event queued",
+				type: input.type,
+				recordKind: input.record.kind,
+				recordId: input.record.id,
+			});
+		}
+		if (queued.length > 0) this.poke();
+
+		return result;
 	}
 
 	async fieldBackfill(
@@ -138,6 +194,10 @@ export class AgentTriggerService {
 		this.pokeRoute("/internal/crm/agent-dispatch");
 	}
 
+	deployedAgentRunCancelled(runId: string): void {
+		this.pokeRoute("/internal/crm/cancel-run", { runId });
+	}
+
 	async backfill(input: {
 		kind: string;
 		reason: string;
@@ -201,38 +261,48 @@ export class AgentTriggerService {
 		}
 	}
 
-	private async enqueue(task: {
-		contactId?: string;
-		companyId?: string;
-		kind: string;
-		reason: string;
-		priority: number;
-		budget: number;
-	}): Promise<void> {
+	private async enqueue(
+		task: {
+			contactId?: string;
+			companyId?: string;
+			kind: string;
+			reason: string;
+			priority: number;
+			budget: number;
+		},
+		required = false,
+	): Promise<void> {
 		try {
-			const pending = await this.db.agentTask.findFirst({
-				where: {
-					kind: task.kind,
-					finishedAt: null,
-					...(task.contactId ? { contactId: task.contactId } : {}),
-					...(task.companyId ? { companyId: task.companyId } : {}),
-				},
-				select: { id: true },
-			});
+			const created = await this.db.$transaction(async (tx) => {
+				await lockIdempotencyKey(
+					tx,
+					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}`,
+				);
+				const pending = await tx.agentTask.findFirst({
+					where: {
+						kind: task.kind,
+						finishedAt: null,
+						...(task.contactId ? { contactId: task.contactId } : {}),
+						...(task.companyId ? { companyId: task.companyId } : {}),
+					},
+					select: { id: true },
+				});
+				if (pending) return false;
 
-			if (pending) return;
-
-			await this.db.agentTask.create({
-				data: {
-					contactId: task.contactId ?? null,
-					companyId: task.companyId ?? null,
-					kind: task.kind,
-					reason: task.reason,
-					priority: task.priority,
-					budget: task.budget,
-					dueAt: new Date(),
-				},
+				await tx.agentTask.create({
+					data: {
+						contactId: task.contactId ?? null,
+						companyId: task.companyId ?? null,
+						kind: task.kind,
+						reason: task.reason,
+						priority: task.priority,
+						budget: task.budget,
+						dueAt: new Date(),
+					},
+				});
+				return true;
 			});
+			if (!created) return;
 
 			this.logger.log({
 				message: "Agent task queued",
@@ -247,14 +317,42 @@ export class AgentTriggerService {
 				{ message: "Could not queue agent task", kind: task.kind },
 				error instanceof Error ? error.stack : String(error),
 			);
+			if (required) throw error;
 		}
+	}
+
+	private async createEventTask(
+		tx: Prisma.TransactionClient,
+		input: CrmEventInput,
+	): Promise<void> {
+		const recordIds = {
+			contactId: input.record.kind === "contact" ? input.record.id : null,
+			companyId: input.record.kind === "company" ? input.record.id : null,
+			dealId: input.record.kind === "deal" ? input.record.id : null,
+		};
+		await tx.agentTask.create({
+			data: {
+				...recordIds,
+				kind: "agent-event",
+				reason: input.type,
+				payload: {
+					type: input.type,
+					record: input.record,
+					occurredAt: input.occurredAt.toISOString(),
+					data: input.data,
+				},
+				priority: PRIORITY.event,
+				budget: 1,
+				dueAt: new Date(),
+			},
+		});
 	}
 
 	private poke(): void {
 		this.pokeRoute("/internal/crm/dispatch");
 	}
 
-	private pokeRoute(path: string): void {
+	private pokeRoute(path: string, body?: Record<string, string>): void {
 		const agent = bridge();
 		if (!agent) return;
 
@@ -268,7 +366,11 @@ export class AgentTriggerService {
 		try {
 			void fetch(agent.url(path), {
 				method: "POST",
-				headers: { authorization: `Bearer ${agent.secret}` },
+				headers: {
+					authorization: `Bearer ${agent.secret}`,
+					...(body ? { "content-type": "application/json" } : {}),
+				},
+				...(body ? { body: JSON.stringify(body) } : {}),
 				signal: AbortSignal.timeout(POKE_TIMEOUT_MS),
 			})
 				.then((response) => {

@@ -13,6 +13,7 @@ import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { AgentDefinitionsService } from "./agent-definitions.service";
 import { AgentRunsService } from "./agent-runs.service";
 import {
+	agentCancelRunInput,
 	agentDeployInput,
 	agentHistoryInput,
 	agentIdInput,
@@ -103,5 +104,13 @@ export class AgentsRouter {
 		@Input() input: z.infer<typeof agentRunNowInput>,
 	) {
 		return this.runs.runNow(input, ctx.user.id);
+	}
+
+	@Mutation({ input: agentCancelRunInput })
+	async cancelRun(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentCancelRunInput>,
+	) {
+		return this.runs.cancelRun(input, ctx.user.id);
 	}
 }

@@ -1,6 +1,14 @@
-import { db, type Prisma } from "@crm/db";
+import { db, Prisma } from "@crm/db";
+import { CRM_EVENT_CATALOG, isCrmEventType } from "@crm/db/crm-events";
+import { lockIdempotencyKey } from "@crm/db/idempotency";
 import type { SendFn } from "eve/channels";
-import { lockAgentRun, runTerminalEventId } from "./run-state";
+import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
+import {
+	isTerminalRunStatus,
+	lockAgentRun,
+	runTerminalEventId,
+} from "./run-state";
+import type { LeasedTask } from "./tasks";
 
 const BUILDER_BATCH = 20;
 const RUN_BATCH = 20;
@@ -156,7 +164,10 @@ export async function dispatchBuilderSubmission(
 			});
 			await tx.agentConversation.update({
 				where: { id: conversationId },
-				data: { sessionId: session.id },
+				data: {
+					sessionId: session.id,
+					pendingInputRequest: Prisma.DbNull,
+				},
 			});
 		});
 
@@ -253,15 +264,142 @@ export async function queueDueAgentRuns(now = new Date()): Promise<number> {
 	return queued;
 }
 
+export async function queueEventAgentRuns(
+	task: Pick<
+		LeasedTask,
+		"id" | "contactId" | "companyId" | "dealId" | "payload"
+	>,
+): Promise<number> {
+	const payload = recordOf(task.payload);
+	const eventType = payload.type;
+	const record = recordOf(payload.record);
+	const recordKind = textOf(record.kind);
+	const recordId = textOf(record.id);
+	const occurredAt = textOf(payload.occurredAt);
+	const occurredAtDate = new Date(occurredAt);
+	const taskRecordId =
+		recordKind === "contact"
+			? task.contactId
+			: recordKind === "company"
+				? task.companyId
+				: recordKind === "deal"
+					? task.dealId
+					: null;
+	if (
+		!isCrmEventType(eventType) ||
+		CRM_EVENT_CATALOG[eventType].recordKind !== recordKind ||
+		!recordId ||
+		taskRecordId !== recordId ||
+		!occurredAt ||
+		Number.isNaN(occurredAtDate.getTime())
+	) {
+		throw new Error("The queued agent event is invalid.");
+	}
+
+	const triggers = await db.agentTrigger.findMany({
+		where: {
+			enabled: true,
+			type: "EVENT",
+			agent: { status: "LIVE" },
+		},
+		orderBy: { id: "asc" },
+		select: {
+			id: true,
+			agentId: true,
+			versionId: true,
+			config: true,
+		},
+	});
+
+	let matched = 0;
+	for (const trigger of triggers) {
+		if (recordOf(trigger.config).event !== eventType) continue;
+		const idempotencyKey = `event:${task.id}:trigger:${trigger.id}`;
+
+		const queued = await db.$transaction(async (tx) => {
+			await lockIdempotencyKey(tx, idempotencyKey);
+			const eligible = await tx.agentTrigger.findFirst({
+				where: {
+					id: trigger.id,
+					enabled: true,
+					type: "EVENT",
+					agent: { status: "LIVE" },
+				},
+				select: { id: true },
+			});
+			if (!eligible) return false;
+
+			await tx.agentRun.upsert({
+				where: { idempotencyKey },
+				create: {
+					agentId: trigger.agentId,
+					versionId: trigger.versionId,
+					triggerId: trigger.id,
+					triggerType: "EVENT",
+					idempotencyKey,
+					correlationId: `trigger:${trigger.id}:event:${task.id}`,
+					input: {
+						event: {
+							type: eventType,
+							occurredAt,
+							data: recordOf(payload.data),
+						},
+						record: { kind: recordKind, id: recordId },
+					} as Prisma.InputJsonValue,
+					events: {
+						create: {
+							sequence: 0,
+							type: "run.queued",
+							data: { eventType, taskId: task.id },
+						},
+					},
+				},
+				update: {},
+			});
+			await tx.agentTrigger.updateMany({
+				where: { id: trigger.id, enabled: true },
+				data: { lastRunAt: occurredAtDate },
+			});
+			return true;
+		});
+		if (queued) matched += 1;
+	}
+
+	return matched;
+}
+
 export async function pendingAgentRunIds(): Promise<string[]> {
 	await recoverAgentRuns();
 	const rows = await db.agentRun.findMany({
-		where: { status: "QUEUED", agent: { status: "LIVE" } },
+		where: {
+			status: "QUEUED",
+			agent: {
+				status: "LIVE",
+				runs: {
+					none: { status: { in: ["RUNNING", "WAITING_FOR_APPROVAL"] } },
+				},
+			},
+		},
 		orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-		take: RUN_BATCH,
-		select: { id: true },
+		take: RUN_BATCH * 4,
+		select: { id: true, agentId: true, versionId: true },
 	});
-	return rows.map((row) => row.id);
+
+	const runnable: string[] = [];
+	const selectedAgents = new Set<string>();
+	for (const row of rows) {
+		if (selectedAgents.has(row.agentId)) continue;
+		const blocked = await runDependencyFailure(row.versionId);
+		if (blocked) {
+			await failRun(row.id, DEPENDENCY_UNAVAILABLE, blocked).catch(() => {});
+			continue;
+		}
+		selectedAgents.add(row.agentId);
+		runnable.push(row.id);
+		if (runnable.length === RUN_BATCH) break;
+	}
+
+	return runnable;
 }
 
 export async function drainAgentRuns(send: SendFn): Promise<number> {
@@ -290,14 +428,24 @@ export async function dispatchAgentRun(runId: string, send: SendFn) {
 		throw new Error("Agent run was already claimed or is not live.");
 	}
 
-	const claimed = await db.$transaction(async (tx) => {
+	const claim = await db.$transaction(async (tx) => {
 		const [agent] = await tx.$queryRaw<Array<{ id: string; status: string }>>`
 			SELECT id, status
 			FROM "agentDefinition"
 			WHERE id = ${run.agentId}
 			FOR UPDATE
 		`;
-		if (agent?.status !== "LIVE") return false;
+		if (agent?.status !== "LIVE") return "unavailable" as const;
+
+		const active = await tx.agentRun.findFirst({
+			where: {
+				agentId: run.agentId,
+				id: { not: run.id },
+				status: { in: ["RUNNING", "WAITING_FOR_APPROVAL"] },
+			},
+			select: { id: true },
+		});
+		if (active) return "deferred" as const;
 
 		const updated = await tx.agentRun.updateMany({
 			where: { id: runId, status: "QUEUED" },
@@ -307,9 +455,16 @@ export async function dispatchAgentRun(runId: string, send: SendFn) {
 				modelId: run.version.modelId,
 			},
 		});
-		return updated.count === 1;
+		return updated.count === 1
+			? ("claimed" as const)
+			: ("unavailable" as const);
 	});
-	if (!claimed)
+	if (claim === "deferred") {
+		throw new Error(
+			"This agent already has an active run; this run remains queued.",
+		);
+	}
+	if (claim !== "claimed")
 		throw new Error("Agent run was already claimed or is not live.");
 
 	const principalId = run.initiatedById ?? run.agent.createdById;
@@ -397,6 +552,68 @@ export async function failRun(runId: string, code: string, message: string) {
 		});
 
 		return { id: run.id, status: "FAILED" as const };
+	});
+}
+
+export async function cancelRun(runId: string, code: string, message: string) {
+	return db.$transaction(async (tx) => {
+		const run = await lockAgentRun(tx, runId);
+		if (isTerminalRunStatus(run.status)) {
+			return { id: run.id, status: run.status, settled: false };
+		}
+
+		const sequence = run.nextEventSequence + 1;
+		const finishedAt = new Date();
+		await tx.agentRun.update({
+			where: { id: runId },
+			data: {
+				status: "CANCELLED",
+				errorCode: code,
+				errorMessage: message,
+				finishedAt,
+				nextEventSequence: sequence,
+			},
+		});
+		await tx.agentAction.updateMany({
+			where: { runId: run.id, status: { in: ["PLANNED", "RUNNING"] } },
+			data: {
+				status: "CANCELLED",
+				errorCode: code,
+				errorMessage: message,
+				completedAt: finishedAt,
+			},
+		});
+		await tx.agentRunEvent.create({
+			data: {
+				id: runTerminalEventId(run.id, "cancelled"),
+				runId: run.id,
+				sequence,
+				type: "run.cancelled",
+				data: { code, message },
+				emittedAt: finishedAt,
+			},
+		});
+		await tx.agentAuditEvent.upsert({
+			where: {
+				agentId_type_requestId: {
+					agentId: run.agentId,
+					type: "run.cancelled",
+					requestId: run.id,
+				},
+			},
+			create: {
+				agentId: run.agentId,
+				versionId: run.versionId,
+				actorType: "AGENT",
+				actorId: run.id,
+				type: "run.cancelled",
+				summary: message,
+				requestId: run.id,
+			},
+			update: {},
+		});
+
+		return { id: run.id, status: "CANCELLED" as const, settled: true };
 	});
 }
 
@@ -550,12 +767,19 @@ export function builderDeliveryMessage(
 ): Parameters<SendFn>[0] {
 	const message = recordOf(value);
 	const inputResponse = recordOf(message.inputResponse);
-	const response =
-		typeof inputResponse.requestId === "string" &&
-		typeof inputResponse.answer === "string"
-			? inputResponse.answer.trim()
-			: "";
-	if (response) return response;
+	const requestId = textOf(inputResponse.requestId);
+	const optionId = textOf(inputResponse.optionId);
+	const responseText = textOf(inputResponse.text);
+	if (requestId && (optionId || responseText)) {
+		return {
+			inputResponses: [
+				{
+					requestId,
+					...(optionId ? { optionId } : { text: responseText }),
+				},
+			],
+		};
+	}
 
 	const text = typeof message.text === "string" ? message.text : "";
 	const resources = Array.isArray(message.resources) ? message.resources : [];
@@ -588,8 +812,8 @@ export function builderCommandType(
 	value: unknown,
 ): string {
 	const inputResponse = recordOf(recordOf(value).inputResponse);
-	return typeof inputResponse.requestId === "string" &&
-		typeof inputResponse.answer === "string"
+	return textOf(inputResponse.requestId) &&
+		(textOf(inputResponse.optionId) || textOf(inputResponse.text))
 		? "CREATE_AGENT"
 		: commandType;
 }
@@ -603,6 +827,10 @@ type BuilderDeliveryAttachment = {
 function resourceLabel(value: unknown): string | null {
 	const row = recordOf(value);
 	return typeof row.label === "string" ? row.label : null;
+}
+
+function textOf(value: unknown): string {
+	return typeof value === "string" ? value.trim() : "";
 }
 
 function intervalOf(value: unknown): number {

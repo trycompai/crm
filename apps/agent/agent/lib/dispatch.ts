@@ -1,9 +1,11 @@
 import { EnrichmentStatus } from "@crm/db";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
+import { queueEventAgentRuns } from "./custom-agent-dispatch";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
+import { runSlackPeopleMatch } from "./slack-people";
 import {
 	claimDue,
 	completeTask,
@@ -83,6 +85,22 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			return;
 		}
 
+		if (task.kind === "slack-people-match") {
+			await completeTask(task.id, await runSlackPeopleMatch());
+			return;
+		}
+
+		if (task.kind === "agent-event") {
+			const queued = await queueEventAgentRuns(task);
+			await completeTask(
+				task.id,
+				queued === 1
+					? "Queued 1 matching agent run."
+					: `Queued ${queued} matching agent runs.`,
+			);
+			return;
+		}
+
 		await completeTask(task.id, "The record this names is gone.");
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
@@ -125,6 +143,7 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 			budget: String(task.budget),
 			...(task.contactId ? { contactId: task.contactId } : {}),
 			...(task.companyId ? { companyId: task.companyId } : {}),
+			...(task.dealId ? { dealId: task.dealId } : {}),
 		},
 	};
 }

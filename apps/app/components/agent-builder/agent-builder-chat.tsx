@@ -466,7 +466,7 @@ export function AgentBuilderChat({
 										conversation={data}
 										onFollowUp={(message) =>
 											send({
-												commandType: "CHAT",
+												commandType: "CREATE_AGENT",
 												message,
 												resources: [],
 												attachments: [],
@@ -1388,24 +1388,19 @@ function DeployedAgentCard({
 				<p className="flex h-7 items-center text-muted-foreground text-sm">
 					Suggested follow-ups
 				</p>
-				{["Run it once now", "Add another teammate to the notification"].map(
-					(suggestion) => (
-						<button
-							key={suggestion}
-							type="button"
-							onClick={() => void onFollowUp(suggestion)}
-							className="flex w-full items-center gap-3 border-t py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
-						>
-							<span className="min-w-0 flex-1 wrap-break-word text-sm">
-								{suggestion}
-							</span>
-							<Icon
-								icon={ArrowRight}
-								className="size-4 text-muted-foreground"
-							/>
-						</button>
-					),
-				)}
+				{["Add another teammate to the notification"].map((suggestion) => (
+					<button
+						key={suggestion}
+						type="button"
+						onClick={() => void onFollowUp(suggestion)}
+						className="flex w-full items-center gap-3 border-t py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
+					>
+						<span className="min-w-0 flex-1 wrap-break-word text-sm">
+							{suggestion}
+						</span>
+						<Icon icon={ArrowRight} className="size-4 text-muted-foreground" />
+					</button>
+				))}
 			</div>
 		</div>
 	);

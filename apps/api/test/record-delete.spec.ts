@@ -11,6 +11,7 @@ import { EnrichmentLogService } from "../src/crm/enrichment-log.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { FieldsService } from "../src/fields/fields.service";
 import { MailboxMatchService } from "../src/mailbox/mailbox-match.service";
+import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "record-delete-spec";
 const domain = `delete-${suffix}.test`;
@@ -24,12 +25,13 @@ const userId = `user-${suffix}`;
 const stamp = new ActivityStampService(db);
 
 const agent = {
-	contactCreated: async () => undefined,
-	companyCreated: async () => undefined,
+	contactEnrichmentRequested: async () => undefined,
+	companyEnrichmentRequested: async () => undefined,
+	withCrmEvents: withDiscardedCrmEvents,
 	companyRequested: async () => undefined,
 } as unknown as AgentTriggerService;
 
-const directory = new CompanyDirectoryService(db, agent);
+const directory = new CompanyDirectoryService(agent);
 const log = new EnrichmentLogService(db, stamp);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);

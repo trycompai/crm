@@ -51,6 +51,58 @@ export function builderConversationIsWorking(
 	);
 }
 
+export function builderSessionStreamKey(
+	sessionId: string | null,
+	submissionId: string | null,
+): string | null {
+	return sessionId ? `${sessionId}:${submissionId ?? "initial"}` : null;
+}
+
+export function agentBuilderCallIsActive(
+	events: readonly { type: string; data?: unknown }[],
+): boolean {
+	const activeCallIds = new Set<string>();
+
+	for (const event of events) {
+		const data = recordOf(event.data);
+		if (event.type === "actions.requested") {
+			for (const value of arrayOf(data.actions)) {
+				const action = recordOf(value);
+				if (
+					action.kind === "subagent-call" &&
+					(action.name === "agent_builder" ||
+						action.subagentName === "agent_builder") &&
+					typeof action.callId === "string"
+				) {
+					activeCallIds.add(action.callId);
+				}
+			}
+		}
+
+		if (event.type === "action.result" || event.type === "subagent.completed") {
+			const result = recordOf(data.result);
+			const action = recordOf(data.action);
+			const callId = [data.callId, result.callId, action.callId].find(
+				(value): value is string => typeof value === "string",
+			);
+			if (callId) activeCallIds.delete(callId);
+		}
+
+		if (
+			[
+				"turn.failed",
+				"turn.cancelled",
+				"session.failed",
+				"session.completed",
+			].includes(event.type)
+		) {
+			activeCallIds.clear();
+		}
+	}
+
+	return activeCallIds.size > 0;
+}
+
 export function reviewVersionId(
 	conversation: BuilderConversationState,
 ): string | null {
@@ -98,4 +150,14 @@ export function latestCompletedArtifactVersionId(
 			(artifact) => artifact.status === "READY" && artifact.versionId,
 		)?.versionId ?? null
 	);
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function arrayOf(value: unknown): unknown[] {
+	return Array.isArray(value) ? value : [];
 }
