@@ -1,0 +1,12 @@
+import { Module } from "@nestjs/common";
+import { AgentModule } from "../agent/agent.module";
+import { TrpcModule } from "../trpc/trpc.module";
+import { SlackRouter } from "./slack.router";
+import { SlackConnectionService } from "./slack-connection.service";
+
+@Module({
+	imports: [TrpcModule, AgentModule],
+	providers: [SlackConnectionService, SlackRouter],
+	exports: [SlackConnectionService],
+})
+export class SlackModule {}

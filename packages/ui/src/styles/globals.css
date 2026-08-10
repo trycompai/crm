@@ -143,6 +143,21 @@
 }
 
 @theme inline {
+	--spacing-page-top: 40px;
+	--spacing-page-bottom: 40px;
+	--spacing-page-inline: 24px;
+	--spacing-page-gap: 24px;
+	--spacing-block-inline: 20px;
+	--container-page: 820px;
+	--container-page-wide: 1120px;
+	--container-narrow: 560px;
+	--container-sheet: 640px;
+	--color-dark-card: #171717;
+	--color-dark-border: #2a2a2a;
+	--color-dark-ring: #40be96;
+	--color-dark-code-foreground: #e3e3e3;
+	--color-dark-code-gutter: #5a5a5a;
+	--color-dark-code-string: #40be96;
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);

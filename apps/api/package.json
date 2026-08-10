@@ -10,7 +10,8 @@
 	"scripts": {
 		"build": "bun build src/main.ts --target=bun --outdir dist --packages=external --sourcemap",
 		"check-types": "tsc --noEmit",
-		"dev": "concurrently -n api,trpc -c blue,magenta \"bun --watch src/main.ts\" \"nestjs-trpc watch -e src/app.module.ts -r '**/*.router.ts' -o src/generated\"",
+		"dev": "concurrently -n api,trpc -c blue,magenta \"bun --watch src/main.ts\" \"bun run dev:trpc\"",
+		"dev:trpc": "nestjs-trpc watch -e src/app.module.ts -r \"**/*.router.ts\" -o src/generated",
 		"dev:session": "bun scripts/dev-session.ts",
 		"lint": "biome check .",
 		"postinstall": "node scripts/chmod-trpc-binary.mjs",

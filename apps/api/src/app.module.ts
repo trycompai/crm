@@ -25,6 +25,7 @@ import { MailboxModule } from "./mailbox/mailbox.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
+import { SlackModule } from "./slack/slack.module";
 import { SsoModule } from "./sso/sso.module";
 import { SyncModule } from "./sync/sync.module";
 import { TelemetryModule } from "./telemetry/telemetry.module";
@@ -65,6 +66,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		SettingsModule,
 		WorkspaceModule,
 		SsoModule,
+		SlackModule,
 		BackfillModule,
 		TelemetryModule,
 	],

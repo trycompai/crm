@@ -69,6 +69,14 @@ export class EnvironmentVariables {
 	MICROSOFT_TENANT_ID?: string;
 
 	@IsOptional()
+	@IsString()
+	SLACK_CLIENT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	SLACK_CLIENT_SECRET?: string;
+
+	@IsOptional()
 	@IsUrl({ require_tld: false })
 	API_URL?: string;
 
