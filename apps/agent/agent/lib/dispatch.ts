@@ -148,10 +148,65 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 	};
 }
 
+export const DRAIN_TIMEOUT_MS = 4 * 60_000;
+
+let lastSweepStartedAt: Date | null = null;
+let lastSweepFinishedAt: Date | null = null;
+let lastSweepError: string | null = null;
+let abandonedSweeps = 0;
+
+export function dispatchHealth() {
+	const startedAt = lastSweepStartedAt;
+	const finishedAt = lastSweepFinishedAt;
+	const running = Boolean(
+		startedAt && (!finishedAt || finishedAt.getTime() < startedAt.getTime()),
+	);
+
+	return {
+		startedAt: startedAt?.toISOString() ?? null,
+		finishedAt: finishedAt?.toISOString() ?? null,
+		running,
+		stalledMs:
+			running && startedAt ? Math.max(0, Date.now() - startedAt.getTime()) : 0,
+		abandonedSweeps,
+		lastError: lastSweepError,
+	};
+}
+
 export const drainAll = collapsing(
 	async (start: (task: LeasedTask) => Promise<{ id: string }>) => {
-		await retireAbandoned();
-		await Promise.all([runVisibleLane(), runResearchLane(start)]);
+		lastSweepStartedAt = new Date();
+		lastSweepError = null;
+
+		const sweep = (async () => {
+			await retireAbandoned();
+			await Promise.all([runVisibleLane(), runResearchLane(start)]);
+		})();
+
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const abandon = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => {
+				abandonedSweeps += 1;
+				reject(
+					new Error(
+						`Dispatch sweep exceeded ${DRAIN_TIMEOUT_MS}ms and was abandoned so the next one can start.`,
+					),
+				);
+			}, DRAIN_TIMEOUT_MS);
+		});
+
+		sweep.catch(() => {});
+
+		try {
+			await Promise.race([sweep, abandon]);
+		} catch (error) {
+			lastSweepError = error instanceof Error ? error.message : String(error);
+			console.error(`[agent] ${lastSweepError}`);
+			throw error;
+		} finally {
+			clearTimeout(timer);
+			lastSweepFinishedAt = new Date();
+		}
 	},
 );
 

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
-import { defineChannel, POST } from "eve/channels";
+import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+import { defineChannel, GET, POST } from "eve/channels";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
@@ -15,13 +16,20 @@ import {
 	runIdFromToken,
 	runToken,
 } from "../lib/custom-agent-dispatch";
-import { brief, drainAll, taskAuth } from "../lib/dispatch";
+import {
+	brief,
+	DRAIN_TIMEOUT_MS,
+	dispatchHealth,
+	drainAll,
+	taskAuth,
+} from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
 import { finishRun } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
+const STALE_QUEUE_MS = 5 * 60_000;
 
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
@@ -51,6 +59,34 @@ export function taskFromToken(token: string | undefined): string | null {
 
 export default defineChannel({
 	routes: [
+		GET("/internal/crm/dispatch-health", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const health = dispatchHealth();
+			const { db } = await import("@crm/db");
+			const now = new Date();
+			const overdue = await db.agentTask.count({
+				where: {
+					finishedAt: null,
+					dueAt: { lte: new Date(now.getTime() - STALE_QUEUE_MS) },
+					attempts: { lt: MAX_ATTEMPTS },
+				},
+			});
+
+			const wedged = health.stalledMs > DRAIN_TIMEOUT_MS;
+			return Response.json(
+				{
+					ok: !wedged && overdue === 0,
+					wedged,
+					overdueTasks: overdue,
+					...health,
+				},
+				{ status: wedged || overdue > 0 ? 503 : 200 },
+			);
+		}),
+
 		POST("/internal/crm/dispatch", async (request, { send, waitUntil }) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
