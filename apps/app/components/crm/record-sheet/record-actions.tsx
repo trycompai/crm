@@ -25,19 +25,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import {
-	type RecordKind,
-	type RecordRef,
-	useRecordStack,
-} from "./record-stack";
+import { type CrmRecordKind, useRecordStack } from "./record-stack";
 
-const NOUN: Record<RecordKind, string> = {
+const NOUN: Record<CrmRecordKind, string> = {
 	company: "company",
 	contact: "contact",
 	deal: "deal",
 };
 
-function useDeleteRecord(record: RecordRef) {
+function useDeleteRecord(record: { kind: CrmRecordKind; id: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const { close } = useRecordStack();
@@ -68,7 +64,7 @@ export function RecordActions({
 	name,
 	consequence,
 }: {
-	record: RecordRef;
+	record: { kind: CrmRecordKind; id: string };
 	name: string;
 	consequence: string;
 }) {

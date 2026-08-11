@@ -27,10 +27,16 @@ model User {
   ownedContacts  Contact[]           @relation("ContactOwner")
   ownedDeals     Deal[]              @relation("DealOwner")
   activities     Activity[]          @relation("ActivityAuthor")
+  emailMessages  EmailMessage[]      @relation("EmailMessageAuthor")
+  draftsCreated  EmailDraft[]        @relation("DraftCreator")
+  draftsApproved EmailDraft[]        @relation("DraftApprover")
+  outreachPermissions Prospect[]     @relation("ProspectOutreachPermission")
+  reviews        SuppressionReview[] @relation("ReviewReviewer")
   mailboxSyncs   MailboxSync[]
   factDecisions  ContactFact[]       @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
   fieldValues    FieldValue[]        @relation("FieldValueUser")
+  onboardings    CustomerOnboarding[] @relation("OnboardingOwner")
 
   createdAgentDefinitions AgentDefinition[]             @relation("AgentDefinitionCreator")
   createdAgentVersions    AgentVersion[]                @relation("AgentVersionCreator")
@@ -143,6 +149,32 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  AGENTMAIL
+  GRANOLA
+  WEBSITE
+}
+
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+  AGENTMAIL
+}
+
+enum ProspectStatus {
+  CANDIDATE
+  RESEARCHING
+  QUALIFIED
+  REVIEW
+  PROMOTED
+  DISQUALIFIED
+}
+
+enum ProspectRouteStatus {
+  NONE
+  NAMED_PERSON_NEEDED
+  GENERIC_INBOX_BLOCKED
+  DIRECT_ROUTE_REVIEW
+  SEND_READY_REVIEW
 }
 
 enum AgentConversationKind {
@@ -261,15 +293,20 @@ model Company {
 
   lastActivityAt DateTime?
 
-  contacts       Contact[]           @relation("CompanyContacts")
-  conversations  AgentConversation[]
-  deals          Deal[]
-  activities     Activity[]
-  emailThreads   EmailThread[]
-  calendarEvents CalendarEvent[]
-  fieldValues    FieldValue[]
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  contacts         Contact[]           @relation("CompanyContacts")
+  conversations    AgentConversation[]
+  deals            Deal[]
+  activities       Activity[]
+  emailThreads     EmailThread[]
+  emailDrafts      EmailDraft[]
+  websiteEnquiries WebsiteEnquiry[]
+  calendarEvents   CalendarEvent[]
+  granolaNotes     GranolaNote[]
+  fieldValues      FieldValue[]
+  prospects        Prospect[]
+  onboardings      CustomerOnboarding[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@index([ownerId])
   @@index([name])
@@ -319,19 +356,130 @@ model Contact {
 
   lastActivityAt DateTime?
 
-  deals           DealContact[]
-  activities      Activity[]
-  emailThreads    EmailThread[]
-  calendarEvents  CalendarEvent[]
-  eventAttendance CalendarAttendee[]
-  fieldValues     FieldValue[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  deals            DealContact[]
+  activities       Activity[]
+  emailThreads     EmailThread[]
+  emailDrafts      EmailDraft[]
+  websiteEnquiries WebsiteEnquiry[]
+  calendarEvents   CalendarEvent[]
+  eventAttendance  CalendarAttendee[]
+  granolaNotes     GranolaNote[]
+  fieldValues      FieldValue[]
+  prospects        Prospect[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
   @@index([lastActivityAt])
   @@map("contact")
+}
+
+model Prospect {
+  id                   String                  @id @default(cuid())
+  dedupeKey            String                  @unique
+  region               String
+  country              String
+  countryCode          String
+  companyName          String
+  website              String?
+  location             String?
+  fitScore             Int?
+  painStrength         Int?
+  productFit           Int?
+  timing               Int?
+  reachability         Int?
+  evidenceQuality      Int?
+  status               ProspectStatus          @default(CANDIDATE)
+  routeStatus          ProspectRouteStatus     @default(NONE)
+  enrichmentStatus     EnrichmentStatus        @default(PENDING)
+  enrichedAt           DateTime?
+  enrichmentError      String?
+  namedPerson          String?
+  role                 String?
+  routeEmail           String?
+  routeType            String?
+  emailAllowed         Boolean                 @default(false)
+  emailAllowedAt       DateTime?
+  emailAllowedById     String?
+  emailAllowedBy       User?                   @relation("ProspectOutreachPermission", fields: [emailAllowedById], references: [id], onDelete: SetNull)
+  companyProof         String?
+  personSourceUrl      String?
+  personalHook         String?
+  jobDayProblem        String?
+  painSignal           String?
+  whyFit               String?
+  whyNow               String?
+  suggestedChannel     String?
+  caution              String?
+  opener               String?
+  draftSubject         String?
+  draftBody            String?
+  nextAction           String?
+  blockReason          String?
+  sourceBatch          String
+  sourceUrl            String?
+  lastResearchedAt     DateTime?
+  nextResearchAt       DateTime?
+  suppressionCheckedAt DateTime?
+  promotedAt           DateTime?
+  researchVersion      Int                     @default(1)
+  companyId            String?
+  company              Company?                @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId            String?
+  contact              Contact?                @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  evidence             ProspectEvidence[]
+  sourceReceipts       ProspectSourceReceipt[]
+  emailDrafts          EmailDraft[]
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([countryCode, status, fitScore])
+  @@index([status, createdAt])
+  @@index([routeStatus])
+  @@index([nextResearchAt, status])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([emailAllowedById])
+  @@map("prospect")
+}
+
+model ProspectEvidence {
+  id         String                 @id @default(cuid())
+  prospectId String
+  prospect   Prospect               @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  receiptId  String?                @unique
+  receipt    ProspectSourceReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  sourceType String
+  title      String?
+  url        String
+  signalDate DateTime?
+  summary    String
+  observed   String?
+  inference  String?
+  createdAt  DateTime               @default(now())
+
+  @@unique([prospectId, url])
+  @@index([prospectId])
+  @@map("prospectEvidence")
+}
+
+model ProspectSourceReceipt {
+  id           String            @id @default(cuid())
+  prospectId   String
+  prospect     Prospect          @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  requestedUrl String
+  finalUrl     String
+  fetchedAt    DateTime          @default(now())
+  statusCode   Int
+  contentType  String?
+  contentHash  String
+  contentText  String
+  evidence     ProspectEvidence?
+
+  @@index([prospectId, fetchedAt])
+  @@index([contentHash])
+  @@map("prospectSourceReceipt")
 }
 
 enum FactBand {
@@ -395,9 +543,12 @@ model ContactBrief {
 }
 
 model AgentTask {
-  id        String  @id @default(cuid())
-  contactId String?
-  companyId String?
+  id         String  @id @default(cuid())
+  contactId  String?
+  companyId  String?
+  prospectId String?
+  dealId     String?
+  emailDraftId String?
 
   kind   String
   reason String
@@ -418,6 +569,9 @@ model AgentTask {
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
+  @@index([prospectId])
+  @@index([dealId])
+  @@index([emailDraftId])
   @@map("agentTask")
 }
 
@@ -855,11 +1009,14 @@ model Deal {
 
   lastActivityAt DateTime?
 
-  contacts    DealContact[]
-  activities  Activity[]
-  fieldValues FieldValue[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  contacts     DealContact[]
+  activities   Activity[]
+  emailDrafts  EmailDraft[]
+  onboarding   CustomerOnboarding?
+  granolaNotes GranolaNote[]
+  fieldValues  FieldValue[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -1027,6 +1184,7 @@ model Activity {
   emailThread     EmailThread?   @relation(fields: [emailThreadId], references: [id], onDelete: Cascade)
   calendarEventId String?        @unique
   calendarEvent   CalendarEvent? @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  granolaNotes    GranolaNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1073,9 +1231,11 @@ model MailboxSync {
 }
 
 model EmailThread {
-  id            String  @id @default(cuid())
-  rootMessageId String  @unique
-  subject       String?
+  id               String         @id @default(cuid())
+  rootMessageId    String         @unique
+  subject          String?
+  provider         EmailProvider?
+  externalThreadId String?
 
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -1087,11 +1247,13 @@ model EmailThread {
   messageCount   Int      @default(0)
 
   messages EmailMessage[]
+  drafts   EmailDraft[]
   activity Activity?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([provider, externalThreadId])
   @@index([companyId, lastMessageAt])
   @@index([contactId, lastMessageAt])
   @@map("emailThread")
@@ -1102,11 +1264,20 @@ model EmailMessage {
   threadId String
   thread   EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  rfcMessageId     String  @unique
-  syncedByUserId   String?
-  gmailMessageId   String?
-  outlookMessageId String?
-  outlookWebLink   String?
+  rfcMessageId      String        @unique
+  provider          EmailProvider @default(GMAIL)
+  syncedByUserId    String?
+  createdById       String?
+  createdBy         User?         @relation("EmailMessageAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  externalInboxId   String?
+  externalThreadId  String?
+  externalMessageId String?
+  gmailMessageId    String?
+  outlookMessageId  String?
+  outlookWebLink    String?
+
+  draftId String?
+  draft   EmailDraft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
 
   direction  EmailDirection
   fromEmail  String
@@ -1117,10 +1288,283 @@ model EmailMessage {
   body       String?
   sentAt     DateTime
 
+  events EmailProviderEvent[]
+
   createdAt DateTime @default(now())
 
+  @@unique([provider, externalMessageId])
   @@index([threadId, sentAt])
   @@map("emailMessage")
+}
+
+enum EmailDraftStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENDING
+  SENT
+  REJECTED
+}
+
+enum OutreachVariant {
+  A
+  B
+  C
+}
+
+enum CustomerOnboardingStatus {
+  DISCOVERY
+  SYSTEMS
+  DATA_ACCESS
+  INGESTION
+  READY
+  LIVE
+}
+
+enum OnboardingItemKind {
+  SYSTEM
+  DATA_SOURCE
+  ACCESS
+  INGESTION
+  DECISION
+}
+
+enum OnboardingItemStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETE
+}
+
+enum EmailEventType {
+  INBOUND
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  REJECTED
+}
+
+enum SuppressionReviewStatus {
+  PENDING
+  DISMISSED
+  SUPPRESSED
+}
+
+enum SuppressionReviewSource {
+  BOUNCE
+  COMPLAINT
+  REJECTED
+}
+
+model EmailInbox {
+  id              String        @id @default(cuid())
+  provider        EmailProvider
+  externalInboxId String
+  email           String
+  name            String?
+  isDefault       Boolean       @default(false)
+  isEnabled       Boolean       @default(false)
+  lastSyncedAt    DateTime?
+  lastError       String?
+
+  drafts EmailDraft[]
+  events EmailProviderEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalInboxId])
+  @@map("emailInbox")
+}
+
+model EmailDraft {
+  id                String        @id @default(cuid())
+  provider          EmailProvider @default(AGENTMAIL)
+  externalInboxId   String
+  inbox             EmailInbox    @relation(fields: [provider, externalInboxId], references: [provider, externalInboxId])
+  externalDraftId   String?
+  externalMessageId String?
+
+  threadId  String?
+  thread    EmailThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  companyId String?
+  company   Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId String?
+  contact   Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  dealId    String?
+  deal      Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  prospectId String?
+  prospect   Prospect?   @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+
+  createdById  String
+  createdBy    User    @relation("DraftCreator", fields: [createdById], references: [id])
+  approvedById String?
+  approvedBy   User?   @relation("DraftApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  fromEmail     String
+  fromName      String?
+  recipients    Json
+  subject       String
+  plainTextBody String
+  htmlBody      String?
+  attachments   Json?
+
+  status         EmailDraftStatus @default(DRAFT)
+  experimentKey  String?
+  variant        OutreachVariant?
+  sequenceId     String?
+  sequenceStep   Int?
+  scheduledFor   DateTime?
+  sendRequestedAt DateTime?
+  sendError      String?
+  approvedAt     DateTime?
+  approvalDigest String?
+  sentAt         DateTime?
+
+  messages EmailMessage[]
+  events   EmailProviderEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalDraftId])
+  @@unique([provider, externalMessageId])
+  @@index([contactId, status])
+  @@index([companyId, status])
+  @@index([prospectId, status])
+  @@index([sequenceId, sequenceStep])
+  @@index([status, scheduledFor])
+  @@unique([prospectId, experimentKey, sequenceStep])
+  @@map("emailDraft")
+}
+
+model CustomerOnboarding {
+  id              String                   @id @default(cuid())
+  dealId          String                   @unique
+  deal            Deal                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerId         String
+  owner           User                     @relation("OnboardingOwner", fields: [ownerId], references: [id])
+  status          CustomerOnboardingStatus @default(DISCOVERY)
+  objective       String?
+  systemsSummary  String?
+  dataSummary     String?
+  brainPlan       String?
+  agentPlannedAt  DateTime?
+  targetLiveAt    DateTime?
+  items           OnboardingItem[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([companyId, status])
+  @@index([ownerId, status])
+  @@map("customerOnboarding")
+}
+
+model OnboardingItem {
+  id           String                 @id @default(cuid())
+  onboardingId String
+  onboarding   CustomerOnboarding     @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  kind         OnboardingItemKind
+  status       OnboardingItemStatus   @default(NOT_STARTED)
+  name         String
+  details      String?
+  ownerName    String?
+  source       String?
+  dueAt        DateTime?
+  position     Int                    @default(0)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([onboardingId, kind, position])
+  @@map("onboardingItem")
+}
+
+model EmailProviderEvent {
+  id              String         @id @default(cuid())
+  provider        EmailProvider
+  eventType       EmailEventType
+  externalEventId String
+
+  externalInboxId   String?
+  externalThreadId  String?
+  externalMessageId String?
+  externalDraftId   String?
+
+  inboxId   String?
+  inbox     EmailInbox?   @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  draftId   String?
+  draft     EmailDraft?   @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  messageId String?
+  message   EmailMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  recipient String?
+  payload   Json
+  svixId    String?
+
+  reviews SuppressionReview[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([provider, externalEventId])
+  @@index([messageId])
+  @@index([draftId])
+  @@index([provider, externalMessageId])
+  @@map("emailProviderEvent")
+}
+
+model SuppressionReview {
+  id        String                  @id @default(cuid())
+  email     String
+  domain    String?
+  companyId String?
+  contactId String?
+  reason    String
+  source    SuppressionReviewSource
+
+  eventId String?
+  event   EmailProviderEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  status       SuppressionReviewStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?                   @relation("ReviewReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@map("suppressionReview")
+}
+
+model WebsiteEnquiry {
+  id              String   @id @default(cuid())
+  externalId      String   @unique
+  createdAtSource DateTime
+  name            String?
+  email           String
+  company         String?
+  country         String?
+  biggestPain     String?
+  source          String
+  sourcePath      String?
+  utm             Json
+  qaTag           String?
+  notes           String?
+  test            Boolean  @default(false)
+  importedAt      DateTime @default(now())
+
+  companyId     String?
+  companyRecord Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([createdAtSource])
+  @@index([test])
+  @@map("websiteEnquiry")
 }
 
 model CalendarEvent {
@@ -1174,6 +1618,55 @@ model CalendarAttendee {
   @@unique([eventId, email])
   @@index([contactId])
   @@map("calendarAttendee")
+}
+
+model GranolaNote {
+  id         String  @id @default(cuid())
+  externalId String  @unique
+  title      String
+  sourceUrl  String?
+
+  ownerName  String?
+  ownerEmail String?
+  summary    String?
+  transcript Json?
+  attendees  Json
+  folders    Json
+
+  calendarEventExternalId String?
+  startedAt               DateTime?
+  endedAt                 DateTime?
+  sourceCreatedAt         DateTime
+  sourceUpdatedAt         DateTime
+  importedAt              DateTime  @default(now())
+
+  companyId  String?
+  company    Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId  String?
+  contact    Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  dealId     String?
+  deal       Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, startedAt])
+  @@index([contactId, startedAt])
+  @@index([dealId, startedAt])
+  @@index([activityId])
+  @@index([calendarEventExternalId])
+  @@index([sourceUpdatedAt])
+	@@map("granolaNote")
+}
+
+model GranolaNoteExclusion {
+  externalId String   @id
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@map("granolaNoteExclusion")
 }
 
 model SuppressedDomain {

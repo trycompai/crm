@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { GoogleConnection } from "./google-connection";
+import { InboundConnections } from "./inbound-connections";
 import { MicrosoftConnection } from "./microsoft-connection";
 
 export const metadata: Metadata = {
@@ -54,6 +55,7 @@ async function Connections({
 		searchParams,
 		queryClient.prefetchQuery(trpc.google.status.queryOptions()),
 		queryClient.prefetchQuery(trpc.microsoft.status.queryOptions()),
+		queryClient.prefetchQuery(trpc.inbound.status.queryOptions()),
 	]);
 
 	const connectError = first(error);
@@ -69,6 +71,8 @@ async function Connections({
 				<MicrosoftConnection
 					connectError={failed === "microsoft" ? connectError : undefined}
 				/>
+
+				<InboundConnections />
 			</div>
 		</HydrateClient>
 	);

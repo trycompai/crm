@@ -21,6 +21,7 @@ identifying *this person*, not merely being consistent with them.
 | `crm.signature-block` | Their own signature states it. The best source there is for a job title. |
 | `github.account-identity` | The GitHub account's own `name` (or name plus company) matches. |
 | `crm.meeting-attendance` | They accepted a calendar invite we have. |
+| `crm.granola-transcript` | An imported Granola transcript attributes the person's own words to their matching email and name. An invitee list or summary alone is not enough. |
 
 **Supporting — true, but not enough alone.**
 

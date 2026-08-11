@@ -14,6 +14,7 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { ActivityIcon } from "./activity-icon";
 import { EmailThreadEntry } from "./email-thread-entry";
+import { GranolaMeetingEntry } from "./granola-meeting-entry";
 import { MeetingEntry } from "./meeting-entry";
 import type { TimelineAnchor } from "./timeline";
 
@@ -66,10 +67,14 @@ export function TimelineEntry({
 	const when = entry.occurredAt ?? entry.createdAt;
 
 	const synced = entry.meta?.synced === true;
+	const source =
+		typeof entry.meta?.source === "string" ? entry.meta.source : null;
 	const author = synced
-		? entry.emailThread
-			? "via Gmail"
-			: "via Calendar"
+		? source === "granola"
+			? "via Granola"
+			: entry.emailThread
+				? "via Gmail"
+				: "via Calendar"
 		: entry.createdBy.name;
 
 	const headline = change
@@ -159,6 +164,13 @@ export function TimelineEntry({
 					<EmailThreadEntry
 						threadId={entry.emailThread.id}
 						messageCount={entry.emailThread.messageCount}
+					/>
+				) : null}
+
+				{entry.granolaNoteCount > 0 ? (
+					<GranolaMeetingEntry
+						activityId={entry.id}
+						noteCount={entry.granolaNoteCount}
 					/>
 				) : null}
 

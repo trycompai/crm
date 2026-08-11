@@ -8,11 +8,26 @@ export const TASK_KINDS = [
 	"company-profile",
 	"workspace-profile",
 	"field-backfill",
+	"prospect-research",
+	"website-intake-sync",
+	"agentmail-sync",
+	"granola-sync",
+	"lead-discovery",
+	"outreach-compose",
+	"email-draft-send",
+	"customer-onboarding-plan",
 ] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
 
-export const DIRECT_KINDS = ["brand", "portrait"] as const;
+export const DIRECT_KINDS = [
+	"brand",
+	"portrait",
+	"website-intake-sync",
+	"agentmail-sync",
+	"granola-sync",
+	"email-draft-send",
+] as const;
 
 export type DirectKind = (typeof DIRECT_KINDS)[number];
 
@@ -29,7 +44,13 @@ export const PRIORITY = {
 	portrait: 800,
 	workspace: 500,
 	requested: 300,
+	inbound: 250,
 	meeting: 200,
+	prospectResearch: 150,
+	outreachSend: 400,
+	outreachCompose: 175,
+	leadDiscovery: 160,
+	onboarding: 140,
 	identify: 100,
 	sweep: 50,
 	companyProfile: 40,

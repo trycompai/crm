@@ -1,11 +1,14 @@
 "use client";
 
 import Building from "@carbon/icons-react/es/Building";
+import Calendar from "@carbon/icons-react/es/Calendar";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Chat from "@carbon/icons-react/es/Chat";
 import Close from "@carbon/icons-react/es/Close";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
+import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Search from "@carbon/icons-react/es/Search";
 import Settings from "@carbon/icons-react/es/Settings";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
@@ -48,6 +51,9 @@ const ITEMS: RailItem[] = [
 		related: ["/agents"],
 	},
 	{ title: "Companies", href: "/companies", icon: Building, match: "prefix" },
+	{ title: "Prospects", href: "/prospects", icon: Search, match: "prefix" },
+	{ title: "Sequences", href: "/sequences", icon: Email, match: "prefix" },
+	{ title: "Calendar", href: "/calendar", icon: Calendar, match: "prefix" },
 	{
 		title: "Contacts",
 		href: "/contacts",

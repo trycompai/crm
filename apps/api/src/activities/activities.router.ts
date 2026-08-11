@@ -13,6 +13,7 @@ import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	activityCreateInput,
 	completeInput,
+	granolaNotesInput,
 	myTasksInput,
 	timelineCountsInput,
 	timelineInput,
@@ -42,6 +43,11 @@ export class ActivitiesRouter {
 		@Input() input: z.infer<typeof myTasksInput>,
 	) {
 		return this.activities.myTasks(input, ctx.user.id);
+	}
+
+	@Query({ input: granolaNotesInput })
+	async granolaNotes(@Input() input: z.infer<typeof granolaNotesInput>) {
+		return this.activities.granolaNotes(input.activityId);
 	}
 
 	@Mutation({ input: activityCreateInput })

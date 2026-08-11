@@ -42,4 +42,11 @@ async function write(
 			data,
 		});
 	}
+
+	if (subject.prospectId) {
+		await db.prospect.updateMany({
+			where: { id: subject.prospectId, ...guard },
+			data,
+		});
+	}
 }

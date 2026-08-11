@@ -7,6 +7,7 @@ export type EvidenceKind =
 	| "crm.signature-block"
 	| "github.account-identity"
 	| "crm.meeting-attendance"
+	| "crm.granola-transcript"
 	| "web.cited-claim"
 	| "handle.name-form"
 	| "search.cites-profile"
@@ -49,6 +50,11 @@ export const WEIGHTS: Record<EvidenceKind, Weighting> = {
 		weight: 0.7,
 		primary: true,
 		label: "they attended a meeting on our calendar",
+	},
+	"crm.granola-transcript": {
+		weight: 0.8,
+		primary: true,
+		label: "an attributed Granola transcript identifies them",
 	},
 	"web.cited-claim": {
 		weight: 0.4,

@@ -120,6 +120,32 @@ export class AgentTriggerService {
 		}
 	}
 
+	async syncInbound(): Promise<{ queued: number; configured: number }> {
+		const tasks = [
+			{
+				kind: "website-intake-sync",
+				reason: "Website intake check requested from Connections",
+			},
+			{
+				kind: "agentmail-sync",
+				reason: "AgentMail check requested from Connections",
+			},
+			{
+				kind: "granola-sync",
+				reason: "Granola check requested from Connections",
+			},
+		];
+
+		const results = await Promise.all(
+			tasks.map((task) => this.enqueueGlobal(task.kind, task.reason)),
+		);
+		if (tasks.length > 0 && !results.some(Boolean)) this.poke();
+		return {
+			queued: results.filter(Boolean).length,
+			configured: tasks.length,
+		};
+	}
+
 	async meetingSoon(contactId: string, when: Date): Promise<void> {
 		await this.enqueue({
 			contactId,
@@ -143,11 +169,20 @@ export class AgentTriggerService {
 		reason: string;
 		contactIds?: string[];
 		companyIds?: string[];
+		prospectIds?: string[];
 		budget?: number;
 		priority?: number;
 	}): Promise<{ queued: number; alreadyQueued: number }> {
-		const subject = input.contactIds ? "contactId" : "companyId";
-		const ids = [...new Set(input.contactIds ?? input.companyIds ?? [])];
+		const subject = input.contactIds
+			? "contactId"
+			: input.companyIds
+				? "companyId"
+				: "prospectId";
+		const ids = [
+			...new Set(
+				input.contactIds ?? input.companyIds ?? input.prospectIds ?? [],
+			),
+		];
 		if (ids.length === 0) return { queued: 0, alreadyQueued: 0 };
 
 		try {
@@ -170,6 +205,7 @@ export class AgentTriggerService {
 					data: fresh.map((id) => ({
 						contactId: input.contactIds ? id : null,
 						companyId: input.companyIds ? id : null,
+						prospectId: input.prospectIds ? id : null,
 						kind: input.kind,
 						reason: input.reason,
 						priority: input.priority ?? PRIORITY.sweep,
@@ -201,13 +237,69 @@ export class AgentTriggerService {
 		}
 	}
 
+	async discoverProspects(count: number, countryCodes: string[]) {
+		const reason = `Find ${count} evidence-backed Lode prospects in ${countryCodes.join(",")}`;
+		const queued = await this.enqueueGlobal(
+			"lead-discovery",
+			reason,
+			PRIORITY.leadDiscovery,
+			Math.max(10, Math.min(100, count)),
+		);
+		return { queued: queued ? 1 : 0, alreadyQueued: queued ? 0 : 1 };
+	}
+
+	async composeOutreach(prospectId: string): Promise<void> {
+		await this.enqueue({
+			prospectId,
+			kind: "outreach-compose",
+			reason: "Prepare an approved-only A/B/C outreach sequence",
+			priority: PRIORITY.outreachCompose,
+			budget: 8,
+		});
+	}
+
+	async sendEmailDraft(emailDraftId: string, dueAt: Date): Promise<void> {
+		await this.enqueue({
+			emailDraftId,
+			kind: "email-draft-send",
+			reason:
+				"Send an approved outreach sequence step with idempotency and stop rules",
+			priority: PRIORITY.outreachSend,
+			budget: 0,
+			dueAt,
+		});
+	}
+
+	async planCustomerOnboarding(
+		dealId: string,
+		companyId: string,
+	): Promise<void> {
+		await this.enqueue({
+			dealId,
+			companyId,
+			kind: "customer-onboarding-plan",
+			reason:
+				"Build the won customer's systems, data, access and Lode Brain onboarding plan",
+			priority: PRIORITY.onboarding,
+			budget: 12,
+		});
+	}
+
+	workQueued(): void {
+		this.poke();
+	}
+
 	private async enqueue(task: {
 		contactId?: string;
 		companyId?: string;
+		prospectId?: string;
+		dealId?: string;
+		emailDraftId?: string;
 		kind: string;
 		reason: string;
 		priority: number;
 		budget: number;
+		dueAt?: Date;
 	}): Promise<void> {
 		try {
 			const pending = await this.db.agentTask.findFirst({
@@ -216,6 +308,9 @@ export class AgentTriggerService {
 					finishedAt: null,
 					...(task.contactId ? { contactId: task.contactId } : {}),
 					...(task.companyId ? { companyId: task.companyId } : {}),
+					...(task.prospectId ? { prospectId: task.prospectId } : {}),
+					...(task.dealId ? { dealId: task.dealId } : {}),
+					...(task.emailDraftId ? { emailDraftId: task.emailDraftId } : {}),
 				},
 				select: { id: true },
 			});
@@ -226,11 +321,14 @@ export class AgentTriggerService {
 				data: {
 					contactId: task.contactId ?? null,
 					companyId: task.companyId ?? null,
+					prospectId: task.prospectId ?? null,
+					dealId: task.dealId ?? null,
+					emailDraftId: task.emailDraftId ?? null,
 					kind: task.kind,
 					reason: task.reason,
 					priority: task.priority,
 					budget: task.budget,
-					dueAt: new Date(),
+					dueAt: task.dueAt ?? new Date(),
 				},
 			});
 
@@ -239,6 +337,9 @@ export class AgentTriggerService {
 				kind: task.kind,
 				contactId: task.contactId,
 				companyId: task.companyId,
+				prospectId: task.prospectId,
+				dealId: task.dealId,
+				emailDraftId: task.emailDraftId,
 			});
 
 			this.poke();
@@ -248,6 +349,32 @@ export class AgentTriggerService {
 				error instanceof Error ? error.stack : String(error),
 			);
 		}
+	}
+
+	private async enqueueGlobal(
+		kind: string,
+		reason: string,
+		priority: number = PRIORITY.inbound,
+		budget = 0,
+	): Promise<boolean> {
+		const pending = await this.db.agentTask.findFirst({
+			where: { kind, finishedAt: null },
+			select: { id: true },
+		});
+		if (pending) return false;
+
+		await this.db.agentTask.create({
+			data: {
+				kind,
+				reason,
+				priority,
+				budget,
+				dueAt: new Date(),
+			},
+		});
+		this.logger.log({ message: "Inbound task queued", kind });
+		this.poke();
+		return true;
 	}
 
 	private poke(): void {

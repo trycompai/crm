@@ -42,6 +42,17 @@ export function capabilitiesFrom(
 
 	return [
 		{
+			...fromEnv("OPENAI_API_KEY"),
+			label: "Direct OpenAI model",
+			gives: "the configured OpenAI research model without an AI gateway",
+		},
+		{
+			...fromEnv("TAVILY_API_KEY"),
+			label: "Public web search",
+			gives:
+				"current public company, careers, job and professional sources with direct URLs",
+		},
+		{
 			...fromEnv("RAPIDAPI_KEY"),
 			label: "LinkedIn",
 			gives:

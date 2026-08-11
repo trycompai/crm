@@ -14,15 +14,21 @@ export class AgentQueueService {
 		return this.queued("contactId", ids);
 	}
 
+	async queuedProspects(ids: readonly string[]): Promise<Set<string>> {
+		return this.queued("prospectId", ids);
+	}
+
 	async isQueued(subject: {
 		companyId?: string;
 		contactId?: string;
+		prospectId?: string;
 	}): Promise<boolean> {
 		const row = await this.db.agentTask.findFirst({
 			where: {
 				finishedAt: null,
 				...(subject.companyId ? { companyId: subject.companyId } : {}),
 				...(subject.contactId ? { contactId: subject.contactId } : {}),
+				...(subject.prospectId ? { prospectId: subject.prospectId } : {}),
 			},
 			select: { id: true },
 		});
@@ -31,7 +37,7 @@ export class AgentQueueService {
 	}
 
 	private async queued(
-		column: "companyId" | "contactId",
+		column: "companyId" | "contactId" | "prospectId",
 		ids: readonly string[],
 	): Promise<Set<string>> {
 		if (ids.length === 0) return new Set();

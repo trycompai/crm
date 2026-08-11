@@ -19,6 +19,7 @@ export type CrmCache = {
 	company(id?: string, options?: Options): Promise<void>;
 	contact(id?: string, options?: Options): Promise<void>;
 	deal(id?: string, options?: Options): Promise<void>;
+	prospect(id?: string, options?: Options): Promise<void>;
 	fields(entity?: RecordKind, options?: Options): Promise<void>;
 	fieldCoverage(id?: string, options?: Options): Promise<void>;
 	removed(record: RemovedRecord): Promise<void>;
@@ -27,6 +28,7 @@ export type CrmCache = {
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
 	microsoft(options?: Options): Promise<void>;
+	inbound(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
@@ -65,6 +67,7 @@ export function useCrmCache(): CrmCache {
 		trpc.companies.list.queryKey(),
 		trpc.contacts.list.queryKey(),
 		trpc.deals.list.queryKey(),
+		trpc.prospects.list.queryKey(),
 		trpc.search.quick.queryKey(),
 	];
 
@@ -182,6 +185,21 @@ export function useCrmCache(): CrmCache {
 				options,
 			),
 
+		prospect: (id, options) =>
+			run(
+				[
+					id
+						? trpc.prospects.byId.queryKey({ id })
+						: trpc.prospects.byId.queryKey(),
+				],
+				[
+					trpc.prospects.list.queryKey(),
+					trpc.companies.list.queryKey(),
+					trpc.contacts.list.queryKey(),
+				],
+				options,
+			),
+
 		removed: ({ kind, id }) => removeRecords(kind, [id]),
 
 		removedMany: ({ kind, ids }) => removeRecords(kind, ids),
@@ -237,6 +255,18 @@ export function useCrmCache(): CrmCache {
 					trpc.companies.byId.queryKey(),
 					trpc.contacts.byId.queryKey(),
 					trpc.dashboard.summary.queryKey(),
+				],
+				options,
+			),
+
+		inbound: (options) =>
+			run(
+				[trpc.inbound.status.queryKey(), trpc.inbound.granolaReview.queryKey()],
+				[
+					...activityKeys(),
+					...listKeys(),
+					trpc.companies.byId.queryKey(),
+					trpc.contacts.byId.queryKey(),
 				],
 				options,
 			),

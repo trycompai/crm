@@ -13,22 +13,26 @@ import { z } from "zod";
 
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
-import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
+import { timelineInput, timelineCountsInput, myTasksInput, granolaNotesInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
 import { agentIdInput, agentHistoryInput, agentUpdateInput, agentDeployInput, agentRunNowInput } from "../agent/agents.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, companyBulkOwnerInput, companyBulkInput, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, contactBulkOwnerInput, contactBulkCompanyInput, contactBulkInput, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, builderResourceSearchInput, conversationIdInput, conversationEventsInput, conversationSaveInput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, sharedConversationInput } from "../conversations/conversations.contracts";
 import { setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
-import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput, dealContactsInput, dealAttachContactInput, dealDetachContactInput, dealContactRoleInput, dealBulkOwnerInput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
+import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput, onboardingUpdateInput, onboardingItemCreateInput, onboardingItemUpdateInput, dealContactsInput, dealAttachContactInput, dealDetachContactInput, dealContactRoleInput, dealBulkOwnerInput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
 import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput } from "../fields/fields.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
+import { granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
+import { leadDiscoveryInput, outreachProspectInput, outreachPermissionInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
+import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { AgentsRouter } from "../agent/agents.router";
+import type { CalendarRouter } from "../calendar/calendar.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
 import type { ConversationsRouter } from "../conversations/conversations.router";
@@ -37,7 +41,10 @@ import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
 import type { FieldsRouter } from "../fields/fields.router";
 import type { GoogleRouter } from "../google/google.router";
+import type { InboundRouter } from "../inbound/inbound.router";
 import type { MicrosoftRouter } from "../microsoft/microsoft.router";
+import type { OutreachRouter } from "../outreach/outreach.router";
+import type { ProspectsRouter } from "../prospects/prospects.router";
 import type { SearchRouter } from "../search/search.router";
 import type { SettingsRouter } from "../settings/settings.router";
 import type { SsoRouter } from "../sso/sso.router";
@@ -55,6 +62,9 @@ const appRouter = t.router({
     myTasks: publicProcedure
       .input(myTasksInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["myTasks"]>>),
+    granolaNotes: publicProcedure
+      .input(granolaNotesInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["granolaNotes"]>>),
     create: publicProcedure
       .input(activityCreateInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["create"]>>),
@@ -98,6 +108,10 @@ const appRouter = t.router({
     runNow: publicProcedure
       .input(agentRunNowInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["runNow"]>>)
+    }),
+  calendar: t.router({
+    agenda: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CalendarRouter["agenda"]>>)
     }),
   companies: t.router({
     list: publicProcedure
@@ -260,6 +274,15 @@ const appRouter = t.router({
     setStage: publicProcedure
       .input(setStageInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["setStage"]>>),
+    updateOnboarding: publicProcedure
+      .input(onboardingUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["updateOnboarding"]>>),
+    addOnboardingItem: publicProcedure
+      .input(onboardingItemCreateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["addOnboardingItem"]>>),
+    updateOnboardingItem: publicProcedure
+      .input(onboardingItemUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["updateOnboardingItem"]>>),
     contactOptions: publicProcedure
       .input(dealContactsInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["contactOptions"]>>),
@@ -336,6 +359,20 @@ const appRouter = t.router({
       .input(calendarEventInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<GoogleRouter["event"]>>)
     }),
+  inbound: t.router({
+    status: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["status"]>>),
+    syncNow: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["syncNow"]>>),
+    granolaReview: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["granolaReview"]>>),
+    matchGranola: publicProcedure
+      .input(granolaMatchInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["matchGranola"]>>),
+    excludeGranola: publicProcedure
+      .input(granolaExcludeInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["excludeGranola"]>>)
+    }),
   microsoft: t.router({
     status: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["status"]>>),
@@ -348,6 +385,64 @@ const appRouter = t.router({
     setAutoCreate: publicProcedure
       .input(setOutlookAutoCreateInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["setAutoCreate"]>>)
+    }),
+  outreach: t.router({
+    supplyStatus: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["supplyStatus"]>>),
+    findMore: publicProcedure
+      .input(leadDiscoveryInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["findMore"]>>),
+    prepare: publicProcedure
+      .input(outreachProspectInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["prepare"]>>),
+    setPermission: publicProcedure
+      .input(outreachPermissionInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["setPermission"]>>),
+    byProspect: publicProcedure
+      .input(outreachProspectInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["byProspect"]>>),
+    update: publicProcedure
+      .input(outreachUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["update"]>>),
+    approveSequence: publicProcedure
+      .input(outreachSequenceInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["approveSequence"]>>),
+    rejectSequence: publicProcedure
+      .input(outreachSequenceInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["rejectSequence"]>>),
+    deleteDraft: publicProcedure
+      .input(outreachDraftInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["deleteDraft"]>>),
+    deleteSequence: publicProcedure
+      .input(outreachSequenceInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["deleteSequence"]>>),
+    performance: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["performance"]>>),
+    sequences: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["sequences"]>>)
+    }),
+  prospects: t.router({
+    list: publicProcedure
+      .input(prospectListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["list"]>>),
+    byId: publicProcedure
+      .input(prospectIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["byId"]>>),
+    research: publicProcedure
+      .input(prospectIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["research"]>>),
+    researchMany: publicProcedure
+      .input(prospectIdsInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["researchMany"]>>),
+    researchGaps: publicProcedure
+      .input(prospectGapInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["researchGaps"]>>),
+    updateDraft: publicProcedure
+      .input(prospectDraftInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["updateDraft"]>>),
+    deleteDraft: publicProcedure
+      .input(prospectIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ProspectsRouter["deleteDraft"]>>)
     }),
   search: t.router({
     quick: publicProcedure

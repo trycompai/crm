@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -8,10 +9,11 @@ import {
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney } from "@crm/ui/lib/format";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
+import { dealNextAction } from "@/components/crm/deal-next-action";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
@@ -27,6 +29,35 @@ import { DealsBulkActions } from "./deals-bulk-actions";
 import { dealsSearchParams } from "./deals-search-params";
 
 type DealRow = RouterOutputs["deals"]["list"]["rows"][number];
+
+function DealActionCell({ row }: { row: DealRow }) {
+	const openRecord = useOpenRecord();
+	const action = dealNextAction(row);
+
+	return (
+		<Button
+			variant="outline"
+			size="xs"
+			onClick={(event) => {
+				event.stopPropagation();
+				if (action.kind === "add-contact") {
+					openRecord(
+						{ kind: "deal", id: row.id },
+						{ tab: "contacts", form: "contact" },
+					);
+					return;
+				}
+				if (action.kind === "log-activity" || action.kind === "follow-up") {
+					openRecord({ kind: "deal", id: row.id }, { tab: "activity" });
+					return;
+				}
+				openRecord({ kind: "deal", id: row.id }, { tab: "overview" });
+			}}
+		>
+			{action.label}
+		</Button>
+	);
+}
 
 const COLUMNS: DataTableColumn<DealRow>[] = [
 	{
@@ -121,6 +152,12 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 			</span>
 		),
 	},
+	{
+		id: "nextAction",
+		header: "Next move",
+		width: "w-[16%]",
+		cell: (row) => <DealActionCell row={row} />,
+	},
 ];
 
 export function DealsTable() {
@@ -129,13 +166,12 @@ export function DealsTable() {
 	const prefetchRecord = usePrefetchRecord();
 	const { query, input } = useTableQuery(dealsSearchParams);
 
-	const deals = useQuery({
+	const deals = useSuspenseQuery({
 		...trpc.deals.list.queryOptions(input),
-		placeholderData: (previous) => previous,
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
 
-	const rows = deals.data?.rows ?? [];
+	const rows = deals.data.rows;
 	const selection = useTableSelection(
 		useMemo(() => rows.map((row) => row.id), [rows]),
 	);
@@ -185,7 +221,7 @@ export function DealsTable() {
 			search={<ListSearch placeholder="Search deals by name or company…" />}
 			columns={columns}
 			rows={rows}
-			total={deals.data?.total ?? 0}
+			total={deals.data.total}
 			facetCounts={facetCounts}
 			facets={facets}
 			tabs={{
@@ -211,7 +247,7 @@ export function DealsTable() {
 			meta={
 				openPipelineCents === null ? undefined : (
 					<span>
-						{deals.data?.total ?? 0} deals ·{" "}
+						{deals.data.total} deals ·{" "}
 						<span className="tabular-nums">
 							{formatMoney(openPipelineCents, reportingCurrency)}
 						</span>{" "}

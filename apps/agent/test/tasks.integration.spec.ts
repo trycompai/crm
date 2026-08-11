@@ -5,6 +5,7 @@ import {
 	claimDue,
 	completeTask,
 	MAX_ATTEMPTS,
+	releaseTaskForRetry,
 	retireExhausted,
 	scheduleTask,
 } from "../agent/lib/tasks";
@@ -134,11 +135,6 @@ describe("claimDue", () => {
 		await claimDue(10, RESEARCH);
 		await completeTask(task.id, "ran");
 
-		await db.agentTask.update({
-			where: { id: task.id },
-			data: { leasedUntil: null },
-		});
-
 		expect(await claimDue(10, RESEARCH)).toHaveLength(0);
 	});
 });
@@ -193,6 +189,21 @@ describe("completeTask", () => {
 		expect(await completeTask(task.id, "ran again")).toBeNull();
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.outcome).toBe("ran");
+		expect(row?.leasedUntil).toBeNull();
+	});
+});
+
+describe("releaseTaskForRetry", () => {
+	it("drops the lease and makes a finished turn retryable shortly", async () => {
+		const task = await queue();
+		await claimDue(10, RESEARCH);
+		await releaseTaskForRetry(task.id, 250);
+
+		const row = await db.agentTask.findUnique({ where: { id: task.id } });
+		expect(row?.leasedUntil).toBeNull();
+		expect(row?.finishedAt).toBeNull();
+		expect(row?.dueAt.getTime()).toBeGreaterThan(Date.now());
+		expect(row?.dueAt.getTime()).toBeLessThanOrEqual(Date.now() + 500);
 	});
 });
 

@@ -5,9 +5,18 @@ import { useCallback } from "react";
 import { companiesSearchParams } from "@/app/(app)/[slug]/companies/companies-search-params";
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
 import { dealsSearchParams } from "@/app/(app)/[slug]/deals/deals-search-params";
+import { prospectsSearchParams } from "@/app/(app)/[slug]/prospects/prospects-search-params";
 import { useTRPC } from "@/lib/trpc/client";
 
-export type Section = "/" | "/companies" | "/contacts" | "/deals" | "/settings";
+export type Section =
+	| "/"
+	| "/companies"
+	| "/calendar"
+	| "/contacts"
+	| "/deals"
+	| "/prospects"
+	| "/sequences"
+	| "/settings";
 
 export function usePrefetchSection(): (section: string) => void {
 	const trpc = useTRPC();
@@ -38,6 +47,21 @@ export function usePrefetchSection(): (section: string) => void {
 				case "/deals":
 					void queryClient.prefetchQuery(
 						trpc.deals.list.queryOptions(dealsSearchParams.defaultInput()),
+					);
+					return;
+				case "/prospects":
+					void queryClient.prefetchQuery(
+						trpc.prospects.list.queryOptions(
+							prospectsSearchParams.defaultInput(),
+						),
+					);
+					return;
+				case "/calendar":
+					void queryClient.prefetchQuery(trpc.calendar.agenda.queryOptions());
+					return;
+				case "/sequences":
+					void queryClient.prefetchQuery(
+						trpc.outreach.sequences.queryOptions(),
 					);
 					return;
 				default:

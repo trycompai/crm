@@ -31,6 +31,15 @@ export type AccountNote = {
 	occurredAt: string;
 };
 
+export type AccountGranolaCall = {
+	id: string;
+	title: string;
+	startedAt: string | null;
+	summary: string | null;
+	attendees: { email: string; name: string | null }[];
+	transcriptAvailable: boolean;
+};
+
 export type CompanyPerson = {
 	id: string;
 	name: string;
@@ -71,6 +80,7 @@ export type CompanyHistory = {
 	deals: CompanyDeal[];
 	threads: AccountThread[];
 	meetings: AccountMeeting[];
+	granolaCalls: AccountGranolaCall[];
 	notes: AccountNote[];
 	stats: {
 		people: number;
@@ -92,6 +102,7 @@ export async function readCompanyHistory(
 		people?: number;
 		includeEmail?: boolean;
 		includeCalendar?: boolean;
+		includeGranola?: boolean;
 	} = {},
 ): Promise<CompanyHistory | null> {
 	const company = await db.company.findUnique({
@@ -114,126 +125,150 @@ export async function readCompanyHistory(
 	if (!company) return null;
 	const includeEmail = options.includeEmail ?? true;
 	const includeCalendar = options.includeCalendar ?? true;
+	const includeGranola = options.includeGranola ?? true;
 
 	const belongsToCompany = { OR: [{ companyId }, { contact: { companyId } }] };
 
-	const [people, deals, threads, meetings, notes, lastInbound, counts] =
-		await Promise.all([
-			db.contact.findMany({
-				where: { companyId },
-				orderBy: [{ lastActivityAt: "desc" }, { createdAt: "asc" }],
-				take: options.people ?? 25,
-				select: {
-					id: true,
-					firstName: true,
-					lastName: true,
-					title: true,
-					email: true,
-					linkedinUrl: true,
-					lastActivityAt: true,
-					_count:
-						includeEmail || includeCalendar
-							? {
-									select: {
-										emailThreads: includeEmail,
-										calendarEvents: includeCalendar,
-									},
-								}
-							: false,
-				},
-			}),
-			db.deal.findMany({
-				where: { companyId },
-				orderBy: [{ lastActivityAt: "desc" }, { createdAt: "desc" }],
-				take: 20,
-				select: {
-					id: true,
-					name: true,
-					stage: true,
-					amount: true,
-					currency: true,
-					expectedCloseDate: true,
-					lastActivityAt: true,
-					contacts: {
-						select: {
-							role: true,
-							contact: {
-								select: { id: true, firstName: true, lastName: true },
-							},
+	const [
+		people,
+		deals,
+		threads,
+		meetings,
+		granolaCalls,
+		notes,
+		lastInbound,
+		counts,
+	] = await Promise.all([
+		db.contact.findMany({
+			where: { companyId },
+			orderBy: [{ lastActivityAt: "desc" }, { createdAt: "asc" }],
+			take: options.people ?? 25,
+			select: {
+				id: true,
+				firstName: true,
+				lastName: true,
+				title: true,
+				email: true,
+				linkedinUrl: true,
+				lastActivityAt: true,
+				_count:
+					includeEmail || includeCalendar
+						? {
+								select: {
+									emailThreads: includeEmail,
+									calendarEvents: includeCalendar,
+								},
+							}
+						: false,
+			},
+		}),
+		db.deal.findMany({
+			where: { companyId },
+			orderBy: [{ lastActivityAt: "desc" }, { createdAt: "desc" }],
+			take: 20,
+			select: {
+				id: true,
+				name: true,
+				stage: true,
+				amount: true,
+				currency: true,
+				expectedCloseDate: true,
+				lastActivityAt: true,
+				contacts: {
+					select: {
+						role: true,
+						contact: {
+							select: { id: true, firstName: true, lastName: true },
 						},
 					},
 				},
-			}),
-			includeEmail
-				? db.emailThread.findMany({
-						where: belongsToCompany,
-						orderBy: { lastMessageAt: "desc" },
-						take: options.threads ?? 5,
-						select: {
-							subject: true,
-							messageCount: true,
-							lastMessageAt: true,
-							contact: {
-								select: { id: true, firstName: true, lastName: true },
-							},
-							messages: {
-								orderBy: { sentAt: "desc" },
-								take: options.messagesPerThread ?? 4,
-								select: {
-									direction: true,
-									fromEmail: true,
-									fromName: true,
-									sentAt: true,
-									body: true,
-									snippet: true,
-								},
+			},
+		}),
+		includeEmail
+			? db.emailThread.findMany({
+					where: belongsToCompany,
+					orderBy: { lastMessageAt: "desc" },
+					take: options.threads ?? 5,
+					select: {
+						subject: true,
+						messageCount: true,
+						lastMessageAt: true,
+						contact: {
+							select: { id: true, firstName: true, lastName: true },
+						},
+						messages: {
+							orderBy: { sentAt: "desc" },
+							take: options.messagesPerThread ?? 4,
+							select: {
+								direction: true,
+								fromEmail: true,
+								fromName: true,
+								sentAt: true,
+								body: true,
+								snippet: true,
 							},
 						},
-					})
-				: Promise.resolve([]),
+					},
+				})
+			: Promise.resolve([]),
+		includeCalendar
+			? db.calendarEvent.findMany({
+					where: {
+						OR: [
+							{ companyId },
+							{ contact: { companyId } },
+							{ attendees: { some: { contact: { companyId } } } },
+						],
+					},
+					orderBy: { startsAt: "desc" },
+					take: 10,
+					select: {
+						title: true,
+						startsAt: true,
+						attendees: { select: { email: true, name: true } },
+					},
+				})
+			: Promise.resolve([]),
+		includeGranola
+			? db.granolaNote.findMany({
+					where: { OR: [{ companyId }, { contact: { companyId } }] },
+					orderBy: [{ startedAt: "desc" }, { sourceCreatedAt: "desc" }],
+					take: 12,
+					select: {
+						id: true,
+						title: true,
+						startedAt: true,
+						summary: true,
+						attendees: true,
+						transcript: true,
+					},
+				})
+			: Promise.resolve([]),
+		recentNotes({ companyId }),
+		includeEmail
+			? db.emailMessage.findFirst({
+					where: {
+						direction: EmailDirection.INBOUND,
+						thread: belongsToCompany,
+					},
+					orderBy: { sentAt: "desc" },
+					select: { sentAt: true, fromEmail: true, fromName: true },
+				})
+			: Promise.resolve(null),
+		Promise.all([
+			db.contact.count({ where: { companyId } }),
+			includeEmail
+				? db.emailMessage.count({ where: { thread: belongsToCompany } })
+				: Promise.resolve(0),
 			includeCalendar
-				? db.calendarEvent.findMany({
+				? db.calendarEvent.count({
 						where: {
-							OR: [
-								{ companyId },
-								{ contact: { companyId } },
-								{ attendees: { some: { contact: { companyId } } } },
-							],
-						},
-						orderBy: { startsAt: "desc" },
-						take: 10,
-						select: {
-							title: true,
-							startsAt: true,
-							attendees: { select: { email: true, name: true } },
+							OR: [{ companyId }, { contact: { companyId } }],
 						},
 					})
-				: Promise.resolve([]),
-			recentNotes({ companyId }),
-			includeEmail
-				? db.emailMessage.findFirst({
-						where: {
-							direction: EmailDirection.INBOUND,
-							thread: belongsToCompany,
-						},
-						orderBy: { sentAt: "desc" },
-						select: { sentAt: true, fromEmail: true, fromName: true },
-					})
-				: Promise.resolve(null),
-			Promise.all([
-				db.contact.count({ where: { companyId } }),
-				includeEmail
-					? db.emailMessage.count({ where: { thread: belongsToCompany } })
-					: Promise.resolve(0),
-				includeCalendar
-					? db.calendarEvent.count({
-							where: {
-								OR: [{ companyId }, { contact: { companyId } }],
-							},
-						})
-					: Promise.resolve(0),
-			]),
-		]);
+				: Promise.resolve(0),
+		]),
+	]);
 
 	const [peopleCount, emailCount, meetingCount] = counts;
 	const now = new Date();
@@ -270,6 +305,7 @@ export async function readCompanyHistory(
 		deals: deals.map(toCompanyDeal),
 		threads: threads.map(toAccountThread),
 		meetings: meetings.map((meeting) => toAccountMeeting(meeting, now)),
+		granolaCalls: granolaCalls.map(toAccountGranolaCall),
 		notes,
 		stats: {
 			people: peopleCount,
@@ -318,6 +354,7 @@ export type DealHistory = {
 	stageHistory: { from: string | null; to: string | null; at: string }[];
 	threads: AccountThread[];
 	meetings: AccountMeeting[];
+	granolaCalls: AccountGranolaCall[];
 	notes: AccountNote[];
 	stats: {
 		theyReplied: boolean;
@@ -336,6 +373,7 @@ export async function readDealHistory(
 		messagesPerThread?: number;
 		includeEmail?: boolean;
 		includeCalendar?: boolean;
+		includeGranola?: boolean;
 	} = {},
 ): Promise<DealHistory | null> {
 	const deal = await db.deal.findUnique({
@@ -375,6 +413,7 @@ export async function readDealHistory(
 	if (!deal) return null;
 	const includeEmail = options.includeEmail ?? true;
 	const includeCalendar = options.includeCalendar ?? true;
+	const includeGranola = options.includeGranola ?? true;
 
 	const contactIds = deal.contacts.map(({ contact }) => contact.id);
 
@@ -388,7 +427,7 @@ export async function readDealHistory(
 				}
 			: { companyId: deal.company.id };
 
-	const [stageChanges, threads, meetings, notes, lastInbound] =
+	const [stageChanges, threads, meetings, granolaCalls, notes, lastInbound] =
 		await Promise.all([
 			db.activity.findMany({
 				where: { dealId, type: ActivityType.STAGE_CHANGE },
@@ -446,6 +485,21 @@ export async function readDealHistory(
 						},
 					})
 				: Promise.resolve([]),
+			includeGranola
+				? db.granolaNote.findMany({
+						where: { OR: [{ dealId }, { companyId: deal.company.id }] },
+						orderBy: [{ startedAt: "desc" }, { sourceCreatedAt: "desc" }],
+						take: 12,
+						select: {
+							id: true,
+							title: true,
+							startedAt: true,
+							summary: true,
+							attendees: true,
+							transcript: true,
+						},
+					})
+				: Promise.resolve([]),
 			recentNotes({ dealId }),
 			includeEmail
 				? db.emailMessage.findFirst({
@@ -496,6 +550,7 @@ export async function readDealHistory(
 		}),
 		threads: threads.map(toAccountThread),
 		meetings: meetings.map((meeting) => toAccountMeeting(meeting, now)),
+		granolaCalls: granolaCalls.map(toAccountGranolaCall),
 		notes,
 		stats: {
 			theyReplied: lastInbound !== null,
@@ -518,6 +573,40 @@ export async function readDealHistory(
 					? "Connected account history is filed against people and companies, never against a deal. The history here belongs to the people on this deal and the rest of the account — read the details before treating any of it as being about this deal."
 					: "Nobody is attached to this deal, so the correspondence here is the whole account's. Attaching the people on it would make this answer sharper."
 				: "Connected email and calendar history are outside this agent version's approved data sources.",
+	};
+}
+
+export async function readGranolaNote(noteId: string) {
+	const note = await db.granolaNote.findUnique({
+		where: { id: noteId },
+		select: {
+			id: true,
+			title: true,
+			sourceUrl: true,
+			ownerName: true,
+			ownerEmail: true,
+			summary: true,
+			transcript: true,
+			attendees: true,
+			startedAt: true,
+			endedAt: true,
+			company: { select: { id: true, name: true } },
+			contact: {
+				select: { id: true, firstName: true, lastName: true },
+			},
+			deal: { select: { id: true, name: true } },
+		},
+	});
+	if (!note) return null;
+	return {
+		...note,
+		startedAt: note.startedAt?.toISOString() ?? null,
+		endedAt: note.endedAt?.toISOString() ?? null,
+		attendees: granolaPeople(note.attendees),
+		transcript: granolaTranscript(note.transcript),
+		contact: note.contact
+			? { id: note.contact.id, name: fullName(note.contact) }
+			: null,
 	};
 }
 
@@ -608,6 +697,74 @@ function toAccountMeeting(
 		upcoming: meeting.startsAt > now,
 		attendees: meeting.attendees,
 	};
+}
+
+function toAccountGranolaCall(call: {
+	id: string;
+	title: string;
+	startedAt: Date | null;
+	summary: string | null;
+	attendees: unknown;
+	transcript: unknown;
+}): AccountGranolaCall {
+	return {
+		id: call.id,
+		title: call.title,
+		startedAt: call.startedAt?.toISOString() ?? null,
+		summary: call.summary?.slice(0, BODY_LIMIT) ?? null,
+		attendees: granolaPeople(call.attendees),
+		transcriptAvailable:
+			Array.isArray(call.transcript) && call.transcript.length > 0,
+	};
+}
+
+function granolaPeople(
+	value: unknown,
+): { email: string; name: string | null }[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((person) => {
+		if (!person || typeof person !== "object") return [];
+		const email = "email" in person ? person.email : null;
+		const name = "name" in person ? person.name : null;
+		return typeof email === "string"
+			? [{ email, name: typeof name === "string" ? name : null }]
+			: [];
+	});
+}
+
+function granolaTranscript(value: unknown) {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((segment) => {
+		if (!segment || typeof segment !== "object") return [];
+		const text = "text" in segment ? segment.text : null;
+		if (typeof text !== "string") return [];
+		const speaker =
+			"speaker" in segment &&
+			segment.speaker &&
+			typeof segment.speaker === "object"
+				? segment.speaker
+				: null;
+		const attribution =
+			speaker && "attribution" in speaker && speaker.attribution
+				? speaker.attribution
+				: null;
+		if (typeof attribution === "string") {
+			return [{ text, speaker: attribution }];
+		}
+		const name =
+			attribution &&
+			"name" in attribution &&
+			typeof attribution.name === "string"
+				? attribution.name
+				: null;
+		const email =
+			attribution &&
+			"email" in attribution &&
+			typeof attribution.email === "string"
+				? attribution.email
+				: null;
+		return [{ text, speaker: name ?? email ?? null }];
+	});
 }
 
 function toCompanyDeal(deal: {

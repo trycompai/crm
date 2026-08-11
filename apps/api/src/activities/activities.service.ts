@@ -5,6 +5,7 @@ import {
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
+import { z } from "zod";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
@@ -55,7 +56,39 @@ const ENTRY_SELECT = {
 			_count: { select: { attendees: true } },
 		},
 	},
+	_count: { select: { granolaNotes: true } },
 } as const;
+
+const granolaAttendees = z.array(
+	z.object({
+		name: z.string().nullable(),
+		email: z.string(),
+	}),
+);
+
+const granolaTranscript = z.array(
+	z.object({
+		text: z.string(),
+		start_time: z.string().nullable().optional(),
+		end_time: z.string().nullable().optional(),
+		speaker: z
+			.object({
+				source: z.string().nullable().optional(),
+				attribution: z
+					.union([
+						z.string(),
+						z.object({
+							name: z.string().nullable().optional(),
+							email: z.string().nullable().optional(),
+						}),
+					])
+					.nullable()
+					.optional(),
+			})
+			.nullable()
+			.optional(),
+	}),
+);
 
 const NOTE_TYPES = [
 	ActivityType.NOTE,
@@ -120,6 +153,57 @@ export class ActivitiesService {
 		]);
 
 		return { all, notes, upcoming, done, email, meetings };
+	}
+
+	async granolaNotes(activityId: string) {
+		const activity = await this.db.activity.findUnique({
+			where: { id: activityId },
+			select: {
+				granolaNotes: {
+					orderBy: { sourceUpdatedAt: "desc" },
+					select: {
+						id: true,
+						title: true,
+						sourceUrl: true,
+						ownerName: true,
+						ownerEmail: true,
+						summary: true,
+						transcript: true,
+						attendees: true,
+						startedAt: true,
+						endedAt: true,
+					},
+				},
+			},
+		});
+		if (!activity) {
+			throw new NotFoundException(`No activity with id ${activityId}.`);
+		}
+
+		return activity.granolaNotes.map((note) => {
+			const transcript = granolaTranscript.catch([]).parse(note.transcript);
+			return {
+				...note,
+				startedAt: note.startedAt?.toISOString() ?? null,
+				endedAt: note.endedAt?.toISOString() ?? null,
+				attendees: granolaAttendees.catch([]).parse(note.attendees),
+				transcript: transcript.map((segment) => ({
+					...segment,
+					speaker: segment.speaker
+						? {
+								...segment.speaker,
+								attribution:
+									typeof segment.speaker.attribution === "string"
+										? {
+												name: segment.speaker.attribution,
+												email: null,
+											}
+										: (segment.speaker.attribution ?? null),
+							}
+						: null,
+				})),
+			};
+		});
 	}
 
 	async create(input: ActivityCreateInput, actingUserId: string) {
@@ -267,8 +351,9 @@ function filterClause(filter: TimelineFilter): Prisma.ActivityWhereInput {
 type Entry = Prisma.ActivityGetPayload<{ select: typeof ENTRY_SELECT }>;
 
 function serializeEntry(entry: Entry) {
+	const { _count, ...record } = entry;
 	return {
-		...entry,
+		...record,
 		occurredAt: entry.occurredAt?.toISOString() ?? null,
 		dueAt: entry.dueAt?.toISOString() ?? null,
 		completedAt: entry.completedAt?.toISOString() ?? null,
@@ -294,6 +379,7 @@ function serializeEntry(entry: Entry) {
 					attendeeCount: entry.calendarEvent._count.attendees,
 				}
 			: null,
+		granolaNoteCount: _count.granolaNotes,
 	};
 }
 

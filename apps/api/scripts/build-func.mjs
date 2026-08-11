@@ -158,7 +158,11 @@ writeFileSync(
 	JSON.stringify({
 		version: 3,
 		routes: [{ src: "/(.*)", dest: "/api/index" }],
-		crons: [{ path: "/internal/sync/google", schedule: "*/5 * * * *" }],
+		crons: [
+			{ path: "/internal/sync/mailboxes", schedule: "*/5 * * * *" },
+			{ path: "/internal/sync/rates", schedule: "0 6 * * *" },
+			{ path: "/internal/telemetry/rollup", schedule: "0 7 * * *" },
+		],
 	}),
 );
 

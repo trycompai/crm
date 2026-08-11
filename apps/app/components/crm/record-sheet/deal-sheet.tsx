@@ -14,6 +14,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import {
 	Tooltip,
@@ -25,6 +26,10 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { contactName } from "@/components/crm/contact-name";
+import {
+	type DealNextAction,
+	dealNextAction,
+} from "@/components/crm/deal-next-action";
 import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineDateField,
@@ -84,6 +89,162 @@ function currencyOptions(currency: string) {
 	];
 }
 
+function actionFor(deal: Deal): DealNextAction {
+	return dealNextAction({
+		amountCents: deal.amountCents,
+		contactCount: deal.contacts.length,
+		expectedCloseDate: deal.expectedCloseDate,
+		lastActivityAt: deal.lastActivityAt,
+		stage: deal.stage,
+	});
+}
+
+function DealGate({ label, passed }: { label: string; passed: boolean }) {
+	return (
+		<div className="flex min-w-0 items-center justify-between gap-4 py-1">
+			<span className="min-w-0 text-muted-foreground text-xs/5">{label}</span>
+			<div className="shrink-0">
+				<StatusIndicator
+					tone={passed ? "success" : "warning"}
+					label={passed ? "Ready" : "Needed"}
+				/>
+			</div>
+		</div>
+	);
+}
+
+function DealActionButton({
+	action,
+	onTab,
+	onForm,
+}: {
+	action: DealNextAction;
+	onTab: (tab: string) => void;
+	onForm: (form: "contact" | null) => void;
+}) {
+	const run = () => {
+		if (action.kind === "add-contact") {
+			onForm("contact");
+			onTab("contacts");
+			return;
+		}
+		if (action.kind === "log-activity" || action.kind === "follow-up") {
+			onTab("activity");
+			return;
+		}
+		onTab("overview");
+	};
+
+	return (
+		<Button
+			variant={action.kind === "review-outcome" ? "outline" : "default"}
+			size="sm"
+			onClick={run}
+		>
+			{action.label}
+		</Button>
+	);
+}
+
+function DealActionView({
+	deal,
+	onTab,
+	onForm,
+}: {
+	deal: Deal;
+	onTab: (tab: string) => void;
+	onForm: (form: "contact" | null) => void;
+}) {
+	const action = actionFor(deal);
+	const actionTone =
+		action.kind === "advance"
+			? "success"
+			: action.kind === "review-outcome"
+				? "neutral"
+				: "warning";
+
+	return (
+		<DetailSheetBody>
+			<DetailSheetSection
+				title="Next sales move"
+				action={<StatusIndicator tone={actionTone} label={action.label} />}
+			>
+				<p className="text-pretty text-muted-foreground text-xs/5">
+					{action.description}
+				</p>
+				<div className="flex flex-wrap items-center gap-2">
+					{deal.stage === "CLOSED_WON" ? (
+						<Button size="sm" onClick={() => onTab("onboarding")}>
+							Run customer onboarding
+						</Button>
+					) : (
+						<DealActionButton action={action} onTab={onTab} onForm={onForm} />
+					)}
+					<Button variant="outline" size="sm" onClick={() => onTab("activity")}>
+						Review history
+					</Button>
+					<Button variant="outline" size="sm" onClick={() => onTab("agent")}>
+						Ask agent
+					</Button>
+				</div>
+			</DetailSheetSection>
+
+			<DetailSheetSection title="Deal readiness">
+				<DetailSheetProperties columns={1}>
+					<DealGate label="Buyer attached" passed={deal.contacts.length > 0} />
+					<DealGate label="Value recorded" passed={deal.amountCents !== null} />
+					<DealGate
+						label="Close date recorded"
+						passed={Boolean(deal.expectedCloseDate)}
+					/>
+					<DealGate
+						label="Sales history started"
+						passed={Boolean(deal.lastActivityAt)}
+					/>
+					<DealGate
+						label="Buying context written"
+						passed={Boolean(deal.description)}
+					/>
+				</DetailSheetProperties>
+			</DetailSheetSection>
+
+			<DetailSheetSection title="Commercial context">
+				<DetailSheetProperties columns={1}>
+					<DetailSheetProperty label="Company">
+						{deal.company.name}
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Owner">
+						<OwnerCell owner={deal.owner} />
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Value">
+						{deal.amountCents === null ? (
+							<EmptyCellValue />
+						) : (
+							<span className="tabular-nums">
+								{formatMoney(deal.amountCents, dealCurrency(deal.currency))}
+							</span>
+						)}
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Expected close">
+						{deal.expectedCloseDate ? (
+							<LocalDay date={deal.expectedCloseDate} />
+						) : (
+							<EmptyCellValue />
+						)}
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Last activity">
+						{deal.lastActivityAt ? (
+							<LocalRelativeTime date={deal.lastActivityAt} />
+						) : (
+							<EmptyCellValue />
+						)}
+					</DetailSheetProperty>
+				</DetailSheetProperties>
+			</DetailSheetSection>
+		</DetailSheetBody>
+	);
+}
+
 function ReportedValue({ deal }: { deal: Deal }) {
 	const currency = dealCurrency(deal.currency);
 
@@ -127,13 +288,32 @@ export function DealSheet({ dealId }: { dealId: string }) {
 		setTab,
 		form: adding,
 		setForm: setAdding,
-	} = useRecordSheetView("overview");
+	} = useRecordSheetView("work");
 
-	const query = useQuery(trpc.deals.byId.queryOptions({ id: dealId }));
+	const query = useQuery({
+		...trpc.deals.byId.queryOptions({ id: dealId }),
+		refetchInterval: (result) =>
+			result.state.data?.stage === "CLOSED_WON" &&
+			result.state.data.onboarding &&
+			!result.state.data.onboarding.agentPlannedAt
+				? 2_000
+				: false,
+	});
 	const deal = query.data;
 
 	const tabs: DetailSheetTab[] = deal
 		? [
+				{
+					value: "work",
+					label: "Work",
+					content: (
+						<DealActionView
+							deal={deal}
+							onTab={setTab}
+							onForm={(form) => setAdding(form)}
+						/>
+					),
+				},
 				{
 					value: "overview",
 					label: "Overview",
@@ -157,6 +337,19 @@ export function DealSheet({ dealId }: { dealId: string }) {
 					label: "Activity",
 					content: <Timeline anchor={{ dealId: deal.id }} />,
 				},
+				...(deal.stage === "CLOSED_WON" || deal.onboarding
+					? [
+							{
+								value: "onboarding",
+								label: "Customer start",
+								count:
+									deal.onboarding?.items.filter(
+										(item) => item.status !== "COMPLETE",
+									).length ?? 0,
+								content: <CustomerOnboarding deal={deal} />,
+							},
+						]
+					: []),
 				{
 					value: "agent",
 					label: "Agent",
@@ -241,6 +434,175 @@ export function DealSheet({ dealId }: { dealId: string }) {
 			tab={tab}
 			onTabChange={setTab}
 		/>
+	);
+}
+
+const ONBOARDING_STATUS_OPTIONS = [
+	{ value: "DISCOVERY", label: "Discovery" },
+	{ value: "SYSTEMS", label: "Systems map" },
+	{ value: "DATA_ACCESS", label: "Data access" },
+	{ value: "INGESTION", label: "Ingestion" },
+	{ value: "READY", label: "Ready to launch" },
+	{ value: "LIVE", label: "Live" },
+];
+
+const ITEM_STATUS_OPTIONS = [
+	{ value: "NOT_STARTED", label: "Not started" },
+	{ value: "IN_PROGRESS", label: "In progress" },
+	{ value: "BLOCKED", label: "Blocked" },
+	{ value: "COMPLETE", label: "Complete" },
+];
+
+function CustomerOnboarding({ deal }: { deal: Deal }) {
+	const trpc = useTRPC();
+	const cache = useCrmCache();
+	const onboarding = deal.onboarding;
+	const refresh = () => cache.deal(deal.id, { settle: "record" });
+	const update = useMutation(
+		trpc.deals.updateOnboarding.mutationOptions({
+			onSuccess: refresh,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const updateItem = useMutation(
+		trpc.deals.updateOnboardingItem.mutationOptions({
+			onSuccess: refresh,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	if (!onboarding) {
+		return (
+			<DetailSheetEmpty
+				icon={UserMultiple}
+				title="Preparing customer onboarding"
+				description="The won-deal workflow is creating the systems, data access and Lode Brain plan."
+			/>
+		);
+	}
+
+	const save = (data: Omit<Parameters<typeof update.mutate>[0], "dealId">) =>
+		update.mutate({ dealId: deal.id, ...data });
+
+	return (
+		<DetailSheetBody>
+			<DetailSheetSection
+				title="Customer launch"
+				action={
+					<StatusIndicator
+						tone={onboarding.status === "LIVE" ? "success" : "warning"}
+						label={
+							onboarding.agentPlannedAt ? "Plan ready" : "Agent building plan"
+						}
+					/>
+				}
+			>
+				<DetailSheetProperties columns={1}>
+					<InlineSelectField
+						label="Onboarding stage"
+						value={onboarding.status}
+						options={ONBOARDING_STATUS_OPTIONS}
+						onSave={(status) =>
+							save({
+								status: status as
+									| "DISCOVERY"
+									| "SYSTEMS"
+									| "DATA_ACCESS"
+									| "INGESTION"
+									| "READY"
+									| "LIVE",
+							})
+						}
+					/>
+					<InlineDateField
+						label="Target live date"
+						value={onboarding.targetLiveAt}
+						onSave={(targetLiveAt) =>
+							save({ targetLiveAt: targetLiveAt || null })
+						}
+					/>
+				</DetailSheetProperties>
+			</DetailSheetSection>
+
+			<DetailSheetSection title="Outcome and success measure">
+				<InlineTextArea
+					label="Outcome and success measure"
+					value={onboarding.objective}
+					placeholder="What should be true when this customer is live?"
+					onSave={(objective) => save({ objective })}
+				/>
+			</DetailSheetSection>
+			<DetailSheetSection title="Existing systems">
+				<InlineTextArea
+					label="Systems and owners"
+					value={onboarding.systemsSummary}
+					placeholder="CRM, email, job management, finance, storage and the owner of each."
+					onSave={(systemsSummary) => save({ systemsSummary })}
+				/>
+			</DetailSheetSection>
+			<DetailSheetSection title="Structured and unstructured data">
+				<InlineTextArea
+					label="Data map"
+					value={onboarding.dataSummary}
+					placeholder="Databases, spreadsheets, documents, email, call notes, images and access constraints."
+					onSave={(dataSummary) => save({ dataSummary })}
+				/>
+			</DetailSheetSection>
+			<DetailSheetSection title="Lode Brain plan">
+				<InlineTextArea
+					label="Ingestion and first use case"
+					value={onboarding.brainPlan}
+					placeholder="First sources, permissions, ingestion order, proof and first operational workflow."
+					onSave={(brainPlan) => save({ brainPlan })}
+				/>
+			</DetailSheetSection>
+
+			{onboarding.items.map((item) => (
+				<DetailSheetSection
+					key={item.id}
+					title={item.name}
+					action={
+						<StatusIndicator
+							tone={
+								item.status === "COMPLETE"
+									? "success"
+									: item.status === "BLOCKED"
+										? "warning"
+										: "neutral"
+							}
+							label={item.kind.replaceAll("_", " ").toLowerCase()}
+						/>
+					}
+				>
+					{item.details ? (
+						<p className="text-pretty text-muted-foreground text-xs/5">
+							{item.details}
+						</p>
+					) : null}
+					<DetailSheetProperties columns={1}>
+						<InlineSelectField
+							label="Status"
+							value={item.status}
+							options={ITEM_STATUS_OPTIONS}
+							onSave={(status) =>
+								updateItem.mutate({
+									id: item.id,
+									dealId: deal.id,
+									status: status as
+										| "NOT_STARTED"
+										| "IN_PROGRESS"
+										| "BLOCKED"
+										| "COMPLETE",
+								})
+							}
+						/>
+						<DetailSheetProperty label="Owner">
+							{item.ownerName ?? <EmptyCellValue />}
+						</DetailSheetProperty>
+					</DetailSheetProperties>
+				</DetailSheetSection>
+			))}
+		</DetailSheetBody>
 	);
 }
 

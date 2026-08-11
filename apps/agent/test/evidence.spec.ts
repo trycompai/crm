@@ -18,6 +18,7 @@ describe("scoreEvidence", () => {
 
 	it("treats our own mailbox as primary evidence", () => {
 		expect(scoreEvidence(of("crm.thread-reply")).band).toBe("VERIFIED");
+		expect(scoreEvidence(of("crm.granola-transcript")).band).toBe("PROBABLE");
 	});
 
 	it("writes a title a signature block states on a thread they replied to", () => {

@@ -7,6 +7,7 @@ import { AgentModule } from "./agent/agent.module";
 import { AuthModule } from "./auth/auth.module";
 import { BackfillModule } from "./backfill/backfill.module";
 import { AppCacheModule } from "./cache/cache.module";
+import { CalendarModule } from "./calendar/calendar.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { validateEnv } from "./config/env.validation";
 import { ContactsModule } from "./contacts/contacts.module";
@@ -19,10 +20,13 @@ import { DealsModule } from "./deals/deals.module";
 import { FieldsModule } from "./fields/fields.module";
 import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
+import { InboundModule } from "./inbound/inbound.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MailboxModule } from "./mailbox/mailbox.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
+import { OutreachModule } from "./outreach/outreach.module";
+import { ProspectsModule } from "./prospects/prospects.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
 import { SsoModule } from "./sso/sso.module";
@@ -46,6 +50,8 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		BetterAuthModule.forRoot({ auth, middleware: logAuthRoute }),
 		AuthModule,
 		HealthModule,
+		CalendarModule,
+		InboundModule,
 		TrpcModule,
 		UsersModule,
 		CompaniesModule,
@@ -61,6 +67,8 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		MailboxModule,
 		GoogleModule,
 		MicrosoftModule,
+		OutreachModule,
+		ProspectsModule,
 		SyncModule,
 		SettingsModule,
 		WorkspaceModule,

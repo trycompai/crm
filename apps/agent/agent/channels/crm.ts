@@ -13,8 +13,13 @@ import {
 } from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
+import { ensureInboundSyncTasks } from "../lib/inbound-sync";
 import { finishRun } from "../lib/run-runtime";
-import { completeTask, taskSubject } from "../lib/tasks";
+import {
+	completeTask,
+	releaseTaskForRetry,
+	taskSubject,
+} from "../lib/tasks";
 
 const TASK_MARKER = "task:";
 
@@ -52,11 +57,13 @@ export default defineChannel({
 			}
 
 			waitUntil(
-				drainAll((task) =>
-					send(brief(task), {
-						auth: taskAuth(task),
-						continuationToken: taskToken(task.id),
-					}),
+				ensureInboundSyncTasks().then(() =>
+					drainAll((task) =>
+						send(brief(task), {
+							auth: taskAuth(task),
+							continuationToken: taskToken(task.id),
+						}),
+					),
 				),
 			);
 
@@ -130,8 +137,83 @@ export default defineChannel({
 		async "session.waiting"(_data, channel) {
 			const taskId = taskFromToken(channel.continuationToken);
 			if (taskId) {
-				const subject = await completeTask(taskId, "ran");
-				if (subject) await settle(subject, EnrichmentStatus.COMPLETE);
+				const subject = await taskSubject(taskId);
+				if (!subject) return;
+				if (subject.kind === "lead-discovery") {
+					const count = await import("@crm/db").then(({ db }) =>
+						db.prospect.count({ where: { sourceBatch: `agent:${taskId}` } }),
+					);
+					if (count > 0) {
+						await completeTask(
+							taskId,
+							`Created ${count} fresh candidates and queued full research.`,
+						);
+					} else {
+						await releaseTaskForRetry(taskId);
+					}
+					return;
+				}
+				if (subject.kind === "outreach-compose" && subject.prospectId) {
+					const count = await import("@crm/db").then(({ db }) =>
+						db.emailDraft.count({
+							where: {
+								prospectId: subject.prospectId as string,
+								status: "PENDING_APPROVAL",
+							},
+						}),
+					);
+					if (count === 3) {
+						await completeTask(
+							taskId,
+							"Three-step outreach sequence prepared for review.",
+						);
+					} else {
+						await releaseTaskForRetry(taskId);
+					}
+					return;
+				}
+				if (subject.kind === "customer-onboarding-plan" && subject.dealId) {
+					const planned = await import("@crm/db").then(({ db }) =>
+						db.customerOnboarding.findUnique({
+							where: { dealId: subject.dealId as string },
+							select: { agentPlannedAt: true },
+						}),
+					);
+					if (planned?.agentPlannedAt) {
+						await completeTask(
+							taskId,
+							"Customer systems and data onboarding plan recorded.",
+						);
+					} else {
+						await releaseTaskForRetry(taskId);
+					}
+					return;
+				}
+				if (subject.kind === "prospect-research" && subject.prospectId) {
+					const prospect = await import("@crm/db").then(({ db }) =>
+						db.prospect.findUnique({
+							where: { id: subject.prospectId as string },
+							select: { enrichmentStatus: true, lastResearchedAt: true },
+						}),
+					);
+					if (
+						prospect?.enrichmentStatus === EnrichmentStatus.COMPLETE &&
+						prospect.lastResearchedAt
+					) {
+						await completeTask(taskId, "Prospect research recorded.");
+					} else {
+						await settle(
+							subject,
+							EnrichmentStatus.FAILED,
+							"The agent finished without recording prospect research.",
+						);
+						await releaseTaskForRetry(taskId);
+					}
+					return;
+				}
+
+				const completed = await completeTask(taskId, "ran");
+				if (completed) await settle(completed, EnrichmentStatus.COMPLETE);
 				return;
 			}
 
@@ -155,7 +237,10 @@ export default defineChannel({
 
 			if (taskId) {
 				const subject = await taskSubject(taskId);
-				if (subject) await settle(subject, EnrichmentStatus.FAILED, reason);
+				if (subject) {
+					await settle(subject, EnrichmentStatus.FAILED, reason);
+					await releaseTaskForRetry(taskId);
+				}
 				return;
 			}
 

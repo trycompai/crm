@@ -119,6 +119,7 @@ export async function readRunRecord(
 			threads: 10,
 			includeEmail: sources.gmail,
 			includeCalendar: sources.calendar,
+			includeGranola: false,
 		});
 	if (input.kind === "company") {
 		return readCompanyHistory(input.id, {
@@ -126,12 +127,14 @@ export async function readRunRecord(
 			people: 50,
 			includeEmail: sources.gmail,
 			includeCalendar: sources.calendar,
+			includeGranola: false,
 		});
 	}
 	return readDealHistory(input.id, {
 		threads: 10,
 		includeEmail: sources.gmail,
 		includeCalendar: sources.calendar,
+		includeGranola: false,
 	});
 }
 

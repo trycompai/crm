@@ -12,15 +12,22 @@ import {
 	timelineTabParser,
 } from "@/components/crm/timeline/timeline-search-params";
 
-const RECORD_KINDS = ["company", "contact", "deal"] as const;
+const CRM_RECORD_KINDS = ["company", "contact", "deal"] as const;
+const RECORD_KINDS = [...CRM_RECORD_KINDS, "prospect"] as const;
 
 export type RecordKind = (typeof RECORD_KINDS)[number];
+export type CrmRecordKind = (typeof CRM_RECORD_KINDS)[number];
 
 export type RecordRef = { kind: RecordKind; id: string };
 
 const RECORD_FORMS = ["contact", "deal"] as const;
 
 export type RecordForm = (typeof RECORD_FORMS)[number];
+
+export type RecordOpenView = {
+	tab?: string;
+	form?: RecordForm;
+};
 
 const FORM_TAB: Record<RecordForm, string> = {
 	contact: "contacts",
@@ -32,7 +39,7 @@ const params = {
 	tab: parseAsString,
 	add: parseAsStringLiteral(RECORD_FORMS),
 	thread: parseAsString,
-	fields: parseAsStringLiteral(RECORD_KINDS),
+	fields: parseAsStringLiteral(CRM_RECORD_KINDS),
 	field: parseAsString,
 	[TIMELINE_PARAM]: timelineTabParser,
 };
@@ -77,14 +84,23 @@ export function useRecordStack() {
 	);
 
 	const open = useCallback(
-		(ref: RecordRef) => {
+		(ref: RecordRef, view?: RecordOpenView) => {
 			const key = recordKey(ref);
-			write(
-				[...stack.filter((entry) => recordKey(entry) !== key), ref],
-				stack.length === 0 ? "push" : "replace",
+			const next = [...stack.filter((entry) => recordKey(entry) !== key), ref];
+			void setParams(
+				{
+					record: next.map(recordKey),
+					tab: view?.tab ?? null,
+					add: view?.form ?? null,
+					thread: null,
+					fields: null,
+					field: null,
+					[TIMELINE_PARAM]: null,
+				},
+				{ history: stack.length === 0 ? "push" : "replace" },
 			);
 		},
-		[stack, write],
+		[setParams, stack],
 	);
 
 	const close = useCallback(
@@ -111,7 +127,7 @@ export function useFieldsSheet() {
 	const [{ fields, field }, setParams] = useQueryStates(params);
 
 	const open = useCallback(
-		(kind: RecordKind) => void setParams({ fields: kind, field: null }),
+		(kind: CrmRecordKind) => void setParams({ fields: kind, field: null }),
 		[setParams],
 	);
 

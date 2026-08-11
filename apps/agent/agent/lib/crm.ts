@@ -146,6 +146,13 @@ export type CrmHistory = {
 		attended: boolean;
 		attendees: { email: string; name: string | null }[];
 	}[];
+	granolaCalls: {
+		id: string;
+		title: string;
+		startedAt: string | null;
+		summary: string | null;
+		transcriptAvailable: boolean;
+	}[];
 	stats: {
 		emails: number;
 		theyReplied: boolean;
@@ -163,6 +170,7 @@ export async function readCrmHistory(
 		messagesPerThread?: number;
 		includeEmail?: boolean;
 		includeCalendar?: boolean;
+		includeGranola?: boolean;
 	} = {},
 ): Promise<CrmHistory | null> {
 	const contact = await db.contact.findUnique({
@@ -199,8 +207,9 @@ export async function readCrmHistory(
 	if (!contact) return null;
 	const includeEmail = options.includeEmail ?? true;
 	const includeCalendar = options.includeCalendar ?? true;
+	const includeGranola = options.includeGranola ?? true;
 
-	const [threads, meetings, colleagues] = await Promise.all([
+	const [threads, meetings, granolaCalls, colleagues] = await Promise.all([
 		includeEmail
 			? db.emailThread.findMany({
 					where: { contactId },
@@ -243,6 +252,25 @@ export async function readCrmHistory(
 								responseStatus: true,
 							},
 						},
+					},
+				})
+			: Promise.resolve([]),
+		includeGranola
+			? db.granolaNote.findMany({
+					where: {
+						OR: [
+							{ contactId },
+							...(contact.companyId ? [{ companyId: contact.companyId }] : []),
+						],
+					},
+					orderBy: [{ startedAt: "desc" }, { sourceCreatedAt: "desc" }],
+					take: 12,
+					select: {
+						id: true,
+						title: true,
+						startedAt: true,
+						summary: true,
+						transcript: true,
 					},
 				})
 			: Promise.resolve([]),
@@ -307,6 +335,14 @@ export async function readCrmHistory(
 				email: attendee.email,
 				name: attendee.name,
 			})),
+		})),
+		granolaCalls: granolaCalls.map((call) => ({
+			id: call.id,
+			title: call.title,
+			startedAt: call.startedAt?.toISOString() ?? null,
+			summary: call.summary?.slice(0, 4000) ?? null,
+			transcriptAvailable:
+				Array.isArray(call.transcript) && call.transcript.length > 0,
 		})),
 		stats: {
 			emails: threads.reduce((total, thread) => total + thread.messageCount, 0),

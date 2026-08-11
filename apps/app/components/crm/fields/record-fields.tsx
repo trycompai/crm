@@ -18,7 +18,7 @@ import {
 	InlineTextArea,
 } from "@/components/crm/inline-field";
 import {
-	type RecordKind,
+	type CrmRecordKind,
 	useFieldsSheet,
 } from "@/components/crm/record-sheet/record-stack";
 import { DetailSheetProperty } from "@/components/detail-sheet";
@@ -42,7 +42,7 @@ const UNASSIGNED = "Unassigned";
 
 const FORMER_MEMBER = "Former member";
 
-export function FieldsCog({ kind }: { kind: RecordKind }) {
+export function FieldsCog({ kind }: { kind: CrmRecordKind }) {
 	const { open } = useFieldsSheet();
 
 	return (

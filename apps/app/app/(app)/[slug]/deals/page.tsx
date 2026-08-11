@@ -30,7 +30,8 @@ export default function DealsPage({
 				<PageShellHeading>
 					<PageShellTitle>Deals</PageShellTitle>
 					<PageShellDescription>
-						The pipeline, and everything that has already closed.
+						Move every opportunity forward with a buyer, value, date and next
+						step.
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>

@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { type Prisma, PrismaClient } from "./generated/prisma/client";
 
 const connectionString = process.env.DATABASE_URL;
+const databaseCaCert = process.env.DATABASE_CA_CERT?.replaceAll("\\n", "\n");
 
 if (!connectionString) {
 	throw new Error(
@@ -53,8 +54,21 @@ const logDefinitions: Prisma.LogDefinition[] = [
 ];
 
 const createPrismaClient = () => {
+	const adapterConfig = databaseCaCert
+		? (() => {
+				const url = new URL(connectionString);
+				url.searchParams.delete("sslmode");
+				url.searchParams.delete("sslcert");
+				url.searchParams.delete("sslkey");
+				url.searchParams.delete("sslrootcert");
+				return {
+					connectionString: url.toString(),
+					ssl: { ca: databaseCaCert, rejectUnauthorized: true },
+				};
+			})()
+		: { connectionString };
 	const client = new PrismaClient({
-		adapter: new PrismaPg({ connectionString }),
+		adapter: new PrismaPg(adapterConfig),
 		log: logDefinitions,
 	});
 

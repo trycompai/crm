@@ -69,6 +69,10 @@ export const completeInput = z.object({
 	completed: z.boolean().default(true),
 });
 
+export const granolaNotesInput = z.object({
+	activityId: z.string(),
+});
+
 export const myTasksInput = z.object({
 	window: z.enum(["overdue", "upcoming", "all"]).default("all"),
 	limit: z.number().int().min(1).max(100).default(25),

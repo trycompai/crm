@@ -12,7 +12,11 @@ export type Opened = {
 
 export type Preamble = {
 	markdown: string;
-	focus: { contactId?: string | null; companyId?: string | null };
+	focus: {
+		contactId?: string | null;
+		companyId?: string | null;
+		prospectId?: string | null;
+	};
 };
 
 export async function sessionPreamble(
@@ -20,14 +24,154 @@ export async function sessionPreamble(
 		contactId?: string | null;
 		companyId?: string | null;
 		dealId?: string | null;
+		prospectId?: string | null;
 	},
 	opened: Opened,
 ): Promise<Preamble> {
 	if (opened.kind === "workspace-profile") return workspacePreamble();
+	if (opened.kind === "lead-discovery") return leadDiscoveryPreamble(opened);
+	if (opened.kind === "outreach-compose" && record.prospectId) {
+		return outreachPreamble(record.prospectId, opened);
+	}
+	if (opened.kind === "customer-onboarding-plan" && record.dealId) {
+		return onboardingPreamble(record.dealId, opened);
+	}
+	if (record.prospectId) return prospectPreamble(record.prospectId, opened);
 	if (record.contactId) return contactPreamble(record.contactId, opened);
-	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
+	if (record.companyId) return companyPreamble(record.companyId, opened);
 	return noRecordPreamble();
+}
+
+async function leadDiscoveryPreamble(opened: Opened): Promise<Preamble> {
+	return {
+		markdown: [
+			"## This session",
+			"",
+			"This is a one-click lead-supply run for Lode.",
+			opened.reason ?? "Find a fresh evidence-backed prospect batch.",
+			opened.budget ? `Target up to ${opened.budget} retained candidates.` : "",
+			"Load `first-customer-discovery` before searching.",
+			"Call `record_discovered_prospects` exactly once and never send outreach.",
+			"",
+			await closing(),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: {},
+	};
+}
+
+async function outreachPreamble(
+	prospectId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	return {
+		markdown: [
+			"## This session",
+			"",
+			`Prepare the human-reviewed outreach sequence for prospect \`${prospectId}\`.`,
+			opened.reason ?? "",
+			"Load `outreach-sequence`, then call `read_outreach_assignment`.",
+			"Call `record_outreach_sequence` exactly once. Never approve or send email.",
+			"",
+			await closing(),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: { prospectId },
+	};
+}
+
+async function onboardingPreamble(
+	dealId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	return {
+		markdown: [
+			"## This session",
+			"",
+			`Build the customer onboarding discovery plan for closed-won deal \`${dealId}\`.`,
+			opened.reason ?? "",
+			"Load `customer-onboarding`, read the deal and CRM history, then call `record_customer_onboarding_plan` exactly once.",
+			"Do not claim access to a system or dataset that the customer has not confirmed.",
+			"",
+			await closing(),
+		]
+			.filter(Boolean)
+			.join("\n"),
+		focus: {},
+	};
+}
+
+export async function prospectPreamble(
+	prospectId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	const prospect = await db.prospect.findUnique({
+		where: { id: prospectId },
+		select: {
+			companyName: true,
+			website: true,
+			location: true,
+			country: true,
+			status: true,
+			fitScore: true,
+			namedPerson: true,
+			role: true,
+			companyProof: true,
+			painSignal: true,
+			whyNow: true,
+			evidence: { select: { url: true }, take: 10 },
+		},
+	});
+
+	if (!prospect) {
+		return { markdown: await closing(), focus: { prospectId } };
+	}
+
+	const known = prospect.evidence.map((evidence) => evidence.url).join("\n");
+	const markdown = [
+		"## This session",
+		"",
+		`You are researching prospect **${prospect.companyName}** — prospect id \`${prospectId}\`.`,
+		prospect.website ? `Website: ${prospect.website}` : "No website is stored.",
+		[prospect.location, prospect.country].filter(Boolean).join(", "),
+		`Current status: **${prospect.status}**${prospect.fitScore === null ? "" : `, prior score ${prospect.fitScore}/100`}.`,
+		prospect.namedPerson
+			? `Named person: ${prospect.namedPerson}${prospect.role ? ` — ${prospect.role}` : ""}.`
+			: "No named decision-maker is confirmed.",
+		opened.reason ? `Why now: ${opened.reason}` : "",
+		opened.budget
+			? `Budget: **${opened.budget}** vendor calls. Spend them where they matter.`
+			: "",
+		"",
+		opening(
+			opened,
+			"why this account fits, which current public signal matters, and whether a real person and route are ready",
+		),
+		"",
+		"Load `first-customer-research` before searching. Start with `read_prospect` on this id.",
+		"Prioritise a current official job posting, then official careers, project, news and team pages. Use `fetch_prospect_source` for every retained page.",
+		"A search result is a lead, not evidence. Record the fetch receipt, source title, final URL, visible date, direct observation and separate inference.",
+		"Do not stop at a company. Find the current person whose remit owns the evidenced operating problem and verify their role from a public source.",
+		"Call `record_prospect_research` until the first successful write. If a fresh receipt rejects one source, make at most one corrective call with that unsupported source removed or rewritten. It computes the score, checks suppression, stores the evidence and promotes only a perfect account into Company and Contact records.",
+		"Never send outreach, submit a form, connect, follow or comment.",
+		prospect.companyProof
+			? `Existing company proof: ${prospect.companyProof}`
+			: "",
+		prospect.painSignal ? `Existing pain signal: ${prospect.painSignal}` : "",
+		prospect.whyNow ? `Existing why-now: ${prospect.whyNow}` : "",
+		known
+			? `Existing source URLs:\n${known}`
+			: "There are no stored evidence URLs yet.",
+		"",
+		await closing(),
+	]
+		.filter(Boolean)
+		.join("\n");
+
+	return { markdown, focus: { prospectId } };
 }
 
 export async function composeClosing(
@@ -70,7 +214,14 @@ export async function contactPreamble(
 			lastName: true,
 			email: true,
 			title: true,
-			company: { select: { id: true, name: true, domain: true } },
+			company: {
+				select: {
+					id: true,
+					name: true,
+					domain: true,
+					_count: { select: { granolaNotes: true } },
+				},
+			},
 			brief: { select: { refreshedAt: true } },
 			deals: {
 				orderBy: { deal: { lastActivityAt: "desc" } },
@@ -80,7 +231,13 @@ export async function contactPreamble(
 					deal: { select: { id: true, name: true, stage: true } },
 				},
 			},
-			_count: { select: { emailThreads: true, calendarEvents: true } },
+			_count: {
+				select: {
+					emailThreads: true,
+					calendarEvents: true,
+					granolaNotes: true,
+				},
+			},
 		},
 	});
 
@@ -90,9 +247,15 @@ export async function contactPreamble(
 
 	const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
 
+	const granolaCalls = Math.max(
+		contact._count.granolaNotes,
+		contact.company?._count.granolaNotes ?? 0,
+	);
 	const known =
-		contact._count.emailThreads > 0 || contact._count.calendarEvents > 0
-			? `We have ${contact._count.emailThreads} thread(s) and ${contact._count.calendarEvents} meeting(s) with them — read those first.`
+		contact._count.emailThreads > 0 ||
+		contact._count.calendarEvents > 0 ||
+		granolaCalls > 0
+			? `We have ${contact._count.emailThreads} thread(s), ${contact._count.calendarEvents} calendar meeting(s), and ${granolaCalls} Granola call(s) on this account — read those first.`
 			: "We have never corresponded with them, so there is nothing internal to go on.";
 
 	const deals = contact.deals

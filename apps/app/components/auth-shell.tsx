@@ -27,14 +27,14 @@ export function AuthShell({ children }: { children: ReactNode }) {
 				</div>
 
 				<p className="relative font-mono text-xs/4 text-muted-foreground">
-					Made with love by{" "}
+					Built for{" "}
 					<a
-						href="https://trycomp.ai"
+						href="https://trylodeagent.io"
 						target="_blank"
 						rel="noreferrer"
 						className="underline underline-offset-4 hover:text-foreground"
 					>
-						Comp AI
+						Lode
 					</a>
 				</p>
 			</section>

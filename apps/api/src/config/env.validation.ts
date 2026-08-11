@@ -34,6 +34,10 @@ export class EnvironmentVariables {
 	})
 	DATABASE_URL!: string;
 
+	@IsOptional()
+	@IsString()
+	DATABASE_CA_CERT?: string;
+
 	@IsString()
 	@MinLength(32, {
 		message:
@@ -114,6 +118,38 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	AGENT_BRIDGE_SECRET?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false, require_protocol: true })
+	LODE_WEBSITE_SUPABASE_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	LODE_WEBSITE_LEADS_TABLE?: string;
+
+	@IsOptional()
+	@IsString()
+	AGENTMAIL_API_KEY?: string;
+
+	@IsOptional()
+	@IsUrl({ require_tld: false, require_protocol: true })
+	AGENTMAIL_API_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	AGENTMAIL_INBOX_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	AGENTMAIL_INBOX_EMAIL?: string;
+
+	@IsOptional()
+	@IsString()
+	GRANOLA_API_KEY?: string;
 
 	@IsOptional()
 	@IsString()

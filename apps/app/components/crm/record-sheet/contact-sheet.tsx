@@ -338,7 +338,6 @@ function ContactOverview({ contact }: { contact: Contact }) {
 					<InlineField
 						label="Title"
 						value={contact.title}
-						placeholder="Head of Security"
 						saving={isSaving("title")}
 						onSave={(title) => save({ title })}
 						{...agentProps("title")}

@@ -21,6 +21,9 @@ import {
 	dealDetachContactInput,
 	dealIdInput,
 	dealListInput,
+	onboardingItemCreateInput,
+	onboardingItemUpdateInput,
+	onboardingUpdateInput,
 	dealUpdateArgs,
 	setStageInput,
 } from "./deals.contracts";
@@ -62,6 +65,27 @@ export class DealsRouter {
 		@Input() input: z.infer<typeof setStageInput>,
 	) {
 		return this.deals.setStage(input, ctx.user.id);
+	}
+
+	@Mutation({ input: onboardingUpdateInput })
+	async updateOnboarding(
+		@Input() input: z.infer<typeof onboardingUpdateInput>,
+	) {
+		return this.deals.updateOnboarding(input);
+	}
+
+	@Mutation({ input: onboardingItemCreateInput })
+	async addOnboardingItem(
+		@Input() input: z.infer<typeof onboardingItemCreateInput>,
+	) {
+		return this.deals.addOnboardingItem(input);
+	}
+
+	@Mutation({ input: onboardingItemUpdateInput })
+	async updateOnboardingItem(
+		@Input() input: z.infer<typeof onboardingItemUpdateInput>,
+	) {
+		return this.deals.updateOnboardingItem(input);
 	}
 
 	@Query({ input: dealContactsInput })

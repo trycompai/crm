@@ -32,6 +32,10 @@ metadata. The root file's comment has the whole account.
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ALLOWED_SIGN_IN`. Everything else has a
 localhost default or is genuinely optional.
 
+**`DATABASE_CA_CERT`** is an optional PEM certificate authority for managed
+Postgres. When set, the shared Prisma adapter removes URL-level TLS overrides and
+verifies the server against this CA. Local Postgres leaves it unset.
+
 **`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`** are the sign-in button *and* the
 Gmail/Calendar sync — optional, so an SSO-only install needn't create a Google project,
 but **set together or not at all** (`packages/auth/src/env.ts` throws on one).
@@ -99,6 +103,8 @@ single place that knows what is set.
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
+| `OPENAI_API_KEY` | Optional direct OpenAI model access for the agent |
+| `TAVILY_API_KEY` | Current public-web discovery for prospect research |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
@@ -126,6 +132,30 @@ General — an admin who cannot redeploy cannot set a variable.
   answer is *invalid*. **`401` is the only answer meaning the key is wrong**, and **a
   check that cannot be made is not a failed check** — `unknown` saves anyway and logs it
   unverified.
+
+## Lode inbound connections
+
+`LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY` enables a server-side, read-only import
+from the website lead table. `LODE_WEBSITE_SUPABASE_URL` and
+`LODE_WEBSITE_LEADS_TABLE` select the source and default to `marketing_leads`.
+Imported live enquiries create or match CRM records and queue agent enrichment;
+tagged QA records remain isolated from CRM records.
+
+`AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` enable AgentMail polling and
+human-approved outreach.
+`AGENTMAIL_API_URL` defaults to `https://api.agentmail.to`, and
+`AGENTMAIL_INBOX_EMAIL` is the address shown in Connections. This integration
+stores received mail against matching CRM records. Outbound sending is confined
+to the agent: a retained public route, explicit operator permission, an enabled
+inbox and approval of all three sequence steps are required. Sending is
+idempotent and later steps stop when the enrolled recipient replies.
+
+`GRANOLA_API_KEY` enables agent-owned polling of meeting notes, summaries,
+attendees and transcripts. Imported notes are stored idempotently, projected onto
+matching CRM timelines and retained as unmatched when identity is uncertain.
+`GRANOLA_FOLDER_DOMAIN_MAP` is an optional JSON object for explicitly trusted
+customer-folder mappings, such as `{"RPS":"robertplumb.com.au"}`. Granola sync
+otherwise refuses to collapse a meeting with multiple external company domains.
 
 ## Mailbox sync
 

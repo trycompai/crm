@@ -1,10 +1,18 @@
 import { db, Prisma } from "@crm/db";
-import { MAX_ATTEMPTS, RETIRED_OUTCOME } from "@crm/db/agent-tasks";
+import {
+	DIRECT_KINDS as DIRECT_TASK_KINDS,
+	MAX_ATTEMPTS,
+	PRIORITY,
+	RETIRED_OUTCOME,
+} from "@crm/db/agent-tasks";
 
 export type LeasedTask = {
 	id: string;
 	contactId: string | null;
 	companyId: string | null;
+	prospectId: string | null;
+	dealId: string | null;
+	emailDraftId: string | null;
 	kind: string;
 	reason: string;
 	budget: number;
@@ -17,12 +25,25 @@ export type TaskSubject = {
 	id: string;
 	contactId: string | null;
 	companyId: string | null;
+	prospectId: string | null;
+	dealId: string | null;
+	emailDraftId: string | null;
 	kind: string;
 };
 
 const LEASE_MS = 10 * 60_000;
 
 export { DIRECT_KINDS, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+
+export async function researchInFlightCount(): Promise<number> {
+	return db.agentTask.count({
+		where: {
+			finishedAt: null,
+			leasedUntil: { gt: new Date() },
+			kind: { notIn: [...DIRECT_TASK_KINDS] },
+		},
+	});
+}
 
 export async function claimDue(
 	limit: number,
@@ -35,28 +56,48 @@ export async function claimDue(
 	const list = "only" in kinds ? kinds.only : kinds.except;
 	if ("only" in kinds && list.length === 0) return [];
 
-	const match = Prisma.sql`t2.kind ${"only" in kinds ? Prisma.sql`IN` : Prisma.sql`NOT IN`} (${Prisma.join(list)})`;
-
-	const claimed = await db.$queryRaw<LeasedTask[]>`
-		UPDATE "agentTask" AS t
-		SET "leasedUntil" = ${until},
-			"startedAt" = COALESCE(t."startedAt", ${now}),
-			"attempts" = t."attempts" + 1
-		FROM (
-			SELECT t2.id FROM "agentTask" AS t2
-			WHERE t2."finishedAt" IS NULL
-				AND t2."dueAt" <= ${now}
-				AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
-				AND t2."attempts" < ${MAX_ATTEMPTS}
-				AND ${match}
-			ORDER BY t2."priority" DESC, t2."dueAt" ASC
-			LIMIT ${limit}
-			FOR UPDATE SKIP LOCKED
-		) AS due
-		WHERE t.id = due.id
-		RETURNING t.id, t."contactId", t."companyId", t.kind, t.reason,
-			t.budget, t.attempts, t.priority, t."dueAt";
-	`;
+	const claimed =
+		"only" in kinds
+			? await db.$queryRaw<LeasedTask[]>`
+				UPDATE "agentTask" AS t
+				SET "leasedUntil" = ${until},
+					"startedAt" = COALESCE(t."startedAt", ${now}),
+					"attempts" = t."attempts" + 1
+				FROM (
+					SELECT t2.id FROM "agentTask" AS t2
+					WHERE t2."finishedAt" IS NULL
+						AND t2."dueAt" <= ${now}
+						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
+						AND t2."attempts" < ${MAX_ATTEMPTS}
+						AND t2.kind IN (${Prisma.join(list)})
+					ORDER BY t2."priority" DESC, t2."dueAt" ASC
+					LIMIT ${limit}
+					FOR UPDATE SKIP LOCKED
+				) AS due
+				WHERE t.id = due.id
+				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
+					t.budget, t.attempts, t.priority, t."dueAt";
+			`
+			: await db.$queryRaw<LeasedTask[]>`
+				UPDATE "agentTask" AS t
+				SET "leasedUntil" = ${until},
+					"startedAt" = COALESCE(t."startedAt", ${now}),
+					"attempts" = t."attempts" + 1
+				FROM (
+					SELECT t2.id FROM "agentTask" AS t2
+					WHERE t2."finishedAt" IS NULL
+						AND t2."dueAt" <= ${now}
+						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
+						AND t2."attempts" < ${MAX_ATTEMPTS}
+						AND t2.kind NOT IN (${Prisma.join(list)})
+					ORDER BY t2."priority" DESC, t2."dueAt" ASC
+					LIMIT ${limit}
+					FOR UPDATE SKIP LOCKED
+				) AS due
+				WHERE t.id = due.id
+				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
+					t.budget, t.attempts, t.priority, t."dueAt";
+			`;
 
 	return claimed.sort(
 		(a, b) => b.priority - a.priority || a.dueAt.getTime() - b.dueAt.getTime(),
@@ -73,7 +114,7 @@ export async function retireExhausted(): Promise<TaskSubject[]> {
 		WHERE t."finishedAt" IS NULL
 			AND t."attempts" >= ${MAX_ATTEMPTS}
 			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
-		RETURNING t.id, t."contactId", t."companyId", t.kind;
+		RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind;
 	`;
 }
 
@@ -86,6 +127,7 @@ export async function completeTask(
 		where: { id: taskId, finishedAt: null },
 		data: {
 			finishedAt: new Date(),
+			leasedUntil: null,
 			outcome: outcome.slice(0, 500),
 			...(sessionId ? { sessionId } : {}),
 		},
@@ -95,14 +137,30 @@ export async function completeTask(
 
 	return db.agentTask.findUnique({
 		where: { id: taskId },
-		select: { id: true, contactId: true, companyId: true, kind: true },
+		select: {
+			id: true,
+			contactId: true,
+			companyId: true,
+			prospectId: true,
+			dealId: true,
+			emailDraftId: true,
+			kind: true,
+		},
 	});
 }
 
 export async function taskSubject(taskId: string): Promise<TaskSubject | null> {
 	return db.agentTask.findUnique({
 		where: { id: taskId },
-		select: { id: true, contactId: true, companyId: true, kind: true },
+		select: {
+			id: true,
+			contactId: true,
+			companyId: true,
+			prospectId: true,
+			dealId: true,
+			emailDraftId: true,
+			kind: true,
+		},
 	});
 }
 
@@ -116,9 +174,25 @@ export async function noteSession(
 	});
 }
 
+export async function releaseTaskForRetry(
+	taskId: string,
+	delayMs = 30_000,
+): Promise<void> {
+	await db.agentTask.updateMany({
+		where: { id: taskId, finishedAt: null },
+		data: {
+			dueAt: new Date(Date.now() + delayMs),
+			leasedUntil: null,
+		},
+	});
+}
+
 export async function scheduleTask(input: {
 	contactId?: string | null;
 	companyId?: string | null;
+	prospectId?: string | null;
+	dealId?: string | null;
+	emailDraftId?: string | null;
 	kind: string;
 	reason: string;
 	dueAt: Date;
@@ -131,6 +205,9 @@ export async function scheduleTask(input: {
 			finishedAt: null,
 			contactId: input.contactId ?? undefined,
 			companyId: input.companyId ?? undefined,
+			prospectId: input.prospectId ?? undefined,
+			dealId: input.dealId ?? undefined,
+			emailDraftId: input.emailDraftId ?? undefined,
 		},
 		select: { id: true },
 	});
@@ -147,6 +224,9 @@ export async function scheduleTask(input: {
 		data: {
 			contactId: input.contactId ?? null,
 			companyId: input.companyId ?? null,
+			prospectId: input.prospectId ?? null,
+			dealId: input.dealId ?? null,
+			emailDraftId: input.emailDraftId ?? null,
 			kind: input.kind,
 			reason: input.reason,
 			dueAt: input.dueAt,
@@ -155,6 +235,56 @@ export async function scheduleTask(input: {
 		},
 		select: { id: true },
 	});
+}
+
+export async function queueDueProspectRechecks(limit = 50): Promise<number> {
+	const now = new Date();
+	const due = await db.prospect.findMany({
+		where: {
+			nextResearchAt: { lte: now },
+			status: { notIn: ["PROMOTED", "DISQUALIFIED"] },
+		},
+		orderBy: { nextResearchAt: "asc" },
+		take: limit,
+		select: { id: true, companyName: true },
+	});
+	if (due.length === 0) return 0;
+
+	const open = await db.agentTask.findMany({
+		where: {
+			kind: "prospect-research",
+			finishedAt: null,
+			prospectId: { in: due.map((prospect) => prospect.id) },
+		},
+		select: { prospectId: true },
+	});
+	const queued = new Set(open.map((task) => task.prospectId));
+	const fresh = due.filter((prospect) => !queued.has(prospect.id));
+
+	await Promise.all(
+		fresh.map((prospect) =>
+			scheduleTask({
+				prospectId: prospect.id,
+				kind: "prospect-research",
+				reason: `Scheduled evidence and contact recheck for ${prospect.companyName}`,
+				dueAt: now,
+				priority: PRIORITY.prospectResearch,
+				budget: 10,
+			}),
+		),
+	);
+	if (fresh.length > 0) {
+		await db.prospect.updateMany({
+			where: { id: { in: fresh.map((prospect) => prospect.id) } },
+			data: {
+				status: "RESEARCHING",
+				enrichmentStatus: "PENDING",
+				enrichmentError: null,
+				nextResearchAt: null,
+			},
+		});
+	}
+	return fresh.length;
 }
 
 export async function lastDecision(contactId: string) {

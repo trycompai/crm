@@ -7,6 +7,7 @@ import { DetailSheet } from "@/components/detail-sheet";
 import { CompanySheet } from "./company-sheet";
 import { ContactSheet } from "./contact-sheet";
 import { DealSheet } from "./deal-sheet";
+import { ProspectSheet } from "./prospect-sheet";
 import { type RecordRef, recordKey, useRecordStack } from "./record-stack";
 
 export function RecordSheetHost() {
@@ -35,6 +36,10 @@ export function RecordSheetHost() {
 
 				{shown?.kind === "deal" ? (
 					<DealSheet key={recordKey(shown)} dealId={shown.id} />
+				) : null}
+
+				{shown?.kind === "prospect" ? (
+					<ProspectSheet key={recordKey(shown)} prospectId={shown.id} />
 				) : null}
 			</DetailSheet>
 

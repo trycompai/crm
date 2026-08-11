@@ -6,19 +6,25 @@ import {
 	queueDueAgentRuns,
 } from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
+import { ensureInboundSyncTasks } from "../lib/inbound-sync";
+import { queueDueProspectRechecks } from "../lib/tasks";
 
 export default defineSchedule({
 	cron: "* * * * *",
 	async run({ receive, waitUntil, appAuth }) {
 		waitUntil(
 			Promise.all([
-				drainAll((task) =>
-					receive(crm, {
-						message: brief(task),
-						target: { taskId: task.id },
-						auth: taskAuth(task, appAuth),
-					}),
-				),
+				(async () => {
+					await ensureInboundSyncTasks();
+					await queueDueProspectRechecks();
+					await drainAll((task) =>
+						receive(crm, {
+							message: brief(task),
+							target: { taskId: task.id },
+							auth: taskAuth(task, appAuth),
+						}),
+					);
+				})(),
 				(async () => {
 					await queueDueAgentRuns();
 					const [builderIds, runIds] = await Promise.all([

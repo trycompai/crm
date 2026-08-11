@@ -5,7 +5,7 @@ import { focusOn } from "../lib/focus";
 
 export default defineTool({
 	description:
-		"Read a deal in full: stage and how long it has been there, value, close date, the whole stage history, who is on it with their contact ids, the correspondence and meetings with those people, and the notes. Free — call it first in a deal session.",
+		"Read a deal in full: stage and how long it has been there, value, close date, the whole stage history, who is on it with their contact ids, correspondence, calendar meetings, Granola call summaries with note ids, and notes. Free — call it first in a deal session.",
 	inputSchema: z.object({
 		dealId: z.string(),
 		threads: z

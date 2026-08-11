@@ -60,12 +60,10 @@ export async function runBrand({
 	if (!(await contextDevEnabled())) {
 		const reason =
 			"Context.dev is not configured, so there is nowhere to look.";
-		await settle(companyId, EnrichmentStatus.SKIPPED, reason);
 		return { enriched: false, reason };
 	}
 
 	if (!company.domain) {
-		await settle(companyId, EnrichmentStatus.SKIPPED, "No domain to look up.");
 		return { enriched: false, reason: "No domain on this company." };
 	}
 
@@ -162,8 +160,8 @@ async function settle(
 	status: EnrichmentStatus,
 	error: string,
 ): Promise<void> {
-	await db.company.update({
-		where: { id: companyId },
+	await db.company.updateMany({
+		where: { id: companyId, enrichmentStatus: EnrichmentStatus.RUNNING },
 		data: { enrichmentStatus: status, enrichmentError: error },
 	});
 }

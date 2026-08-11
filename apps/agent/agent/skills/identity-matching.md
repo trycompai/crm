@@ -28,7 +28,10 @@ That is the shape of every match: guess where to look, never what you will find.
 0. **`read_crm_history` first.** It is free and it is often decisive. If they
    have ever replied to us from that address, you already have the strongest
    evidence available anywhere — `crm.thread-reply` — and a signature block may
-   hand you their title as well. Start every match here, not at a search engine.
+   hand you their title as well. If it returns Granola call ids, read the relevant
+   call before searching. A transcript that attributes their own words to the
+   matching email and name is `crm.granola-transcript`; an invitee list or summary
+   alone is not identity proof. Start every match here, not at a search engine.
 1. **`resolve_linkedin_profile`** with the email and company. It decomposes the
    local part and returns candidate slugs. These are leads, not answers.
 2. **`get_linkedin_profile`** on each candidate, passing the email, company name
@@ -57,6 +60,7 @@ Call `identify_contact` with what you actually saw:
 | --- | --- | --- |
 | Both checks pass | `linkedin.employer-and-name` | Written to the record. |
 | They replied from that address | `crm.thread-reply` | Written to the record. |
+| Their attributed Granola transcript matches their email and name | `crm.granola-transcript` | Written to the record. |
 | One check passes | `employer-only`, or the profile as `search.cites-profile` | Offered to a rep as a suggestion. |
 | Sources disagree | add a `contradiction` entry | Held. Nobody is shown a guess. |
 

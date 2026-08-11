@@ -17,7 +17,9 @@ import {
 	Injectable,
 	Logger,
 	NotFoundException,
+	Optional,
 } from "@nestjs/common";
+import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	ActivityStampService,
 	type StampTargets,
@@ -50,6 +52,9 @@ import type {
 	DealDetachContactInput,
 	DealListInput,
 	DealUpdateInput,
+	OnboardingItemCreateInput,
+	OnboardingItemUpdateInput,
+	OnboardingUpdateInput,
 	SetStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
@@ -105,6 +110,7 @@ export class DealsService {
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
+		@Optional() private readonly agent?: AgentTriggerService,
 	) {}
 
 	async list(input: DealListInput) {
@@ -132,6 +138,7 @@ export class DealsService {
 						closedAt: true,
 						company: { select: COMPANY_SELECT },
 						owner: { select: OWNER_SELECT },
+						_count: { select: { contacts: true } },
 						lastActivityAt: true,
 						createdAt: true,
 					},
@@ -159,6 +166,7 @@ export class DealsService {
 					closedAt,
 					lastActivityAt,
 					createdAt,
+					_count,
 					...row
 				}) => ({
 					...row,
@@ -167,6 +175,7 @@ export class DealsService {
 					expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
 					closedAt: closedAt?.toISOString() ?? null,
 					lastActivityAt: lastActivityAt?.toISOString() ?? null,
+					contactCount: _count.contacts,
 					createdAt: createdAt.toISOString(),
 					fields: tableFields.get(row.id) ?? {},
 				}),
@@ -200,12 +209,42 @@ export class DealsService {
 				expectedCloseDate: true,
 				closedAt: true,
 				closedReason: true,
+				lastActivityAt: true,
 				createdAt: true,
 				company: { select: { ...COMPANY_SELECT, industry: true } },
 				owner: { select: OWNER_SELECT },
 				contacts: {
 					select: { role: true, contact: { select: CONTACT_SELECT } },
 					orderBy: { contact: { firstName: "asc" } },
+				},
+				onboarding: {
+					select: {
+						id: true,
+						status: true,
+						objective: true,
+						systemsSummary: true,
+						dataSummary: true,
+						brainPlan: true,
+						agentPlannedAt: true,
+						targetLiveAt: true,
+						createdAt: true,
+						updatedAt: true,
+						items: {
+							orderBy: [{ kind: "asc" }, { position: "asc" }],
+							select: {
+								id: true,
+								kind: true,
+								status: true,
+								name: true,
+								details: true,
+								ownerName: true,
+								source: true,
+								dueAt: true,
+								position: true,
+								updatedAt: true,
+							},
+						},
+					},
 				},
 			},
 		});
@@ -214,7 +253,15 @@ export class DealsService {
 			throw new NotFoundException(`No deal with id ${id}.`);
 		}
 
-		const { contacts, amount, baseAmount, fxRate, fxRateAt, ...rest } = deal;
+		const {
+			contacts,
+			amount,
+			baseAmount,
+			fxRate,
+			fxRateAt,
+			onboarding,
+			...rest
+		} = deal;
 
 		return {
 			...rest,
@@ -227,8 +274,23 @@ export class DealsService {
 			stageChangedAt: deal.stageChangedAt.toISOString(),
 			expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			closedAt: deal.closedAt?.toISOString() ?? null,
+			lastActivityAt: deal.lastActivityAt?.toISOString() ?? null,
 			createdAt: deal.createdAt.toISOString(),
 			contacts: contacts.map(({ role, contact }) => ({ ...contact, role })),
+			onboarding: onboarding
+				? {
+						...onboarding,
+						agentPlannedAt: onboarding.agentPlannedAt?.toISOString() ?? null,
+						targetLiveAt: onboarding.targetLiveAt?.toISOString() ?? null,
+						createdAt: onboarding.createdAt.toISOString(),
+						updatedAt: onboarding.updatedAt.toISOString(),
+						items: onboarding.items.map((item) => ({
+							...item,
+							dueAt: item.dueAt?.toISOString() ?? null,
+							updatedAt: item.updatedAt.toISOString(),
+						})),
+					}
+				: null,
 		};
 	}
 
@@ -263,6 +325,9 @@ export class DealsService {
 			});
 
 			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
+			if (stage === "CLOSED_WON") {
+				await this.ensureOnboarding(deal.id, deal.companyId, input.ownerId);
+			}
 
 			return deal;
 		} catch (error) {
@@ -373,6 +438,14 @@ export class DealsService {
 		}
 
 		if (deal.stage === input.stage) {
+			if (input.stage === "CLOSED_WON") {
+				const current = await this.db.deal.findUnique({
+					where: { id: deal.id },
+					select: { ownerId: true },
+				});
+				if (current)
+					await this.ensureOnboarding(deal.id, deal.companyId, current.ownerId);
+			}
 			return { id: deal.id, stage: deal.stage, changed: false };
 		}
 
@@ -415,6 +488,14 @@ export class DealsService {
 			{ companyId: deal.companyId, dealId: deal.id },
 			new Date(),
 		);
+		if (input.stage === "CLOSED_WON") {
+			const current = await this.db.deal.findUnique({
+				where: { id: deal.id },
+				select: { ownerId: true },
+			});
+			if (current)
+				await this.ensureOnboarding(deal.id, deal.companyId, current.ownerId);
+		}
 
 		this.logger.log({
 			message: "Deal stage changed",
@@ -424,6 +505,129 @@ export class DealsService {
 		});
 
 		return { ...updated, changed: true };
+	}
+
+	async updateOnboarding(input: OnboardingUpdateInput) {
+		const onboarding = await this.db.customerOnboarding.findUnique({
+			where: { dealId: input.dealId },
+			select: { id: true },
+		});
+		if (!onboarding)
+			throw new NotFoundException("This deal has no customer onboarding yet.");
+		return this.db.customerOnboarding.update({
+			where: { id: onboarding.id },
+			data: {
+				status: input.status,
+				objective: input.objective,
+				systemsSummary: input.systemsSummary,
+				dataSummary: input.dataSummary,
+				brainPlan: input.brainPlan,
+				targetLiveAt:
+					input.targetLiveAt === undefined
+						? undefined
+						: input.targetLiveAt
+							? new Date(input.targetLiveAt)
+							: null,
+			},
+			select: { id: true, status: true, updatedAt: true },
+		});
+	}
+
+	async addOnboardingItem(input: OnboardingItemCreateInput) {
+		const onboarding = await this.db.customerOnboarding.findUnique({
+			where: { dealId: input.dealId },
+			select: {
+				id: true,
+				items: {
+					select: { position: true },
+					orderBy: { position: "desc" },
+					take: 1,
+				},
+			},
+		});
+		if (!onboarding)
+			throw new NotFoundException("This deal has no customer onboarding yet.");
+		return this.db.onboardingItem.create({
+			data: {
+				onboardingId: onboarding.id,
+				kind: input.kind,
+				name: input.name,
+				details: input.details,
+				ownerName: input.ownerName,
+				position: (onboarding.items[0]?.position ?? -1) + 1,
+			},
+			select: { id: true },
+		});
+	}
+
+	async updateOnboardingItem(input: OnboardingItemUpdateInput) {
+		const result = await this.db.onboardingItem.updateMany({
+			where: { id: input.id, onboarding: { dealId: input.dealId } },
+			data: {
+				status: input.status,
+				name: input.name,
+				details: input.details,
+				ownerName: input.ownerName,
+				dueAt:
+					input.dueAt === undefined
+						? undefined
+						: input.dueAt
+							? new Date(input.dueAt)
+							: null,
+			},
+		});
+		if (result.count === 0)
+			throw new NotFoundException("Onboarding item not found.");
+		return { id: input.id };
+	}
+
+	private async ensureOnboarding(
+		dealId: string,
+		companyId: string,
+		ownerId: string,
+	): Promise<void> {
+		const onboarding = await this.db.customerOnboarding.upsert({
+			where: { dealId },
+			create: {
+				dealId,
+				companyId,
+				ownerId,
+				items: {
+					create: [
+						{
+							kind: "DECISION",
+							name: "Confirm the onboarding outcome and success measure",
+							position: 0,
+						},
+						{
+							kind: "SYSTEM",
+							name: "Inventory current systems and their owners",
+							position: 1,
+						},
+						{
+							kind: "DATA_SOURCE",
+							name: "Map structured and unstructured customer data",
+							position: 2,
+						},
+						{
+							kind: "ACCESS",
+							name: "Agree secure access and permissions",
+							position: 3,
+						},
+						{
+							kind: "INGESTION",
+							name: "Approve the first Lode Brain ingestion plan",
+							position: 4,
+						},
+					],
+				},
+			},
+			update: { companyId, ownerId },
+			select: { agentPlannedAt: true },
+		});
+		if (!onboarding.agentPlannedAt) {
+			await this.agent?.planCustomerOnboarding(dealId, companyId);
+		}
 	}
 
 	async contactOptions(dealId: string) {

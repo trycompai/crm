@@ -11,8 +11,9 @@ are in `docs/setup.md`.
 
 ## Model
 
-Default `zai/glm-5.2-fast`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the
-agent and the API both need it.
+Default `zai/glm-4.7-flashx`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings` because
+the agent and the API both need it. Luna is the affordable default; change the
+`AppSetting` only after checking current Gateway pricing and tool support.
 
 - **A row (`AppSetting`), not an env var**, via `defineDynamic` on `session.started`.
   Open conversations keep their model — prompt caches are per model.

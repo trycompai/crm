@@ -123,3 +123,45 @@ export const dealBulkStageInput = bulkIdsInput.extend({
 });
 
 export type DealBulkStageInput = z.infer<typeof dealBulkStageInput>;
+
+export const onboardingUpdateInput = z.object({
+	dealId: z.string(),
+	status: z
+		.enum(["DISCOVERY", "SYSTEMS", "DATA_ACCESS", "INGESTION", "READY", "LIVE"])
+		.optional(),
+	objective: z.string().trim().max(4_000).nullable().optional(),
+	systemsSummary: z.string().trim().max(12_000).nullable().optional(),
+	dataSummary: z.string().trim().max(12_000).nullable().optional(),
+	brainPlan: z.string().trim().max(12_000).nullable().optional(),
+	targetLiveAt: z.string().datetime().nullable().optional(),
+});
+
+export type OnboardingUpdateInput = z.infer<typeof onboardingUpdateInput>;
+
+export const onboardingItemCreateInput = z.object({
+	dealId: z.string(),
+	kind: z.enum(["SYSTEM", "DATA_SOURCE", "ACCESS", "INGESTION", "DECISION"]),
+	name: z.string().trim().min(1).max(240),
+	details: z.string().trim().max(4_000).nullable().optional(),
+	ownerName: z.string().trim().max(160).nullable().optional(),
+});
+
+export type OnboardingItemCreateInput = z.infer<
+	typeof onboardingItemCreateInput
+>;
+
+export const onboardingItemUpdateInput = z.object({
+	id: z.string().cuid(),
+	dealId: z.string(),
+	status: z
+		.enum(["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETE"])
+		.optional(),
+	name: z.string().trim().min(1).max(240).optional(),
+	details: z.string().trim().max(4_000).nullable().optional(),
+	ownerName: z.string().trim().max(160).nullable().optional(),
+	dueAt: z.string().datetime().nullable().optional(),
+});
+
+export type OnboardingItemUpdateInput = z.infer<
+	typeof onboardingItemUpdateInput
+>;
