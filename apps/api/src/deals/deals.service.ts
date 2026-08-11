@@ -34,6 +34,7 @@ import {
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
+import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -110,6 +111,7 @@ export class DealsService {
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
+		private readonly cleanup: OperatingKernelCleanupService,
 		@Optional() private readonly agent?: AgentTriggerService,
 	) {}
 
@@ -404,6 +406,7 @@ export class DealsService {
 		try {
 			deleted = await this.db.$transaction(async (tx) => {
 				const targets = await this.stamp.targetsOf({ dealId: id }, tx);
+				await this.cleanup.beforeSubjectDelete(tx, { type: "DEAL", id });
 
 				const deal = await tx.deal.delete({
 					where: { id },

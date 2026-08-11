@@ -24,6 +24,7 @@ import { blankToNull, toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
+import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -101,6 +102,7 @@ export class CompaniesService {
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
+		private readonly cleanup: OperatingKernelCleanupService,
 	) {}
 
 	async list(input: CompanyListInput): Promise<ListResult<CompanyRow>> {
@@ -403,7 +405,7 @@ export class CompaniesService {
 					tx,
 				);
 
-				await tx.agentTask.deleteMany({ where: { companyId: id } });
+				await this.cleanup.beforeCompanyDelete(tx, id);
 
 				const company = await tx.company.delete({
 					where: { id },

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { listInput } from "../trpc/list-input";
 
-export const subjectTypeInput = z.enum([
+export const subjectTypeValues = [
 	"WORKSPACE",
 	"USER",
 	"COMPANY",
@@ -10,10 +10,22 @@ export const subjectTypeInput = z.enum([
 	"DEAL",
 	"EMAIL_DRAFT",
 	"WORK_ITEM",
+	"CAMPAIGN",
+	"CONTENT_ITEM",
+	"CONTENT_VARIANT",
+	"EXPERIMENT",
+	"SOCIAL_MENTION",
+	"SUPPORT_CASE",
 	"CUSTOMER_ACCOUNT",
 	"CUSTOMER_INSTANCE",
 	"PROVIDER_ACCOUNT",
-]);
+	"PROVIDER_RESOURCE",
+	"PLAN",
+	"CONTROL_COMMAND",
+	"PROVIDER_OPERATION",
+] as const;
+
+export const subjectTypeInput = z.enum(subjectTypeValues);
 
 export type KernelSubjectType = z.infer<typeof subjectTypeInput>;
 
@@ -23,7 +35,7 @@ export const subjectRefInput = z.object({
 });
 
 export type SubjectRef = {
-	type: string;
+	type: KernelSubjectType;
 	id: string;
 };
 

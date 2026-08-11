@@ -103,6 +103,7 @@ function serializeWork(work: WorkRecord, subject: SubjectSummary) {
 		nextReviewAt: isoDate(work.nextReviewAt),
 		reason: work.reason,
 		primaryAction: work.primaryAction,
+		evidence: work.evidence,
 		owner: ownerSummary(work.owner),
 		subject,
 		version: work.version,
@@ -338,10 +339,32 @@ export class WorkService {
 			| WorkReasonInput,
 		userId: string,
 	) {
-		const requestHash = kernelRequestHash({ operation, ...input });
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation,
+			...input,
+		});
 		return this.db.$transaction(async (tx) => {
 			await this.idempotency.lock(tx, input.clientRequestId);
 			const member = await this.access.assertMember(userId, tx);
+			const work = await tx.workItem.findUnique({
+				where: { id: input.id },
+				select: WORK_SELECT,
+			});
+			if (!work)
+				throw new NotFoundException(`No work item with id ${input.id}.`);
+			if (operation === "assign") {
+				if (!member.isAdmin) {
+					throw new ForbiddenException(
+						"Only a workspace owner or admin can assign work.",
+					);
+				}
+			} else if (
+				operation !== "claim" ||
+				(work.ownerId !== null && work.ownerId !== userId && !member.isAdmin)
+			) {
+				await this.access.assertCanActOnWork(userId, work.ownerId, tx);
+			}
 			const replay = await this.idempotency.replay<WorkMutationResult>(
 				tx,
 				input.clientRequestId,
@@ -349,12 +372,6 @@ export class WorkService {
 			);
 			if (replay) return replay;
 
-			const work = await tx.workItem.findUnique({
-				where: { id: input.id },
-				select: WORK_SELECT,
-			});
-			if (!work)
-				throw new NotFoundException(`No work item with id ${input.id}.`);
 			if (work.version !== input.expectedVersion) {
 				throw new ConflictException("Work item version is stale.");
 			}
@@ -362,6 +379,15 @@ export class WorkService {
 			const now = new Date();
 			let data: Prisma.WorkItemUncheckedUpdateManyInput;
 			if (operation === "claim") {
+				if (
+					work.ownerId !== null &&
+					work.ownerId !== userId &&
+					!member.isAdmin
+				) {
+					throw new ForbiddenException(
+						"You can only claim unassigned work or replay your own claim.",
+					);
+				}
 				if (work.state !== "OPEN" || work.ownerId !== null) {
 					throw new ConflictException(
 						"Only unassigned open work can be claimed.",

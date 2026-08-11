@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 import { OutreachService } from "../src/outreach/outreach.service";
 
 const suffix = crypto.randomUUID();
@@ -13,7 +14,11 @@ const recipient = `person@${domain}`;
 const agent = {
 	workQueued: () => {},
 } as unknown as AgentTriggerService;
-const outreach = new OutreachService(db, agent);
+const outreach = new OutreachService(
+	db,
+	agent,
+	new OperatingKernelCleanupService(),
+);
 let companyId = "";
 let contactId = "";
 let prospectId = "";

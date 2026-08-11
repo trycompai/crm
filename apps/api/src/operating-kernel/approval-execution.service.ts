@@ -1,4 +1,4 @@
-import { type Db } from "@crm/db";
+import { type Db, type Prisma } from "@crm/db";
 import { ConflictException, Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
@@ -15,7 +15,7 @@ export class ApprovalExecutionService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async consumeApproved(input: ConsumeApprovedInput) {
-		return this.db.$transaction(async (tx) => {
+		const result = await this.db.$transaction(async (tx) => {
 			await tx.$queryRaw`
 				SELECT id
 				FROM "approvalRequest"
@@ -40,8 +40,10 @@ export class ApprovalExecutionService {
 			if (
 				request.status === "EXECUTED" &&
 				request.contentDigest === input.contentDigest &&
-				request.version === input.expectedVersion + 1
+				request.version === input.expectedVersion + 1 &&
+				request.invalidationVersion === input.invalidationVersion
 			) {
+				await this.assertMatchingReceipt(tx, input);
 				return {
 					id: request.id,
 					status: request.status,
@@ -59,6 +61,7 @@ export class ApprovalExecutionService {
 						},
 						data: { status: "EXPIRED", version: { increment: 1 } },
 					});
+					return { expired: true as const };
 				}
 				throw new ConflictException("Approval request is not executable.");
 			}
@@ -80,23 +83,10 @@ export class ApprovalExecutionService {
 					},
 					data: { status: "EXPIRED", version: { increment: 1 } },
 				});
-				throw new ConflictException("Approval request has expired.");
+				return { expired: true as const };
 			}
 
-			const receipt = await tx.actionReceipt.findFirst({
-				where: {
-					id: input.actionReceiptId,
-					approvalRequestId: request.id,
-					requestHash: input.contentDigest,
-					status: "SUCCEEDED",
-				},
-				select: { id: true },
-			});
-			if (!receipt) {
-				throw new ConflictException(
-					"A matching successful action receipt is required.",
-				);
-			}
+			await this.assertMatchingReceipt(tx, input);
 
 			const updated = await tx.approvalRequest.updateMany({
 				where: {
@@ -121,5 +111,29 @@ export class ApprovalExecutionService {
 				version: input.expectedVersion + 1,
 			};
 		});
+		if ("expired" in result) {
+			throw new ConflictException("Approval request has expired.");
+		}
+		return result;
+	}
+
+	private async assertMatchingReceipt(
+		tx: Prisma.TransactionClient,
+		input: ConsumeApprovedInput,
+	): Promise<void> {
+		const receipt = await tx.actionReceipt.findFirst({
+			where: {
+				id: input.actionReceiptId,
+				approvalRequestId: input.approvalRequestId,
+				requestHash: input.contentDigest,
+				status: "SUCCEEDED",
+			},
+			select: { id: true },
+		});
+		if (!receipt) {
+			throw new ConflictException(
+				"A matching successful action receipt is required.",
+			);
+		}
 	}
 }

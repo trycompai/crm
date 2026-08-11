@@ -24,6 +24,7 @@ import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
 import { blankToNull, normalizeEmail, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
+import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -119,6 +120,7 @@ export class ContactsService {
 		private readonly queue: AgentQueueService,
 		private readonly stamp: ActivityStampService,
 		private readonly fields: FieldsService,
+		private readonly cleanup: OperatingKernelCleanupService,
 	) {}
 
 	async list(input: ContactListInput): Promise<ListResult<ContactRow>> {
@@ -333,8 +335,10 @@ export class ContactsService {
 			deleted = await this.db.$transaction(async (tx) => {
 				const targets = await this.stamp.targetsOf({ contactId: id }, tx);
 
-				await tx.agentTask.deleteMany({ where: { contactId: id } });
-				await tx.agentEvent.deleteMany({ where: { contactId: id } });
+				await this.cleanup.beforeSubjectDelete(tx, {
+					type: "CONTACT",
+					id,
+				});
 
 				const contact = await tx.contact.delete({
 					where: { id },

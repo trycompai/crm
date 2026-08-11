@@ -11,6 +11,7 @@ import { EnrichmentLogService } from "../src/crm/enrichment-log.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { FieldsService } from "../src/fields/fields.service";
 import { MailboxMatchService } from "../src/mailbox/mailbox-match.service";
+import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "record-delete-spec";
 const domain = `delete-${suffix}.test`;
@@ -33,6 +34,7 @@ const directory = new CompanyDirectoryService(db, agent);
 const log = new EnrichmentLogService(db, stamp);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);
+const cleanup = new OperatingKernelCleanupService();
 
 const fields = new FieldsService(db, agent);
 const contacts = new ContactsService(
@@ -42,6 +44,7 @@ const contacts = new ContactsService(
 	queue,
 	stamp,
 	fields,
+	cleanup,
 );
 const companies = new CompaniesService(
 	db,
@@ -51,6 +54,7 @@ const companies = new CompaniesService(
 	stamp,
 	conversion,
 	fields,
+	cleanup,
 );
 const match = new MailboxMatchService(db, directory, agent, log);
 
@@ -69,7 +73,11 @@ const ours = {
 	OR: domains.map((host) => ({ email: { endsWith: `@${host}` } })),
 };
 
-async function parked(subject: { contactId?: string; companyId?: string }) {
+async function parked(subject: {
+	contactId?: string;
+	companyId?: string;
+	dealId?: string;
+}) {
 	return db.agentTask.create({
 		data: {
 			...subject,
@@ -82,6 +90,7 @@ async function parked(subject: { contactId?: string; companyId?: string }) {
 }
 
 async function clean() {
+	await db.agentEvent.deleteMany({ where: { id: `evt-${suffix}` } });
 	const [existingContacts, existingCompanies] = await Promise.all([
 		db.contact.findMany({ where: ours, select: { id: true } }),
 		db.company.findMany({
@@ -151,8 +160,13 @@ describe("deleting a contact", () => {
 		expect(
 			await db.contact.findUnique({ where: { id: contactId } }),
 		).toBeNull();
-		expect(await db.agentTask.count({ where: { contactId } })).toBe(0);
-		expect(await db.agentEvent.count({ where: { contactId } })).toBe(0);
+		expect(
+			await db.agentTask.findMany({
+				where: { contactId },
+				select: { state: true, outcome: true },
+			}),
+		).toEqual([{ state: "CANCELLED", outcome: "SUBJECT_DELETED" }]);
+		expect(await db.agentEvent.count({ where: { contactId } })).toBe(1);
 	});
 
 	it("remembers the address so the sync cannot bring them back", async () => {
@@ -261,6 +275,8 @@ describe("deleting a company", () => {
 		});
 
 		await parked({ companyId: company.id });
+		await parked({ contactId: contact.id });
+		await parked({ dealId: deal.id });
 
 		expect(await companies.delete(company.id)).toEqual({
 			id: company.id,
@@ -268,9 +284,24 @@ describe("deleting a company", () => {
 		});
 
 		expect(await db.deal.findUnique({ where: { id: deal.id } })).toBeNull();
-		expect(await db.agentTask.count({ where: { companyId: company.id } })).toBe(
-			0,
-		);
+		expect(
+			await db.agentTask.findMany({
+				where: { companyId: company.id },
+				select: { state: true, outcome: true },
+			}),
+		).toEqual([{ state: "CANCELLED", outcome: "SUBJECT_DELETED" }]);
+		expect(
+			await db.agentTask.findMany({
+				where: { contactId: contact.id },
+				select: { state: true, outcome: true },
+			}),
+		).toEqual([{ state: "CANCELLED", outcome: "SUBJECT_DELETED" }]);
+		expect(
+			await db.agentTask.findMany({
+				where: { dealId: deal.id },
+				select: { state: true, outcome: true },
+			}),
+		).toEqual([{ state: "CANCELLED", outcome: "SUBJECT_DELETED" }]);
 
 		const survivor = await db.contact.findUnique({
 			where: { id: contact.id },

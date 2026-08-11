@@ -7,17 +7,20 @@ import { ConversionService } from "../src/currency/conversion.service";
 import { DashboardService } from "../src/dashboard/dashboard.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "currency-totals-spec";
 const userId = `user-${suffix}`;
 const domain = `money-${suffix}.test`;
 
 const conversion = new ConversionService(db);
+const cleanup = new OperatingKernelCleanupService();
 const deals = new DealsService(
 	db,
 	new ActivityStampService(db),
 	conversion,
 	new FieldsService(db, { fieldBackfill: async () => undefined } as never),
+	cleanup,
 );
 const dashboard = new DashboardService(db, conversion);
 

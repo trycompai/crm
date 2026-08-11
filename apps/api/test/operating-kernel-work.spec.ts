@@ -42,6 +42,7 @@ async function createWork(input: {
 	state?: "OPEN" | "IN_PROGRESS" | "WAITING" | "BLOCKED" | "DONE" | "DISMISSED";
 	queue?: string;
 	subjectId?: string;
+	evidence?: { source: string; facts: string[] };
 }) {
 	workIds.push(input.id);
 	return db.workItem.create({
@@ -56,6 +57,7 @@ async function createWork(input: {
 			reason: `Reason ${input.id}`,
 			state: input.state ?? "OPEN",
 			primaryAction: `Action ${input.id}`,
+			evidence: input.evidence,
 		},
 	});
 }
@@ -153,7 +155,11 @@ afterAll(async () => {
 
 describe("operating kernel Work", () => {
 	it("requires workspace membership and returns paginated, resolved rows and facets", async () => {
-		await createWork({ id: `kernel-list-a-${suffix}`, queue: "alpha" });
+		await createWork({
+			id: `kernel-list-a-${suffix}`,
+			queue: "alpha",
+			evidence: { source: "test", facts: ["persisted"] },
+		});
 		await createWork({
 			id: `kernel-list-b-${suffix}`,
 			queue: "beta",
@@ -174,6 +180,10 @@ describe("operating kernel Work", () => {
 		expect(result.facetCounts.queue?.alpha).toBe(1);
 		expect(result.rows[0]?.subject.label).toBe("Kernel Company");
 		expect(result.rows[0]?.subject.missing).toBe(false);
+		expect(result.rows[0]?.evidence).toEqual({
+			source: "test",
+			facts: ["persisted"],
+		});
 
 		const missing = await service.detail(
 			`kernel-list-missing-${suffix}`,
@@ -181,6 +191,7 @@ describe("operating kernel Work", () => {
 		);
 		expect(missing.subject.label).toBeNull();
 		expect(missing.subject.missing).toBe(true);
+		expect(missing.evidence).toBeNull();
 		await expect(
 			service.list(workListInput.parse({}), outsiderId),
 		).rejects.toBeInstanceOf(ForbiddenException);
@@ -200,10 +211,12 @@ describe("operating kernel Work", () => {
 		});
 		expect(await service.claim(claimInput, memberId)).toEqual(claimed);
 
-		const started = await service.start(
-			{ id, expectedVersion: 1, clientRequestId: requestId() },
-			memberId,
-		);
+		const startInput = {
+			id,
+			expectedVersion: 1,
+			clientRequestId: requestId(),
+		};
+		const started = await service.start(startInput, memberId);
 		expect(started.state).toBe("IN_PROGRESS");
 		expect(started.startedAt).toBeString();
 
@@ -219,6 +232,7 @@ describe("operating kernel Work", () => {
 			memberId,
 		);
 		expect(waiting).toMatchObject({ state: "WAITING", nextReviewAt });
+		expect(await service.start(startInput, memberId)).toEqual(started);
 
 		const blocked = await service.block(
 			{
@@ -250,6 +264,17 @@ describe("operating kernel Work", () => {
 				memberId,
 			),
 		).rejects.toThrow("Terminal work cannot transition");
+	});
+
+	it("binds replay receipts to the authenticated actor", async () => {
+		const id = `kernel-actor-${suffix}`;
+		await createWork({ id });
+		const input = { id, expectedVersion: 0, clientRequestId: requestId() };
+
+		await service.claim(input, memberId);
+		await expect(service.claim(input, secondMemberId)).rejects.toThrow(
+			"assigned to you",
+		);
 	});
 
 	it("enforces role and owner authority", async () => {
@@ -320,6 +345,7 @@ describe("operating kernel Work", () => {
 	it("cleans linked kernel records without erasing their history", async () => {
 		const workId = `kernel-cleanup-work-${suffix}`;
 		const approvalId = `kernel-cleanup-approval-${suffix}`;
+		const approvedApprovalId = `kernel-cleanup-approved-${suffix}`;
 		const taskId = `kernel-cleanup-task-${suffix}`;
 		await createWork({ id: workId });
 		await db.approvalRequest.create({
@@ -334,6 +360,23 @@ describe("operating kernel Work", () => {
 				policyVersion: "test-v1",
 				expiresAt: new Date(Date.now() + 60_000),
 				idempotencyKey: `approval-${suffix}`,
+			},
+		});
+		await db.approvalRequest.create({
+			data: {
+				id: approvedApprovalId,
+				action: "outreach.send",
+				contentDigest: `approved-digest-${suffix}`,
+				contentSnapshot: { subject: "Approved" },
+				targetType: "COMPANY",
+				targetId: companyId,
+				risk: "LOW",
+				policyVersion: "test-v1",
+				expiresAt: new Date(Date.now() + 60_000),
+				status: "APPROVED",
+				approverId: memberId,
+				decidedAt: new Date(),
+				idempotencyKey: `approved-${suffix}`,
 			},
 		});
 		await db.agentTask.create({
@@ -356,6 +399,12 @@ describe("operating kernel Work", () => {
 		expect(
 			await db.approvalRequest.findUnique({
 				where: { id: approvalId },
+				select: { status: true },
+			}),
+		).toEqual({ status: "INVALIDATED" });
+		expect(
+			await db.approvalRequest.findUnique({
+				where: { id: approvedApprovalId },
 				select: { status: true },
 			}),
 		).toEqual({ status: "INVALIDATED" });

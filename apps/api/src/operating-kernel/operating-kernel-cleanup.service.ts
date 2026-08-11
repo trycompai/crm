@@ -9,10 +9,10 @@ export class OperatingKernelCleanupService {
 		ref: SubjectRef,
 	): Promise<void> {
 		const now = new Date();
-		const subjectType = ref.type as SubjectType;
+		const subjectType: SubjectType = ref.type;
 		await client.approvalRequest.updateMany({
 			where: {
-				status: "PENDING",
+				status: { in: ["PENDING", "APPROVED"] },
 				targetType: subjectType,
 				targetId: ref.id,
 			},
@@ -21,6 +21,33 @@ export class OperatingKernelCleanupService {
 				invalidationVersion: { increment: 1 },
 				version: { increment: 1 },
 				decidedAt: now,
+			},
+		});
+
+		const legacyWhere: Prisma.AgentTaskWhereInput | undefined =
+			subjectType === "COMPANY"
+				? { companyId: ref.id }
+				: subjectType === "CONTACT"
+					? { contactId: ref.id }
+					: subjectType === "DEAL"
+						? { dealId: ref.id }
+						: subjectType === "EMAIL_DRAFT"
+							? { emailDraftId: ref.id }
+							: undefined;
+		await client.agentTask.updateMany({
+			where: {
+				state: {
+					notIn: ["SUCCEEDED", "FAILED", "UNKNOWN", "CANCELLED"],
+				},
+				OR: [
+					{ subjectType, subjectId: ref.id },
+					...(legacyWhere ? [legacyWhere] : []),
+				],
+			},
+			data: {
+				state: "CANCELLED",
+				finishedAt: now,
+				outcome: "SUBJECT_DELETED",
 			},
 		});
 
@@ -55,18 +82,31 @@ export class OperatingKernelCleanupService {
 				},
 			});
 		}
+	}
+	async beforeCompanyDelete(
+		client: Prisma.TransactionClient,
+		companyId: string,
+	): Promise<void> {
+		const [contacts, deals] = await Promise.all([
+			client.contact.findMany({
+				where: { companyId },
+				select: { id: true },
+			}),
+			client.deal.findMany({
+				where: { companyId },
+				select: { id: true },
+			}),
+		]);
 
-		await client.agentTask.updateMany({
-			where: {
-				subjectType,
-				subjectId: ref.id,
-				state: { notIn: ["SUCCEEDED", "FAILED", "UNKNOWN", "CANCELLED"] },
-			},
-			data: {
-				state: "CANCELLED",
-				finishedAt: now,
-				outcome: "SUBJECT_DELETED",
-			},
-		});
+		await this.beforeSubjectDelete(client, { type: "COMPANY", id: companyId });
+		for (const contact of contacts) {
+			await this.beforeSubjectDelete(client, {
+				type: "CONTACT",
+				id: contact.id,
+			});
+		}
+		for (const deal of deals) {
+			await this.beforeSubjectDelete(client, { type: "DEAL", id: deal.id });
+		}
 	}
 }

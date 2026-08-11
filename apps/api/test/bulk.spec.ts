@@ -10,6 +10,7 @@ import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "bulk-spec";
 const domain = `bulk-${suffix}.test`;
@@ -27,6 +28,7 @@ const stamp = new ActivityStampService(db);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);
 const directory = new CompanyDirectoryService(db, agent);
+const cleanup = new OperatingKernelCleanupService();
 
 const fields = new FieldsService(db, agent);
 const contacts = new ContactsService(
@@ -36,6 +38,7 @@ const contacts = new ContactsService(
 	queue,
 	stamp,
 	fields,
+	cleanup,
 );
 const companies = new CompaniesService(
 	db,
@@ -45,8 +48,9 @@ const companies = new CompaniesService(
 	stamp,
 	conversion,
 	fields,
+	cleanup,
 );
-const deals = new DealsService(db, stamp, conversion, fields);
+const deals = new DealsService(db, stamp, conversion, fields, cleanup);
 
 let companyId: string;
 

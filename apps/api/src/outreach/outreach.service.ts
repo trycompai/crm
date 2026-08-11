@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
+import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 
 const EDITABLE = new Set<EmailDraftStatus>([
 	"DRAFT",
@@ -20,6 +21,7 @@ export class OutreachService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
+		private readonly cleanup: OperatingKernelCleanupService,
 	) {}
 
 	async supplyStatus() {
@@ -433,42 +435,60 @@ export class OutreachService {
 	}
 
 	async deleteDraft(draftId: string) {
-		const result = await this.db.emailDraft.deleteMany({
-			where: {
-				id: draftId,
-				status: { in: ["DRAFT", "PENDING_APPROVAL", "REJECTED"] },
-			},
+		await this.db.$transaction(async (tx) => {
+			const draft = await tx.emailDraft.findFirst({
+				where: {
+					id: draftId,
+					status: { in: [...EDITABLE] },
+				},
+				select: { id: true },
+			});
+			if (!draft)
+				throw new BadRequestException(
+					"Only unsent draft proposals can be deleted.",
+				);
+			await this.cleanup.beforeSubjectDelete(tx, {
+				type: "EMAIL_DRAFT",
+				id: draft.id,
+			});
+			await tx.emailDraft.delete({ where: { id: draft.id } });
 		});
-		if (result.count === 0) {
-			throw new BadRequestException(
-				"Only unsent draft proposals can be deleted.",
-			);
-		}
 		return { id: draftId };
 	}
 
 	async deleteSequence(sequenceId: string) {
-		const blocked = await this.db.emailDraft.count({
-			where: {
-				sequenceId,
-				status: { in: ["APPROVED", "SENDING", "SENT"] },
-			},
+		return this.db.$transaction(async (tx) => {
+			const blocked = await tx.emailDraft.count({
+				where: {
+					sequenceId,
+					status: { in: ["APPROVED", "SENDING", "SENT"] },
+				},
+			});
+			if (blocked > 0) {
+				throw new BadRequestException(
+					"A started sequence can be stopped, but not deleted.",
+				);
+			}
+			const drafts = await tx.emailDraft.findMany({
+				where: { sequenceId, status: { in: [...EDITABLE] } },
+				select: { id: true },
+			});
+			if (drafts.length === 0) {
+				throw new BadRequestException(
+					"Only an unsent sequence can be deleted.",
+				);
+			}
+			for (const draft of drafts) {
+				await this.cleanup.beforeSubjectDelete(tx, {
+					type: "EMAIL_DRAFT",
+					id: draft.id,
+				});
+			}
+			const result = await tx.emailDraft.deleteMany({
+				where: { id: { in: drafts.map((draft) => draft.id) } },
+			});
+			return { sequenceId, deleted: result.count };
 		});
-		if (blocked > 0) {
-			throw new BadRequestException(
-				"A started sequence can be stopped, but not deleted.",
-			);
-		}
-		const result = await this.db.emailDraft.deleteMany({
-			where: {
-				sequenceId,
-				status: { in: ["DRAFT", "PENDING_APPROVAL", "REJECTED"] },
-			},
-		});
-		if (result.count === 0) {
-			throw new BadRequestException("Only an unsent sequence can be deleted.");
-		}
-		return { sequenceId, deleted: result.count };
 	}
 
 	async performance() {
