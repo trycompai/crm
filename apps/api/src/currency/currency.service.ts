@@ -1,10 +1,4 @@
-import {
-	canManageCurrency,
-	isWorkspaceRole,
-	WORKSPACE_ID,
-	type WorkspaceRole,
-	workspaceRoleOf,
-} from "@crm/auth";
+import { canManageCurrency, workspaceRoleOf } from "@crm/auth";
 import type { Db } from "@crm/db";
 import { Prisma, RateSource } from "@crm/db";
 import {

@@ -130,6 +130,7 @@ function describe(channel: PickerChannel, canInviteItself: boolean): string {
 	if (channel.isMember) return `Comp AI is in${people}`;
 	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
 	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
-	if (channel.inviteRequestedAt) return `Private. Waiting on an invite${people}`;
+	if (channel.inviteRequestedAt)
+		return `Private. Waiting on an invite${people}`;
 	return `Private. Someone inside has to invite Comp AI${people}`;
 }

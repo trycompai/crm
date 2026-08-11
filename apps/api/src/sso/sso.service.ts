@@ -3,12 +3,10 @@ import {
 	canConfigureSso,
 	isGoogleConfigured,
 	isMicrosoftConfigured,
-	isWorkspaceRole,
 	ssoCallbackBase,
 	ssoCallbackURL,
 	ssoProviderName,
 	WORKSPACE_ID,
-	type WorkspaceRole,
 	workspaceRoleOf,
 } from "@crm/auth";
 import type { Db, Prisma } from "@crm/db";
