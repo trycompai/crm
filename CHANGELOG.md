@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/trycompai/crm/compare/v1.8.2...v1.9.0) (2026-08-11)
+
+
+### Features
+
+* **agent:** stop suggesting a URL that already matches the field ([#120](https://github.com/trycompai/crm/issues/120)) ([ed43055](https://github.com/trycompai/crm/commit/ed43055be2885a2de29f16374b07b3e077cace22))
+
 ## [1.8.2](https://github.com/trycompai/crm/compare/v1.8.1...v1.8.2) (2026-08-11)
 
 
