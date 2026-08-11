@@ -81,10 +81,7 @@ export class AgentTriggerService {
 		});
 	}
 
-	async contactCreated(
-		contactId: string,
-		reason: string,
-	): Promise<void> {
+	async contactCreated(contactId: string, reason: string): Promise<void> {
 		await this.enqueue({
 			contactId,
 			kind: "identify",
