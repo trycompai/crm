@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/trycompai/crm/compare/v1.7.0...v1.8.0) (2026-08-11)
+
+
+### Features
+
+* **agent:** apply sourced facts to empty fields automatically ([#112](https://github.com/trycompai/crm/issues/112)) ([0342c8e](https://github.com/trycompai/crm/commit/0342c8ee62561c8df1db16644c2b049617c908a0))
+
 ## [1.7.0](https://github.com/trycompai/crm/compare/v1.6.1...v1.7.0) (2026-08-11)
 
 
