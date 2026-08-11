@@ -16,8 +16,12 @@ import { settle } from "../agent/lib/enrichment";
  * nothing to say so.
  */
 const created: string[] = [];
+const tasks: string[] = [];
 
 afterEach(async () => {
+	if (tasks.length > 0) {
+		await db.agentTask.deleteMany({ where: { id: { in: tasks.splice(0) } } });
+	}
 	if (created.length === 0) return;
 	await db.company.deleteMany({ where: { id: { in: created.splice(0) } } });
 });
@@ -43,6 +47,23 @@ const subjectOf = (companyId: string) => ({
 	companyId,
 	dealId: null,
 });
+
+async function retiredSubjectOf(companyId: string) {
+	const row = await db.agentTask.create({
+		data: {
+			companyId,
+			kind: "brand",
+			reason: "keyless",
+			attempts: 3,
+			dueAt: new Date(),
+			finishedAt: new Date(),
+		},
+		select: { id: true },
+	});
+
+	tasks.push(row.id);
+	return { ...subjectOf(companyId), id: row.id };
+}
 
 const statusOf = async (id: string) =>
 	(
@@ -85,7 +106,7 @@ describe("a brand task with no key", () => {
 		const id = await company(EnrichmentStatus.PENDING);
 
 		await settle(
-			subjectOf(id),
+			await retiredSubjectOf(id),
 			EnrichmentStatus.FAILED,
 			"Research was attempted several times and never completed.",
 		);
@@ -96,7 +117,11 @@ describe("a brand task with no key", () => {
 	it("does not revive a company that already completed", async () => {
 		const id = await company(EnrichmentStatus.COMPLETE);
 
-		await settle(subjectOf(id), EnrichmentStatus.FAILED, "too late");
+		await settle(
+			await retiredSubjectOf(id),
+			EnrichmentStatus.FAILED,
+			"too late",
+		);
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.COMPLETE);
 	});

@@ -165,6 +165,72 @@ describe("builder persistence", () => {
 		).toBe(0);
 	});
 
+	it("ignores a delayed question from a turn the session has already left", async () => {
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				sessionId: `builder-stale-turn-session-${suffix}`,
+			},
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+
+		const question = (requestId: string, prompt: string) => ({
+			kind: "question",
+			requestId,
+			prompt,
+			action: {
+				kind: "tool-call",
+				callId: `call-${requestId}`,
+				toolName: "ask_question",
+				input: { prompt },
+			},
+			display: "text",
+		});
+
+		const current = question("current-turn-question", "Which channel?");
+		expect(
+			await persistBuilderInputRequest(
+				{
+					requests: [current],
+					sequence: 5,
+					stepIndex: 0,
+					turnId: "turn_5",
+				},
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+
+		expect(
+			await persistBuilderInputRequest(
+				{
+					requests: [question("earlier-turn-question", "Which stage?")],
+					sequence: 3,
+					stepIndex: 7,
+					turnId: "turn_3",
+				},
+				undefined,
+				conversation.id,
+			),
+		).toBe(false);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversation.id },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: current });
+		expect(
+			await db.agentEvent.count({
+				where: {
+					id: `builder-input:${conversation.id}:earlier-turn-question`,
+				},
+			}),
+		).toBe(0);
+	});
+
 	it("sets a concise model-authored title only once", async () => {
 		const conversation = await db.agentConversation.create({
 			data: { kind: "BUILDER", userId },

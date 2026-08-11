@@ -86,7 +86,9 @@ it after writing any `AgentTask`.
   `sweep.startTimeoutMs` the lane stops waiting, the record stays *Researching*, and
   the late session id is attached by `noteSession` when the send lands. Only a send
   that actually rejects settles the record `FAILED`; a send that never lands is
-  retired by `retireExhausted` after `MAX_ATTEMPTS`.
+  retired by `retireExhausted` after `MAX_ATTEMPTS`. A session id that never
+  reaches the row after `research.link.attempts` raises `unlinkedSessions` in
+  health, so a task running under a session nobody recorded is visible.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
 ### `POST /internal/crm/verify-key`

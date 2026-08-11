@@ -94,7 +94,6 @@ function eventPrefix(conversationId: string): string {
 }
 
 function supersedes(event: InputRequested, current: InputRequested): boolean {
-	if (event.turnId !== current.turnId) return true;
 	if (event.sequence !== current.sequence) {
 		return event.sequence > current.sequence;
 	}

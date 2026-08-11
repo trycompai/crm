@@ -1,4 +1,4 @@
-import { db, EnrichmentStatus } from "@crm/db";
+import { db, EnrichmentStatus, type Prisma } from "@crm/db";
 import type { TaskSubject } from "./tasks";
 
 type SettleGuard = {
@@ -62,6 +62,8 @@ async function settleable(
 	if (status !== EnrichmentStatus.FAILED) return running;
 
 	const endedAt = await taskEndedAt(subject.id);
+	if (!endedAt) return running;
+	if (await hasOpenRequest(subject)) return running;
 
 	return {
 		OR: [
@@ -74,11 +76,25 @@ async function settleable(
 	};
 }
 
-async function taskEndedAt(taskId: string): Promise<Date> {
+async function taskEndedAt(taskId: string): Promise<Date | null> {
 	const task = await db.agentTask.findUnique({
 		where: { id: taskId },
 		select: { finishedAt: true },
 	});
 
-	return task?.finishedAt ?? new Date();
+	return task?.finishedAt ?? null;
+}
+
+async function hasOpenRequest(subject: TaskSubject): Promise<boolean> {
+	const owners: Prisma.AgentTaskWhereInput[] = [];
+	if (subject.contactId) owners.push({ contactId: subject.contactId });
+	if (subject.companyId) owners.push({ companyId: subject.companyId });
+	if (owners.length === 0) return false;
+
+	const open = await db.agentTask.findFirst({
+		where: { id: { not: subject.id }, finishedAt: null, OR: owners },
+		select: { id: true },
+	});
+
+	return open !== null;
 }

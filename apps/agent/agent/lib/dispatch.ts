@@ -217,11 +217,39 @@ async function reconcileStart(
 	outcome: StartOutcome,
 ): Promise<void> {
 	if (outcome.accepted) {
-		await noteSession(task.id, outcome.sessionId).catch(() => {});
+		await linkSession(task, outcome.sessionId);
 		return;
 	}
 
 	await settle(task, EnrichmentStatus.FAILED, outcome.reason).catch(() => {});
+}
+
+export async function linkSession(
+	task: LeasedTask,
+	sessionId: string,
+	note: (taskId: string, sessionId: string) => Promise<void> = noteSession,
+	link: { attempts: number; retryMs: number } = DISPATCH.research.link,
+): Promise<boolean> {
+	for (let attempt = 1; attempt <= link.attempts; attempt += 1) {
+		try {
+			await note(task.id, sessionId);
+			return true;
+		} catch (error) {
+			if (attempt < link.attempts) {
+				await new Promise((resolve) =>
+					setTimeout(resolve, link.retryMs * attempt),
+				);
+				continue;
+			}
+
+			unlinkedSessions += 1;
+			console.error(
+				`[agent] Task ${task.id} accepted session ${sessionId}, but the session id was not recorded: ${reasonOf(error)}`,
+			);
+		}
+	}
+
+	return false;
 }
 
 function reasonOf(error: unknown): string {
@@ -250,6 +278,7 @@ let lastSweepError: string | null = null;
 let abandonedSweeps = 0;
 let pendingStarts = 0;
 let pendingItems = 0;
+let unlinkedSessions = 0;
 
 const unsettledSweeps = new Set<{ startedAt: Date }>();
 
@@ -289,6 +318,7 @@ export function dispatchHealth() {
 		unsettledSweeps: unsettledSweeps.size,
 		pendingStarts,
 		pendingItems,
+		unlinkedSessions,
 		lastError: lastSweepError,
 	};
 }

@@ -10,6 +10,7 @@ export const DISPATCH = {
 	research: {
 		batch: 12,
 		leaseMs: 30 * MINUTE_MS,
+		link: { attempts: 3, retryMs: 250 },
 	},
 
 	builder: {

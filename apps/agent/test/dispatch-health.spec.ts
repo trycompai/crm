@@ -3,6 +3,7 @@ import { settledWithin } from "../agent/lib/deadline";
 import {
 	DRAIN_TIMEOUT_MS,
 	dispatchHealth,
+	linkSession,
 	runDirect,
 } from "../agent/lib/dispatch";
 import { collapsing } from "../agent/lib/pool";
@@ -179,6 +180,47 @@ describe("a direct task that outruns its item deadline", () => {
 	});
 });
 
+describe("recording the session a research task accepted", () => {
+	const link = { attempts: 3, retryMs: 1 };
+
+	it("keeps trying until the write lands, so the task holds its session", async () => {
+		const seen: string[] = [];
+		let failures = 2;
+
+		const linked = await linkSession(
+			directTask({ id: "task_research", kind: "identify" }),
+			"ses_1",
+			async (taskId, sessionId) => {
+				seen.push(`${taskId}:${sessionId}`);
+				if (failures > 0) {
+					failures -= 1;
+					throw new Error("the database refused");
+				}
+			},
+			link,
+		);
+
+		expect(linked).toBe(true);
+		expect(seen).toHaveLength(3);
+	});
+
+	it("counts a session it could never record rather than losing it", async () => {
+		const before = dispatchHealth().unlinkedSessions;
+
+		const linked = await linkSession(
+			directTask({ id: "task_research", kind: "identify" }),
+			"ses_2",
+			async () => {
+				throw new Error("the database refused");
+			},
+			link,
+		);
+
+		expect(linked).toBe(false);
+		expect(dispatchHealth().unlinkedSessions).toBe(before + 1);
+	});
+});
+
 describe("settledWithin", () => {
 	it("hands back the value of work that finished inside the deadline", async () => {
 		const outcome = await settledWithin(Promise.resolve("session"), 50);
@@ -197,5 +239,20 @@ describe("settledWithin", () => {
 
 		accept("session");
 		await expect(send).resolves.toBe("session");
+	});
+
+	it("observes a rejection that lands after the deadline, so none escapes", async () => {
+		let fail: (error: Error) => void = () => {};
+		const send = new Promise<string>((_, reject) => {
+			fail = reject;
+		});
+
+		const outcome = await settledWithin(send, 10);
+		expect(outcome.settled).toBe(false);
+
+		fail(new Error("the send failed late"));
+		await flush();
+
+		await expect(send).rejects.toThrow("the send failed late");
 	});
 });
