@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/trycompai/crm/compare/v1.6.0...v1.6.1) (2026-08-11)
+
+
+### Fixes
+
+* **ci:** fall back to the pushed commit when release-please reports no sha ([d1efd97](https://github.com/trycompai/crm/commit/d1efd9730570730fc569d124f2c74559d47fe790))
+* **ci:** make a release one pull request instead of two ([206c746](https://github.com/trycompai/crm/commit/206c7461e75ee4827960ec07a02843d107514f20))
+
 ## [1.6.0](https://github.com/trycompai/crm/compare/v1.5.1...v1.6.0) (2026-08-11)
 
 
