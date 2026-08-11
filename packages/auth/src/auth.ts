@@ -12,9 +12,11 @@ import {
 	GOOGLE_PROVIDER_ID,
 	MICROSOFT_PROVIDER_ID,
 	MICROSOFT_SYNC_SCOPES,
+	SLACK_PROVIDER_ID,
 	SYNC_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
+import { slackConnectGuard } from "./slack-connect";
 import { storeSlackUserGrant } from "./slack-grant";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import { queueSlackInventorySync } from "./slack-sync";
@@ -109,7 +111,9 @@ export const auth = betterAuth({
 	},
 
 	trustedOrigins: [...env.trustedOrigins],
-	hooks: {},
+	hooks: {
+		before: slackConnectGuard,
+	},
 
 	plugins: [
 		...(slackOAuth
@@ -117,7 +121,7 @@ export const auth = betterAuth({
 					genericOAuth({
 						config: [
 							{
-								providerId: "slack",
+								providerId: SLACK_PROVIDER_ID,
 								authorizationUrl: "https://slack.com/oauth/v2/authorize",
 								tokenUrl: "https://slack.com/api/oauth.v2.access",
 								clientId: slackOAuth.clientId,
@@ -289,9 +293,9 @@ async function pruneOtherSlackAccounts(account: {
 	id: string;
 	providerId: string;
 }): Promise<void> {
-	if (account.providerId !== "slack") return;
+	if (account.providerId !== SLACK_PROVIDER_ID) return;
 	await db.account.deleteMany({
-		where: { providerId: "slack", id: { not: account.id } },
+		where: { providerId: SLACK_PROVIDER_ID, id: { not: account.id } },
 	});
 	await queueSlackInventorySync();
 }
