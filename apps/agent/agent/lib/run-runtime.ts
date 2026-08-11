@@ -476,6 +476,7 @@ export async function postRunSlackMessage(
 		};
 	}
 
+	const claimedAt = new Date();
 	const claimed = await db.agentAction.updateMany({
 		where: {
 			id: action.id,
@@ -483,13 +484,13 @@ export async function postRunSlackMessage(
 				{ status: { in: ["PLANNED", "FAILED"] } },
 				{
 					status: "RUNNING",
-					startedAt: { lt: new Date(Date.now() - ACTION_LEASE_MS) },
+					startedAt: { lt: new Date(claimedAt.getTime() - ACTION_LEASE_MS) },
 				},
 			],
 		},
 		data: {
 			status: "RUNNING",
-			startedAt: new Date(),
+			startedAt: claimedAt,
 			completedAt: null,
 			attemptCount: { increment: 1 },
 			errorCode: null,
@@ -513,13 +514,7 @@ export async function postRunSlackMessage(
 	}
 
 	try {
-		const activeRun = await db.agentRun.findUnique({
-			where: { id: runId },
-			select: { status: true },
-		});
-		if (activeRun?.status !== "RUNNING") {
-			throw new Error("This agent run is not active.");
-		}
+		await assertRunActive(runId);
 		const clientMessageId = recordOf(action.metadata).clientMessageId;
 		if (typeof clientMessageId !== "string" || !clientMessageId) {
 			throw new Error("This Slack action is missing its replay key.");
@@ -534,18 +529,24 @@ export async function postRunSlackMessage(
 			clientMessageId,
 			{
 				abortSignal,
-				beforePost: () => assertRunActive(runId),
+				beforePost: () => holdRunActionClaim(runId, action.id, claimedAt),
 			},
 		);
 		const messageId = `${posted.channel}:${posted.ts}`;
-		await db.agentAction.update({
-			where: { id: action.id },
+		const completed = await db.agentAction.updateMany({
+			where: { id: action.id, status: "RUNNING", startedAt: claimedAt },
 			data: {
 				status: "SUCCEEDED",
 				externalId: messageId,
 				completedAt: new Date(),
 			},
 		});
+		if (completed.count === 0) {
+			await recordDeliveryOutsideClaim(action.id, messageId);
+			throw new Error(
+				"This agent run stopped while Slack was accepting the message.",
+			);
+		}
 
 		return {
 			actionId: action.id,
@@ -556,7 +557,7 @@ export async function postRunSlackMessage(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		await db.agentAction.updateMany({
-			where: { id: action.id, status: "RUNNING" },
+			where: { id: action.id, status: "RUNNING", startedAt: claimedAt },
 			data: {
 				status: "FAILED",
 				errorCode: slackActionErrorCode(message),
@@ -623,6 +624,48 @@ async function assertRunActive(runId: string): Promise<void> {
 	if (run?.status !== "RUNNING") {
 		throw new Error("This agent run is not active.");
 	}
+}
+
+async function holdRunActionClaim(
+	runId: string,
+	actionId: string,
+	claimedAt: Date,
+): Promise<void> {
+	await db.$transaction(async (tx) => {
+		const run = await lockAgentRun(tx, runId);
+		if (run.status !== "RUNNING") {
+			throw new Error("This agent run is not active.");
+		}
+		const held = await tx.agentAction.count({
+			where: { id: actionId, status: "RUNNING", startedAt: claimedAt },
+		});
+		if (held === 0) {
+			throw new Error("This agent action is no longer held by this run.");
+		}
+	});
+}
+
+async function recordDeliveryOutsideClaim(
+	actionId: string,
+	messageId: string,
+): Promise<void> {
+	const delivered =
+		"Slack accepted this message before the run stopped, and it cannot be withdrawn.";
+	const current = await db.agentAction.findUnique({
+		where: { id: actionId },
+		select: { status: true, externalId: true, errorMessage: true },
+	});
+	if (!current || current.status === "SUCCEEDED" || current.externalId) return;
+
+	await db.agentAction.updateMany({
+		where: { id: actionId, status: { not: "SUCCEEDED" }, externalId: null },
+		data: {
+			externalId: messageId,
+			errorMessage: current.errorMessage
+				? `${current.errorMessage} ${delivered}`
+				: delivered,
+		},
+	});
 }
 
 async function slackApiRequest(
