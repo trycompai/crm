@@ -54,6 +54,8 @@ export class TrackingConfigService {
 
 	async invalidate(): Promise<void> {
 		this.generation += 1;
+		const written = this.generation;
+
 		await this.cache.del(CONFIG_KEY);
 
 		const config = await readTrackingConfig(this.db);
@@ -65,6 +67,8 @@ export class TrackingConfigService {
 			where: { id: SETTINGS_ID },
 			data: { trackingConfigHash: hash },
 		});
+
+		if (written !== this.generation) return;
 
 		await this.cache.set(CONFIG_KEY, { config, hash }, CONFIG_TTL_MS);
 	}

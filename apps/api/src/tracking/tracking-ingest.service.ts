@@ -23,6 +23,10 @@ const MAX_LABEL = 80;
 
 const MAX_PATH = 512;
 
+const MAX_HOST = 253;
+
+const KEPT = new Set(["page_view", "click", "form_submit"]);
+
 const BOT = /bot|crawler|spider|crawling|headlesschrome|lighthouse|preview/i;
 
 const SENSITIVE = /pass|secret|token|card|cvv|cvc|ssn|iban|routing/i;
@@ -83,7 +87,9 @@ export class TrackingIngestService {
 		if (scripted(events)) return;
 
 		const accepted = events.flatMap<AcceptedEvent>((event) => {
-			const host = event.host?.toLowerCase().trim();
+			if (!KEPT.has(event.type)) return [];
+
+			const host = event.host?.toLowerCase().trim().slice(0, MAX_HOST);
 
 			return host && hostAllowed(host, compiled.config)
 				? [{ event, host }]
@@ -237,9 +243,11 @@ function unfiled(submission: {
 }
 
 function arriving(touch: RawTouch): RawTouch {
-	return touch.referrer
-		? { ...touch, referrer: stripQuery(touch.referrer) ?? undefined }
-		: touch;
+	return {
+		...touch,
+		referrer: stripQuery(touch.referrer) ?? undefined,
+		landing: stripQuery(touch.landing) ?? undefined,
+	};
 }
 
 function stored(touch: Touch): Record<string, string | null> {

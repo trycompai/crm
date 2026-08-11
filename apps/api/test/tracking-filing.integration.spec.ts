@@ -182,6 +182,41 @@ describe("filing a form submission", () => {
 		expect(contact?.firstName).toBe("Dana");
 	});
 
+	it("writes one note when the same submission is filed twice at once", async () => {
+		const email = `raced@${domain}`;
+		const row = await db.formSubmission.create({
+			data: {
+				host,
+				path: "/pricing",
+				email,
+				fields: { email },
+				dedupeKey: `${suffix}-raced`,
+			},
+			select: { id: true },
+		});
+
+		const file = () =>
+			filing.file({
+				id: row.id,
+				email,
+				host,
+				visitorId: `visitor-raced-${suffix}`.slice(0, 64),
+				name: "Dana Reed",
+			});
+
+		const [first, second] = await Promise.all([file(), file()]);
+
+		expect(first.filed).toBe(true);
+		expect(second.filed).toBe(true);
+		expect(await db.contact.count({ where: { email } })).toBe(1);
+
+		const notes = await db.activity.count({
+			where: { body: { contains: host }, contact: { email } },
+		});
+
+		expect(notes).toBe(1);
+	});
+
 	it("attaches a second submission to the contact already there", async () => {
 		const email = `repeat@${domain}`;
 

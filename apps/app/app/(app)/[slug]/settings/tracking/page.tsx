@@ -12,12 +12,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { AllowedDomains } from "./allowed-domains";
-import { TrackingCookies } from "./tracking-cookies";
-import { TrackingRules } from "./tracking-rules";
-import { TrackingScript } from "./tracking-script";
-import { TrafficSources } from "./traffic-sources";
-import { VerifyInstallation } from "./verify-installation";
+import { TrackingSections } from "./tracking-sections";
 
 export const metadata: Metadata = {
 	title: "Tracking & Analytics",
@@ -62,18 +57,7 @@ async function Tracking() {
 	return (
 		<HydrateClient>
 			<div className="flex max-w-3xl flex-col gap-6">
-				{settings.ready ? (
-					<>
-						<TrackingScript />
-						<VerifyInstallation />
-						{settings.canManage ? <TrafficSources /> : null}
-						<TrackingRules />
-						<AllowedDomains />
-						<TrackingCookies />
-					</>
-				) : (
-					<AllowedDomains />
-				)}
+				<TrackingSections />
 			</div>
 		</HydrateClient>
 	);

@@ -101,10 +101,15 @@ this whole feature exists to catch.
 function. `classifyTouch` turns UTM parameters and a referrer into a `Touch`.
 
 - **An explicit `utm_source` beats the referrer**, because the marketer said so.
-- **The referrer host is matched on DNS labels, never on a substring.**
-  `notgoogle.com` is a referral and `google.com.phish.example` is a referral;
-  `images.google.de` is Google. A substring match hands a phisher a trusted source
-  name in the rep's report.
+- **The referrer host is matched on DNS labels, never on a substring**, and the
+  provider's labels must sit at the registrable name — one tail label, or two when
+  the first is a second-level suffix (`co.uk`, `com.au`). So `images.google.de` and
+  `scholar.google.co.jp` are Google, while `notgoogle.com`,
+  `google.com.phish.example` and `google.evil.com` are all plain referrals. A
+  substring match hands a phisher a trusted source name in the rep's report.
+  **`SECOND_LEVEL` is a heuristic, not the public suffix list** — a provider label
+  under an unusual two-label suffix reads as a referral, which is the safe way to
+  be wrong.
 - **Webmail is checked before search.** `mail.google.com` contains `google.`, so
   order alone decides whether a campaign's own click-throughs read as *email* or as
   *organic search* — and reading your newsletter as Google organic is how a
@@ -173,8 +178,12 @@ everybody: a member's render would fire a request that can only be refused.
 - **Rotating the site id is the kill switch for a stolen snippet.** The old id stops
   resolving at `forSite` within the cache TTL.
 - **The compiled config is cached for five minutes and invalidated on every write.**
-  `invalidate()` bumps a generation before it deletes, so a cache-miss read already
-  in flight cannot put the pre-pause config back for another five minutes.
+  `invalidate()` bumps a generation before it deletes, and both it and `compiled()`
+  refuse to write a value read before the bump — so a read already in flight cannot
+  put the pre-pause config back for another five minutes. **The generation is
+  per-process.** With `REDIS_URL` set the cache is shared but the counter is not, so
+  a second instance's in-flight read can still re-cache a stale config; the pause
+  guarantee is `CONFIG_MAX_AGE_SECONDS` plus, in that case, up to one more TTL.
 
 ## Where it lives
 

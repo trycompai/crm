@@ -240,6 +240,29 @@ describe("a batch delivered twice", () => {
 		expect(await db.formSubmission.count({ where: { host: parent } })).toBe(1);
 	});
 
+	it("files once when both deliveries arrive together", async () => {
+		const at = Date.now();
+		const submission: IncomingEvent = {
+			type: "form_submit",
+			host: parent,
+			path: "/contact",
+			at,
+			fields: { email: `together-${suffix}@acme.test` },
+		};
+
+		const id = visitorId();
+		await Promise.all([accept([submission], id), accept([submission], id)]);
+
+		expect(await db.formSubmission.count({ where: { host: parent } })).toBe(1);
+
+		const row = await db.formSubmission.findFirst({
+			where: { host: parent },
+			select: { filedAt: true },
+		});
+
+		expect(row?.filedAt).not.toBeNull();
+	});
+
 	it("leaves a submission alone once it has been filed", async () => {
 		const at = Date.now();
 		const submission: IncomingEvent = {

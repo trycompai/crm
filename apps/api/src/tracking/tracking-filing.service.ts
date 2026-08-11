@@ -166,9 +166,15 @@ export class TrackingFilingService {
 		},
 	): Promise<void> {
 		const { visitorId } = context;
-		const submission = await this.db.formSubmission.update({
-			where: { id: submissionId },
+		const claimed = await this.db.formSubmission.updateMany({
+			where: { id: submissionId, filedAt: null },
 			data: { contactId, filedAt: new Date(), skipReason: null },
+		});
+
+		if (claimed.count === 0) return;
+
+		const submission = await this.db.formSubmission.findUniqueOrThrow({
+			where: { id: submissionId },
 			select: { host: true, path: true },
 		});
 

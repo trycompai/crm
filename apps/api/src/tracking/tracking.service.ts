@@ -448,11 +448,14 @@ export class TrackingService {
 				where: { type: "page_view", source: { not: null } },
 				_count: { _all: true },
 			}),
-			this.db.trackedVisitor.findMany({
-				where: { contactId: { not: null }, firstSource: { not: null } },
-				select: { firstSource: true, firstMedium: true, contactId: true },
-				distinct: ["firstSource", "firstMedium", "contactId"],
-			}),
+			this.db.$queryRaw<
+				{ firstSource: string; firstMedium: string | null; contacts: bigint }[]
+			>`
+				SELECT "firstSource", "firstMedium", count(DISTINCT "contactId") AS contacts
+				FROM "trackedVisitor"
+				WHERE "contactId" IS NOT NULL AND "firstSource" IS NOT NULL
+				GROUP BY 1, 2;
+			`,
 		]);
 
 		const rows = new Map<string, SourceRow>();
@@ -472,9 +475,10 @@ export class TrackingService {
 			if (!row.firstSource) continue;
 			const key = `${row.firstSource}|${row.firstMedium ?? ""}`;
 			const existing = rows.get(key);
+			const count = Number(row.contacts);
 
 			if (existing) {
-				existing.contacts += 1;
+				existing.contacts = count;
 				continue;
 			}
 
@@ -482,7 +486,7 @@ export class TrackingService {
 				source: row.firstSource,
 				medium: row.firstMedium,
 				views: 0,
-				contacts: 1,
+				contacts: count,
 			});
 		}
 

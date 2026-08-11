@@ -91,13 +91,30 @@ describe("a touch with only a referrer", () => {
 		}
 	});
 
+	test("never trusts a provider's name used as somebody else's subdomain", () => {
+		for (const referrer of [
+			"https://google.evil.com/",
+			"https://mail.google.evil.com/",
+			"https://facebook.attacker.net/",
+			"https://outlook.phish.example/",
+		]) {
+			expect(classifyTouch({ referrer }, AT).medium).toBe("referral");
+		}
+	});
+
 	test("still recognises a provider on a subdomain or a country domain", () => {
-		expect(
-			classifyTouch({ referrer: "https://images.google.de/" }, AT).source,
-		).toBe("Google");
-		expect(
-			classifyTouch({ referrer: "https://m.facebook.com/" }, AT).source,
-		).toBe("Facebook");
+		for (const [referrer, source] of [
+			["https://images.google.de/", "Google"],
+			["https://scholar.google.co.jp/", "Google"],
+			["https://m.facebook.com/", "Facebook"],
+			["https://uk.search.yahoo.com/", "Yahoo"],
+			["https://news.ycombinator.com/", "Hacker News"],
+			["https://gist.github.com/", "GitHub"],
+			["https://t.co/abc", "X"],
+			["https://youtu.be/abc", "YouTube"],
+		] as const) {
+			expect(classifyTouch({ referrer }, AT).source).toBe(source);
+		}
 	});
 
 	test("falls back to the bare host for anything else", () => {

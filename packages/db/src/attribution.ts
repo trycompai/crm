@@ -71,6 +71,18 @@ const MAIL: Record<string, string> = {
 	"mail.yahoo.": "Yahoo Mail",
 };
 
+const SECOND_LEVEL = new Set([
+	"co",
+	"com",
+	"net",
+	"org",
+	"gov",
+	"edu",
+	"ac",
+	"or",
+	"ne",
+]);
+
 const PAID_MEDIUMS = new Set([
 	"cpc",
 	"ppc",
@@ -195,12 +207,19 @@ function matches(labels: string[], needle: string): boolean {
 		if (wanted.some((label, index) => labels[start + index] !== label))
 			continue;
 
-		const tail = labels.length - start - wanted.length;
+		const tail = labels.slice(start + wanted.length);
 
-		if (open ? tail >= 1 && tail <= 2 : tail === 0) return true;
+		if (open ? isSuffix(tail) : tail.length === 0) return true;
 	}
 
 	return false;
+}
+
+function isSuffix(tail: string[]): boolean {
+	if (tail.length === 1) return true;
+	if (tail.length !== 2) return false;
+
+	return SECOND_LEVEL.has(tail[0] ?? "");
 }
 
 function hostOf(referrer: string | null): string | null {
