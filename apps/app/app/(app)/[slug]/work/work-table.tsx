@@ -32,12 +32,12 @@ import {
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterInputs, RouterOutputs } from "@/lib/trpc/types";
+import type { RouterOutputs } from "@/lib/trpc/types";
+import { toWorkListInput, workFocusHistory } from "@/lib/work-input";
 import { workSearchParams } from "./work-search-params";
 
 type WorkRow = RouterOutputs["work"]["list"]["rows"][number];
 type WorkState = WorkRow["state"];
-type WorkListInput = RouterInputs["work"]["list"];
 type WorkFocusData = {
 	subject: { label: string | null; type: string };
 	queue: string;
@@ -160,6 +160,14 @@ function columnsForWork(
 			cell: (row) => <span className="truncate">{row.queue}</span>,
 		},
 		{
+			id: "urgency",
+			header: "Urgency",
+			sortable: true,
+			width: "w-[14%]",
+			hideBelow: "lg",
+			cell: (row) => <span className="truncate">{row.urgency}</span>,
+		},
+		{
 			id: "owner",
 			header: "Owner",
 			sortable: true,
@@ -203,10 +211,11 @@ function columnsForWork(
 
 export function WorkTable() {
 	const trpc = useTRPC();
-	const { query, input } = useTableQuery(workSearchParams);
+	const { query, input: rawInput } = useTableQuery(workSearchParams);
 	const [focusId, setFocusId] = useQueryState("work", parseAsString);
+	const input = toWorkListInput(rawInput);
 	const work = useQuery({
-		...trpc.work.list.queryOptions(input as WorkListInput),
+		...trpc.work.list.queryOptions(input),
 		placeholderData: (previous) => previous,
 	});
 	const detail = useQuery({
@@ -215,7 +224,10 @@ export function WorkTable() {
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
 
-	const focus = useCallback((id: string) => void setFocusId(id), [setFocusId]);
+	const focus = useCallback(
+		(id: string) => void setFocusId(id, { history: workFocusHistory(true) }),
+		[setFocusId],
+	);
 	const columns = useMemo(() => columnsForWork(focus), [focus]);
 
 	const facetCounts = work.data?.facetCounts;
@@ -234,9 +246,10 @@ export function WorkTable() {
 				options: facetOptions(facetCounts?.queue),
 			},
 			{
-				id: "owner",
+				id: "assignee",
 				label: "Owner",
 				options: [
+					{ value: "me", label: "My work" },
 					{ value: "unassigned", label: "Unassigned" },
 					...(users.data ?? []).map((user) => ({
 						value: user.id,
@@ -248,11 +261,6 @@ export function WorkTable() {
 				id: "due",
 				label: "Due",
 				options: DUE_OPTIONS,
-			},
-			{
-				id: "urgency",
-				label: "Urgency",
-				options: facetOptions(facetCounts?.urgency),
 			},
 			{
 				id: "subjectType",
@@ -269,7 +277,7 @@ export function WorkTable() {
 				query={query}
 				search={
 					<ListSearch
-						placeholder="Search work, reason or evidence…"
+						placeholder="Search work, reason, action or queue…"
 						label="Search work"
 					/>
 				}
@@ -290,7 +298,8 @@ export function WorkTable() {
 			<DetailSheet
 				open={focusId !== null}
 				onOpenChange={(open) => {
-					if (!open) void setFocusId(null, { history: "replace" });
+					if (!open)
+						void setFocusId(null, { history: workFocusHistory(false) });
 				}}
 			>
 				{detail.isPending ? (
@@ -308,7 +317,9 @@ export function WorkTable() {
 				) : (
 					<WorkFocus
 						work={detail.data}
-						onClose={() => void setFocusId(null, { history: "replace" })}
+						onClose={() =>
+							void setFocusId(null, { history: workFocusHistory(false) })
+						}
 					/>
 				)}
 			</DetailSheet>

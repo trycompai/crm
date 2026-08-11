@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
+import { showWorkNavigation } from "@/components/crm/quick-switcher-navigation";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -86,12 +87,14 @@ export function QuickSwitcher() {
 					onValueChange={setQuery}
 				/>
 				<CommandList>
-					<CommandGroup heading="Navigation">
-						<CommandItem value="work" onSelect={goWork}>
-							<Task />
-							<span>Work</span>
-						</CommandItem>
-					</CommandGroup>
+					{showWorkNavigation(query) ? (
+						<CommandGroup heading="Navigation">
+							<CommandItem value="work" onSelect={goWork}>
+								<Task />
+								<span>Work</span>
+							</CommandItem>
+						</CommandGroup>
+					) : null}
 					<CommandEmpty>
 						{query.trim().length < 2
 							? "Type at least two characters."

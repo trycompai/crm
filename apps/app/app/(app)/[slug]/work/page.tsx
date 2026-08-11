@@ -12,7 +12,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import type { RouterInputs } from "@/lib/trpc/types";
+import { toWorkListInput } from "@/lib/work-input";
 import { workSearchParams } from "./work-search-params";
 import { WorkTable } from "./work-table";
 
@@ -54,7 +54,7 @@ async function Work({
 	await Promise.all([
 		queryClient.prefetchQuery(
 			trpc.work.list.queryOptions(
-				workSearchParams.toInput(values) as RouterInputs["work"]["list"],
+				toWorkListInput(workSearchParams.toInput(values)),
 			),
 		),
 		queryClient.prefetchQuery(trpc.users.list.queryOptions()),

@@ -1,10 +1,16 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { showWorkNavigation } from "../components/crm/quick-switcher-navigation";
+import { toWorkListInput, workFocusHistory } from "../lib/work-input";
 
 const appRoot = resolve(import.meta.dir, "..");
 const workTable = readFileSync(
 	resolve(appRoot, "app/(app)/[slug]/work/work-table.tsx"),
+	"utf8",
+);
+const workPage = readFileSync(
+	resolve(appRoot, "app/(app)/[slug]/work/page.tsx"),
 	"utf8",
 );
 const workParams = readFileSync(
@@ -27,18 +33,51 @@ const quickSwitcher = readFileSync(
 test("work URL state keeps list defaults and server facets", () => {
 	expect(workParams).toContain('defaultSort: "updatedAt"');
 	expect(workParams).toContain('defaultDir: "desc"');
-	for (const facet of [
-		"state",
-		"queue",
-		"owner",
-		"due",
-		"urgency",
-		"subjectType",
-	]) {
+	for (const facet of ["state", "queue", "assignee", "due", "subjectType"]) {
 		expect(workParams).toContain(`"${facet}"`);
 	}
+	expect(workParams).not.toContain('"urgency"');
+	expect(workPage).toContain(
+		"toWorkListInput(workSearchParams.toInput(values))",
+	);
+	expect(workTable).toContain("toWorkListInput(rawInput)");
 	expect(workTable).toContain('useQueryState("work", parseAsString)');
-	expect(workTable).toContain('setFocusId(null, { history: "replace" })');
+	expect(workTable).toContain("workFocusHistory(true)");
+	expect(workTable).toContain("workFocusHistory(false)");
+});
+
+test("work assignee URL values map to one valid server owner filter", () => {
+	const base = {
+		q: "",
+		sort: "updatedAt",
+		dir: "desc",
+		page: 1,
+		pageSize: 25,
+		state: "all",
+		queue: "all",
+		due: "all",
+		subjectType: "all",
+	};
+
+	for (const { value, expected } of [
+		{ value: "all", expected: "all" },
+		{ value: "me", expected: "me" },
+		{ value: "unassigned", expected: "unassigned" },
+	] as const) {
+		const mapped = toWorkListInput({ ...base, assignee: value });
+		expect(mapped.owner).toBe(expected);
+		expect(mapped).not.toHaveProperty("ownerId");
+	}
+
+	const mapped = toWorkListInput({ ...base, assignee: "user-123" });
+	expect(mapped.owner).toBe("all");
+	expect(mapped.ownerId).toBe("user-123");
+	expect(toWorkListInput({ ...base, assignee: "user-123" })).toEqual(mapped);
+});
+
+test("focus history pushes on open and replaces on close", () => {
+	expect(workFocusHistory(true)).toBe("push");
+	expect(workFocusHistory(false)).toBe("replace");
 });
 
 test("work actions remain fail-closed without server capabilities", () => {
@@ -69,4 +108,9 @@ test("work is present in primary and quick navigation", () => {
 	expect(rail).toContain('href: "/work"');
 	expect(quickSwitcher).toContain('value="work"');
 	expect(quickSwitcher).toContain('router.push(workspaceUrl("/work"))');
+	expect(showWorkNavigation("")).toBe(true);
+	expect(showWorkNavigation("wo")).toBe(true);
+	expect(showWorkNavigation("work")).toBe(true);
+	expect(showWorkNavigation("x")).toBe(false);
+	expect(showWorkNavigation("work item")).toBe(false);
 });
