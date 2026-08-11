@@ -1,3 +1,4 @@
+import { Spinner } from "@crm/ui/components/spinner";
 import { cn } from "@crm/ui/lib/utils";
 
 export function ConnectionPage({
@@ -20,6 +21,14 @@ export function ConnectionPage({
 			>
 				{children}
 			</div>
+		</main>
+	);
+}
+
+export function ConnectionPageLoading() {
+	return (
+		<main className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+			<Spinner size="lg" />
 		</main>
 	);
 }

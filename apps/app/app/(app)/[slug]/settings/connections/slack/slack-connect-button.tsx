@@ -17,6 +17,40 @@ const CONNECT_ERRORS: Record<string, string> = {
 		"Slack did not return the installer's profile. Confirm the app has users:read and users:read.email, reinstall it, then try again.",
 };
 
+async function startSlackOAuth(slug: string) {
+	try {
+		const { error } = await authClient.oauth2.link({
+			providerId: "slack",
+			callbackURL: `${window.location.origin}/${slug}/settings/connections/slack/people`,
+			errorCallbackURL: `${window.location.origin}/${slug}/settings/connections/slack?provider=slack`,
+		});
+		if (error) toast.error(error.message || "Could not connect Slack.");
+	} catch (error) {
+		toast.error(
+			error instanceof Error ? error.message : "Could not connect Slack.",
+		);
+	}
+}
+
+export function SlackReconnectButton({ slug }: { slug: string }) {
+	const [pending, setPending] = useState(false);
+
+	return (
+		<Button
+			disabled={pending}
+			onClick={async () => {
+				setPending(true);
+				await startSlackOAuth(slug);
+				setPending(false);
+			}}
+			size="xs"
+			variant="contrast"
+		>
+			{pending ? "Opening Slack…" : "Reconnect"}
+		</Button>
+	);
+}
+
 export function SlackConnectButton({
 	slug,
 	configured,
@@ -29,20 +63,8 @@ export function SlackConnectButton({
 	const [pending, setPending] = useState(false);
 	const connect = async () => {
 		setPending(true);
-		try {
-			const { error } = await authClient.oauth2.link({
-				providerId: "slack",
-				callbackURL: `${window.location.origin}/${slug}/settings/connections/slack/people`,
-				errorCallbackURL: `${window.location.origin}/${slug}/settings/connections/slack?provider=slack`,
-			});
-			if (error) toast.error(error.message || "Could not connect Slack.");
-		} catch (error) {
-			toast.error(
-				error instanceof Error ? error.message : "Could not connect Slack.",
-			);
-		} finally {
-			setPending(false);
-		}
+		await startSlackOAuth(slug);
+		setPending(false);
 	};
 	return (
 		<div className="flex min-w-0 flex-col gap-2">

@@ -4,11 +4,6 @@ import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Close from "@carbon/icons-react/es/Close";
 import Warning from "@carbon/icons-react/es/Warning";
 import {
-	describeSlackScopes,
-	SLACK_SCOPE_GROUPS,
-	type SlackScope,
-} from "@crm/auth";
-import {
 	Accordion,
 	AccordionContent,
 	AccordionItem,
@@ -16,21 +11,28 @@ import {
 } from "@crm/ui/components/accordion";
 import { Icon } from "@crm/ui/components/icon";
 
+export type ScopeLine = {
+	scope: string;
+	grant: string;
+	sensitive: boolean;
+};
+
+export type ScopeGroup = {
+	id: string;
+	label: string;
+	summary: string;
+	scopes: ScopeLine[];
+};
+
 export function SlackScopeGroups({
 	title,
-	scopes,
-	withheld = [],
+	groups,
+	withheld,
 }: {
 	title: string;
-	scopes: string[];
-	withheld?: SlackScope[];
+	groups: ScopeGroup[];
+	withheld: ScopeLine[];
 }) {
-	const held = describeSlackScopes(scopes);
-	const groups = SLACK_SCOPE_GROUPS.map((group) => ({
-		...group,
-		scopes: held.filter((entry) => entry.group === group.id),
-	})).filter((group) => group.scopes.length > 0);
-
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
 			<div>
@@ -47,7 +49,7 @@ export function SlackScopeGroups({
 
 					return (
 						<AccordionItem key={group.id} value={group.id}>
-							<AccordionTrigger>
+							<AccordionTrigger variant="plain">
 								<span className="flex min-w-0 flex-1 flex-col gap-0.5 pr-4">
 									<span className="font-medium text-sm">{group.label}</span>
 									<span className="font-normal text-muted-foreground text-xs">
@@ -78,26 +80,27 @@ export function SlackScopeGroups({
 				})}
 
 				{withheld.map((entry) => (
-					<AccordionItem disabled key={entry.scope} value={entry.scope}>
-						<AccordionTrigger className="pointer-events-none">
-							<span className="flex min-w-0 flex-1 flex-col gap-0.5 pr-4">
-								<span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
-									<Icon
-										className="size-3.5 shrink-0"
-										icon={Close}
-										motion="none"
-									/>
-									{entry.grant}
-								</span>
-								<span className="font-normal text-muted-foreground text-xs">
-									Slack held this one back, so it is off.
-								</span>
+					<div
+						className="flex items-start gap-3 py-2.5 not-last:border-b"
+						key={entry.scope}
+					>
+						<span className="flex min-w-0 flex-1 flex-col gap-0.5 pr-4">
+							<span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
+								<Icon
+									className="size-3.5 shrink-0"
+									icon={Close}
+									motion="none"
+								/>
+								{entry.grant}
 							</span>
-							<span className="shrink-0 whitespace-nowrap pt-0.5 pr-2 font-normal text-muted-foreground text-xs">
-								Not granted
+							<span className="text-muted-foreground text-xs">
+								Slack held this one back, so it is off.
 							</span>
-						</AccordionTrigger>
-					</AccordionItem>
+						</span>
+						<span className="shrink-0 whitespace-nowrap pt-0.5 pr-2 text-muted-foreground text-xs">
+							Not granted
+						</span>
+					</div>
 				))}
 			</Accordion>
 		</section>

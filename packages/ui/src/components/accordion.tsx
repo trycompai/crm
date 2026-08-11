@@ -39,6 +39,8 @@ const accordionTriggerVariants = cva(
 			variant: {
 				default:
 					"flex-1 justify-between py-2.5 font-medium text-sm hover:underline **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4",
+				plain:
+					"flex-1 justify-between py-2.5 text-left **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4",
 				subtle:
 					"w-fit max-w-full items-center gap-1 py-1 text-muted-foreground text-xs hover:text-foreground **:data-[slot=accordion-trigger-icon]:size-3",
 			},

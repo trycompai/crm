@@ -1,7 +1,6 @@
-import { Spinner } from "@crm/ui/components/spinner";
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ConnectionPage } from "../connection-page";
+import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
 import { GoogleConnection } from "../google-connection";
 
 export const metadata: Metadata = { title: "Google Workspace" };
@@ -13,13 +12,7 @@ type GoogleConnectionPageProps = {
 
 export default function GoogleConnectionPage(props: GoogleConnectionPageProps) {
 	return (
-		<Suspense
-			fallback={
-				<ConnectionPage centered>
-					<Spinner size="lg" />
-				</ConnectionPage>
-			}
-		>
+		<Suspense fallback={<ConnectionPageLoading />}>
 			<GoogleConnectionPageContent {...props} />
 		</Suspense>
 	);

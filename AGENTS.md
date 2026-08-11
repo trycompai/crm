@@ -90,6 +90,57 @@ Rules for the list:
 > 1. RISK — An abandoned sweep leaks its promise. Memory grows until restart.
 >    Fix: not done. Needs cancellation in `receive()`. I caused this.
 
+## A server page computes. A client component renders.
+
+A client component must never import a server package. `@crm/auth` and `@crm/db`
+are server packages: their barrels reach Prisma, which reaches `pg`, which
+reaches `dns`. The bundler follows that chain into the browser and the build
+fails with `Module not found: Can't resolve 'dns'`.
+
+The import trace is the whole error. Read it from the bottom: the last line is
+the page, the line above is the client component that leaked, and the top is the
+Node module that cannot exist in a browser.
+
+**Don't** — a client component reaching for a server package:
+
+```tsx
+"use client";
+import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
+
+export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
+  const groups = SLACK_SCOPE_GROUPS.map(...)
+}
+```
+
+**Do** — the page does the work and hands over plain data:
+
+```tsx
+// page.tsx — server
+import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
+
+const groups = groupScopes(status.scopes);
+return <SlackScopeGroups groups={groups} />;
+```
+
+```tsx
+// slack-scope-groups.tsx — client
+"use client";
+
+export type ScopeGroup = { id: string; label: string; scopes: ScopeLine[] };
+
+export function SlackScopeGroups({ groups }: { groups: ScopeGroup[] }) { … }
+```
+
+Rules that follow:
+
+- The client component owns its own prop types. It does not re-export a server
+  type to get them.
+- Anything interactive — an accordion, a dialog, a search field — is a client
+  component that receives finished data. It never derives it.
+- A `"use client"` file may import from `@crm/ui`, the tRPC client, and React.
+  Anything else needs checking.
+- The server page is where `await` and secrets live. The client file has neither.
+
 ## Constants belong in one file per area, not beside their first use
 
 A number that someone will want to tune goes in a named config module for its

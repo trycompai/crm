@@ -1,7 +1,9 @@
 import Close from "@carbon/icons-react/es/Close";
 import Warning from "@carbon/icons-react/es/Warning";
 import {
+	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,
+	SLACK_SCOPE_GROUPS,
 	SLACK_USER_GRANT,
 	type SlackScope,
 	slackScopeDrift,
@@ -15,14 +17,17 @@ import {
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
-import { Spinner } from "@crm/ui/components/spinner";
 import Link from "next/link";
 import { Suspense } from "react";
+import { NewAgentDialog } from "@/components/agent-builder/new-agent-dialog";
 import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { ConnectionPage } from "../connection-page";
+import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
 import { SlackChannels } from "./slack-channels";
-import { SlackConnectButton } from "./slack-connect-button";
+import {
+	SlackConnectButton,
+	SlackReconnectButton,
+} from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
 import { SlackScopeGroups } from "./slack-scope-groups";
 
@@ -51,13 +56,7 @@ type SlackConnectionPageProps = {
 
 export default function SlackConnectionPage(props: SlackConnectionPageProps) {
 	return (
-		<Suspense
-			fallback={
-				<ConnectionPage centered>
-					<Spinner size="lg" />
-				</ConnectionPage>
-			}
-		>
+		<Suspense fallback={<ConnectionPageLoading />}>
 			<SlackConnectionPageContent {...props} />
 		</Suspense>
 	);
@@ -92,8 +91,9 @@ async function SlackConnectionPageContent({
 				</p>
 			</header>
 			<SlackScopeGroups
+				groups={groupScopes([...SLACK_REQUESTED_SCOPES])}
 				title="What you are handing over"
-				scopes={[...SLACK_REQUESTED_SCOPES]}
+				withheld={[]}
 			/>
 			<PlainList
 				title="What it will never do"
@@ -137,6 +137,25 @@ async function SlackConnectionPageContent({
 			</section>
 		</ConnectionPage>
 	);
+}
+
+function toLine(entry: SlackScope) {
+	return {
+		scope: entry.scope,
+		grant: entry.grant,
+		sensitive: entry.sensitive,
+	};
+}
+
+function groupScopes(scopes: string[]) {
+	const held = describeSlackScopes(scopes);
+
+	return SLACK_SCOPE_GROUPS.map((group) => ({
+		id: group.id,
+		label: group.label,
+		summary: group.summary,
+		scopes: held.filter((entry) => entry.group === group.id).map(toLine),
+	})).filter((group) => group.scopes.length > 0);
 }
 
 function first(value: string | string[] | undefined) {
@@ -186,9 +205,9 @@ function ConnectedSlack({
 			</header>
 			<MissingGrant missing={missing} slug={slug} />
 			<SlackScopeGroups
+				groups={groupScopes(status.scopes)}
 				title="What this workspace granted"
-				scopes={status.scopes}
-				withheld={missing}
+				withheld={missing.map(toLine)}
 			/>
 			<SlackChannels />
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
@@ -199,9 +218,9 @@ function ConnectedSlack({
 							Built in chat, not here. Open one to change it.
 						</p>
 					</div>
-					<Button asChild size="sm">
-						<Link href={`/${slug}/chat`}>New agent</Link>
-					</Button>
+					<NewAgentDialog>
+						<Button size="sm">New agent</Button>
+					</NewAgentDialog>
 				</div>
 				<div className="flex flex-col divide-y rounded-lg border">
 					{agents.length === 0 ? (
@@ -298,11 +317,7 @@ function MissingGrant({
 					</ul>
 				</AlertDescription>
 				<AlertAction>
-					<Button asChild size="xs" variant="contrast">
-						<Link href={`/${slug}/settings/connections/slack?reconnect=1`}>
-							Reconnect
-						</Link>
-					</Button>
+					<SlackReconnectButton slug={slug} />
 				</AlertAction>
 			</Alert>
 		</div>

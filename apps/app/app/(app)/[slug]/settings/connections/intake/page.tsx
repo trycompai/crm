@@ -1,10 +1,23 @@
 import { Button } from "@crm/ui/components/button";
 import Link from "next/link";
-import { ConnectionPage } from "../connection-page";
+import { Suspense } from "react";
+import { requireSession } from "@/lib/session";
+import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
 
-export default async function IntakeConnectionPage({
+export default function IntakeConnectionPage(
+	props: PageProps<"/[slug]/settings/connections/intake">,
+) {
+	return (
+		<Suspense fallback={<ConnectionPageLoading />}>
+			<IntakeConnectionPageContent {...props} />
+		</Suspense>
+	);
+}
+
+async function IntakeConnectionPageContent({
 	params,
 }: PageProps<"/[slug]/settings/connections/intake">) {
+	await requireSession();
 	const { slug } = await params;
 
 	return (
