@@ -1,13 +1,21 @@
 import { db } from "@crm/db";
+import { PRIORITY } from "@crm/db/agent-tasks";
 import { runVisibleLane } from "../../agent/lib/dispatch";
+import {
+	reasonOf,
+	removeAgent,
+	removeAgentsNamed,
+	removeEventRuns,
+} from "./e2e-agents";
+import { E2E } from "./e2e-config";
 
-const COUNT = Number(process.env.E2E_LOAD_COUNT ?? 300);
+const COUNT = Number(process.env.E2E_LOAD_COUNT ?? E2E.load.defaultCount);
 
 async function seedAgent() {
 	const owner = await db.user.findFirstOrThrow({ select: { id: true } });
 	const agent = await db.agentDefinition.create({
 		data: {
-			name: `E2E Load Agent ${Date.now()}`,
+			name: `${E2E.load.agentPrefix} ${Date.now()}`,
 			description: "Seeded for load testing. Safe to delete.",
 			status: "LIVE",
 			createdById: owner.id,
@@ -59,32 +67,23 @@ async function seedAgent() {
 	return { agentId: agent.id, versionId: version.id };
 }
 
-const LOAD_AGENT_PREFIX = "E2E Load Agent";
-
-async function removeAgent(agentId: string) {
-	await db.agentRunEvent.deleteMany({ where: { run: { agentId } } });
-	await db.agentAction.deleteMany({ where: { agentId } });
-	await db.agentAuditEvent.deleteMany({ where: { agentId } });
-	await db.agentRun.deleteMany({ where: { agentId } });
-	await db.agentTrigger.deleteMany({ where: { agentId } });
-	await db.agentDefinition.update({
-		where: { id: agentId },
-		data: { currentVersionId: null },
-	});
-	await db.agentVersion.deleteMany({ where: { agentId } });
-	await db.agentDefinition.delete({ where: { id: agentId } });
+async function sweepLeftovers() {
+	for (const name of await removeAgentsNamed(E2E.load.agentPrefix)) {
+		console.log(`  removed leftover ${name}`);
+	}
 }
 
-async function sweepLeftovers() {
-	const stale = await db.agentDefinition.findMany({
-		where: { name: { startsWith: LOAD_AGENT_PREFIX } },
-		select: { id: true, name: true },
-	});
-
-	for (const agent of stale) {
-		await removeAgent(agent.id);
-		console.log(`  removed leftover ${agent.name}`);
-	}
+async function cleanUp(
+	agentId: string,
+	companyId: string,
+	dealIds: string[],
+	taskIds: string[],
+) {
+	await removeEventRuns(taskIds);
+	await removeAgent(agentId);
+	await db.agentTask.deleteMany({ where: { dealId: { in: dealIds } } });
+	await db.deal.deleteMany({ where: { companyId } });
+	await db.company.delete({ where: { id: companyId } });
 }
 
 async function main() {
@@ -96,79 +95,85 @@ async function main() {
 		select: { id: true },
 	});
 
-	console.log(`Seeding ${COUNT} deal.created events…`);
-	const seedStart = Date.now();
-	const deals = await db.$transaction(
-		Array.from({ length: COUNT }, (_, index) =>
-			db.deal.create({
-				data: {
-					name: `Load Deal ${index}`,
-					companyId: company.id,
-					ownerId: owner.id,
-					stage: "DEMO_BOOKED",
-					stageChangedAt: new Date(),
+	const dealIds: string[] = [];
+	const taskIds: string[] = [];
+	let ok = false;
+
+	try {
+		console.log(`Seeding ${COUNT} deal.created events…`);
+		const seedStart = Date.now();
+		const deals = await db.$transaction(
+			Array.from({ length: COUNT }, (_, index) =>
+				db.deal.create({
+					data: {
+						name: `Load Deal ${index}`,
+						companyId: company.id,
+						ownerId: owner.id,
+						stage: "DEMO_BOOKED",
+						stageChangedAt: new Date(),
+					},
+					select: { id: true },
+				}),
+			),
+		);
+		dealIds.push(...deals.map((deal) => deal.id));
+		await db.agentTask.createMany({
+			data: deals.map((deal) => ({
+				dealId: deal.id,
+				kind: "agent-event" as const,
+				reason: "deal.created",
+				payload: {
+					type: "deal.created",
+					record: { kind: "deal", id: deal.id },
+					occurredAt: new Date().toISOString(),
+					data: { companyId: company.id, stage: "DEMO_BOOKED" },
 				},
-				select: { id: true },
-			}),
-		),
-	);
-	await db.agentTask.createMany({
-		data: deals.map((deal) => ({
-			dealId: deal.id,
-			kind: "agent-event" as const,
-			reason: "deal.created",
-			payload: {
-				type: "deal.created",
-				record: { kind: "deal", id: deal.id },
-				occurredAt: new Date().toISOString(),
-				data: { companyId: company.id, stage: "DEMO_BOOKED" },
-			},
-			priority: 700,
-			budget: 1,
-			dueAt: new Date(),
-		})),
-	});
-	console.log(`  seeded in ${Date.now() - seedStart}ms`);
+				priority: PRIORITY.event,
+				budget: 1,
+				dueAt: new Date(),
+			})),
+		});
+		const seeded = await db.agentTask.findMany({
+			where: { dealId: { in: dealIds } },
+			select: { id: true },
+		});
+		taskIds.push(...seeded.map((task) => task.id));
+		console.log(`  seeded in ${Date.now() - seedStart}ms`);
 
-	console.log("Draining…");
-	const drainStart = Date.now();
-	let handled = 0;
-	for (let pass = 0; pass < 40; pass += 1) {
-		const done = await runVisibleLane();
-		handled += done;
-		if (done === 0) break;
+		console.log("Draining…");
+		const drainStart = Date.now();
+		let handled = 0;
+		for (let pass = 0; pass < E2E.load.maxDrainPasses; pass += 1) {
+			const done = await runVisibleLane();
+			handled += done;
+			if (done === 0) break;
+		}
+		const drainMs = Date.now() - drainStart;
+
+		const queued = await db.agentRun.count({ where: { agentId } });
+		const leftover = await db.agentTask.count({
+			where: { kind: "agent-event", finishedAt: null },
+		});
+
+		console.log(`\n  tasks drained     ${handled}`);
+		console.log(`  runs queued       ${queued}`);
+		console.log(`  unclaimed left    ${leftover}`);
+		console.log(`  drain time        ${drainMs}ms`);
+		console.log(
+			`  throughput        ${Math.round((handled / drainMs) * 1000)}/s`,
+		);
+
+		ok = handled >= COUNT && leftover === 0 && queued >= COUNT;
+	} finally {
+		console.log("\nCleaning up…");
+		try {
+			await cleanUp(agentId, company.id, dealIds, taskIds);
+		} catch (error) {
+			ok = false;
+			console.error(`  cleanup failed — ${reasonOf(error)}`);
+		}
 	}
-	const drainMs = Date.now() - drainStart;
 
-	const queued = await db.agentRun.count({ where: { agentId } });
-	const leftover = await db.agentTask.count({
-		where: { kind: "agent-event", finishedAt: null },
-	});
-
-	console.log(`\n  tasks drained     ${handled}`);
-	console.log(`  runs queued       ${queued}`);
-	console.log(`  unclaimed left    ${leftover}`);
-	console.log(`  drain time        ${drainMs}ms`);
-	console.log(
-		`  throughput        ${Math.round((handled / drainMs) * 1000)}/s`,
-	);
-
-	console.log("\nCleaning up…");
-	await db.agentRunEvent.deleteMany({ where: { run: { agentId } } });
-	await db.agentAction.deleteMany({ where: { agentId } });
-	await db.agentAuditEvent.deleteMany({ where: { agentId } });
-	await db.agentRun.deleteMany({ where: { agentId } });
-	await db.agentTrigger.deleteMany({ where: { agentId } });
-	await db.agentDefinition.update({
-		where: { id: agentId },
-		data: { currentVersionId: null },
-	});
-	await db.agentVersion.deleteMany({ where: { agentId } });
-	await db.agentDefinition.delete({ where: { id: agentId } });
-	await db.deal.deleteMany({ where: { companyId: company.id } });
-	await db.company.delete({ where: { id: company.id } });
-
-	const ok = handled >= COUNT && leftover === 0 && queued >= COUNT;
 	console.log(ok ? "\nPASS  load test" : "\nFAIL  load test");
 	process.exit(ok ? 0 : 1);
 }
