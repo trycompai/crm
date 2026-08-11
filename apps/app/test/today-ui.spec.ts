@@ -6,6 +6,7 @@ import {
 	approvalIntentFingerprint,
 	classifyApprovalActionError,
 	createApprovalIntent,
+	retryApprovalIntent,
 } from "../app/(app)/[slug]/approval-action-intent";
 import { todayFocusHistory } from "../app/(app)/[slug]/today-search-params";
 import { showTodayNavigation } from "../components/crm/quick-switcher-navigation";
@@ -72,57 +73,100 @@ test("approval actions remain server-capability and integrity gated", () => {
 	expect(approvalSheet).toContain("approval.viewer.canReject");
 	expect(approvalSheet).toContain("approval.viewer.canInvalidate");
 	expect(approvalSheet).toContain("!current?.integrityValid");
-	expect(approvalSheet).toContain("expectedVersion: snapshot.version");
-	expect(approvalSheet).toContain("contentDigest: snapshot.contentDigest");
-	expect(approvalSheet).toContain(
-		"invalidationVersion: snapshot.invalidationVersion",
-	);
 	expect(approvalSheet).toContain("createApprovalIntent");
+	expect(approvalSheet).toContain("retryApprovalIntent(nextIntent)");
+	expect(approvalSheet).toContain("send(intent.current)");
+	expect(approvalSheet).not.toContain("crypto.randomUUID()");
 	expect(todayDesk).toContain('key={approvalId ?? "closed"}');
 	expect(approvalSheet).toContain('aria-live="polite"');
 	expect(approvalSheet).toContain('aria-live="assertive"');
 });
 
-test("approval intents keep one key for an explicit retry and rotate for new intent", () => {
+test("approval intents keep exact retry input and rotate ordinary actions", () => {
 	const snapshot = {
 		id: "approval-1",
 		version: 2,
 		contentDigest: "digest-1",
 		invalidationVersion: 0,
 	};
-	const first = createApprovalIntent(
-		"approve",
-		snapshot,
-		null,
-		() => "request-1",
-	);
-	const retry = createApprovalIntent(
-		"approve",
-		snapshot,
-		first,
-		() => "request-2",
-	);
+	const first = createApprovalIntent("approve", snapshot, () => "request-1");
+	const retry = createApprovalIntent("approve", snapshot, () => "request-2");
 	const changed = createApprovalIntent(
 		"approve",
 		{ ...snapshot, version: 3 },
-		first,
 		() => "request-3",
 	);
 	const differentOperation = createApprovalIntent(
 		"reject",
 		snapshot,
-		first,
 		() => "request-4",
 	);
 
-	expect(retry).toEqual(first);
+	expect(retry.input.clientRequestId).not.toBe(first.input.clientRequestId);
 	expect(approvalIntentAfterError(first, { retryable: true })).toEqual(first);
 	expect(approvalIntentAfterError(first, { retryable: false })).toBeNull();
-	expect(changed.clientRequestId).toBe("request-3");
-	expect(differentOperation.clientRequestId).toBe("request-4");
+	expect(changed.input.clientRequestId).toBe("request-3");
+	expect(differentOperation.input.clientRequestId).toBe("request-4");
 	expect(approvalIntentFingerprint("approve", snapshot)).toBe(
 		first.fingerprint,
 	);
+
+	const approvedRetry = retryApprovalIntent(first);
+	expect(approvedRetry).toBe(first.input);
+	expect(approvedRetry).toEqual(first.input);
+	expect(approvedRetry).toEqual({
+		id: "approval-1",
+		expectedVersion: 2,
+		contentDigest: "digest-1",
+		invalidationVersion: 0,
+		clientRequestId: "request-1",
+	});
+	const currentApprovedDetail = {
+		...snapshot,
+		version: 3,
+		status: "APPROVED",
+	};
+	const freshAfterCommit = createApprovalIntent(
+		"approve",
+		currentApprovedDetail,
+		() => "request-after-commit",
+	);
+	expect(freshAfterCommit.input).not.toEqual(approvedRetry);
+
+	const invalidate = createApprovalIntent(
+		"invalidate",
+		snapshot,
+		() => "request-invalidate",
+	);
+	expect(retryApprovalIntent(invalidate)).toEqual({
+		...invalidate.input,
+		expectedVersion: 2,
+		invalidationVersion: 0,
+	});
+	expect(retryApprovalIntent(invalidate)).not.toEqual({
+		...invalidate.input,
+		expectedVersion: 3,
+		invalidationVersion: 1,
+	});
+	const currentInvalidatedDetail = {
+		...snapshot,
+		version: 3,
+		invalidationVersion: 1,
+		status: "INVALIDATED",
+	};
+	const freshInvalidated = createApprovalIntent(
+		"invalidate",
+		currentInvalidatedDetail,
+		() => "request-after-invalidate",
+	);
+	const invalidatedRetry = retryApprovalIntent(invalidate);
+	expect(invalidatedRetry).toBe(invalidate.input);
+	expect(invalidatedRetry).toEqual({
+		...invalidate.input,
+		expectedVersion: 2,
+		invalidationVersion: 0,
+	});
+	expect(freshInvalidated.input).not.toEqual(invalidatedRetry);
 });
 
 test("approval errors retain only transport/server intents and classify conflicts", () => {

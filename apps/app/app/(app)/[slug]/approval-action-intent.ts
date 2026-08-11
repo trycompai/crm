@@ -7,10 +7,18 @@ export type ApprovalIntentSnapshot = {
 	invalidationVersion: number;
 };
 
+export type ApprovalMutationInput = Readonly<{
+	id: string;
+	expectedVersion: number;
+	contentDigest: string;
+	invalidationVersion: number;
+	clientRequestId: string;
+}>;
+
 export type ApprovalActionIntent = {
 	operation: ApprovalOperation;
+	input: ApprovalMutationInput;
 	fingerprint: string;
-	clientRequestId: string;
 };
 
 export type ApprovalActionError = {
@@ -35,12 +43,23 @@ export function approvalIntentFingerprint(
 export function createApprovalIntent(
 	operation: ApprovalOperation,
 	snapshot: ApprovalIntentSnapshot,
-	previous: ApprovalActionIntent | null,
 	createRequestId: () => string = () => crypto.randomUUID(),
 ): ApprovalActionIntent {
 	const fingerprint = approvalIntentFingerprint(operation, snapshot);
-	if (previous?.fingerprint === fingerprint) return previous;
-	return { operation, fingerprint, clientRequestId: createRequestId() };
+	const input = Object.freeze({
+		id: snapshot.id,
+		expectedVersion: snapshot.version,
+		contentDigest: snapshot.contentDigest,
+		invalidationVersion: snapshot.invalidationVersion,
+		clientRequestId: createRequestId(),
+	});
+	return { operation, input, fingerprint };
+}
+
+export function retryApprovalIntent(
+	intent: ApprovalActionIntent | null,
+): ApprovalMutationInput | null {
+	return intent?.input ?? null;
 }
 
 export function approvalIntentAfterError(

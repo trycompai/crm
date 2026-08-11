@@ -33,9 +33,9 @@ import {
 	type ApprovalIntentSnapshot,
 	type ApprovalOperation,
 	approvalIntentAfterError,
-	approvalIntentFingerprint,
 	classifyApprovalActionError,
 	createApprovalIntent,
+	retryApprovalIntent,
 } from "./approval-action-intent";
 
 type Approval = {
@@ -127,6 +127,14 @@ export function ApprovalFocusSheet({
 	);
 	const pending = approve.isPending || reject.isPending || invalidate.isPending;
 
+	const send = (nextIntent: ApprovalActionIntent) => {
+		const input = retryApprovalIntent(nextIntent);
+		if (!input) return;
+		if (nextIntent.operation === "approve") approve.mutate(input);
+		if (nextIntent.operation === "reject") reject.mutate(input);
+		if (nextIntent.operation === "invalidate") invalidate.mutate(input);
+	};
+
 	const submit = (operation: ApprovalOperation) => {
 		const current = approval.data;
 		if (
@@ -144,22 +152,24 @@ export function ApprovalFocusSheet({
 			contentDigest: current.contentDigest,
 			invalidationVersion: current.invalidationVersion,
 		};
-		const nextIntent = createApprovalIntent(
-			operation,
-			snapshot,
-			intent.current,
-		);
+		const nextIntent = createApprovalIntent(operation, snapshot);
 		intent.current = nextIntent;
-		const input = {
-			id: snapshot.id,
-			expectedVersion: snapshot.version,
-			contentDigest: snapshot.contentDigest,
-			invalidationVersion: snapshot.invalidationVersion,
-			clientRequestId: nextIntent.clientRequestId,
-		};
-		if (operation === "approve") approve.mutate(input);
-		if (operation === "reject") reject.mutate(input);
-		if (operation === "invalidate") invalidate.mutate(input);
+		send(nextIntent);
+	};
+
+	const retry = () => {
+		if (
+			!approval.data ||
+			approval.isError ||
+			approval.isFetching ||
+			pending ||
+			!actionError?.retryable ||
+			!intent.current ||
+			intent.current.operation !== actionError.operation
+		) {
+			return;
+		}
+		send(intent.current);
 	};
 
 	return (
@@ -188,6 +198,7 @@ export function ApprovalFocusSheet({
 					actionError={actionError}
 					intent={intent.current}
 					onAction={submit}
+					onRetry={retry}
 					onClose={onClose}
 				/>
 			)}
@@ -203,6 +214,7 @@ function ApprovalFocus({
 	actionError,
 	intent,
 	onAction,
+	onRetry,
 	onClose,
 }: {
 	approval: Approval;
@@ -212,6 +224,7 @@ function ApprovalFocus({
 	actionError: ApprovalActionError | null;
 	intent: ApprovalActionIntent | null;
 	onAction: (operation: ApprovalOperation) => void;
+	onRetry: () => void;
 	onClose: () => void;
 }) {
 	const canReview = approval.integrityValid && detailReady;
@@ -220,11 +233,8 @@ function ApprovalFocus({
 	const canRetry = Boolean(
 		retryOperation &&
 			intent &&
-			approval.integrityValid &&
 			detailReady &&
-			intent.operation === retryOperation &&
-			intent.fingerprint ===
-				approvalIntentFingerprint(retryOperation, approval),
+			intent.operation === retryOperation,
 	);
 	return (
 		<>
@@ -286,9 +296,7 @@ function ApprovalFocus({
 								type="button"
 								variant="outline"
 								disabled={pending}
-								onClick={() => {
-									if (retryOperation) onAction(retryOperation);
-								}}
+								onClick={onRetry}
 							>
 								Retry {retryOperation ? operationLabel(retryOperation) : null}
 							</Button>
