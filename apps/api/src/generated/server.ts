@@ -26,6 +26,7 @@ import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageIn
 import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput } from "../fields/fields.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
+import { marketingListInput, marketingCampaignIdInput, marketingPlanInput } from "../marketing/marketing.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { leadDiscoveryInput, leadDiscoveryTaskInput, outreachProspectMutationInput, outreachRegenerateInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
@@ -49,6 +50,7 @@ import type { DealsRouter } from "../deals/deals.router";
 import type { FieldsRouter } from "../fields/fields.router";
 import type { GoogleRouter } from "../google/google.router";
 import type { InboundRouter } from "../inbound/inbound.router";
+import type { MarketingRouter } from "../marketing/marketing.router";
 import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { OutreachRouter } from "../outreach/outreach.router";
 import type { ProspectsRouter } from "../prospects/prospects.router";
@@ -411,6 +413,17 @@ const appRouter = t.router({
     excludeGranola: publicProcedure
       .input(granolaExcludeInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["excludeGranola"]>>)
+    }),
+  marketing: t.router({
+    list: publicProcedure
+      .input(marketingListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MarketingRouter["list"]>>),
+    byId: publicProcedure
+      .input(marketingCampaignIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MarketingRouter["byId"]>>),
+    plan: publicProcedure
+      .input(marketingPlanInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MarketingRouter["plan"]>>)
     }),
   microsoft: t.router({
     status: publicProcedure

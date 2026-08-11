@@ -6,9 +6,11 @@ import { companiesSearchParams } from "@/app/(app)/[slug]/companies/companies-se
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
 import { customersSearchParams } from "@/app/(app)/[slug]/customers/customers-search-params";
 import { dealsSearchParams } from "@/app/(app)/[slug]/deals/deals-search-params";
+import { marketingSearchParams } from "@/app/(app)/[slug]/marketing/marketing-search-params";
 import { prospectsSearchParams } from "@/app/(app)/[slug]/prospects/prospects-search-params";
 import { serviceSearchParams } from "@/app/(app)/[slug]/service/service-search-params";
 import { toCustomerListInput } from "@/lib/customer-input";
+import { toMarketingListInput } from "@/lib/marketing-input";
 import { toServiceListInput } from "@/lib/service-input";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -19,6 +21,7 @@ export type Section =
 	| "/contacts"
 	| "/customers"
 	| "/deals"
+	| "/marketing"
 	| "/prospects"
 	| "/service"
 	| "/sequences"
@@ -73,6 +76,13 @@ export function usePrefetchSection(): (section: string) => void {
 					void queryClient.prefetchQuery(
 						trpc.service.list.queryOptions(
 							toServiceListInput(serviceSearchParams.defaultInput()),
+						),
+					);
+					return;
+				case "/marketing":
+					void queryClient.prefetchQuery(
+						trpc.marketing.list.queryOptions(
+							toMarketingListInput(marketingSearchParams.defaultInput()),
 						),
 					);
 					return;

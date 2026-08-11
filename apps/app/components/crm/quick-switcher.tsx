@@ -24,6 +24,7 @@ import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
 import {
 	showCustomersNavigation,
+	showMarketingNavigation,
 	showServiceNavigation,
 	showTodayNavigation,
 	showWorkNavigation,
@@ -93,6 +94,12 @@ export function QuickSwitcher() {
 		router.push(workspaceUrl("/service"));
 	};
 
+	const goMarketing = () => {
+		setQuery("");
+		void setOpen(null);
+		router.push(workspaceUrl("/marketing"));
+	};
+
 	const goToday = () => {
 		setQuery("");
 		void setOpen(null);
@@ -142,6 +149,14 @@ export function QuickSwitcher() {
 							<CommandItem value="service" onSelect={goService}>
 								<Email />
 								<span>Service</span>
+							</CommandItem>
+						</CommandGroup>
+					) : null}
+					{showMarketingNavigation(query) ? (
+						<CommandGroup heading="Navigation">
+							<CommandItem value="marketing" onSelect={goMarketing}>
+								<Email />
+								<span>Marketing</span>
 							</CommandItem>
 						</CommandGroup>
 					) : null}

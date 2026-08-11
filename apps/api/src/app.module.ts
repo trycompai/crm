@@ -26,6 +26,7 @@ import { InboundModule } from "./inbound/inbound.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MailboxModule } from "./mailbox/mailbox.module";
+import { MarketingModule } from "./marketing/marketing.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { OutreachModule } from "./outreach/outreach.module";
 import { ProspectsModule } from "./prospects/prospects.module";
@@ -74,6 +75,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		MailboxModule,
 		GoogleModule,
 		MicrosoftModule,
+		MarketingModule,
 		OutreachModule,
 		ProspectsModule,
 		SyncModule,
