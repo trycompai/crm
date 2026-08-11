@@ -14,7 +14,7 @@ import {
 	StatusIndicator,
 	type StatusTone,
 } from "@crm/ui/components/status-indicator";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCallback, useMemo } from "react";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -39,6 +39,7 @@ import {
 	workAssigneeOptions,
 	workAssigneeUsers,
 	workFocusHistory,
+	workspaceMemberPageInputs,
 } from "@/lib/work-input";
 import { WorkActions } from "./work-actions";
 import { workSearchParams } from "./work-search-params";
@@ -236,6 +237,15 @@ export function WorkTable() {
 	const members = useQuery(
 		trpc.workspace.members.queryOptions(WORKSPACE_MEMBERS_INPUT),
 	);
+	const memberPages = useQueries({
+		queries: workspaceMemberPageInputs(members.data?.total)
+			.slice(1)
+			.map((pageInput) => trpc.workspace.members.queryOptions(pageInput)),
+	});
+	const memberRows = [
+		...(members.data?.rows ?? []),
+		...memberPages.flatMap((page) => page.data?.rows ?? []),
+	];
 
 	const focus = useCallback(
 		(id: string) => void setFocusId(id, { history: workFocusHistory(true) }),
@@ -244,41 +254,35 @@ export function WorkTable() {
 	const columns = useMemo(() => columnsForWork(focus), [focus]);
 
 	const facetCounts = work.data?.facetCounts;
-	const facets: DataTableFacet[] = useMemo(
-		() => [
-			{
-				id: "state",
-				label: "State",
-				options: STATE_OPTIONS.filter(
-					(option) => (facetCounts?.state?.[option.value] ?? 0) > 0,
-				),
-			},
-			{
-				id: "queue",
-				label: "Queue",
-				options: facetOptions(facetCounts?.queue),
-			},
-			{
-				id: "assignee",
-				label: "Owner",
-				options: workAssigneeOptions(
-					facetCounts?.owner,
-					members.data?.rows ?? [],
-				),
-			},
-			{
-				id: "due",
-				label: "Due",
-				options: DUE_OPTIONS,
-			},
-			{
-				id: "subjectType",
-				label: "Subject type",
-				options: facetOptions(facetCounts?.subjectType),
-			},
-		],
-		[facetCounts, members.data?.rows],
-	);
+	const facets: DataTableFacet[] = [
+		{
+			id: "state",
+			label: "State",
+			options: STATE_OPTIONS.filter(
+				(option) => (facetCounts?.state?.[option.value] ?? 0) > 0,
+			),
+		},
+		{
+			id: "queue",
+			label: "Queue",
+			options: facetOptions(facetCounts?.queue),
+		},
+		{
+			id: "assignee",
+			label: "Owner",
+			options: workAssigneeOptions(facetCounts?.owner, memberRows),
+		},
+		{
+			id: "due",
+			label: "Due",
+			options: DUE_OPTIONS,
+		},
+		{
+			id: "subjectType",
+			label: "Subject type",
+			options: facetOptions(facetCounts?.subjectType),
+		},
+	];
 
 	return (
 		<>
@@ -326,7 +330,7 @@ export function WorkTable() {
 				) : (
 					<WorkFocus
 						work={detail.data}
-						users={workAssigneeUsers(members.data?.rows ?? [])}
+						users={workAssigneeUsers(memberRows)}
 						onClose={() =>
 							void setFocusId(null, { history: workFocusHistory(false) })
 						}

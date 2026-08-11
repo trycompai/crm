@@ -20,6 +20,7 @@ import {
 	workAssigneeOptions,
 	workAssigneeUsers,
 	workFocusHistory,
+	workspaceMemberPageInputs,
 	workspaceMemberSearchInput,
 } from "../lib/work-input";
 
@@ -195,6 +196,18 @@ test("member search reaches a matching member beyond the initial page", () => {
 	expect(workActions).toContain("workspaceMemberSearchInput(assigneeSearch)");
 });
 
+test("workspace member page inputs cover every bounded member page", () => {
+	expect(workspaceMemberPageInputs(101).map((input) => input.page)).toEqual([
+		1, 2,
+	]);
+	expect(workspaceMemberPageInputs(250).map((input) => input.page)).toEqual([
+		1, 2, 3,
+	]);
+	expect(
+		workspaceMemberPageInputs(250).every((input) => input.pageSize === 100),
+	).toBe(true);
+});
+
 test("inherited subject-type keys are rejected before the API input", () => {
 	const base = {
 		q: "",
@@ -304,6 +317,13 @@ test("terminal status remains rendered when capabilities become empty", () => {
 	expect(workActions).not.toContain("if (!primary) return null");
 	expect(workActions).toContain("{primary ? (");
 	expect(workActions).toContain('status?.kind === "success"');
+});
+
+test("successful mutation owner resets dialog state from the result", () => {
+	expect(workActions).toContain("closeDialog(result.ownerId)");
+	expect(resetWorkDialogState("owner-from-result").assigneeId).toBe(
+		"owner-from-result",
+	);
 });
 
 test("detail sheets preserve connected openers and allow default close focus otherwise", () => {

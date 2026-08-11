@@ -11,6 +11,20 @@ export const WORKSPACE_MEMBERS_INPUT = {
 	role: "all",
 } satisfies RouterInputs["workspace"]["members"];
 
+export function workspaceMemberPageInputs(
+	total: number | undefined,
+): RouterInputs["workspace"]["members"][] {
+	const pageCount = Math.max(
+		1,
+		Math.ceil(Math.max(total ?? 0, 0) / WORKSPACE_MEMBERS_INPUT.pageSize),
+	);
+
+	return Array.from({ length: pageCount }, (_, index) => ({
+		...WORKSPACE_MEMBERS_INPUT,
+		page: index + 1,
+	}));
+}
+
 export function workspaceMemberSearchInput(
 	query: string,
 ): RouterInputs["workspace"]["members"] {

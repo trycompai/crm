@@ -55,6 +55,7 @@ import {
 import { resetWorkDialogState } from "./work-dialog-state";
 
 type WorkDetail = RouterOutputs["work"]["detail"];
+type WorkMutationResult = RouterOutputs["work"]["claim"];
 type WorkInputs = RouterInputs["work"];
 type WorkUser = { id: string; name: string };
 type DialogAction = WorkActionName | null;
@@ -94,16 +95,18 @@ export function WorkActions({
 		retryable?: boolean;
 	} | null>(null);
 
-	const resetDialogState = () => {
-		const initial = resetWorkDialogState(work.owner?.id);
+	const resetDialogState = (
+		ownerId: string | null | undefined = work.owner?.id,
+	) => {
+		const initial = resetWorkDialogState(ownerId);
 		setReason(initial.reason);
 		setNextReviewAt(initial.nextReviewAt);
 		setAssigneeId(initial.assigneeId);
 		setAssigneeSearch(initial.assigneeSearch);
 	};
 
-	const closeDialog = () => {
-		resetDialogState();
+	const closeDialog = (ownerId: string | null | undefined = work.owner?.id) => {
+		resetDialogState(ownerId);
 		setDialogAction(null);
 	};
 
@@ -127,12 +130,12 @@ export function WorkActions({
 	};
 
 	const onSuccess = async (
-		_result: unknown,
+		result: WorkMutationResult,
 		variables: { clientRequestId: string },
 	) => {
 		lastIntentRef.current = null;
 		setLastIntent(null);
-		closeDialog();
+		closeDialog(result.ownerId);
 		setStatus({
 			kind: "success",
 			message: "Work updated.",
@@ -529,7 +532,11 @@ export function WorkActions({
 						</p>
 					)}
 					<DialogFooter>
-						<Button variant="outline" onClick={closeDialog} disabled={pending}>
+						<Button
+							variant="outline"
+							onClick={() => closeDialog()}
+							disabled={pending}
+						>
 							Cancel
 						</Button>
 						<Button
