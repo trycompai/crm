@@ -14,6 +14,32 @@ ADD COLUMN "evidence" JSONB,
 ADD COLUMN "reviewedById" TEXT,
 ADD COLUMN "reviewedAt" TIMESTAMP(3);
 
+CREATE FUNCTION "validateInboundRedactedMetadata"(metadata JSONB) RETURNS BOOLEAN LANGUAGE plpgsql IMMUTABLE AS $function$
+DECLARE
+    metadataKey TEXT;
+    metadataValue JSONB;
+BEGIN
+    IF jsonb_typeof(metadata) <> 'object' OR octet_length(metadata::text) > 16384 THEN
+        RETURN FALSE;
+    END IF;
+    FOR metadataKey, metadataValue IN SELECT object_key, object_value FROM jsonb_each(metadata) AS entries(object_key, object_value) LOOP
+        IF metadataKey NOT IN ('connector', 'provider', 'accountId', 'sourceObjectType', 'sourceObjectId', 'sourceVersion', 'sourceCreatedAt', 'sourceUpdatedAt', 'capturedAt', 'cursor', 'syncToken', 'historyId', 'etag', 'page', 'pageSize', 'hasMore', 'resourceType', 'resourceId', 'threadId', 'messageId', 'conversationId', 'status', 'httpStatus', 'errorCode', 'errorType', 'retryAfter', 'nextRetryAt', 'attempt', 'latencyMs', 'startedAt', 'completedAt', 'version') THEN
+            RETURN FALSE;
+        END IF;
+        IF jsonb_typeof(metadataValue) NOT IN ('string', 'number', 'boolean', 'null') THEN
+            RETURN FALSE;
+        END IF;
+        IF jsonb_typeof(metadataValue) = 'string' AND octet_length(metadataValue #>> '{}') > 512 THEN
+            RETURN FALSE;
+        END IF;
+        IF metadataKey = 'status' AND (jsonb_typeof(metadataValue) <> 'string' OR metadataValue #>> '{}' NOT IN ('ok', 'success', 'error', 'pending', 'retrying', 'connected', 'disconnected', 'active', 'paused', 'failed')) THEN
+            RETURN FALSE;
+        END IF;
+    END LOOP;
+    RETURN TRUE;
+END;
+$function$;
+
 CREATE TABLE "inboundSourceReceipt" (
     "id" TEXT NOT NULL,
     "connector" TEXT NOT NULL,
@@ -29,12 +55,15 @@ CREATE TABLE "inboundSourceReceipt" (
     "redactedMetadata" JSONB NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "inboundSourceReceipt_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "inboundSourceReceipt_identity_nonblank_check" CHECK (
+        NULLIF(btrim("connector"), '') IS NOT NULL
+        AND NULLIF(btrim("provider"), '') IS NOT NULL
+        AND NULLIF(btrim("accountId"), '') IS NOT NULL
+        AND NULLIF(btrim("sourceObjectType"), '') IS NOT NULL
+        AND NULLIF(btrim("sourceObjectId"), '') IS NOT NULL
+    ),
     CONSTRAINT "inboundSourceReceipt_sourceDigest_check" CHECK ("sourceDigest" ~ '^[0-9a-f]{64}$'),
-    CONSTRAINT "inboundSourceReceipt_redactedMetadata_check" CHECK (
-        jsonb_typeof("redactedMetadata") = 'object'
-        AND pg_column_size("redactedMetadata") <= 16384
-        AND NOT jsonb_path_exists("redactedMetadata", '$.** ? (@.type() == "object").keyvalue() ? (@.key like_regex "(?i)^(body|text|content|html|raw|token|secret|password|authorization|cookie)$")')
-    )
+    CONSTRAINT "inboundSourceReceipt_redactedMetadata_check" CHECK ("validateInboundRedactedMetadata"("redactedMetadata"))
 );
 
 CREATE TABLE "contactCandidate" (
@@ -68,6 +97,10 @@ CREATE TABLE "contactCandidate" (
         "status" NOT IN ('ACCEPTED', 'REJECTED', 'EXCLUDED')
         OR ("decisionById" IS NOT NULL AND "decidedAt" IS NOT NULL AND NULLIF(btrim("decisionReason"), '') IS NOT NULL)
     ),
+    CONSTRAINT "contactCandidate_accepted_check" CHECK (
+        "status" <> 'ACCEPTED'
+        OR ("decisionById" IS NOT NULL AND "decidedAt" IS NOT NULL AND NULLIF(btrim("decisionReason"), '') IS NOT NULL AND "permissionState" <> 'PROHIBITED' AND "proposedContactId" IS NOT NULL)
+    ),
     CONSTRAINT "contactCandidate_prohibited_status_check" CHECK (
         "status" NOT IN ('REJECTED', 'EXCLUDED', 'QUARANTINED') OR "permissionState" = 'PROHIBITED'
     )
@@ -90,7 +123,8 @@ CREATE TABLE "contactCandidateObservation" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "contactCandidateObservation_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "contactCandidateObservation_sourceDigest_check" CHECK ("sourceDigest" ~ '^[0-9a-f]{64}$'),
-    CONSTRAINT "contactCandidateObservation_observationKey_check" CHECK ("observationKey" ~ '^[0-9a-f]{64}$')
+    CONSTRAINT "contactCandidateObservation_observationKey_check" CHECK ("observationKey" ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT "contactCandidateObservation_evidence_nonblank_check" CHECK (NULLIF(btrim("evidenceClass"), '') IS NOT NULL)
 );
 
 CREATE TABLE "entityFieldProvenance" (
@@ -165,6 +199,7 @@ CREATE TABLE "recordQuarantine" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "recordQuarantine_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "recordQuarantine_reason_nonblank_check" CHECK (NULLIF(btrim("reason"), '') IS NOT NULL),
     CONSTRAINT "recordQuarantine_resolved_evidence_check" CHECK ("status" <> 'RESOLVED' OR ("reviewedById" IS NOT NULL AND "reviewedAt" IS NOT NULL AND "resolvedAt" IS NOT NULL))
 );
 
@@ -174,7 +209,10 @@ CREATE INDEX "inboundSourceReceipt_connector_accountId_capturedAt_idx" ON "inbou
 CREATE INDEX "inboundSourceReceipt_provider_accountId_capturedAt_idx" ON "inboundSourceReceipt"("provider", "accountId", "capturedAt");
 CREATE INDEX "inboundSourceReceipt_sourceDigest_idx" ON "inboundSourceReceipt"("sourceDigest");
 
-CREATE UNIQUE INDEX "contactCandidate_identityKey_key" ON "contactCandidate"("identityKey");
+CREATE INDEX "contactCandidate_identityKey_idx" ON "contactCandidate"("identityKey");
+CREATE UNIQUE INDEX "contactCandidate_canonicalEmail_identity_key" ON "contactCandidate"((lower(btrim("canonicalEmail")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NOT NULL;
+CREATE UNIQUE INDEX "contactCandidate_canonicalName_domain_identity_key" ON "contactCandidate"((lower(btrim("canonicalName"))), (lower(btrim("canonicalDomain")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NULL AND NULLIF(btrim("canonicalName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL;
+CREATE UNIQUE INDEX "contactCandidate_canonicalBusinessName_domain_identity_key" ON "contactCandidate"((lower(btrim("canonicalBusinessName"))), (lower(btrim("canonicalDomain")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NULL AND NULLIF(btrim("canonicalName"), '') IS NULL AND NULLIF(btrim("canonicalBusinessName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL;
 CREATE INDEX "contactCandidate_status_permissionState_updatedAt_idx" ON "contactCandidate"("status", "permissionState", "updatedAt");
 CREATE INDEX "contactCandidate_canonicalEmail_idx" ON "contactCandidate"("canonicalEmail");
 CREATE INDEX "contactCandidate_canonicalDomain_status_idx" ON "contactCandidate"("canonicalDomain", "status");
@@ -182,7 +220,19 @@ CREATE INDEX "contactCandidate_proposedCompanyId_status_idx" ON "contactCandidat
 CREATE INDEX "contactCandidate_proposedContactId_status_idx" ON "contactCandidate"("proposedContactId", "status");
 CREATE INDEX "contactCandidate_decisionById_decidedAt_idx" ON "contactCandidate"("decisionById", "decidedAt");
 
-CREATE UNIQUE INDEX "contactCandidateObservation_observationKey_key" ON "contactCandidateObservation"("observationKey");
+CREATE INDEX "contactCandidateObservation_observationKey_idx" ON "contactCandidateObservation"("observationKey");
+CREATE UNIQUE INDEX "contactCandidateObservation_tuple_identity_key" ON "contactCandidateObservation"(
+    "candidateId",
+    "receiptId",
+    "sourceDigest",
+    lower(btrim(coalesce("observedEmail", ''))),
+    lower(btrim(coalesce("observedName", ''))),
+    lower(btrim(coalesce("observedTitle", ''))),
+    lower(btrim(coalesce("observedCompany", ''))),
+    lower(btrim(coalesce("observedDomain", ''))),
+    lower(btrim(coalesce("observedRole", ''))),
+    lower(btrim("evidenceClass"))
+);
 CREATE INDEX "contactCandidateObservation_candidateId_observedAt_idx" ON "contactCandidateObservation"("candidateId", "observedAt");
 CREATE INDEX "contactCandidateObservation_receiptId_sourceDigest_idx" ON "contactCandidateObservation"("receiptId", "sourceDigest");
 CREATE INDEX "contactCandidateObservation_evidenceClass_observedAt_idx" ON "contactCandidateObservation"("evidenceClass", "observedAt");
@@ -221,6 +271,54 @@ ALTER TABLE "entityLinkProvenance" ADD CONSTRAINT "entityLinkProvenance_receiptI
 ALTER TABLE "entityLinkProvenance" ADD CONSTRAINT "entityLinkProvenance_decidedById_fkey" FOREIGN KEY ("decidedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "recordQuarantine" ADD CONSTRAINT "recordQuarantine_receiptId_fkey" FOREIGN KEY ("receiptId") REFERENCES "inboundSourceReceipt"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "recordQuarantine" ADD CONSTRAINT "recordQuarantine_reviewedById_fkey" FOREIGN KEY ("reviewedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+CREATE FUNCTION "protectAppliedEntityFieldProvenance"() RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'Field provenance evidence cannot be deleted';
+    END IF;
+    IF OLD."status" IN ('SUPERSEDED', 'REJECTED') THEN
+        RAISE EXCEPTION 'Terminal field provenance is audit-stable';
+    END IF;
+    IF ROW(NEW."subjectType", NEW."subjectId", NEW."fieldName", NEW."valueDigest", NEW."receiptId", NEW."confidence", NEW."method", NEW."observedAt", NEW."freshUntil") IS DISTINCT FROM ROW(OLD."subjectType", OLD."subjectId", OLD."fieldName", OLD."valueDigest", OLD."receiptId", OLD."confidence", OLD."method", OLD."observedAt", OLD."freshUntil") THEN
+        RAISE EXCEPTION 'Field provenance claim payload is immutable';
+    END IF;
+    IF OLD."status" = 'APPLIED' THEN
+        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+            RAISE EXCEPTION 'Applied field provenance requires a reviewed supersession or rejection';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER "entityFieldProvenance_applied_immutable"
+BEFORE UPDATE OR DELETE ON "entityFieldProvenance"
+FOR EACH ROW EXECUTE FUNCTION "protectAppliedEntityFieldProvenance"();
+
+CREATE FUNCTION "protectAppliedEntityLinkProvenance"() RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'Link provenance evidence cannot be deleted';
+    END IF;
+    IF OLD."status" IN ('SUPERSEDED', 'REJECTED') THEN
+        RAISE EXCEPTION 'Terminal link provenance is audit-stable';
+    END IF;
+    IF ROW(NEW."sourceType", NEW."sourceId", NEW."relationship", NEW."targetType", NEW."targetId", NEW."receiptId", NEW."confidence", NEW."method", NEW."observedAt", NEW."freshUntil") IS DISTINCT FROM ROW(OLD."sourceType", OLD."sourceId", OLD."relationship", OLD."targetType", OLD."targetId", OLD."receiptId", OLD."confidence", OLD."method", OLD."observedAt", OLD."freshUntil") THEN
+        RAISE EXCEPTION 'Link provenance claim payload is immutable';
+    END IF;
+    IF OLD."status" = 'APPLIED' THEN
+        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+            RAISE EXCEPTION 'Applied link provenance requires a reviewed supersession or rejection';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER "entityLinkProvenance_applied_immutable"
+BEFORE UPDATE OR DELETE ON "entityLinkProvenance"
+FOR EACH ROW EXECUTE FUNCTION "protectAppliedEntityLinkProvenance"();
 
 CREATE FUNCTION "protectInboundSourceReceipt"() RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN

@@ -3604,7 +3604,7 @@ model InboundSourceReceipt {
 
 model ContactCandidate {
   id                    String                          @id @default(cuid())
-  identityKey           String                          @unique
+  identityKey           String
   rawEmail              String?
   canonicalEmail        String?
   rawName               String?
@@ -3629,6 +3629,7 @@ model ContactCandidate {
   observations ContactCandidateObservation[]
 
   @@index([status, permissionState, updatedAt])
+  @@index([identityKey], map: "contactCandidate_identityKey_idx")
   @@index([canonicalEmail])
   @@index([canonicalDomain, status])
   @@index([proposedCompanyId, status])
@@ -3644,7 +3645,7 @@ model ContactCandidateObservation {
   receiptId       String
   sourceDigest    String
   receipt         InboundSourceReceipt @relation(fields: [receiptId, sourceDigest], references: [id, sourceDigest], onDelete: Restrict)
-  observationKey  String               @unique
+  observationKey  String
   observedEmail   String?
   observedName    String?
   observedTitle   String?
@@ -3656,6 +3657,7 @@ model ContactCandidateObservation {
   createdAt       DateTime             @default(now())
 
   @@index([candidateId, observedAt])
+  @@index([observationKey], map: "contactCandidateObservation_observationKey_idx")
   @@index([receiptId, sourceDigest])
   @@index([evidenceClass, observedAt])
   @@map("contactCandidateObservation")

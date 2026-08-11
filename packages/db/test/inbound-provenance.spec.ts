@@ -37,7 +37,11 @@ function receiptData(
 		...normalizeInboundSourceIdentity(
 			source(accountId, objectId, sourceDigest),
 		),
-		redactedMetadata: sanitizeInboundRedactedMetadata({ fixture: true }),
+		redactedMetadata: sanitizeInboundRedactedMetadata({
+			provider: "gmail",
+			resourceType: "message",
+			resourceId: objectId,
+		}),
 	};
 }
 
@@ -133,19 +137,25 @@ describe("inbound provenance pure helpers", () => {
 	});
 
 	it("rejects unsafe metadata recursively and enforces the size limit", () => {
-		expect(sanitizeInboundRedactedMetadata({ nested: { safe: true } })).toEqual(
-			{
-				nested: { safe: true },
-			},
-		);
-		expect(() =>
+		expect(
 			sanitizeInboundRedactedMetadata({
-				nested: { Authorization: "redacted" },
+				provider: "gmail",
+				status: "ok",
+				attempt: 1,
 			}),
+		).toEqual({ provider: "gmail", status: "ok", attempt: 1 });
+		expect(() =>
+			sanitizeInboundRedactedMetadata({ provider: { name: "gmail" } }),
+		).toThrow();
+		expect(() =>
+			sanitizeInboundRedactedMetadata({ status: "Bearer secret" }),
 		).toThrow();
 		expect(() => sanitizeInboundRedactedMetadata([])).toThrow();
 		expect(() =>
-			sanitizeInboundRedactedMetadata({ detail: "x".repeat(16_500) }),
+			sanitizeInboundRedactedMetadata({ cursor: "x".repeat(513) }),
+		).toThrow();
+		expect(() =>
+			sanitizeInboundRedactedMetadata({ cursor: "x".repeat(16_500) }),
 		).toThrow();
 	});
 });
@@ -210,7 +220,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 			candidates.filter((result) => result.status === "fulfilled"),
 		).toHaveLength(1);
 
-		const candidate = await db.contactCandidate.findUniqueOrThrow({
+		const candidate = await db.contactCandidate.findFirstOrThrow({
 			where: { identityKey },
 		});
 		const observationKey = contactCandidateObservationKey({
@@ -242,6 +252,17 @@ databaseDescribe("inbound provenance database contracts", () => {
 		expect(
 			observations.filter((result) => result.status === "fulfilled"),
 		).toHaveLength(1);
+		await expectRejected(() =>
+			db.contactCandidateObservation.create({
+				data: {
+					candidateId: candidate.id,
+					receiptId: receipt.id,
+					sourceDigest: data.sourceDigest,
+					observationKey: provenanceValueDigest(`wrong-tuple-key-${suffix}`),
+					evidenceClass: "header",
+				},
+			}),
+		);
 	});
 
 	it("keeps source identity scoped by connector and account", async () => {
@@ -401,6 +422,27 @@ databaseDescribe("inbound provenance database contracts", () => {
 				},
 			}),
 		);
+		await expectRejected(() =>
+			db.contactCandidate.create({
+				data: {
+					identityKey: contactCandidateIdentityKey({
+						canonicalEmail: `accepted-no-contact-${suffix}@example.test`,
+					}),
+					canonicalEmail: `accepted-no-contact-${suffix}@example.test`,
+					status: "ACCEPTED",
+					decisionById: userId,
+					decisionReason: "reviewed",
+					decidedAt: new Date(),
+				},
+			}),
+		);
+		const acceptedContact = await db.contact.create({
+			data: {
+				id: `accepted-contact-${suffix}`,
+				firstName: "Accepted",
+				email: `accepted-contact-${suffix}@example.test`,
+			},
+		});
 		const accepted = await db.contactCandidate.create({
 			data: {
 				identityKey: contactCandidateIdentityKey({
@@ -408,12 +450,91 @@ databaseDescribe("inbound provenance database contracts", () => {
 				}),
 				canonicalEmail: `accepted-valid-${suffix}@example.test`,
 				status: "ACCEPTED",
+				proposedContactId: acceptedContact.id,
 				decisionById: userId,
 				decisionReason: "matched to existing CRM record",
 				decidedAt: new Date(),
 			},
 		});
 		expect(accepted.status).toBe("ACCEPTED");
+	});
+
+	it("uses canonical identity uniqueness instead of caller hash authority", async () => {
+		const retainedHash = provenanceValueDigest(`retained-hash-${suffix}`);
+		const first = await db.contactCandidate.create({
+			data: {
+				identityKey: retainedHash,
+				canonicalEmail: ` Same-one-${suffix}@Example.test `,
+			},
+		});
+		expect(first.identityKey).toBe(retainedHash);
+		const distinct = await db.contactCandidate.create({
+			data: {
+				identityKey: retainedHash,
+				canonicalEmail: `same-two-${suffix}@example.test`,
+			},
+		});
+		expect(distinct.identityKey).toBe(retainedHash);
+		await expectRejected(() =>
+			db.contactCandidate.create({
+				data: {
+					identityKey: provenanceValueDigest(`wrong-identity-${suffix}`),
+					canonicalEmail: `same-one-${suffix}@example.test`,
+				},
+			}),
+		);
+		await db.contactCandidate.create({
+			data: {
+				identityKey: provenanceValueDigest(`name-email-one-${suffix}`),
+				canonicalEmail: `name-one-${suffix}@example.test`,
+				canonicalName: "Same Person",
+				canonicalDomain: "same.example.test",
+			},
+		});
+		await db.contactCandidate.create({
+			data: {
+				identityKey: provenanceValueDigest(`name-email-two-${suffix}`),
+				canonicalEmail: `name-two-${suffix}@example.test`,
+				canonicalName: "Same Person",
+				canonicalDomain: "same.example.test",
+			},
+		});
+		await db.contactCandidate.create({
+			data: {
+				identityKey: provenanceValueDigest(`name-fallback-${suffix}`),
+				canonicalName: "Fallback Person",
+				canonicalDomain: "fallback.example.test",
+			},
+		});
+		await expectRejected(() =>
+			db.contactCandidate.create({
+				data: {
+					identityKey: provenanceValueDigest(
+						`name-fallback-duplicate-${suffix}`,
+					),
+					canonicalName: " fallback person ",
+					canonicalDomain: "FALLBACK.EXAMPLE.TEST",
+				},
+			}),
+		);
+		await db.contactCandidate.create({
+			data: {
+				identityKey: provenanceValueDigest(`business-fallback-${suffix}`),
+				canonicalBusinessName: "Fallback Business",
+				canonicalDomain: "business.example.test",
+			},
+		});
+		await expectRejected(() =>
+			db.contactCandidate.create({
+				data: {
+					identityKey: provenanceValueDigest(
+						`business-fallback-duplicate-${suffix}`,
+					),
+					canonicalBusinessName: " fallback business ",
+					canonicalDomain: "BUSINESS.EXAMPLE.TEST",
+				},
+			}),
+		);
 	});
 
 	it("requires receipts and records human provenance decisions", async () => {
@@ -525,14 +646,25 @@ databaseDescribe("inbound provenance database contracts", () => {
 				},
 			}),
 		);
-		await db.entityFieldProvenance.update({
-			where: { id: applied.id },
-			data: {
-				status: "SUPERSEDED",
-				decidedById: userId,
-				decidedAt: new Date(),
-			},
-		});
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityFieldProvenance" SET "valueDigest" = ${provenanceValueDigest("mutated-applied")} WHERE "id" = ${applied.id}`,
+		);
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityFieldProvenance" SET "status" = 'APPLIED' WHERE "id" = ${applied.id}`,
+		);
+		await expectRejected(() =>
+			db.entityFieldProvenance.delete({ where: { id: applied.id } }),
+		);
+		await db.$executeRaw`UPDATE "entityFieldProvenance" SET "status" = 'SUPERSEDED', "decidedById" = ${userId}, "decidedAt" = CURRENT_TIMESTAMP WHERE "id" = ${applied.id}`;
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityFieldProvenance" SET "subjectId" = ${`rewritten-${suffix}`} WHERE "id" = ${applied.id}`,
+		);
+		await expectRejected(() =>
+			db.entityFieldProvenance.delete({ where: { id: applied.id } }),
+		);
 		const replacementField = await db.entityFieldProvenance.create({
 			data: {
 				subjectType: "CONTACT",
@@ -588,14 +720,25 @@ databaseDescribe("inbound provenance database contracts", () => {
 				},
 			}),
 		);
-		await db.entityLinkProvenance.update({
-			where: { id: appliedLink.id },
-			data: {
-				status: "SUPERSEDED",
-				decidedById: userId,
-				decidedAt: new Date(),
-			},
-		});
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityLinkProvenance" SET "targetId" = ${`mutated-${suffix}`} WHERE "id" = ${appliedLink.id}`,
+		);
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityLinkProvenance" SET "status" = 'APPLIED' WHERE "id" = ${appliedLink.id}`,
+		);
+		await expectRejected(() =>
+			db.entityLinkProvenance.delete({ where: { id: appliedLink.id } }),
+		);
+		await db.$executeRaw`UPDATE "entityLinkProvenance" SET "status" = 'REJECTED', "decidedById" = ${userId}, "decidedAt" = CURRENT_TIMESTAMP WHERE "id" = ${appliedLink.id}`;
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityLinkProvenance" SET "targetId" = ${`rewritten-${suffix}`} WHERE "id" = ${appliedLink.id}`,
+		);
+		await expectRejected(() =>
+			db.entityLinkProvenance.delete({ where: { id: appliedLink.id } }),
+		);
 		const replacementLink = await db.entityLinkProvenance.create({
 			data: {
 				sourceType: "CONTACT",
@@ -673,6 +816,60 @@ databaseDescribe("inbound provenance database contracts", () => {
 		expect(reviewed.reviewedById).toBe(userId);
 	});
 
+	it("rejects blank receipt, observation, and quarantine facts", async () => {
+		const blankReceiptFields = [
+			{ connector: " " },
+			{ provider: " " },
+			{ accountId: " " },
+			{ sourceObjectType: " " },
+			{ sourceObjectId: " " },
+		] as const;
+		for (const [index, override] of blankReceiptFields.entries()) {
+			await expectRejected(() =>
+				db.inboundSourceReceipt.create({
+					data: {
+						...receiptData(
+							`blank-${suffix}-${index}`,
+							`blank-${suffix}-${index}`,
+						),
+						...override,
+					},
+				}),
+			);
+		}
+		const receipt = await db.inboundSourceReceipt.create({
+			data: receiptData(`blank-valid-${suffix}`, `blank-valid-${suffix}`),
+		});
+		const candidate = await db.contactCandidate.create({
+			data: {
+				identityKey: contactCandidateIdentityKey({
+					canonicalEmail: `blank-${suffix}@example.test`,
+				}),
+				canonicalEmail: `blank-${suffix}@example.test`,
+			},
+		});
+		await expectRejected(() =>
+			db.contactCandidateObservation.create({
+				data: {
+					candidateId: candidate.id,
+					receiptId: receipt.id,
+					sourceDigest: receipt.sourceDigest,
+					observationKey: provenanceValueDigest(`blank-observation-${suffix}`),
+					evidenceClass: " ",
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.recordQuarantine.create({
+				data: {
+					subjectType: "CONTACT",
+					subjectId: `blank-quarantine-${suffix}`,
+					reason: " ",
+				},
+			}),
+		);
+	});
+
 	it("protects receipts from update and delete", async () => {
 		const receipt = await db.inboundSourceReceipt.create({
 			data: receiptData(`immutable-${suffix}`, `immutable-${suffix}`),
@@ -724,8 +921,32 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.inboundSourceReceipt.create({
 				data: {
+					...receiptData(`metadata-${suffix}`, `nested-${suffix}`),
+					redactedMetadata: { provider: { name: "gmail" } },
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.inboundSourceReceipt.create({
+				data: {
+					...receiptData(`metadata-${suffix}`, `sensitive-status-${suffix}`),
+					redactedMetadata: { status: "Bearer secret" },
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.inboundSourceReceipt.create({
+				data: {
+					...receiptData(`metadata-${suffix}`, `long-string-${suffix}`),
+					redactedMetadata: { cursor: "x".repeat(513) },
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.inboundSourceReceipt.create({
+				data: {
 					...receiptData(`metadata-${suffix}`, `too-large-${suffix}`),
-					redactedMetadata: { detail: "x".repeat(16_500) },
+					redactedMetadata: { cursor: "x".repeat(16_500) },
 				},
 			}),
 		);

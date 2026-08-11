@@ -26,17 +26,51 @@ function digest(parts: readonly string[]): string {
 }
 
 const inboundDigestPattern = /^[0-9a-f]{64}$/;
-const forbiddenMetadataKeys = new Set([
-	"body",
-	"text",
-	"content",
-	"html",
-	"raw",
-	"token",
-	"secret",
-	"password",
-	"authorization",
-	"cookie",
+const allowedMetadataKeys = new Set([
+	"connector",
+	"provider",
+	"accountId",
+	"sourceObjectType",
+	"sourceObjectId",
+	"sourceVersion",
+	"sourceCreatedAt",
+	"sourceUpdatedAt",
+	"capturedAt",
+	"cursor",
+	"syncToken",
+	"historyId",
+	"etag",
+	"page",
+	"pageSize",
+	"hasMore",
+	"resourceType",
+	"resourceId",
+	"threadId",
+	"messageId",
+	"conversationId",
+	"status",
+	"httpStatus",
+	"errorCode",
+	"errorType",
+	"retryAfter",
+	"nextRetryAt",
+	"attempt",
+	"latencyMs",
+	"startedAt",
+	"completedAt",
+	"version",
+]);
+const allowedMetadataStatuses = new Set([
+	"ok",
+	"success",
+	"error",
+	"pending",
+	"retrying",
+	"connected",
+	"disconnected",
+	"active",
+	"paused",
+	"failed",
 ]);
 export const INBOUND_REDACTED_METADATA_MAX_BYTES = 16_384;
 
@@ -132,37 +166,8 @@ export function provenanceValueDigest(value: string): string {
 	return digest([value]);
 }
 
-function validateMetadataNode(value: unknown, path: string): void {
-	if (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "boolean"
-	) {
-		return;
-	}
-	if (typeof value === "number") {
-		if (Number.isFinite(value)) return;
-		throw new Error(`Inbound metadata contains a non-finite number at ${path}`);
-	}
-	if (Array.isArray(value)) {
-		for (const [index, item] of value.entries()) {
-			validateMetadataNode(item, `${path}[${index}]`);
-		}
-		return;
-	}
-	if (typeof value !== "object" || value === null) {
-		throw new Error(`Inbound metadata contains a non-JSON value at ${path}`);
-	}
-	const prototype = Object.getPrototypeOf(value);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new Error(`Inbound metadata contains a non-plain object at ${path}`);
-	}
-	for (const [key, child] of Object.entries(value)) {
-		if (forbiddenMetadataKeys.has(key.toLowerCase())) {
-			throw new Error(`Inbound metadata key is not permitted: ${path}.${key}`);
-		}
-		validateMetadataNode(child, `${path}.${key}`);
-	}
+function metadataStringBytes(value: string): number {
+	return new TextEncoder().encode(value).byteLength;
 }
 
 export function sanitizeInboundRedactedMetadata(
@@ -171,7 +176,41 @@ export function sanitizeInboundRedactedMetadata(
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		throw new Error("Inbound redacted metadata must be a JSON object");
 	}
-	validateMetadataNode(value, "$");
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) {
+		throw new Error("Inbound redacted metadata must be a plain JSON object");
+	}
+	for (const [key, child] of Object.entries(value)) {
+		if (!allowedMetadataKeys.has(key)) {
+			throw new Error(
+				`Inbound metadata key is not an operational fact: $.${key}`,
+			);
+		}
+		if (
+			child !== null &&
+			typeof child !== "string" &&
+			typeof child !== "boolean" &&
+			typeof child !== "number"
+		) {
+			throw new Error(`Inbound metadata value must be scalar: $.${key}`);
+		}
+		if (typeof child === "number" && !Number.isFinite(child)) {
+			throw new Error(
+				`Inbound metadata contains a non-finite number at $.${key}`,
+			);
+		}
+		if (typeof child === "string" && metadataStringBytes(child) > 512) {
+			throw new Error(
+				`Inbound metadata string exceeds the size limit: $.${key}`,
+			);
+		}
+		if (
+			key === "status" &&
+			(typeof child !== "string" || !allowedMetadataStatuses.has(child))
+		) {
+			throw new Error(`Inbound metadata status is not operational: $.${key}`);
+		}
+	}
 	const serialized = JSON.stringify(value);
 	if (serialized === undefined) {
 		throw new Error("Inbound redacted metadata must be JSON serializable");
