@@ -25,9 +25,12 @@ async function write(
 		...(status === EnrichmentStatus.COMPLETE ? { enrichedAt: new Date() } : {}),
 	};
 
-	const guard = onlyIfRunning
-		? { enrichmentStatus: EnrichmentStatus.RUNNING }
-		: {};
+	const settleable =
+		status === EnrichmentStatus.FAILED
+			? [EnrichmentStatus.RUNNING, EnrichmentStatus.PENDING]
+			: [EnrichmentStatus.RUNNING];
+
+	const guard = onlyIfRunning ? { enrichmentStatus: { in: settleable } } : {};
 
 	if (subject.contactId) {
 		await db.contact.updateMany({

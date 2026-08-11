@@ -89,6 +89,19 @@ export const SLACK_SCOPES: readonly SlackScope[] = [
 
 export const SLACK_REQUESTED_SCOPES = SLACK_SCOPES.map((entry) => entry.scope);
 
+export function slackScopeDrift(granted: readonly string[]): {
+	extra: SlackScope[];
+	missing: SlackScope[];
+} {
+	const held = new Set(granted);
+	return {
+		extra: describeSlackScopes(
+			granted.filter((scope) => !SLACK_REQUESTED_SCOPES.includes(scope)),
+		),
+		missing: SLACK_SCOPES.filter((entry) => !held.has(entry.scope)),
+	};
+}
+
 export function describeSlackScopes(granted: readonly string[]): SlackScope[] {
 	const known = new Map(SLACK_SCOPES.map((entry) => [entry.scope, entry]));
 	return granted.map(

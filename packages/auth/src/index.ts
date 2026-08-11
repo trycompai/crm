@@ -46,6 +46,7 @@ export {
 	SLACK_REQUESTED_SCOPES,
 	SLACK_SCOPES,
 	type SlackScope,
+	slackScopeDrift,
 } from "./slack-scopes";
 export {
 	canConfigureSso,

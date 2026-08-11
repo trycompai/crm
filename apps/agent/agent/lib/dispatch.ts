@@ -43,10 +43,12 @@ export async function retireAbandoned(): Promise<void> {
 	}
 }
 
-export async function runVisibleLane(): Promise<number> {
+export async function runVisibleLane(signal?: AbortSignal): Promise<number> {
 	let handled = 0;
 
 	while (handled < VISIBLE_BATCH) {
+		if (signal?.aborted) break;
+
 		const tasks = await claimDue(
 			Math.min(VISIBLE_CONCURRENCY, VISIBLE_BATCH - handled),
 			{ only: DIRECT_KINDS },
@@ -63,6 +65,19 @@ export async function runVisibleLane(): Promise<number> {
 }
 
 async function runDirect(task: LeasedTask): Promise<void> {
+	try {
+		await withDeadline(
+			handleDirect(task),
+			DISPATCH.sweep.itemTimeoutMs,
+			`This ${task.kind} task ran longer than ${DISPATCH.sweep.itemTimeoutMs}ms and was abandoned.`,
+		);
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
+	}
+}
+
+async function handleDirect(task: LeasedTask): Promise<void> {
 	try {
 		if (task.kind === "brand" && task.companyId) {
 			const result = await runBrand({ companyId: task.companyId });
@@ -112,7 +127,10 @@ async function runDirect(task: LeasedTask): Promise<void> {
 
 export async function runResearchLane(
 	start: (task: LeasedTask) => Promise<{ id: string }>,
+	signal?: AbortSignal,
 ): Promise<number> {
+	if (signal?.aborted) return 0;
+
 	const tasks = await claimDue(
 		RESEARCH_BATCH,
 		{ except: DIRECT_KINDS },
@@ -184,15 +202,22 @@ export const drainAll = collapsing(
 		lastSweepStartedAt = new Date();
 		lastSweepError = null;
 
+		const controller = new AbortController();
+		const signal = controller.signal;
+
 		const sweep = (async () => {
 			await retireAbandoned();
-			await Promise.all([runVisibleLane(), runResearchLane(start)]);
+			await Promise.all([
+				runVisibleLane(signal),
+				runResearchLane(start, signal),
+			]);
 		})();
 
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const abandon = new Promise<never>((_, reject) => {
 			timer = setTimeout(() => {
 				abandonedSweeps += 1;
+				controller.abort();
 				reject(
 					new Error(
 						`Dispatch sweep exceeded ${DRAIN_TIMEOUT_MS}ms and was abandoned so the next one can start.`,

@@ -5,6 +5,7 @@ import {
 	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,
 	type SlackScope,
+	slackScopeDrift,
 } from "@crm/auth";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
@@ -169,6 +170,7 @@ function ConnectedSlack({
 				title="What this workspace granted"
 				scopes={describeSlackScopes(status.scopes)}
 			/>
+			<ScopeDrift scopes={status.scopes} />
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
 				<div className="flex items-end justify-between gap-4">
 					<div>
@@ -259,6 +261,43 @@ function ScopeList({ title, scopes }: { title: string; scopes: SlackScope[] }) {
 					</div>
 				))}
 			</div>
+		</section>
+	);
+}
+
+function ScopeDrift({ scopes }: { scopes: string[] }) {
+	const { extra, missing } = slackScopeDrift(scopes);
+	if (extra.length === 0 && missing.length === 0) return null;
+
+	return (
+		<section className="flex flex-col gap-2 px-(--spacing-block-inline)">
+			<h2 className="font-medium text-sm">
+				Slack did not grant exactly what the CRM asked for
+			</h2>
+			{extra.length > 0 ? (
+				<p className="text-muted-foreground text-sm">
+					Your Slack app adds {extra.length} permission
+					{extra.length === 1 ? "" : "s"} the CRM never requested. Remove them
+					in the Slack app settings and reconnect if you do not want them.
+				</p>
+			) : null}
+			{missing.length > 0 ? (
+				<div className="flex flex-col gap-2">
+					<p className="text-muted-foreground text-sm">
+						These were withheld, so the matching capability is off:
+					</p>
+					{missing.map((entry) => (
+						<div className="flex items-start gap-3 text-sm" key={entry.scope}>
+							<Icon
+								icon={Close}
+								motion="none"
+								className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+							/>
+							<span>{entry.grant}</span>
+						</div>
+					))}
+				</div>
+			) : null}
 		</section>
 	);
 }

@@ -72,4 +72,24 @@ describe("a brand task with no key", () => {
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.SKIPPED);
 	});
+
+	it("records a failure on a company that never started", async () => {
+		const id = await company(EnrichmentStatus.PENDING);
+
+		await settle(
+			{ companyId: id },
+			EnrichmentStatus.FAILED,
+			"Research was attempted several times and never completed.",
+		);
+
+		expect(await statusOf(id)).toBe(EnrichmentStatus.FAILED);
+	});
+
+	it("does not revive a company that already completed", async () => {
+		const id = await company(EnrichmentStatus.COMPLETE);
+
+		await settle({ companyId: id }, EnrichmentStatus.FAILED, "too late");
+
+		expect(await statusOf(id)).toBe(EnrichmentStatus.COMPLETE);
+	});
 });
