@@ -94,6 +94,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+	await db.activity.deleteMany({ where: { createdById: userId } });
 	await db.deal.deleteMany({ where: { companyId } });
 	await db.company.deleteMany({ where: { domain } });
 	await db.user.deleteMany({ where: { id: userId } });

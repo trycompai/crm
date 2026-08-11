@@ -8,6 +8,8 @@ import {
 } from "../agent/lib/capabilities";
 
 const KEYS = [
+	"OPENAI_API_KEY",
+	"TAVILY_API_KEY",
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
