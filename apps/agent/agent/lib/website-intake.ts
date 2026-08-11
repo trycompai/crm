@@ -183,12 +183,13 @@ async function importLead(
 
 		const email = row.email.trim().toLowerCase();
 		const test = isWebsiteTestLead(row);
+		const suppressed = await isSuppressed(email, tx);
 		let companyId: string | null = null;
 		let contactId: string | null = null;
 		let companyNeedsEnrichment = false;
 		let contactNeedsEnrichment = false;
 
-		if (!test) {
+		if (!test && !suppressed) {
 			const owner = await tx.user.findFirst({
 				orderBy: { createdAt: "asc" },
 				select: { id: true },
@@ -346,6 +347,18 @@ function workDomain(email: string): string | null {
 	const domain = email.split("@")[1]?.toLowerCase() ?? null;
 	if (!domain) return null;
 	return FREE_MAIL.has(domain) ? null : domain;
+}
+
+async function isSuppressed(
+	email: string,
+	database: Prisma.TransactionClient,
+): Promise<boolean> {
+	const domain = email.split("@")[1]?.toLowerCase();
+	const [contact, domainRow] = await Promise.all([
+		database.suppressedContact.findUnique({ where: { email } }),
+		domain ? database.suppressedDomain.findUnique({ where: { domain } }) : null,
+	]);
+	return Boolean(contact || domainRow);
 }
 
 function enquiryBody(row: WebsiteLead): string {

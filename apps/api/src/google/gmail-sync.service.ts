@@ -17,6 +17,7 @@ import {
 	type IncomingMessage,
 	ThreadWriterService,
 } from "../mailbox/thread-writer.service";
+import type { MailboxResult } from "../mailbox/mailbox-api.client";
 import { GmailClient, type GmailMessage } from "./gmail.client";
 import {
 	type GmailHeader,
@@ -26,6 +27,11 @@ import {
 } from "./gmail-mime";
 
 const MAX_MESSAGES_PER_TICK = 120;
+
+type GmailMessageFailure = Exclude<
+	MailboxResult<GmailMessage>,
+	{ outcome: "ok" }
+>;
 
 export type GmailSyncOutcome = {
 	source: "gmail";
@@ -128,44 +134,50 @@ export class GmailSyncService {
 		mailbox: string,
 		startHistoryId: string,
 	): Promise<GmailSyncOutcome> {
-		const history = await this.gmail.listHistory(accessToken, {
-			startHistoryId,
-		});
-
-		if (history.outcome === "cursor-invalid") {
-			await this.state.clearCursor(row.id, history.reason);
-
-			return {
-				source: "gmail",
-				userId: row.userId,
-				status: "synced",
-				reason: "History expired; resuming from now.",
-			};
-		}
-
-		if (history.outcome !== "ok") {
-			return this.handleFailure(row, history);
-		}
-
 		const ids = new Set<string>();
-		for (const entry of history.data.history ?? []) {
-			for (const added of entry.messagesAdded ?? []) {
-				if (added.message?.id) ids.add(added.message.id);
-			}
-		}
+		let historyId = startHistoryId;
+		let pageToken: string | undefined;
+		let hasMore = false;
 
-		const { written, remaining } = await this.ingest(
-			row,
-			accessToken,
-			mailbox,
-			[...ids],
-		);
+		do {
+			const history = await this.gmail.listHistory(accessToken, {
+				startHistoryId,
+				pageToken,
+			});
+
+			if (history.outcome === "cursor-invalid") {
+				await this.state.clearCursor(row.id, history.reason);
+
+				return {
+					source: "gmail",
+					userId: row.userId,
+					status: "synced",
+					reason: "History expired; resuming from now.",
+				};
+			}
+
+			if (history.outcome !== "ok") {
+				return this.handleFailure(row, history);
+			}
+
+			for (const entry of history.data.history ?? []) {
+				for (const added of entry.messagesAdded ?? []) {
+					if (added.message?.id) ids.add(added.message.id);
+				}
+			}
+
+			historyId = history.data.historyId ?? historyId;
+			pageToken = history.data.nextPageToken;
+			hasMore = Boolean(pageToken);
+		} while (pageToken && ids.size < MAX_MESSAGES_PER_TICK);
+
+		const result = await this.ingest(row, accessToken, mailbox, [...ids]);
+		if ("failure" in result) return this.handleFailure(row, result.failure);
+
+		const { written, remaining } = result;
 
 		await this.state.settle(row.id, {
-			cursor:
-				remaining > 0
-					? startHistoryId
-					: (history.data.historyId ?? startHistoryId),
+			cursor: remaining > 0 || hasMore ? startHistoryId : historyId,
 			status: GoogleSyncStatus.RUNNING,
 		});
 
@@ -191,7 +203,9 @@ export class GmailSyncService {
 		accessToken: string,
 		mailbox: string,
 		ids: readonly string[],
-	): Promise<{ written: number; remaining: number }> {
+	): Promise<
+		{ written: number; remaining: number } | { failure: GmailMessageFailure }
+	> {
 		if (ids.length === 0) return { written: 0, remaining: 0 };
 
 		const alreadyHave = await this.db.emailMessage.findMany({
@@ -214,7 +228,7 @@ export class GmailSyncService {
 
 		for (const id of batch) {
 			const message = await this.gmail.getMessage(accessToken, id);
-			if (message.outcome !== "ok") continue;
+			if (message.outcome !== "ok") return { failure: message };
 
 			const parsed = this.parse(message.data);
 			if (!parsed) continue;

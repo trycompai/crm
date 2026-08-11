@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { LocalDateTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
+import { SafeExternalLink } from "../safe-external-link";
 
 const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
@@ -76,14 +77,12 @@ export function EmailThreadEntry({
 									body={message.body}
 									action={
 										message.mailboxUrl ? (
-											<a
+											<SafeExternalLink
 												href={message.mailboxUrl}
-												target="_blank"
-												rel="noreferrer"
 												className="text-muted-foreground underline underline-offset-3 hover:text-foreground"
 											>
 												Open in {message.mailboxName}
-											</a>
+											</SafeExternalLink>
 										) : null
 									}
 								/>

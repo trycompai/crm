@@ -1,4 +1,8 @@
 import type { Prisma } from "@crm/db";
+import {
+	normalizeExternalHttpUrl,
+	normalizeSocialUrl,
+} from "@crm/db/external-url";
 import type { Brand } from "./context-dev";
 
 export type BrandUpdate = Prisma.CompanyUpdateInput;
@@ -89,13 +93,24 @@ function parseHex(
 	return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
 }
 
-function social(socials: Brand["socials"], type: string): string | null {
-	return (socials ?? []).find((entry) => entry?.type === type)?.url ?? null;
+function social(
+	socials: Brand["socials"],
+	type: string,
+	kind: "linkedin" | "x" | "github",
+): string | null {
+	return normalizeSocialUrl(
+		(socials ?? []).find((entry) => entry?.type === type)?.url,
+		kind,
+	);
 }
 
 function clean(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : null;
+}
+
+function link(value: string | null | undefined): string | null {
+	return normalizeExternalHttpUrl(value);
 }
 
 function fillable(key: string, current: CompanySnapshot): boolean {
@@ -145,15 +160,15 @@ export function brandToUpdate(
 	fill("phone", clean(brand.phone));
 	fill("email", clean(brand.email));
 
-	fill("linkedinUrl", social(brand.socials, "linkedin"));
+	fill("linkedinUrl", social(brand.socials, "linkedin", "linkedin"));
 	fill(
 		"twitterUrl",
-		social(brand.socials, "x") ?? social(brand.socials, "twitter"),
+		social(brand.socials, "x", "x") ?? social(brand.socials, "twitter", "x"),
 	);
-	fill("githubUrl", social(brand.socials, "github"));
+	fill("githubUrl", social(brand.socials, "github", "github"));
 
-	fill("pricingUrl", clean(brand.links?.pricing));
-	fill("careersUrl", clean(brand.links?.careers));
+	fill("pricingUrl", link(brand.links?.pricing));
+	fill("careersUrl", link(brand.links?.careers));
 
 	return update;
 }

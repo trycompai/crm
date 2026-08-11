@@ -21,6 +21,7 @@ import {
 	type StampTargets,
 } from "../crm/activity-stamp.service";
 import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
+import { socialUrlOrThrow } from "../crm/external-url";
 import { blankToNull, normalizeEmail, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
@@ -389,13 +390,21 @@ export class ContactsService {
 		if (input.phone !== undefined) data.phone = blankToNull(input.phone);
 		if (input.title !== undefined) data.title = blankToNull(input.title);
 		if (input.linkedinUrl !== undefined) {
-			data.linkedinUrl = blankToNull(input.linkedinUrl);
+			data.linkedinUrl = socialUrlOrThrow(
+				input.linkedinUrl,
+				"linkedin",
+				"LinkedIn URL",
+			);
 		}
 		if (input.twitterUrl !== undefined) {
-			data.twitterUrl = blankToNull(input.twitterUrl);
+			data.twitterUrl = socialUrlOrThrow(input.twitterUrl, "x", "X URL");
 		}
 		if (input.githubUrl !== undefined) {
-			data.githubUrl = blankToNull(input.githubUrl);
+			data.githubUrl = socialUrlOrThrow(
+				input.githubUrl,
+				"github",
+				"GitHub URL",
+			);
 		}
 		if (input.companyId !== undefined) {
 			data.company = input.companyId

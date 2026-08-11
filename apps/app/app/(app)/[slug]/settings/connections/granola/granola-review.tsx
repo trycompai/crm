@@ -35,6 +35,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { LocalDateTime } from "@/components/local-date-time";
+import { safeExternalHref } from "@/lib/safe-external-url";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -120,6 +121,7 @@ function GranolaNoteCard({
 	const company = companies.find((candidate) => candidate.id === companyId);
 	const people = labels(note.attendees);
 	const folders = labels(note.folders);
+	const sourceHref = safeExternalHref(note.sourceUrl);
 
 	const match = useMutation(
 		trpc.inbound.matchGranola.mutationOptions({
@@ -171,9 +173,9 @@ function GranolaNoteCard({
 							{note.summary}
 						</p>
 					) : null}
-					{note.sourceUrl ? (
+					{sourceHref ? (
 						<Button asChild variant="link" size="sm" className="h-auto px-0">
-							<a href={note.sourceUrl} target="_blank" rel="noreferrer">
+							<a href={sourceHref} target="_blank" rel="noreferrer noopener">
 								Open in Granola
 								<Icon icon={Launch} data-icon="inline-end" />
 							</a>

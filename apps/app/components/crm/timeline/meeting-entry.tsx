@@ -7,6 +7,7 @@ import {
 	LocalDateTimeRange,
 } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
+import { SafeExternalLink } from "../safe-external-link";
 
 const RANGE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
@@ -63,14 +64,12 @@ export function MeetingEntry({
 			) : null}
 
 			{conferenceUrl ? (
-				<a
+				<SafeExternalLink
 					href={conferenceUrl}
-					target="_blank"
-					rel="noreferrer"
 					className="text-muted-foreground text-xs underline underline-offset-3 hover:text-foreground"
 				>
 					Join call
-				</a>
+				</SafeExternalLink>
 			) : null}
 		</div>
 	);

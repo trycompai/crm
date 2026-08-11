@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { LocalDateTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
+import { SafeExternalLink } from "../safe-external-link";
 
 const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	month: "short",
@@ -118,14 +119,12 @@ function GranolaNote({
 					</p>
 				</div>
 				{note.sourceUrl ? (
-					<a
+					<SafeExternalLink
 						href={note.sourceUrl}
-						target="_blank"
-						rel="noreferrer"
 						className="text-muted-foreground text-xs underline underline-offset-3 hover:text-foreground"
 					>
 						Open in Granola
-					</a>
+					</SafeExternalLink>
 				) : null}
 			</div>
 

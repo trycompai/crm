@@ -202,7 +202,8 @@ export class CalendarSyncService {
 		if (!originalStart) return "ignored";
 
 		const key = {
-			iCalUid_originalStartTime: {
+			syncedByUserId_iCalUid_originalStartTime: {
+				syncedByUserId: row.userId,
 				iCalUid,
 				originalStartTime: originalStart.at,
 			},
@@ -213,6 +214,7 @@ export class CalendarSyncService {
 				where: {
 					iCalUid,
 					originalStartTime: originalStart.at,
+					syncedByUserId: row.userId,
 				},
 			});
 			return deleted.count > 0 ? "removed" : "ignored";

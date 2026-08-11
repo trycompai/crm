@@ -4,6 +4,7 @@ import LogoX from "@carbon/icons-react/es/LogoX";
 import Money from "@carbon/icons-react/es/Money";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import type { CarbonIcon } from "@crm/ui/components/icon";
+import { safeExternalHref } from "./safe-external-url";
 
 type SocialLink<T> = { key: keyof T; label: string; icon: CarbonIcon };
 
@@ -37,8 +38,10 @@ const CONTACT_LINKS: SocialLink<ContactLinks>[] = [
 
 function present<T>(record: T, links: SocialLink<T>[]) {
 	return links.flatMap((link) => {
-		const href = record[link.key];
-		return typeof href === "string" && href ? [{ ...link, href }] : [];
+		const href = safeExternalHref(
+			record[link.key] as string | null | undefined,
+		);
+		return href ? [{ ...link, href }] : [];
 	});
 }
 

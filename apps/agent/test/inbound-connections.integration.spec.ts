@@ -23,12 +23,18 @@ const suffix = `${process.env.TEST_RUN_ID ?? "inbound"}-${crypto.randomUUID()}`;
 const userId = `inbound-user-${suffix}`;
 const websiteExternalId = crypto.randomUUID();
 const websiteQaExternalId = crypto.randomUUID();
+const websiteSuppressedExternalId = crypto.randomUUID();
 const websiteDomain = `website-${suffix}.example.test`;
+const websiteSuppressedDomain = `suppressed-website-${suffix}.example.test`;
 const agentMailDomain = `agentmail-${suffix}.example.test`;
 const agentMailInboxId = `inbox-${suffix}`;
 const agentMailSyncInboxId = `sync-inbox-${suffix}`;
+const agentMailCappedInboxId = `capped-inbox-${suffix}`;
+const agentMailSuppressedInboxId = `suppressed-inbox-${suffix}`;
 const agentMailMessageId = `message-${suffix}`;
 const agentMailThreadId = `thread-${suffix}`;
+const agentMailSuppressedMessageId = `suppressed-message-${suffix}`;
+const agentMailSuppressedThreadId = `suppressed-thread-${suffix}`;
 const granolaExternalId = `not_${crypto.randomUUID().replaceAll("-", "").slice(0, 14)}`;
 const excludedGranolaExternalId = `not_${crypto.randomUUID().replaceAll("-", "").slice(0, 14)}`;
 const granolaDomain = `granola-${suffix}.example.test`;
@@ -47,7 +53,23 @@ afterAll(async () => {
 	await db.emailInbox.deleteMany({
 		where: {
 			provider: EmailProvider.AGENTMAIL,
-			externalInboxId: agentMailSyncInboxId,
+			externalInboxId: {
+				in: [
+					agentMailSyncInboxId,
+					agentMailCappedInboxId,
+					agentMailSuppressedInboxId,
+				],
+			},
+		},
+	});
+	await db.suppressedDomain.deleteMany({
+		where: { domain: { in: [websiteSuppressedDomain, agentMailDomain] } },
+	});
+	await db.suppressedContact.deleteMany({
+		where: {
+			email: {
+				in: [`alex@${websiteSuppressedDomain}`, `sender@${agentMailDomain}`],
+			},
 		},
 	});
 	await db.granolaNoteExclusion.deleteMany({
@@ -75,7 +97,15 @@ afterAll(async () => {
 	await db.company.deleteMany({ where: { domain: granolaDomain } });
 
 	const enquiries = await db.websiteEnquiry.findMany({
-		where: { externalId: { in: [websiteExternalId, websiteQaExternalId] } },
+		where: {
+			externalId: {
+				in: [
+					websiteExternalId,
+					websiteQaExternalId,
+					websiteSuppressedExternalId,
+				],
+			},
+		},
 		select: { companyId: true, contactId: true },
 	});
 	const companyIds = enquiries.flatMap((row) =>
@@ -94,18 +124,33 @@ afterAll(async () => {
 		},
 	});
 	await db.websiteEnquiry.deleteMany({
-		where: { externalId: { in: [websiteExternalId, websiteQaExternalId] } },
+		where: {
+			externalId: {
+				in: [
+					websiteExternalId,
+					websiteQaExternalId,
+					websiteSuppressedExternalId,
+				],
+			},
+		},
 	});
 	await db.emailThread.deleteMany({
 		where: {
 			provider: EmailProvider.AGENTMAIL,
-			externalThreadId: agentMailThreadId,
+			externalThreadId: {
+				in: [agentMailThreadId, agentMailSuppressedThreadId],
+			},
 		},
 	});
 	await db.emailProviderEvent.deleteMany({
 		where: {
 			provider: EmailProvider.AGENTMAIL,
-			externalEventId: `poll:${agentMailMessageId}`,
+			externalEventId: {
+				in: [
+					`poll:${agentMailMessageId}`,
+					`poll:${agentMailSuppressedMessageId}`,
+				],
+			},
 		},
 	});
 	await db.emailInbox.deleteMany({
@@ -116,12 +161,29 @@ afterAll(async () => {
 	});
 	await db.contact.deleteMany({
 		where: {
-			OR: [{ id: { in: contactIds } }, { email: `sender@${agentMailDomain}` }],
+			OR: [
+				{ id: { in: contactIds } },
+				{
+					email: {
+						in: [
+							`sender@${agentMailDomain}`,
+							`alex@${websiteSuppressedDomain}`,
+						],
+					},
+				},
+			],
 		},
 	});
 	await db.company.deleteMany({
 		where: {
-			OR: [{ id: { in: companyIds } }, { domain: agentMailDomain }],
+			OR: [
+				{ id: { in: companyIds } },
+				{
+					domain: {
+						in: [agentMailDomain, websiteSuppressedDomain],
+					},
+				},
+			],
 		},
 	});
 	await db.user.deleteMany({ where: { id: userId } });
@@ -208,6 +270,37 @@ describe("website enquiry intake", () => {
 		).toEqual({ test: true, companyId: null, contactId: null });
 		expect(await db.contact.count({ where: { email } })).toBe(0);
 	});
+
+	it("records suppressed website enquiries without creating CRM records", async () => {
+		await db.suppressedDomain.create({
+			data: { domain: websiteSuppressedDomain, reason: "Integration test" },
+		});
+
+		const result = await importWebsiteLeads([
+			websiteLead({
+				id: websiteSuppressedExternalId,
+				email: `alex@${websiteSuppressedDomain}`,
+				company: "Suppressed Website Co",
+				qa_tag: null,
+			}),
+		]);
+
+		expect(result).toMatchObject({ imported: 1, duplicates: 0, tests: 0 });
+		expect(
+			await db.websiteEnquiry.findUnique({
+				where: { externalId: websiteSuppressedExternalId },
+				select: { companyId: true, contactId: true },
+			}),
+		).toEqual({ companyId: null, contactId: null });
+		expect(
+			await db.contact.count({
+				where: { email: `alex@${websiteSuppressedDomain}` },
+			}),
+		).toBe(0);
+		expect(
+			await db.company.count({ where: { domain: websiteSuppressedDomain } }),
+		).toBe(0);
+	});
 });
 
 describe("AgentMail inbound storage", () => {
@@ -251,6 +344,65 @@ describe("AgentMail inbound storage", () => {
 				startedAt.getTime(),
 			);
 			expect(inbox.isEnabled).toBe(false);
+		} finally {
+			if (previousKey) process.env.AGENTMAIL_API_KEY = previousKey;
+			else delete process.env.AGENTMAIL_API_KEY;
+			if (previousInboxId) process.env.AGENTMAIL_INBOX_ID = previousInboxId;
+			else delete process.env.AGENTMAIL_INBOX_ID;
+			if (previousInboxEmail)
+				process.env.AGENTMAIL_INBOX_EMAIL = previousInboxEmail;
+			else delete process.env.AGENTMAIL_INBOX_EMAIL;
+		}
+	});
+
+	it("checkpoints capped polling at the last scanned message", async () => {
+		const previousKey = process.env.AGENTMAIL_API_KEY;
+		const previousInboxId = process.env.AGENTMAIL_INBOX_ID;
+		const previousInboxEmail = process.env.AGENTMAIL_INBOX_EMAIL;
+		const base = Date.parse("2026-01-01T00:00:00.000Z");
+		const messages = Array.from({ length: 501 }, (_, index) => ({
+			inbox_id: agentMailCappedInboxId,
+			thread_id: `capped-thread-${index}`,
+			message_id: `capped-message-${suffix}-${index}`,
+			labels: ["sent"],
+			timestamp: new Date(base + index * 1000).toISOString(),
+			from: `Sender <sender-${index}@${agentMailDomain}>`,
+			to: [`Lode <lode@${agentMailDomain}>`],
+		}));
+
+		process.env.AGENTMAIL_API_KEY = "test-key";
+		process.env.AGENTMAIL_INBOX_ID = agentMailCappedInboxId;
+		process.env.AGENTMAIL_INBOX_EMAIL = `capped@${agentMailDomain}`;
+
+		try {
+			await db.emailInbox.create({
+				data: {
+					provider: EmailProvider.AGENTMAIL,
+					externalInboxId: agentMailCappedInboxId,
+					email: `capped@${agentMailDomain}`,
+					lastSyncedAt: new Date("2025-12-31T00:00:00.000Z"),
+				},
+			});
+
+			const result = await runAgentMailSync(db, async () =>
+				Response.json({
+					count: messages.length,
+					messages,
+					next_page_token: "more",
+				}),
+			);
+			const inbox = await db.emailInbox.findUniqueOrThrow({
+				where: {
+					provider_externalInboxId: {
+						provider: EmailProvider.AGENTMAIL,
+						externalInboxId: agentMailCappedInboxId,
+					},
+				},
+				select: { lastSyncedAt: true },
+			});
+
+			expect(result.ignored).toBe(500);
+			expect(inbox.lastSyncedAt?.toISOString()).toBe(messages[499]?.timestamp);
 		} finally {
 			if (previousKey) process.env.AGENTMAIL_API_KEY = previousKey;
 			else delete process.env.AGENTMAIL_API_KEY;
@@ -337,6 +489,88 @@ describe("AgentMail inbound storage", () => {
 				},
 			}),
 		).toBe(1);
+	});
+
+	it("stores suppressed inbound mail without CRM attribution", async () => {
+		const previousKey = process.env.AGENTMAIL_API_KEY;
+		const previousInboxId = process.env.AGENTMAIL_INBOX_ID;
+		const previousInboxEmail = process.env.AGENTMAIL_INBOX_EMAIL;
+
+		process.env.AGENTMAIL_API_KEY = "test-key";
+		process.env.AGENTMAIL_INBOX_ID = agentMailSuppressedInboxId;
+		process.env.AGENTMAIL_INBOX_EMAIL = `suppressed@${agentMailDomain}`;
+
+		const company = await db.company.upsert({
+			where: { domain: agentMailDomain },
+			create: { name: "AgentMail Suppressed Co", domain: agentMailDomain },
+			update: {},
+			select: { id: true },
+		});
+		await db.contact.upsert({
+			where: { email: `sender@${agentMailDomain}` },
+			create: {
+				firstName: "Morgan",
+				email: `sender@${agentMailDomain}`,
+				companyId: company.id,
+			},
+			update: { companyId: company.id },
+		});
+		await db.suppressedContact.create({
+			data: {
+				email: `sender@${agentMailDomain}`,
+				reason: "Integration test",
+			},
+		});
+
+		const message: AgentMailMessage = {
+			inbox_id: agentMailSuppressedInboxId,
+			thread_id: agentMailSuppressedThreadId,
+			message_id: agentMailSuppressedMessageId,
+			labels: ["received"],
+			timestamp: new Date().toISOString(),
+			from: `Morgan Field <sender@${agentMailDomain}>`,
+			to: [`Lode <suppressed@${agentMailDomain}>`],
+			cc: [],
+			bcc: [],
+			subject: "Suppressed request",
+			preview: "Please do not attach this.",
+			text: "Please do not attach this.",
+			extracted_text: "Please do not attach this.",
+		};
+
+		try {
+			const result = await runAgentMailSync(db, async (target) => {
+				const url = new URL(String(target));
+				return url.pathname.endsWith(`/${agentMailSuppressedMessageId}`)
+					? Response.json(message)
+					: Response.json({
+							count: 1,
+							messages: [message],
+							next_page_token: null,
+						});
+			});
+
+			const thread = await db.emailThread.findUnique({
+				where: {
+					provider_externalThreadId: {
+						provider: EmailProvider.AGENTMAIL,
+						externalThreadId: agentMailSuppressedThreadId,
+					},
+				},
+				select: { companyId: true, contactId: true },
+			});
+
+			expect(result.written).toBe(1);
+			expect(thread).toEqual({ companyId: null, contactId: null });
+		} finally {
+			if (previousKey) process.env.AGENTMAIL_API_KEY = previousKey;
+			else delete process.env.AGENTMAIL_API_KEY;
+			if (previousInboxId) process.env.AGENTMAIL_INBOX_ID = previousInboxId;
+			else delete process.env.AGENTMAIL_INBOX_ID;
+			if (previousInboxEmail)
+				process.env.AGENTMAIL_INBOX_EMAIL = previousInboxEmail;
+			else delete process.env.AGENTMAIL_INBOX_EMAIL;
+		}
 	});
 
 	it("runs both provider checks outside the research model lane", () => {

@@ -75,6 +75,7 @@ import {
 	type TranscriptItem,
 	toTranscript,
 } from "@/lib/agent-transcript";
+import { safeExternalHref } from "@/lib/safe-external-url";
 import { useTRPC } from "@/lib/trpc/client";
 import { useRecordSheetView } from "./record-sheet/record-stack";
 
@@ -451,9 +452,15 @@ function Item({ item }: { item: TranscriptItem }) {
 }
 
 function Sources({ sources }: { sources: Source[] }) {
+	const safeSources = sources.flatMap((source) => {
+		const href = safeExternalHref(source.url);
+		return href ? [{ ...source, href }] : [];
+	});
+	if (safeSources.length === 0) return null;
+
 	return (
 		<AttachmentGroup>
-			{sources.map((source) => (
+			{safeSources.map((source) => (
 				<Attachment key={source.url} size="xs" state="done">
 					<AttachmentMedia variant="icon">
 						<Icon icon={SOURCE_ICONS[source.network]} />
@@ -463,7 +470,7 @@ function Sources({ sources }: { sources: Source[] }) {
 					</AttachmentContent>
 
 					<AttachmentTrigger asChild>
-						<a href={source.url} target="_blank" rel="noreferrer noopener">
+						<a href={source.href} target="_blank" rel="noreferrer noopener">
 							<span className="sr-only">Open {source.title}</span>
 						</a>
 					</AttachmentTrigger>

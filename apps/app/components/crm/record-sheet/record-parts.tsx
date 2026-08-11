@@ -14,6 +14,7 @@ import {
 	type DetailSheetTab,
 	DetailSheetTabs,
 } from "@/components/detail-sheet";
+import { safeExternalHref } from "@/lib/safe-external-url";
 import { useRecordStack } from "./record-stack";
 
 export function RecordSheetFrame({
@@ -158,7 +159,9 @@ export function DomainLink({
 	domain: string | null;
 	website: string | null;
 }) {
-	const href = website ?? (domain ? `https://${domain}` : null);
+	const href =
+		safeExternalHref(website) ??
+		safeExternalHref(domain ? `https://${domain}` : null);
 	const label = domain ?? website;
 	if (!href || !label) return null;
 

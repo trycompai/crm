@@ -20,6 +20,7 @@ import {
 	type StampTargets,
 } from "../crm/activity-stamp.service";
 import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
+import { externalUrlOrThrow, socialUrlOrThrow } from "../crm/external-url";
 import { blankToNull, toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -325,7 +326,9 @@ export class CompaniesService {
 		const data: Prisma.CompanyUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
-		if (input.website !== undefined) data.website = blankToNull(input.website);
+		if (input.website !== undefined) {
+			data.website = externalUrlOrThrow(input.website, "Website");
+		}
 		if (input.description !== undefined) {
 			data.description = blankToNull(input.description);
 		}
@@ -339,7 +342,11 @@ export class CompaniesService {
 		if (input.phone !== undefined) data.phone = blankToNull(input.phone);
 		if (input.email !== undefined) data.email = blankToNull(input.email);
 		if (input.linkedinUrl !== undefined) {
-			data.linkedinUrl = blankToNull(input.linkedinUrl);
+			data.linkedinUrl = socialUrlOrThrow(
+				input.linkedinUrl,
+				"linkedin",
+				"LinkedIn URL",
+			);
 		}
 		if (input.ownerId !== undefined) {
 			data.owner = input.ownerId

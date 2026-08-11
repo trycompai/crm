@@ -100,6 +100,8 @@ export async function runAgentMailSync(
 	let duplicates = 0;
 	let ignored = 0;
 	let scanned = 0;
+	let checkpoint: Date | null = null;
+	let capped = false;
 
 	try {
 		for (;;) {
@@ -113,8 +115,12 @@ export async function runAgentMailSync(
 			});
 
 			for (const summary of page.messages) {
-				if (scanned >= MAX_MESSAGES_PER_SYNC) break;
+				if (scanned >= MAX_MESSAGES_PER_SYNC) {
+					capped = true;
+					break;
+				}
 				scanned += 1;
+				checkpoint = maxDate(checkpoint, new Date(summary.timestamp));
 
 				if (
 					!summary.labels.some((label) => label.toLowerCase() === "received")
@@ -164,14 +170,18 @@ export async function runAgentMailSync(
 				else duplicates += 1;
 			}
 
-			if (scanned >= MAX_MESSAGES_PER_SYNC || !page.next_page_token) break;
+			if (scanned >= MAX_MESSAGES_PER_SYNC || !page.next_page_token) {
+				capped =
+					scanned >= MAX_MESSAGES_PER_SYNC && Boolean(page.next_page_token);
+				break;
+			}
 			pageToken = page.next_page_token;
 		}
 
 		await database.emailInbox.update({
 			where: { id: inbox.id },
 			data: {
-				lastSyncedAt: new Date(),
+				lastSyncedAt: capped && checkpoint ? checkpoint : new Date(),
 				lastError: null,
 			},
 		});
@@ -386,6 +396,10 @@ async function getMessage(input: {
 }
 
 async function matchSender(email: string, database: Db): Promise<Match> {
+	if (await isSuppressed(email, database)) {
+		return { companyId: null, contactId: null };
+	}
+
 	const contact = await database.contact.findFirst({
 		where: { email: { equals: email, mode: "insensitive" } },
 		select: { id: true, companyId: true },
@@ -405,6 +419,15 @@ async function matchSender(email: string, database: Db): Promise<Match> {
 		select: { id: true },
 	});
 	return { companyId: company?.id ?? null, contactId: null };
+}
+
+async function isSuppressed(email: string, database: Db): Promise<boolean> {
+	const domain = email.split("@")[1]?.toLowerCase();
+	const [contact, domainRow] = await Promise.all([
+		database.suppressedContact.findUnique({ where: { email } }),
+		domain ? database.suppressedDomain.findUnique({ where: { domain } }) : null,
+	]);
+	return Boolean(contact || domainRow);
 }
 
 function parseAddress(
@@ -430,6 +453,12 @@ function recipients(message: AgentMailMessage): Prisma.InputJsonArray {
 function clean(value: string | null | undefined): string | null {
 	const result = value?.trim();
 	return result ? result : null;
+}
+
+function maxDate(left: Date | null, right: Date): Date | null {
+	if (Number.isNaN(right.getTime())) return left;
+	if (!left) return right;
+	return right > left ? right : left;
 }
 
 function json(value: unknown): Prisma.InputJsonValue {

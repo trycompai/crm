@@ -102,6 +102,29 @@ describe("brandToUpdate", () => {
 		});
 	});
 
+	it("drops unsafe provider links before they reach company fields", () => {
+		const update = brandToUpdate(
+			{
+				socials: [
+					{ type: "linkedin", url: "javascript:alert(1)" },
+					{ type: "github", url: "https://evil.test/acme" },
+					{ type: "x", url: "x.com/acme" },
+				],
+				links: {
+					pricing: "data:text/html,<script>alert(1)</script>",
+					careers: "example.com/jobs",
+				},
+			},
+			emptyCompany(),
+		);
+
+		expect(update.linkedinUrl).toBeUndefined();
+		expect(update.githubUrl).toBeUndefined();
+		expect(update.twitterUrl).toBe("https://x.com/acme");
+		expect(update.pricingUrl).toBeUndefined();
+		expect(update.careersUrl).toBe("https://example.com/jobs");
+	});
+
 	it("never overwrites a value a human already set", () => {
 		const update = brandToUpdate(
 			brand,

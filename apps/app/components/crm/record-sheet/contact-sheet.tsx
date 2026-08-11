@@ -35,6 +35,7 @@ import {
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { SafeExternalLink } from "@/components/crm/safe-external-link";
 import { ContactSocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
@@ -450,14 +451,12 @@ function Background({ brief }: { brief: NonNullable<Contact["brief"]> }) {
 			action={
 				<span className="text-muted-foreground text-xs">
 					{brief.sourceUrl ? (
-						<a
+						<SafeExternalLink
 							href={brief.sourceUrl}
-							target="_blank"
-							rel="noreferrer noopener"
 							className="underline-offset-2 hover:underline"
 						>
 							Source
-						</a>
+						</SafeExternalLink>
 					) : null}
 					{brief.sourceUrl ? " · " : null}
 					<LocalDateTime date={brief.refreshedAt} options={DATE_OPTIONS} />

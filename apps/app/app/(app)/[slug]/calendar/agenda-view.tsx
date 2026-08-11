@@ -24,6 +24,7 @@ import {
 } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { safeExternalHref } from "@/lib/safe-external-url";
 
 type AgendaItem = RouterOutputs["calendar"]["agenda"]["items"][number];
 
@@ -122,6 +123,7 @@ function AgendaStat({
 
 function AgendaRow({ item }: { item: AgendaItem }) {
 	const openRecord = useOpenRecord();
+	const conferenceHref = safeExternalHref(item.conferenceUrl);
 	const target = item.prospect
 		? { kind: "prospect" as const, id: item.prospect.id, tab: "draft" }
 		: item.deal
@@ -184,13 +186,9 @@ function AgendaRow({ item }: { item: AgendaItem }) {
 				}
 				label={item.status}
 			/>
-			{item.conferenceUrl ? (
+			{conferenceHref ? (
 				<Button asChild size="xs" variant="outline">
-					<a
-						href={item.conferenceUrl}
-						target="_blank"
-						rel="noreferrer noopener"
-					>
+					<a href={conferenceHref} target="_blank" rel="noreferrer noopener">
 						Join
 					</a>
 				</Button>

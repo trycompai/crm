@@ -39,6 +39,7 @@ import {
 	prospectNextAction,
 } from "@/components/crm/prospect-next-action";
 import { ProspectResearchButton } from "@/components/crm/prospect-research-button";
+import { SafeExternalLink } from "@/components/crm/safe-external-link";
 import {
 	DetailSheetBody,
 	DetailSheetProperties,
@@ -206,14 +207,12 @@ function JobPosting({ prospect }: { prospect: Prospect }) {
 					<DetailSheetProse>{job.observed ?? job.summary}</DetailSheetProse>
 					<DetailSheetProperties columns={1}>
 						<DetailSheetProperty label="Role or posting">
-							<a
+							<SafeExternalLink
 								href={job.url}
-								target="_blank"
-								rel="noreferrer noopener"
 								className="text-foreground underline-offset-2 hover:underline"
 							>
 								{job.title ?? "Open official posting"}
-							</a>
+							</SafeExternalLink>
 						</DetailSheetProperty>
 						<DetailSheetProperty label="Published">
 							<Value>{formattedDate(job.signalDate)}</Value>
@@ -270,14 +269,12 @@ function ProspectOverview({ prospect }: { prospect: Prospect }) {
 					</DetailSheetProperty>
 					<DetailSheetProperty label="Person source">
 						{prospect.personSourceUrl ? (
-							<a
+							<SafeExternalLink
 								href={prospect.personSourceUrl}
-								target="_blank"
-								rel="noreferrer noopener"
 								className="text-foreground underline-offset-2 hover:underline"
 							>
 								Open verification source
-							</a>
+							</SafeExternalLink>
 						) : (
 							<EmptyCellValue />
 						)}
@@ -575,14 +572,12 @@ function EvidenceRecord({ evidence }: { evidence: ProspectEvidence }) {
 		<DetailSheetSection
 			title={evidence.title ?? "Public source"}
 			action={
-				<a
+				<SafeExternalLink
 					href={evidence.url}
-					target="_blank"
-					rel="noreferrer noopener"
 					className="text-foreground text-xs underline-offset-2 hover:underline"
 				>
 					Open source
-				</a>
+				</SafeExternalLink>
 			}
 		>
 			<DetailSheetProse>{evidence.summary}</DetailSheetProse>

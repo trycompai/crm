@@ -5,6 +5,7 @@ import {
 	bridgeConfigured,
 	mintBridgeToken,
 } from "@/lib/agent-bridge";
+import { canProxyEveSession, sessionFromPath } from "@/lib/eve-session-access";
 import { getSession } from "@/lib/session";
 
 async function handler(request: Request): Promise<Response> {
@@ -55,37 +56,14 @@ async function handler(request: Request): Promise<Response> {
 	headers.delete("x-crm-deal");
 	headers.delete("x-crm-builder-conversation");
 
-	if (requestedSession) {
-		const conversation = await db.agentConversation.findUnique({
-			where: { sessionId: requestedSession },
-			select: { userId: true },
-		});
-		if (conversation && conversation.userId !== session.user.id) {
-			return Response.json(
-				{ error: "Conversation not found." },
-				{ status: 404 },
-			);
-		}
-	}
-
-	if (builderConversationId) {
-		const conversation = await db.agentConversation.findFirst({
-			where: {
-				id: builderConversationId,
-				userId: session.user.id,
-				kind: "BUILDER",
-			},
-			select: { sessionId: true },
-		});
-		if (
-			!conversation ||
-			(requestedSession && conversation.sessionId !== requestedSession)
-		) {
-			return Response.json(
-				{ error: "Conversation not found." },
-				{ status: 404 },
-			);
-		}
+	if (
+		!(await canProxyEveSession(db, {
+			requestedSession,
+			builderConversationId,
+			userId: session.user.id,
+		}))
+	) {
+		return Response.json({ error: "Conversation not found." }, { status: 404 });
 	}
 
 	headers.set(
@@ -158,9 +136,4 @@ export {
 
 function cuid(value: string | null): string | undefined {
 	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
-}
-
-function sessionFromPath(pathname: string): string | null {
-	const match = pathname.match(/\/eve\/v1\/session\/([^/]+)/);
-	return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
