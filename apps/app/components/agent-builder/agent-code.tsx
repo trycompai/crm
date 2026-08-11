@@ -83,15 +83,16 @@ export function AgentCode({
 				failed = true;
 				break;
 			}
-			draft.current.delete(entry);
+			if (draft.current.get(entry) === contents) draft.current.delete(entry);
 		}
 
 		await queryClient.invalidateQueries({
 			queryKey: trpc.agents.files.pathKey(),
 		});
-		setChanged([...draft.current.keys()]);
+		const remaining = [...draft.current.keys()];
+		setChanged(remaining);
 		setSaving(false);
-		if (failed) return;
+		if (failed || remaining.length > 0) return;
 
 		setEditing(false);
 		toast.success("Saved.");

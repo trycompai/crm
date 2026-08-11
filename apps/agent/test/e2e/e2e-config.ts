@@ -4,6 +4,9 @@ const MINUTE_MS = 60 * SECOND_MS;
 export const E2E = {
 	dispatch: {
 		agentPrefix: "E2E Dispatch Agent",
+		companyPrefix: "E2E Co",
+		domainPrefix: "e2e-",
+		domainSuffix: ".test",
 	},
 
 	load: {

@@ -39,10 +39,10 @@ function SaveBar({
 		<div
 			aria-hidden={!open}
 			className={cn(
-				"pointer-events-auto flex w-full max-w-(--container-2xl) items-center gap-4 rounded-lg border bg-popover px-4 py-3 text-popover-foreground shadow-lg transition-[opacity,transform] duration-200 ease-out",
+				"pointer-events-auto flex w-full max-w-(--container-2xl) items-center gap-4 rounded-lg border bg-popover px-4 py-3 text-popover-foreground shadow-lg transition-[opacity,transform,display] transition-discrete duration-200 ease-out",
 				open
-					? "translate-y-0 opacity-100"
-					: "pointer-events-none translate-y-[calc(100%+1.25rem)] opacity-0",
+					? "translate-y-0 opacity-100 starting:translate-y-[calc(100%+1.25rem)] starting:opacity-0"
+					: "pointer-events-none hidden translate-y-[calc(100%+1.25rem)] opacity-0",
 				className,
 			)}
 			data-slot="save-bar"

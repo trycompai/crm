@@ -73,8 +73,12 @@ async function seedAgent() {
 }
 
 async function seedDeal() {
+	const stamp = Date.now();
 	const company = await db.company.create({
-		data: { name: `E2E Co ${Date.now()}`, domain: `e2e-${Date.now()}.test` },
+		data: {
+			name: `${E2E.dispatch.companyPrefix} ${stamp}`,
+			domain: `${E2E.dispatch.domainPrefix}${stamp}${E2E.dispatch.domainSuffix}`,
+		},
 		select: { id: true },
 	});
 	const owner = await db.user.findFirstOrThrow({ select: { id: true } });
@@ -90,45 +94,83 @@ async function seedDeal() {
 	});
 }
 
-async function cleanUp(seed: {
-	agentId: string;
-	companyId: string;
-	dealId: string;
-	taskId: string;
-}) {
-	await removeEventRuns([seed.taskId]);
-	await removeAgent(seed.agentId);
-	await db.agentTask.deleteMany({ where: { dealId: seed.dealId } });
-	await db.deal.delete({ where: { id: seed.dealId } });
-	await db.company.delete({ where: { id: seed.companyId } });
-}
-
-async function main() {
+async function sweepLeftovers() {
 	for (const name of await removeAgentsNamed(E2E.dispatch.agentPrefix)) {
 		console.log(`  removed leftover ${name}`);
 	}
 
-	const { agentId } = await seedAgent();
-	const deal = await seedDeal();
-	const task = await db.agentTask.create({
-		data: {
-			dealId: deal.id,
-			kind: "agent-event",
-			reason: "deal.created",
-			payload: {
-				type: "deal.created",
-				record: { kind: "deal", id: deal.id },
-				occurredAt: new Date().toISOString(),
-				data: { companyId: deal.companyId, stage: "DEMO_BOOKED" },
+	const stale = await db.company.findMany({
+		where: {
+			domain: {
+				startsWith: E2E.dispatch.domainPrefix,
+				endsWith: E2E.dispatch.domainSuffix,
 			},
-			priority: PRIORITY.event,
-			budget: 1,
-			dueAt: new Date(),
+			name: { startsWith: E2E.dispatch.companyPrefix },
 		},
-		select: { id: true },
+		select: { id: true, name: true },
 	});
 
+	for (const company of stale) {
+		const deals = await db.deal.findMany({
+			where: { companyId: company.id },
+			select: { id: true },
+		});
+		await db.agentTask.deleteMany({
+			where: { dealId: { in: deals.map((deal) => deal.id) } },
+		});
+		await db.deal.deleteMany({ where: { companyId: company.id } });
+		await db.company.delete({ where: { id: company.id } });
+		console.log(`  removed leftover ${company.name}`);
+	}
+}
+
+async function cleanUp(
+	agentId: string | null,
+	companyId: string | null,
+	dealId: string | null,
+	taskId: string | null,
+) {
+	await removeEventRuns(taskId ? [taskId] : []);
+	if (agentId) await removeAgent(agentId);
+	if (dealId) await db.agentTask.deleteMany({ where: { dealId } });
+	if (!companyId) return;
+	await db.deal.deleteMany({ where: { companyId } });
+	await db.company.delete({ where: { id: companyId } });
+}
+
+async function main() {
+	await sweepLeftovers();
+
+	let agentId: string | null = null;
+	let companyId: string | null = null;
+	let dealId: string | null = null;
+	let taskId: string | null = null;
+
 	try {
+		const seededAgent = await seedAgent();
+		agentId = seededAgent.agentId;
+		const deal = await seedDeal();
+		companyId = deal.companyId;
+		dealId = deal.id;
+		const task = await db.agentTask.create({
+			data: {
+				dealId: deal.id,
+				kind: "agent-event",
+				reason: "deal.created",
+				payload: {
+					type: "deal.created",
+					record: { kind: "deal", id: deal.id },
+					occurredAt: new Date().toISOString(),
+					data: { companyId: deal.companyId, stage: "DEMO_BOOKED" },
+				},
+				priority: PRIORITY.event,
+				budget: 1,
+				dueAt: new Date(),
+			},
+			select: { id: true },
+		});
+		taskId = task.id;
+
 		const before = await db.agentRun.count();
 		const handled = await runVisibleLane();
 		const after = await db.agentRun.count();
@@ -161,12 +203,7 @@ async function main() {
 		});
 		record("no agent-event backlog", stuck === 0, `${stuck} unclaimed`);
 	} finally {
-		const failure = await cleanUp({
-			agentId,
-			companyId: deal.companyId,
-			dealId: deal.id,
-			taskId: task.id,
-		}).then(
+		const failure = await cleanUp(agentId, companyId, dealId, taskId).then(
 			() => null,
 			(error: unknown) => reasonOf(error),
 		);
