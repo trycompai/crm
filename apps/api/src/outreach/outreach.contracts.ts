@@ -27,6 +27,12 @@ export const outreachSequenceInput = z
 	})
 	.merge(clientRequestInput);
 
+export const leadDiscoveryTaskInput = z
+	.object({
+		taskId: z.string().cuid(),
+	})
+	.merge(clientRequestInput);
+
 export const outreachUpdateInput = z
 	.object({
 		draftId: z.string().cuid(),
@@ -44,4 +50,15 @@ export const leadDiscoveryInput = z.object({
 		.min(1)
 		.max(3)
 		.default(["AU", "GB", "US"]),
+	cohortName: z
+		.string()
+		.trim()
+		.min(3)
+		.max(120)
+		.default("Landscaping operators"),
+	budgetUsd: z.number().min(0).max(250).default(0),
+	clientRequestId: z.string().uuid(),
 });
+
+export type LeadDiscoveryInput = z.infer<typeof leadDiscoveryInput>;
+export type LeadDiscoveryTaskInput = z.infer<typeof leadDiscoveryTaskInput>;

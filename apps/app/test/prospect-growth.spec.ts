@@ -16,3 +16,16 @@ test("prospect growth pulse shows outreach gate truth", () => {
 	expect(growthControls).toContain("AgentMail unavailable");
 	expect(growthControls).not.toContain("Send-ready accounts");
 });
+
+test("prospect growth controls show paused lead discovery runs", () => {
+	expect(growthControls).toContain("LeadDiscoveryRunsPanel");
+	expect(growthControls).toContain("Find More Leads runs");
+	expect(growthControls).toContain("Default paused");
+	expect(growthControls).toContain("Estimate");
+	expect(growthControls).toContain("Approval proposed");
+	expect(growthControls).toContain("providerExecutionDisabled");
+	expect(growthControls).toContain("cancelLeadDiscovery");
+	expect(growthControls).toContain("retryLeadDiscovery");
+	expect(growthControls).toContain("outreach.lead-discovery.cancel");
+	expect(growthControls).toContain("outreach.lead-discovery.retry");
+});

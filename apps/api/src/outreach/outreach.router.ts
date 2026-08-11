@@ -11,6 +11,7 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	leadDiscoveryInput,
+	leadDiscoveryTaskInput,
 	outreachDraftInput,
 	outreachPermissionInput,
 	outreachProspectInput,
@@ -31,8 +32,40 @@ export class OutreachRouter {
 	}
 
 	@Mutation({ input: leadDiscoveryInput })
-	async findMore(@Input() input: z.infer<typeof leadDiscoveryInput>) {
-		return this.outreach.findMore(input.count, input.countryCodes);
+	async findMore(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof leadDiscoveryInput>,
+	) {
+		return this.outreach.findMore(input, ctx.user.id);
+	}
+
+	@Query()
+	async leadDiscoveryRuns() {
+		return this.outreach.leadDiscoveryRuns();
+	}
+
+	@Mutation({ input: leadDiscoveryTaskInput })
+	async cancelLeadDiscovery(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof leadDiscoveryTaskInput>,
+	) {
+		return this.outreach.cancelLeadDiscovery(
+			input.taskId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
+	}
+
+	@Mutation({ input: leadDiscoveryTaskInput })
+	async retryLeadDiscovery(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof leadDiscoveryTaskInput>,
+	) {
+		return this.outreach.retryLeadDiscovery(
+			input.taskId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Mutation({ input: outreachProspectMutationInput })

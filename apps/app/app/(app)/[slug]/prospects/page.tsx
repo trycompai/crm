@@ -13,7 +13,11 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { FindMoreLeadsButton, GrowthPulse } from "./growth-controls";
+import {
+	FindMoreLeadsButton,
+	GrowthPulse,
+	LeadDiscoveryRunsPanel,
+} from "./growth-controls";
 import { prospectsSearchParams } from "./prospects-search-params";
 import { ProspectsTable } from "./prospects-table";
 import { ResearchGapsButton } from "./research-gaps-button";
@@ -45,6 +49,7 @@ export default function ProspectsPage({
 				<Suspense fallback={<PageShellLoading />}>
 					<div className="flex min-h-0 flex-1 flex-col gap-3">
 						<GrowthPulse />
+						<LeadDiscoveryRunsPanel />
 						<Prospects searchParams={searchParams} />
 					</div>
 				</Suspense>
@@ -68,6 +73,7 @@ async function Prospects({
 	await Promise.all([
 		queryClient.prefetchQuery(trpc.outreach.supplyStatus.queryOptions()),
 		queryClient.prefetchQuery(trpc.outreach.performance.queryOptions()),
+		queryClient.prefetchQuery(trpc.outreach.leadDiscoveryRuns.queryOptions()),
 	]);
 
 	return (

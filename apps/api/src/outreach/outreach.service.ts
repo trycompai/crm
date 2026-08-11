@@ -1,10 +1,12 @@
+import { WORKSPACE_ID } from "@crm/auth";
 import {
 	type AgentTaskState,
 	type Db,
 	type EmailDraftStatus,
 	type OutreachVariant,
-	type Prisma,
+	Prisma,
 } from "@crm/db";
+import { PRIORITY } from "@crm/db/agent-tasks";
 import { approvalContentDigest } from "@crm/db/approval";
 import { outreachApprovalDigest } from "@crm/db/outreach";
 import {
@@ -23,6 +25,7 @@ import {
 import { OperatingKernelAccessService } from "../operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import { buildProspectReadiness } from "../prospects/prospect-readiness";
+import type { LeadDiscoveryInput } from "./outreach.contracts";
 import {
 	approvalSnapshotSequenceId,
 	outreachExecutionDisabledReason,
@@ -40,6 +43,19 @@ const OUTREACH_POLICY_VERSION = "outreach-sequence-v1";
 const OUTREACH_SEQUENCE_APPROVAL_ACTION = "outreach.sequence.approve";
 const OUTREACH_APPROVAL_TTL_MS = 24 * 60 * 60 * 1_000;
 const SCHEDULE_GRACE_MS = 5 * 60 * 1_000;
+const LEAD_DISCOVERY_POLICY_VERSION = "lead-discovery-paused-v1";
+const LEAD_DISCOVERY_REQUEST_OPERATION = "outreach.lead-discovery.request";
+const LEAD_DISCOVERY_CANCEL_OPERATION = "outreach.lead-discovery.cancel";
+const LEAD_DISCOVERY_RETRY_OPERATION = "outreach.lead-discovery.retry";
+const LEAD_DISCOVERY_APPROVAL_ACTION = "outreach.lead-discovery.execute";
+const LEAD_DISCOVERY_REQUIRED_GATES = [
+	{ key: "freshness", label: "Fresh research" },
+	{ key: "currentJobEvidence", label: "Current official job" },
+	{ key: "namedPerson", label: "Named person and role" },
+	{ key: "verifiedRoute", label: "Verified public route" },
+	{ key: "jurisdictionPolicy", label: "Supported jurisdiction" },
+	{ key: "abcDrafts", label: "A/B/C sequence drafts" },
+] as const;
 const TERMINAL_TASK_STATES: AgentTaskState[] = [
 	"SUCCEEDED",
 	"FAILED",
@@ -55,9 +71,178 @@ type OutreachMutationResult = Record<string, unknown> & {
 	};
 };
 
+const LEAD_DISCOVERY_TASK_SELECT = {
+	id: true,
+	kind: true,
+	reason: true,
+	state: true,
+	attempts: true,
+	budget: true,
+	budgetUsd: true,
+	costUsd: true,
+	scopes: true,
+	outcome: true,
+	operationKey: true,
+	idempotencyKey: true,
+	approvalRequestId: true,
+	approvalContentDigest: true,
+	startedAt: true,
+	finishedAt: true,
+	createdAt: true,
+} satisfies Prisma.AgentTaskSelect;
+
+const LEAD_DISCOVERY_PROSPECT_SELECT = {
+	id: true,
+	status: true,
+	routeStatus: true,
+	enrichmentStatus: true,
+	countryCode: true,
+	website: true,
+	namedPerson: true,
+	role: true,
+	personSourceUrl: true,
+	routeEmail: true,
+	emailAllowed: true,
+	companyId: true,
+	contactId: true,
+	draftSubject: true,
+	draftBody: true,
+	lastResearchedAt: true,
+	nextResearchAt: true,
+	evidence: {
+		select: {
+			receiptId: true,
+			sourceType: true,
+			url: true,
+			signalDate: true,
+			observed: true,
+		},
+	},
+	emailDrafts: {
+		where: { sequenceId: { not: null } },
+		select: {
+			sequenceId: true,
+			sequenceStep: true,
+			status: true,
+		},
+	},
+} satisfies Prisma.ProspectSelect;
+
+type LeadDiscoveryTaskRecord = Prisma.AgentTaskGetPayload<{
+	select: typeof LEAD_DISCOVERY_TASK_SELECT;
+}>;
+type LeadDiscoveryScope = {
+	targetCount: number;
+	targetRegions: string[];
+	cohortName: string;
+	sourceBatch: string | null;
+	estimatedCostUsd: string;
+	budgetUsd: string;
+	workItemId: string | null;
+	approvalRequestId: string | null;
+	approvalContentDigest: string | null;
+	parentTaskId: string | null;
+	executionPaused: boolean;
+	providerExecutionDisabled: boolean;
+	historicalReplayStatus: string;
+};
+
 function emailDomain(email: string): string | null {
 	const [, domain] = email.split("@");
 	return domain || null;
+}
+
+function jsonObject(value: Prisma.JsonValue | null): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function stringArray(value: unknown): string[] {
+	return Array.isArray(value)
+		? value.filter((item): item is string => typeof item === "string")
+		: [];
+}
+
+function decimalString(value: Prisma.Decimal | null): string {
+	return value?.toFixed(6) ?? "0.000000";
+}
+
+function usdDecimal(value: number): Prisma.Decimal {
+	return new Prisma.Decimal(value.toFixed(6));
+}
+
+function moneyLimit(value: number): string {
+	return value.toFixed(6);
+}
+
+function leadDiscoveryScope(task: LeadDiscoveryTaskRecord): LeadDiscoveryScope {
+	const scopes = jsonObject(task.scopes);
+	const estimate = jsonObject(scopes.estimate as Prisma.JsonValue | null);
+	const targetCount =
+		typeof scopes.targetCount === "number" ? scopes.targetCount : task.budget;
+	const budgetUsd =
+		typeof scopes.budgetUsd === "string"
+			? scopes.budgetUsd
+			: decimalString(task.budgetUsd);
+	const estimatedCostUsd =
+		typeof estimate.estimatedCostUsd === "string"
+			? estimate.estimatedCostUsd
+			: budgetUsd;
+	return {
+		targetCount,
+		targetRegions: stringArray(scopes.targetRegions),
+		cohortName:
+			typeof scopes.cohortName === "string"
+				? scopes.cohortName
+				: "Lead discovery",
+		sourceBatch:
+			typeof scopes.sourceBatch === "string" ? scopes.sourceBatch : null,
+		estimatedCostUsd,
+		budgetUsd,
+		workItemId:
+			typeof scopes.workItemId === "string" ? scopes.workItemId : null,
+		approvalRequestId:
+			typeof scopes.approvalRequestId === "string"
+				? scopes.approvalRequestId
+				: task.approvalRequestId,
+		approvalContentDigest:
+			typeof scopes.approvalContentDigest === "string"
+				? scopes.approvalContentDigest
+				: task.approvalContentDigest,
+		parentTaskId:
+			typeof scopes.parentTaskId === "string" ? scopes.parentTaskId : null,
+		executionPaused: scopes.executionPaused !== false,
+		providerExecutionDisabled: scopes.providerExecutionDisabled !== false,
+		historicalReplayStatus:
+			typeof scopes.historicalReplayStatus === "string"
+				? scopes.historicalReplayStatus
+				: "Not replayed",
+	};
+}
+
+function runProgress(task: LeadDiscoveryTaskRecord, found: number): number {
+	if (task.state === "SUCCEEDED") return 100;
+	if (TERMINAL_TASK_STATES.includes(task.state)) return 100;
+	if (task.state === "WAITING_FOR_APPROVAL") return 0;
+	const scope = leadDiscoveryScope(task);
+	if (scope.targetCount <= 0) return 0;
+	return Math.min(99, Math.round((found / scope.targetCount) * 100));
+}
+
+function isSuppressedRoute(
+	email: string | null,
+	suppressedEmails: Set<string>,
+	suppressedDomains: Set<string>,
+): boolean {
+	if (!email) return false;
+	const normalized = normalizeEmail(email);
+	const domain = normalized ? emailDomain(normalized) : null;
+	return Boolean(
+		normalized &&
+			(suppressedEmails.has(normalized) ||
+				(domain && suppressedDomains.has(domain))),
+	);
 }
 
 @Injectable()
@@ -85,6 +270,7 @@ export class OutreachService {
 					orderBy: { createdAt: "desc" },
 					select: {
 						id: true,
+						state: true,
 						attempts: true,
 						startedAt: true,
 						createdAt: true,
@@ -161,7 +347,12 @@ export class OutreachService {
 			discovery: discovery
 				? {
 						id: discovery.id,
-						state: discovery.startedAt ? "running" : "queued",
+						state:
+							discovery.state === "WAITING_FOR_APPROVAL"
+								? "paused"
+								: discovery.startedAt
+									? "running"
+									: "queued",
 						attempts: discovery.attempts,
 						createdAt: discovery.createdAt.toISOString(),
 					}
@@ -169,8 +360,399 @@ export class OutreachService {
 		};
 	}
 
-	async findMore(count: number, countryCodes: string[]) {
-		return this.agent.discoverProspects(count, countryCodes);
+	async findMore(input: LeadDiscoveryInput, userId: string) {
+		await this.access.assertMember(userId);
+		const request = this.normalizeLeadDiscoveryInput(input);
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation: LEAD_DISCOVERY_REQUEST_OPERATION,
+			targetCount: request.count,
+			targetRegions: request.countryCodes,
+			cohortName: request.cohortName,
+			budgetUsd: request.budgetUsd,
+		});
+		return this.db.$transaction(async (tx) => {
+			await this.idempotency.lock(tx, input.clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: input.clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_REQUEST_OPERATION,
+			});
+			if (replay) return replay;
+			const run = await this.createPausedLeadDiscoveryRun(tx, {
+				userId,
+				targetCount: request.count,
+				targetRegions: request.countryCodes,
+				cohortName: request.cohortName,
+				budgetUsd: request.budgetUsd,
+				clientRequestId: input.clientRequestId,
+				operationKey: LEAD_DISCOVERY_REQUEST_OPERATION,
+				parentTaskId: null,
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: input.clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_REQUEST_OPERATION,
+				result: {
+					...run,
+					planned: 1,
+					queued: 0,
+					alreadyQueued: 0,
+				},
+			});
+		});
+	}
+
+	async leadDiscoveryRuns() {
+		const tasks = await this.db.agentTask.findMany({
+			where: { kind: "lead-discovery" },
+			orderBy: { createdAt: "desc" },
+			take: 12,
+			select: LEAD_DISCOVERY_TASK_SELECT,
+		});
+		const scopes = new Map(
+			tasks.map((task) => [task.id, leadDiscoveryScope(task)]),
+		);
+		const sourceBatches = [
+			...new Set(
+				[...scopes.values()]
+					.map((scope) => scope.sourceBatch)
+					.filter((batch): batch is string => batch !== null),
+			),
+		];
+		const prospects =
+			sourceBatches.length > 0
+				? await this.db.prospect.findMany({
+						where: { sourceBatch: { in: sourceBatches } },
+						select: {
+							...LEAD_DISCOVERY_PROSPECT_SELECT,
+							sourceBatch: true,
+						},
+					})
+				: [];
+		const routeEmails = prospects
+			.map((prospect) => normalizeEmail(prospect.routeEmail ?? ""))
+			.filter((email): email is string => email !== null);
+		const routeDomains = [
+			...new Set(
+				routeEmails
+					.map((email) => emailDomain(email))
+					.filter((domain): domain is string => domain !== null),
+			),
+		];
+		const [inbox, suppressedContacts, suppressedDomains, receipts] =
+			await Promise.all([
+				this.db.emailInbox.findFirst({
+					where: { provider: "AGENTMAIL", isEnabled: true },
+					select: { id: true },
+				}),
+				routeEmails.length > 0
+					? this.db.suppressedContact.findMany({
+							where: { email: { in: routeEmails } },
+							select: { email: true },
+						})
+					: [],
+				routeDomains.length > 0
+					? this.db.suppressedDomain.findMany({
+							where: { domain: { in: routeDomains } },
+							select: { domain: true },
+						})
+					: [],
+				this.db.actionReceipt.findMany({
+					where: {
+						provider: OUTREACH_PROVIDER,
+						channel: OUTREACH_CHANNEL,
+						operationKey: {
+							in: [
+								LEAD_DISCOVERY_REQUEST_OPERATION,
+								LEAD_DISCOVERY_CANCEL_OPERATION,
+								LEAD_DISCOVERY_RETRY_OPERATION,
+							],
+						},
+					},
+					orderBy: { createdAt: "desc" },
+					take: 200,
+					select: {
+						id: true,
+						operationKey: true,
+						status: true,
+						completedAt: true,
+						result: true,
+						errorCode: true,
+					},
+				}),
+			]);
+		const suppressedEmailSet = new Set(
+			suppressedContacts
+				.map((row) => normalizeEmail(row.email))
+				.filter((email): email is string => email !== null),
+		);
+		const suppressedDomainSet = new Set(
+			suppressedDomains.map((row) => row.domain),
+		);
+		const byBatch = new Map<string, typeof prospects>();
+		for (const prospect of prospects) {
+			const existing = byBatch.get(prospect.sourceBatch) ?? [];
+			existing.push(prospect);
+			byBatch.set(prospect.sourceBatch, existing);
+		}
+		const sendingPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false" ||
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
+
+		return tasks.map((task) => {
+			const scope = scopes.get(task.id) ?? leadDiscoveryScope(task);
+			const rows = scope.sourceBatch
+				? (byBatch.get(scope.sourceBatch) ?? [])
+				: [];
+			const gapCounts = Object.fromEntries(
+				LEAD_DISCOVERY_REQUIRED_GATES.map((gate) => [gate.key, 0]),
+			) as Record<
+				(typeof LEAD_DISCOVERY_REQUIRED_GATES)[number]["key"],
+				number
+			>;
+			let sendEligible = 0;
+			let suppressedRoutes = 0;
+			let sequenceDrafts = 0;
+			for (const row of rows) {
+				const routeSuppressed = isSuppressedRoute(
+					row.routeEmail,
+					suppressedEmailSet,
+					suppressedDomainSet,
+				);
+				if (routeSuppressed) suppressedRoutes += 1;
+				const readiness = buildProspectReadiness(
+					{
+						id: row.id,
+						status: row.status,
+						routeStatus: row.routeStatus,
+						enrichmentStatus: row.enrichmentStatus,
+						countryCode: row.countryCode,
+						website: row.website,
+						namedPerson: row.namedPerson,
+						role: row.role,
+						personSourceUrl: row.personSourceUrl,
+						routeEmail: row.routeEmail,
+						emailAllowed: row.emailAllowed,
+						companyId: row.companyId,
+						contactId: row.contactId,
+						draftSubject: row.draftSubject,
+						draftBody: row.draftBody,
+						lastResearchedAt: row.lastResearchedAt,
+						nextResearchAt: row.nextResearchAt,
+						queued: false,
+						evidence: row.evidence,
+						emailDrafts: row.emailDrafts,
+					},
+					{
+						sendingPaused,
+						agentMailReady: inbox !== null,
+						routeSuppressed,
+					},
+				);
+				if (readiness.sendEligible) sendEligible += 1;
+				sequenceDrafts += readiness.sequence.activeDrafts;
+				for (const gate of LEAD_DISCOVERY_REQUIRED_GATES) {
+					if (!readiness.gates.find((item) => item.key === gate.key)?.passed) {
+						gapCounts[gate.key] += 1;
+					}
+				}
+			}
+			const taskReceipts = receipts
+				.filter((receipt) => {
+					const result = jsonObject(receipt.result);
+					return result.taskId === task.id || result.parentTaskId === task.id;
+				})
+				.slice(0, 5)
+				.map((receipt) => ({
+					id: receipt.id,
+					operationKey: receipt.operationKey,
+					status: receipt.status,
+					completedAt: receipt.completedAt?.toISOString() ?? null,
+					errorCode: receipt.errorCode,
+				}));
+			return {
+				id: task.id,
+				state: task.state,
+				attempts: task.attempts,
+				targetCount: scope.targetCount,
+				targetRegions: scope.targetRegions,
+				cohortName: scope.cohortName,
+				sourceBatch: scope.sourceBatch,
+				requiredGates: LEAD_DISCOVERY_REQUIRED_GATES,
+				foundCount: rows.length,
+				progress: runProgress(task, rows.length),
+				gapCounts,
+				sendEligible,
+				suppressedRoutes,
+				sequenceDrafts,
+				budgetUsd: scope.budgetUsd,
+				estimatedCostUsd: scope.estimatedCostUsd,
+				actualCostUsd: decimalString(task.costUsd),
+				executionPaused: scope.executionPaused,
+				providerExecutionDisabled: scope.providerExecutionDisabled,
+				historicalReplayStatus: scope.historicalReplayStatus,
+				workItemId: scope.workItemId,
+				approvalRequestId: scope.approvalRequestId,
+				approvalContentDigest: scope.approvalContentDigest,
+				parentTaskId: scope.parentTaskId,
+				canCancel: !TERMINAL_TASK_STATES.includes(task.state),
+				canRetry:
+					task.state === "FAILED" ||
+					task.state === "UNKNOWN" ||
+					task.state === "CANCELLED",
+				outcome: task.outcome,
+				createdAt: task.createdAt.toISOString(),
+				startedAt: task.startedAt?.toISOString() ?? null,
+				finishedAt: task.finishedAt?.toISOString() ?? null,
+				receipts: taskReceipts,
+			};
+		});
+	}
+
+	async cancelLeadDiscovery(
+		taskId: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation: LEAD_DISCOVERY_CANCEL_OPERATION,
+			taskId,
+		});
+		return this.db.$transaction(async (tx) => {
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_CANCEL_OPERATION,
+			});
+			if (replay) return replay;
+			const task = await tx.agentTask.findUnique({
+				where: { id: taskId },
+				select: LEAD_DISCOVERY_TASK_SELECT,
+			});
+			if (task?.kind !== "lead-discovery") {
+				throw new NotFoundException("Lead discovery run not found.");
+			}
+			const scope = leadDiscoveryScope(task);
+			const now = new Date();
+			const cancelled = await tx.agentTask.updateMany({
+				where: {
+					id: taskId,
+					kind: "lead-discovery",
+					state: { notIn: TERMINAL_TASK_STATES },
+				},
+				data: {
+					state: "CANCELLED",
+					leasedUntil: null,
+					finishedAt: now,
+					outcome: "Cancelled by operator before provider execution.",
+				},
+			});
+			if (cancelled.count === 1 && scope.approvalRequestId) {
+				await tx.approvalRequest.updateMany({
+					where: {
+						id: scope.approvalRequestId,
+						status: { in: ["PENDING", "APPROVED"] },
+					},
+					data: {
+						status: "CANCELLED",
+						decidedAt: now,
+						version: { increment: 1 },
+					},
+				});
+			}
+			if (cancelled.count === 1 && scope.workItemId) {
+				await tx.workItem.updateMany({
+					where: {
+						id: scope.workItemId,
+						state: { notIn: ["DONE", "DISMISSED"] },
+					},
+					data: {
+						state: "DISMISSED",
+						completedAt: now,
+						nextReviewAt: null,
+						version: { increment: 1 },
+						evidence: {
+							source: LEAD_DISCOVERY_CANCEL_OPERATION,
+							taskId,
+							cancelledAt: now.toISOString(),
+						},
+					},
+				});
+			}
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_CANCEL_OPERATION,
+				result: {
+					taskId,
+					cancelled: cancelled.count === 1,
+					state: cancelled.count === 1 ? "CANCELLED" : task.state,
+				},
+			});
+		});
+	}
+
+	async retryLeadDiscovery(
+		taskId: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation: LEAD_DISCOVERY_RETRY_OPERATION,
+			taskId,
+		});
+		return this.db.$transaction(async (tx) => {
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_RETRY_OPERATION,
+			});
+			if (replay) return replay;
+			const task = await tx.agentTask.findUnique({
+				where: { id: taskId },
+				select: LEAD_DISCOVERY_TASK_SELECT,
+			});
+			if (task?.kind !== "lead-discovery") {
+				throw new NotFoundException("Lead discovery run not found.");
+			}
+			if (
+				task.state !== "FAILED" &&
+				task.state !== "UNKNOWN" &&
+				task.state !== "CANCELLED"
+			) {
+				throw new BadRequestException(
+					"Only a failed, unknown or cancelled lead discovery run can be retried.",
+				);
+			}
+			const scope = leadDiscoveryScope(task);
+			const run = await this.createPausedLeadDiscoveryRun(tx, {
+				userId,
+				targetCount: scope.targetCount,
+				targetRegions: scope.targetRegions,
+				cohortName: scope.cohortName,
+				budgetUsd: Number(scope.budgetUsd),
+				clientRequestId,
+				operationKey: LEAD_DISCOVERY_RETRY_OPERATION,
+				parentTaskId: taskId,
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: LEAD_DISCOVERY_RETRY_OPERATION,
+				result: {
+					...run,
+					parentTaskId: taskId,
+					retried: true,
+				},
+			});
+		});
 	}
 
 	async prepare(prospectId: string, userId: string, clientRequestId: string) {
@@ -948,6 +1530,166 @@ export class OutreachService {
 				result: { sequenceId, deleted: result.count },
 			});
 		});
+	}
+
+	private normalizeLeadDiscoveryInput(input: LeadDiscoveryInput) {
+		return {
+			count: Math.max(5, Math.min(100, input.count)),
+			countryCodes: [...new Set(input.countryCodes)].sort(),
+			cohortName: input.cohortName.trim(),
+			budgetUsd: Math.max(0, Math.min(250, input.budgetUsd)),
+		};
+	}
+
+	private async createPausedLeadDiscoveryRun(
+		tx: Prisma.TransactionClient,
+		input: {
+			userId: string;
+			targetCount: number;
+			targetRegions: string[];
+			cohortName: string;
+			budgetUsd: number;
+			clientRequestId: string;
+			operationKey: string;
+			parentTaskId: string | null;
+		},
+	) {
+		const now = new Date();
+		const sourceBatch = `lead-discovery:${input.clientRequestId}`;
+		const estimatedCostUsd = moneyLimit(input.budgetUsd);
+		const expiresAt = new Date(now.getTime() + OUTREACH_APPROVAL_TTL_MS);
+		const contentSnapshot = {
+			kind: "lead-discovery",
+			targetCount: input.targetCount,
+			targetRegions: input.targetRegions,
+			cohortName: input.cohortName,
+			sourceBatch,
+			budgetUsd: moneyLimit(input.budgetUsd),
+			estimatedCostUsd,
+			parentTaskId: input.parentTaskId,
+			executionPaused: true,
+			providerExecutionDisabled: true,
+		};
+		const contentDigest = approvalContentDigest({
+			action: LEAD_DISCOVERY_APPROVAL_ACTION,
+			contentSnapshot,
+			targetType: "WORKSPACE",
+			targetId: WORKSPACE_ID,
+			risk: "MEDIUM",
+			policyVersion: LEAD_DISCOVERY_POLICY_VERSION,
+			expiresAt,
+			invalidationVersion: 0,
+		});
+		const approval = await tx.approvalRequest.create({
+			data: {
+				action: LEAD_DISCOVERY_APPROVAL_ACTION,
+				contentDigest,
+				contentSnapshot: contentSnapshot as Prisma.InputJsonValue,
+				targetType: "WORKSPACE",
+				targetId: WORKSPACE_ID,
+				targetLabel: "Lead discovery run",
+				risk: "MEDIUM",
+				policyVersion: LEAD_DISCOVERY_POLICY_VERSION,
+				requestorId: input.userId,
+				expiresAt,
+				status: "PENDING",
+				idempotencyKey: `lead-discovery-approval:${input.clientRequestId}`,
+			},
+			select: { id: true, contentDigest: true },
+		});
+		const scope = {
+			policyVersion: LEAD_DISCOVERY_POLICY_VERSION,
+			targetCount: input.targetCount,
+			targetRegions: input.targetRegions,
+			cohortName: input.cohortName,
+			sourceBatch,
+			requiredGates: LEAD_DISCOVERY_REQUIRED_GATES,
+			budgetUsd: moneyLimit(input.budgetUsd),
+			estimate: { estimatedCostUsd },
+			approvalRequestId: approval.id,
+			approvalContentDigest: approval.contentDigest,
+			parentTaskId: input.parentTaskId,
+			executionPaused: true,
+			providerExecutionDisabled: true,
+			historicalReplayStatus:
+				"No historical replay was executed for this local paused run.",
+		};
+		const task = await tx.agentTask.create({
+			data: {
+				kind: "lead-discovery",
+				reason: `Find ${input.targetCount} ${input.cohortName} in ${input.targetRegions.join(", ")} after approval`,
+				priority: PRIORITY.leadDiscovery,
+				budget: input.targetCount,
+				state: "WAITING_FOR_APPROVAL",
+				dueAt: now,
+				subjectType: "WORKSPACE",
+				subjectId: WORKSPACE_ID,
+				subjectLabel: "Lead supply",
+				operationKey: input.operationKey,
+				idempotencyKey: `lead-discovery:${input.clientRequestId}`,
+				approvalRequestId: approval.id,
+				approvalContentDigest: approval.contentDigest,
+				budgetUsd: usdDecimal(input.budgetUsd),
+				costUsd: usdDecimal(0),
+				channel: OUTREACH_CHANNEL,
+				provider: "agent",
+				scopes: scope,
+			},
+			select: { id: true },
+		});
+		const work = await tx.workItem.create({
+			data: {
+				subjectType: "WORKSPACE",
+				subjectId: WORKSPACE_ID,
+				subjectLabel: "Lead supply",
+				ownerId: input.userId,
+				queue: "growth",
+				urgency: "NORMAL",
+				reason:
+					"Review the paused lead discovery run, budget ceiling and mandatory evidence/contact/route gates before any research execution.",
+				primaryAction: "Review lead discovery run",
+				evidence: {
+					source: input.operationKey,
+					taskId: task.id,
+					sourceBatch,
+					targetCount: input.targetCount,
+					targetRegions: input.targetRegions,
+					cohortName: input.cohortName,
+					budgetUsd: moneyLimit(input.budgetUsd),
+					estimatedCostUsd,
+					approvalRequestId: approval.id,
+					approvalContentDigest: approval.contentDigest,
+					executionPaused: true,
+					providerExecutionDisabled: true,
+				},
+			},
+			select: { id: true },
+		});
+		await tx.agentTask.update({
+			where: { id: task.id },
+			data: {
+				scopes: {
+					...scope,
+					workItemId: work.id,
+				},
+			},
+		});
+		return {
+			taskId: task.id,
+			workItemId: work.id,
+			approvalRequestId: approval.id,
+			approvalContentDigest: approval.contentDigest,
+			state: "WAITING_FOR_APPROVAL",
+			targetCount: input.targetCount,
+			targetRegions: input.targetRegions,
+			cohortName: input.cohortName,
+			sourceBatch,
+			budgetUsd: moneyLimit(input.budgetUsd),
+			estimatedCostUsd,
+			actualCostUsd: "0.000000",
+			executionPaused: true,
+			providerExecutionDisabled: true,
+		};
 	}
 
 	private async replayOutreach(

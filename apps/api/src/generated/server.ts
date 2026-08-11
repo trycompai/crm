@@ -26,7 +26,7 @@ import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldU
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
-import { leadDiscoveryInput, outreachProspectMutationInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
+import { leadDiscoveryInput, leadDiscoveryTaskInput, outreachProspectMutationInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
@@ -419,6 +419,14 @@ const appRouter = t.router({
     findMore: publicProcedure
       .input(leadDiscoveryInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["findMore"]>>),
+    leadDiscoveryRuns: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["leadDiscoveryRuns"]>>),
+    cancelLeadDiscovery: publicProcedure
+      .input(leadDiscoveryTaskInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["cancelLeadDiscovery"]>>),
+    retryLeadDiscovery: publicProcedure
+      .input(leadDiscoveryTaskInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["retryLeadDiscovery"]>>),
     prepare: publicProcedure
       .input(outreachProspectMutationInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["prepare"]>>),
