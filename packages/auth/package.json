@@ -21,6 +21,7 @@
 		"@better-auth/sso": "1.6.25",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
+		"@crm/validation": "workspace:*",
 		"better-auth": "^1.6.25",
 		"zod": "^4.4.3"
 	},

@@ -17,6 +17,7 @@
         "@crm/db": "workspace:*",
         "@crm/env": "workspace:*",
         "@crm/telemetry": "workspace:*",
+        "@crm/validation": "workspace:*",
         "context.dev": "^2.7.0",
         "eve": "^0.29.4",
         "zod": "^4.4.3",
@@ -79,6 +80,7 @@
         "@crm/env": "workspace:*",
         "@crm/telemetry": "workspace:*",
         "@crm/ui": "workspace:*",
+        "@crm/validation": "workspace:*",
         "@pierre/diffs": "^1.2.12",
         "@pierre/trees": "^1.0.0-beta.5",
         "@tanstack/react-query": "^5.101.2",
@@ -115,6 +117,7 @@
         "@better-auth/sso": "1.6.25",
         "@crm/db": "workspace:*",
         "@crm/env": "workspace:*",
+        "@crm/validation": "workspace:*",
         "better-auth": "^1.6.25",
         "zod": "^4.4.3",
       },
@@ -220,6 +223,18 @@
         "next": "^16.0.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
+      },
+    },
+    "packages/validation": {
+      "name": "@crm/validation",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@crm/typescript-config": "workspace:*",
+        "@types/node": "^24.10.1",
+        "typescript": "5.9.2",
       },
     },
   },
@@ -378,6 +393,8 @@
     "@crm/typescript-config": ["@crm/typescript-config@workspace:packages/typescript-config"],
 
     "@crm/ui": ["@crm/ui@workspace:packages/ui"],
+
+    "@crm/validation": ["@crm/validation@workspace:packages/validation"],
 
     "@date-fns/tz": ["@date-fns/tz@1.5.0", "", {}, "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="],
 

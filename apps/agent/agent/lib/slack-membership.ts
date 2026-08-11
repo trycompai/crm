@@ -1,16 +1,7 @@
 import { db } from "@crm/db";
-import { z } from "zod";
+import { schemas } from "@crm/validation";
 import { SLACK } from "./slack-config";
 import { slackAccessToken, slackUserToken } from "./slack-connection";
-
-const slackReply = z.object({
-	ok: z.boolean(),
-	error: z.string().optional(),
-});
-
-const authTest = slackReply.extend({
-	user_id: z.string().trim().min(1).optional(),
-});
 
 export type JoinOutcome =
 	| { joined: true; already: boolean }
@@ -34,7 +25,7 @@ async function call(
 		signal: AbortSignal.timeout(SLACK.request.timeoutMs),
 	});
 
-	const parsed = slackReply.safeParse(await response.json());
+	const parsed = schemas.slack.reply.safeParse(await response.json());
 	if (!parsed.success) return { ok: false, error: "unreadable_reply" };
 	if (parsed.data.ok) return { ok: true };
 
@@ -57,7 +48,7 @@ async function botUserId(token: string): Promise<string | null> {
 		headers: { authorization: `Bearer ${token}` },
 		signal: AbortSignal.timeout(SLACK.request.timeoutMs),
 	});
-	const parsed = authTest.safeParse(await response.json());
+	const parsed = schemas.slack.authTest.safeParse(await response.json());
 	return parsed.success && parsed.data.ok
 		? (parsed.data.user_id ?? null)
 		: null;

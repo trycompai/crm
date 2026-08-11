@@ -1,24 +1,8 @@
 import { db } from "@crm/db";
-import { z } from "zod";
-
-const slackInstallation = z.object({
-	team: z.object({
-		id: z.string().trim().min(1),
-		name: z.string().trim().min(1).optional(),
-	}),
-	authed_user: z
-		.object({
-			id: z.string().trim().min(1),
-			access_token: z.string().trim().min(1).optional(),
-			scope: z.string().trim().optional(),
-		})
-		.optional(),
-});
-
-export type SlackInstallation = z.infer<typeof slackInstallation>;
+import { schemas } from "@crm/validation";
 
 export async function storeSlackUserGrant(raw: unknown): Promise<void> {
-	const parsed = slackInstallation.safeParse(raw);
+	const parsed = schemas.slack.installation.safeParse(raw);
 	if (!parsed.success) return;
 
 	const { team, authed_user: user } = parsed.data;

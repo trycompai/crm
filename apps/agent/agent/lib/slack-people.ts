@@ -1,7 +1,7 @@
 import { db } from "@crm/db";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { SLACK } from "./slack-config";
-import { slackAccessToken } from "./slack-connection";
+import { slackAccessToken, slackUserToken } from "./slack-connection";
 
 type SlackMember = {
 	id: string;
@@ -24,9 +24,10 @@ export async function runSlackPeopleMatch(): Promise<string> {
 	const accessToken = await slackAccessToken();
 	if (!accessToken) return "Slack is not connected.";
 
+	const userToken = await slackUserToken();
 	const [slackMembers, slackChannels] = await Promise.all([
 		listSlackMembers(accessToken),
-		listSlackChannels(accessToken),
+		visibleChannels(accessToken, userToken),
 	]);
 	const availableMembers = slackMembers.filter(
 		(member) => !member.deleted && !member.is_bot,
@@ -70,7 +71,10 @@ export async function runSlackPeopleMatch(): Promise<string> {
 		if (slack) matched += 1;
 	}
 
-	const availableChannels = await persistSlackChannels(slackChannels);
+	const availableChannels = await persistSlackChannels(
+		slackChannels,
+		Boolean(userToken),
+	);
 	return `Matched ${matched} workspace ${matched === 1 ? "member" : "members"} by email and found ${availableChannels} available ${availableChannels === 1 ? "channel" : "channels"}.`;
 }
 
@@ -78,13 +82,40 @@ export async function refreshSlackChannels(): Promise<number> {
 	const accessToken = await slackAccessToken();
 	if (!accessToken) return 0;
 
-	return persistSlackChannels(await listSlackChannels(accessToken));
+	const userToken = await slackUserToken();
+	return persistSlackChannels(
+		await visibleChannels(accessToken, userToken),
+		Boolean(userToken),
+	);
 }
 
-async function persistSlackChannels(channels: SlackChannel[]): Promise<number> {
+async function visibleChannels(
+	botToken: string,
+	userToken: string | null,
+): Promise<SlackChannel[]> {
+	const fromBot = await listSlackChannels(botToken);
+	if (!userToken) return fromBot;
+
+	const seen = new Map(fromBot.map((channel) => [channel.id, channel]));
+
+	const fromUser = await listSlackChannels(userToken).catch(() => []);
+
+	for (const channel of fromUser) {
+		if (seen.has(channel.id)) continue;
+		seen.set(channel.id, { ...channel, is_member: false });
+	}
+
+	return [...seen.values()];
+}
+
+async function persistSlackChannels(
+	channels: SlackChannel[],
+	canInviteItself: boolean,
+): Promise<number> {
 	const available = channels.filter(
 		(channel) =>
-			!channel.is_archived && (channel.is_member || !channel.is_private),
+			!channel.is_archived &&
+			(channel.is_member || !channel.is_private || canInviteItself),
 	);
 	await db.$transaction(async (tx) => {
 		await tx.slackChannel.updateMany({ data: { available: false } });

@@ -22,21 +22,14 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import { Textarea } from "@crm/ui/components/textarea";
+import { InvalidInput, type Permission, parse, schemas } from "@crm/validation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { handoffBrief, handoffResources } from "@/lib/agent-handoff";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
-
-const PERMISSIONS = [
-	{ id: "post", label: "Post a message" },
-	{ id: "mention", label: "Mention the deal owner" },
-	{ id: "thread", label: "Reply in a thread" },
-	{ id: "history", label: "Read the channel history" },
-];
-
-const DEFAULT_PERMISSIONS = ["post", "mention"];
 
 export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 	const router = useRouter();
@@ -48,7 +41,9 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 	const [name, setName] = useState("");
 	const [job, setJob] = useState("");
 	const [channelId, setChannelId] = useState("");
-	const [allowed, setAllowed] = useState<string[]>(DEFAULT_PERMISSIONS);
+	const [allowed, setAllowed] = useState<Permission[]>(
+		schemas.agents.defaultPermissions,
+	);
 
 	const channels = useQuery({
 		...trpc.slack.channels.queryOptions(),
@@ -73,37 +68,38 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 	const ready = name.trim().length > 0 && job.trim().length > 0;
 
 	const hand = () => {
-		create.mutate({
-			clientRequestId: crypto.randomUUID(),
-			commandType: "CREATE_AGENT",
-			message: brief({
-				name,
-				job,
-				channel: channel?.name,
-				allowed,
-			}),
-			resources: [
+		try {
+			const handoff = parse(
+				schemas.agents.handoff,
 				{
-					kind: "integration" as const,
-					id: "slack:workspace",
-					label: "Slack",
-					detail: "Connected workspace",
+					name,
+					job,
+					channel: channel
+						? {
+								id: channel.id,
+								name: channel.name,
+								isMember: channel.isMember,
+							}
+						: null,
+					allowed,
 				},
-				...(channel
-					? [
-							{
-								kind: "integration" as const,
-								id: `slack:channel:${channel.id}`,
-								label: `#${channel.name}`,
-								detail: channel.isMember
-									? "Comp AI is a member"
-									: "Comp AI joins when this is created",
-							},
-						]
-					: []),
-			],
-			attachments: [],
-		});
+				"This agent",
+			);
+
+			create.mutate({
+				clientRequestId: crypto.randomUUID(),
+				commandType: "CREATE_AGENT",
+				message: handoffBrief(handoff),
+				resources: handoffResources(handoff),
+				attachments: [],
+			});
+		} catch (error) {
+			toast.error(
+				error instanceof InvalidInput
+					? error.message
+					: "Could not hand this to the builder.",
+			);
+		}
 	};
 
 	return (
@@ -167,7 +163,7 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 					<div className="flex flex-col gap-1.5">
 						<Label>Allowed to</Label>
 						<div className="flex flex-wrap gap-2">
-							{PERMISSIONS.map((entry) => {
+							{schemas.agents.permissions.map((entry) => {
 								const on = allowed.includes(entry.id);
 
 								return (
@@ -217,36 +213,4 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 			</DialogContent>
 		</Dialog>
 	);
-}
-
-function brief({
-	name,
-	job,
-	channel,
-	allowed,
-}: {
-	name: string;
-	job: string;
-	channel?: string;
-	allowed: string[];
-}): string {
-	const lines = [`Build an agent named "${name.trim()}".`, job.trim()];
-
-	if (channel) {
-		lines.push(
-			`It posts to the tagged Slack channel #${channel} and nowhere else. Do not ask me where to post.`,
-		);
-	}
-
-	lines.push(
-		[
-			"These Slack permissions are already decided. Use exactly this list and do not ask about it:",
-			...PERMISSIONS.map(
-				(entry) =>
-					`- ${entry.label}: ${allowed.includes(entry.id) ? "allowed" : "not allowed"}`,
-			),
-		].join("\n"),
-	);
-
-	return lines.join("\n\n");
 }

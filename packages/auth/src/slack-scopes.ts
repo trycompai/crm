@@ -108,7 +108,12 @@ export const SLACK_SCOPES: readonly SlackScope[] = [
 
 export const SLACK_REQUESTED_SCOPES = SLACK_SCOPES.map((entry) => entry.scope);
 
-export const SLACK_USER_SCOPES = ["channels:write", "groups:write"] as const;
+export const SLACK_USER_SCOPES = [
+	"channels:read",
+	"channels:write",
+	"groups:read",
+	"groups:write",
+] as const;
 
 export const SLACK_USER_GRANT = {
 	scope: "slack:user-invite",
