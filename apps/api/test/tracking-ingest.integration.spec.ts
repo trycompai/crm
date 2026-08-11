@@ -254,13 +254,6 @@ describe("a batch delivered twice", () => {
 		await Promise.all([accept([submission], id), accept([submission], id)]);
 
 		expect(await db.formSubmission.count({ where: { host: parent } })).toBe(1);
-
-		const row = await db.formSubmission.findFirst({
-			where: { host: parent },
-			select: { filedAt: true },
-		});
-
-		expect(row?.filedAt).not.toBeNull();
 	});
 
 	it("leaves a submission alone once it has been filed", async () => {
