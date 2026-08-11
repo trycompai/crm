@@ -14,7 +14,17 @@ export function outreachSendsPaused(): boolean {
 }
 
 export function modelSpendPaused(): boolean {
-	return !isExplicitlyEnabled(process.env.AI_GATEWAY_SPEND_PAUSED);
+	return (
+		process.env.AI_GATEWAY_SPEND_PAUSED !== "false" ||
+		(process.env.VERCEL_ENV === "production" &&
+			!process.env.AI_GATEWAY_API_KEY?.trim())
+	);
+}
+
+export function assertModelSpendAllowed(): void {
+	if (modelSpendPaused()) {
+		throw new Error("Model spend is paused.");
+	}
 }
 
 export function directTaskKinds(kinds: readonly string[]): readonly string[] {

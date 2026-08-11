@@ -1,5 +1,6 @@
 import { db, type Prisma } from "@crm/db";
 import type { SendFn } from "eve/channels";
+import { assertModelSpendAllowed, modelSpendPaused } from "./autonomy";
 import { lockAgentRun, runTerminalEventId } from "./run-state";
 
 const BUILDER_BATCH = 20;
@@ -34,6 +35,7 @@ export async function pendingBuilderSubmissionIds(): Promise<string[]> {
 }
 
 export async function drainBuilder(send: SendFn): Promise<number> {
+	if (modelSpendPaused()) return 0;
 	const ids = await pendingBuilderSubmissionIds();
 	await Promise.all(ids.map((id) => dispatchBuilderSubmission(id, send)));
 	return ids.length;
@@ -43,6 +45,7 @@ export async function dispatchBuilderSubmission(
 	submissionId: string,
 	send: SendFn,
 ) {
+	assertModelSpendAllowed();
 	const submission = await db.$transaction(async (tx) => {
 		const seed = await tx.agentConversationSubmission.findUnique({
 			where: { id: submissionId },
@@ -265,6 +268,7 @@ export async function pendingAgentRunIds(): Promise<string[]> {
 }
 
 export async function drainAgentRuns(send: SendFn): Promise<number> {
+	if (modelSpendPaused()) return 0;
 	await queueDueAgentRuns();
 	const ids = await pendingAgentRunIds();
 	await Promise.all(ids.map((id) => dispatchAgentRun(id, send)));
@@ -272,6 +276,7 @@ export async function drainAgentRuns(send: SendFn): Promise<number> {
 }
 
 export async function dispatchAgentRun(runId: string, send: SendFn) {
+	assertModelSpendAllowed();
 	const run = await db.agentRun.findUnique({
 		where: { id: runId },
 		select: {

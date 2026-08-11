@@ -53,7 +53,7 @@ function hasEnv(key: string): boolean {
 }
 
 function aiGatewaySpendPaused(): boolean {
-	return process.env.AI_GATEWAY_SPEND_PAUSED?.trim().toLowerCase() !== "false";
+	return process.env.AI_GATEWAY_SPEND_PAUSED !== "false";
 }
 
 @Injectable()

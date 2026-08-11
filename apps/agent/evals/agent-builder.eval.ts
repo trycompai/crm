@@ -1,6 +1,7 @@
 import { db } from "@crm/db";
 import { defineEval } from "eve/evals";
 import { equals, satisfies } from "eve/evals/expect";
+import { modelSpendPaused } from "../agent/lib/autonomy";
 
 export default defineEval({
 	description:
@@ -12,10 +13,11 @@ export default defineEval({
 		if (
 			!process.env.DATABASE_URL ||
 			!secret ||
+			modelSpendPaused() ||
 			(!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN)
 		) {
 			t.skip(
-				"Requires DATABASE_URL, AGENT_BRIDGE_SECRET, and an AI Gateway credential.",
+				"Requires DATABASE_URL, AGENT_BRIDGE_SECRET, an AI Gateway credential, and open model spend.",
 			);
 			return;
 		}

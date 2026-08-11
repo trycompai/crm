@@ -296,5 +296,8 @@ describe("connection truth", () => {
 
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
 		expect((await settings.aiGatewayStatus()).paused).toBe(false);
+
+		process.env.AI_GATEWAY_SPEND_PAUSED = "FALSE";
+		expect((await settings.aiGatewayStatus()).paused).toBe(true);
 	});
 });

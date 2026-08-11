@@ -1,3 +1,5 @@
+import { modelSpendPaused } from "./autonomy";
+
 const ENDPOINT = "https://api.perplexity.ai/chat/completions";
 const TIMEOUT_MS = 45_000;
 
@@ -9,7 +11,7 @@ export type Answer = {
 type Outcome<T> = { ok: true; data: T } | { ok: false; reason: string };
 
 export function perplexityEnabled(): boolean {
-	return Boolean(process.env.PERPLEXITY_API_KEY);
+	return !modelSpendPaused() && Boolean(process.env.PERPLEXITY_API_KEY);
 }
 
 export type AskOptions = {
@@ -22,6 +24,9 @@ export async function ask(
 	question: string,
 	options: AskOptions = {},
 ): Promise<Outcome<Answer>> {
+	if (modelSpendPaused()) {
+		return { ok: false, reason: "Model spend is paused." };
+	}
 	const apiKey = process.env.PERPLEXITY_API_KEY;
 	if (!apiKey) return { ok: false, reason: "No PERPLEXITY_API_KEY." };
 

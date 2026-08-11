@@ -26,8 +26,12 @@ let companyId = "";
 let otherCompanyId = "";
 let triggerId = "";
 const builderConversationIds: string[] = [];
+const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
+const vercelEnv = process.env.VERCEL_ENV;
 
 beforeAll(async () => {
+	process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+	delete process.env.VERCEL_ENV;
 	await db.user.create({
 		data: {
 			id: userId,
@@ -137,6 +141,13 @@ afterAll(async () => {
 		where: { id: { in: [companyId, otherCompanyId] } },
 	});
 	await db.user.deleteMany({ where: { id: userId } });
+	if (aiGatewaySpendPause === undefined) {
+		delete process.env.AI_GATEWAY_SPEND_PAUSED;
+	} else {
+		process.env.AI_GATEWAY_SPEND_PAUSED = aiGatewaySpendPause;
+	}
+	if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
+	else process.env.VERCEL_ENV = vercelEnv;
 });
 
 async function createRun(
@@ -161,6 +172,51 @@ async function createRun(
 }
 
 describe("durable custom-agent runtime", () => {
+	it("leaves queued model work untouched while spend is paused", async () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "true";
+		const run = await createRun("QUEUED", null);
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				submissions: {
+					create: {
+						submittedById: userId,
+						clientRequestId: crypto.randomUUID(),
+						message: { text: "Keep this pending" },
+					},
+				},
+			},
+			select: { id: true, submissions: { select: { id: true } } },
+		});
+		builderConversationIds.push(conversation.id);
+		let deliveries = 0;
+		const send = (async () => {
+			deliveries += 1;
+			return { id: "not-delivered" };
+		}) as unknown as SendFn;
+
+		try {
+			await expect(dispatchAgentRun(run.id, send)).rejects.toThrow(
+				"Model spend is paused.",
+			);
+			await expect(
+				dispatchBuilderSubmission(conversation.submissions[0]?.id ?? "", send),
+			).rejects.toThrow("Model spend is paused.");
+			expect(deliveries).toBe(0);
+			expect(
+				await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }),
+			).toMatchObject({ status: "QUEUED", startedAt: null, sessionId: null });
+			expect(
+				await db.agentConversationSubmission.findUniqueOrThrow({
+					where: { id: conversation.submissions[0]?.id ?? "" },
+				}),
+			).toMatchObject({ status: "PENDING", attemptCount: 0, sentAt: null });
+		} finally {
+			process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		}
+	});
+
 	it("advances a due trigger only when its run is committed", async () => {
 		const now = new Date();
 		const results = await Promise.all(

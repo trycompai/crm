@@ -9,6 +9,7 @@ import {
 	defineAgent,
 	defineDynamic,
 } from "eve";
+import { modelSpendPaused } from "./lib/autonomy";
 import { logCapabilities } from "./lib/capabilities";
 import { selectedModel } from "./lib/model";
 
@@ -20,7 +21,10 @@ void syncVersion();
 
 const directModel = process.env.LODE_AGENT_OPENAI_MODEL?.trim();
 const useDirectOpenAI = Boolean(
-	directModel && process.env.OPENAI_API_KEY?.trim(),
+	!modelSpendPaused() &&
+		process.env.VERCEL_ENV !== "production" &&
+		directModel &&
+		process.env.OPENAI_API_KEY?.trim(),
 );
 
 const reasoning = [
