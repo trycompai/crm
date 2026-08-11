@@ -23,10 +23,20 @@
 	 * the separately-declared public copy — so they must not become part of the
 	 * cache key. A secret in the cache key means a cache miss every rotation and
 	 * a secret in the cache metadata.
+	 *
+	 * `TEST_DATABASE_URL` is here for the same reason and learned the same way.
+	 * `NODE_ENV` is in `globalEnv`, so `bun test` sets it to `test` in every
+	 * package, and `@crm/db` then demands the test database and refuses to fall
+	 * back. Undeclared, it was stripped from every test task — so the suite went
+	 * red on a machine that had the variable set, complaining it was not set.
+	 * Locally it passed throughout, because `@crm/env/load` reads the root `.env`
+	 * from disk and CI has no such file.
 	 */
 	"globalPassThroughEnv": [
 		"DATABASE_URL",
 		"DATABASE_URL_UNPOOLED",
+		"TEST_DATABASE_URL",
+		"TEST_RUN_ID",
 		"BETTER_AUTH_SECRET",
 		"BETTER_AUTH_URL",
 		"ALLOWED_SIGN_IN",

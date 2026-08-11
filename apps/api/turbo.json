@@ -50,9 +50,7 @@
 				"MICROSOFT_CLIENT_SECRET",
 				"MICROSOFT_TENANT_ID",
 				"PORT",
-				"REDIS_URL",
-				"TEST_DATABASE_URL",
-				"TEST_RUN_ID"
+				"REDIS_URL"
 			]
 		}
 	}
