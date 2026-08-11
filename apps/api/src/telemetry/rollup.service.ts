@@ -9,6 +9,7 @@ import {
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
 import { readAgentModel } from "@crm/db/settings";
+import { CONTACT_CAP_REASON } from "@crm/db/tracking";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import {
 	bucket,
@@ -495,6 +496,30 @@ export class RollupService {
 			}),
 		]);
 
+		const [
+			trackingSite,
+			trackingDomains,
+			trackingViews,
+			trackingForms,
+			trackingContacts,
+			trackingCapped,
+			trackingPaused,
+		] = await Promise.all([
+			this.db.appSetting.count({ where: { trackingSiteId: { not: null } } }),
+			this.db.trackedDomain.count(),
+			this.db.trackedEvent.count({
+				where: { type: "page_view", occurredAt: { gte: since } },
+			}),
+			this.db.formSubmission.count({ where: { createdAt: { gte: since } } }),
+			this.db.contact.count({
+				where: { createdAt: { gte: since }, source: RecordSource.TRACKING },
+			}),
+			this.db.formSubmission.count({
+				where: { createdAt: { gte: since }, skipReason: CONTACT_CAP_REASON },
+			}),
+			this.db.appSetting.count({ where: { trackingPaused: true } }),
+		]);
+
 		const configured = syncs.reduce((sum, row) => sum + row._count._all, 0);
 
 		return {
@@ -527,6 +552,14 @@ export class RollupService {
 				types.map((row) => ({ key: row.type, count: row._count._all })),
 				Object.values(ActivityType),
 			),
+
+			cap_tracking: trackingSite > 0,
+			tracking_domains: bucket(trackingDomains),
+			tracking_page_views: trackingViews,
+			tracking_forms: trackingForms,
+			tracking_contacts_created: trackingContacts,
+			tracking_capped: trackingCapped,
+			tracking_paused: trackingPaused > 0,
 
 			mailbox_sync_configured: configured > 0,
 			mailbox_sync_status: merge(

@@ -12,6 +12,10 @@
 		{
 			"path": "/internal/telemetry/rollup",
 			"schedule": "0 7 * * *"
+		},
+		{
+			"path": "/internal/tracking/retention",
+			"schedule": "0 4 * * *"
 		}
 	]
 }

@@ -1,5 +1,6 @@
 import { defineSchedule } from "eve/schedules";
 import crm from "../channels/crm";
+import { sweepBlankFacts } from "../lib/blank-facts";
 import {
 	pendingAgentRunIds,
 	pendingBuilderSubmissionIds,
@@ -11,37 +12,41 @@ export default defineSchedule({
 	cron: "* * * * *",
 	async run({ receive, waitUntil, appAuth }) {
 		waitUntil(
-			(async () => {
-				await drainAll((task) =>
-					receive(crm, {
-						message: brief(task),
-						target: { taskId: task.id },
-						auth: taskAuth(task, appAuth),
-					}),
-				);
-				await queueDueAgentRuns();
-				const [builderIds, runIds] = await Promise.all([
-					pendingBuilderSubmissionIds(),
-					pendingAgentRunIds(),
-				]);
+			Promise.all([
+				sweepBlankFacts(),
 
-				await Promise.all([
-					...builderIds.map((builderSubmissionId) =>
+				(async () => {
+					await drainAll((task) =>
 						receive(crm, {
-							message: "Continue a queued private agent-builder chat.",
-							target: { builderSubmissionId },
-							auth: appAuth,
+							message: brief(task),
+							target: { taskId: task.id },
+							auth: taskAuth(task, appAuth),
 						}),
-					),
-					...runIds.map((runId) =>
-						receive(crm, {
-							message: "Execute a queued deployed agent run.",
-							target: { runId },
-							auth: appAuth,
-						}),
-					),
-				]);
-			})(),
+					);
+					await queueDueAgentRuns();
+					const [builderIds, runIds] = await Promise.all([
+						pendingBuilderSubmissionIds(),
+						pendingAgentRunIds(),
+					]);
+
+					await Promise.all([
+						...builderIds.map((builderSubmissionId) =>
+							receive(crm, {
+								message: "Continue a queued private agent-builder chat.",
+								target: { builderSubmissionId },
+								auth: appAuth,
+							}),
+						),
+						...runIds.map((runId) =>
+							receive(crm, {
+								message: "Execute a queued deployed agent run.",
+								target: { runId },
+								auth: appAuth,
+							}),
+						),
+					]);
+				})(),
+			]),
 		);
 	},
 });

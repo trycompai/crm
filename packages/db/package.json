@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./agent-tasks": "./src/agent-tasks.ts",
+		"./attribution": "./src/attribution.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",
@@ -21,6 +22,7 @@
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",
+		"./tracking": "./src/tracking.ts",
 		"./workspace": "./src/workspace.ts"
 	},
 	"scripts": {
@@ -33,6 +35,7 @@
 		"db:reset": "bun scripts/require-local-db.ts db:reset && prisma migrate reset",
 		"db:seed": "bun scripts/require-local-db.ts db:seed && prisma db seed",
 		"db:studio": "prisma studio",
+		"db:test": "bun scripts/test-db.ts",
 		"test": "bun test",
 		"dev:prepare": "bun scripts/prepare-dev.ts",
 		"lint": "biome check .",

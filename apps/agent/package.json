@@ -5,6 +5,7 @@
 	"type": "module",
 	"license": "MIT",
 	"scripts": {
+		"backfill:facts": "bun scripts/backfill-empty-facts.ts",
 		"backfill:images": "bun scripts/backfill-brand-images.ts",
 		"dev": "eve dev",
 		"dev:headless": "eve dev --no-ui",

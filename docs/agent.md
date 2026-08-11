@@ -101,14 +101,41 @@ task row; exists because the API may not call Context.
 - **`classifyKey` rejects on `401` and nothing else.**
 - **The candidate key, never the stored one.**
 
+### Blank fields are filled on the dispatch tick
+
+`sweepBlankFacts` (`lib/blank-facts.ts`) applies every pending suggestion whose field is
+still empty and clears the ones that have stopped saying anything. It runs at the top of
+`schedules/dispatch.ts`, every minute, over **every contact in the workspace** — it is a
+database pass with no session, no model, no task row and no credits, so there is nothing
+to ration and nobody to scope it to.
+
+- **Scans 2000 suggestions and fills at most 500 a pass**, and reports what it did not
+  reach (`unscanned`) rather than a clean sweep it did not make.
+- **Idempotent** — a second pass fills nothing, because those fields are no longer blank.
+- **The suggestions left are conflicts**, every one against a value already on the
+  record. That number should stay small and reads as work for a rep.
+- **It does not belong on sign-in, and that is not a preference.** It lived there for one
+  release and never once ran. Two reasons, either fatal: `onSignedIn` fires on
+  `session.create`, so a rep already signed in never triggers it; and `BackfillService`
+  does its work in a detached `void (async () => …)()` after the response, on a Nest API
+  that is a Vercel **serverless function** (`apps/api/api/index.ts`) — the tail of that
+  chain is not guaranteed to run at all. A cron in the agent is the only trigger here
+  that is a fact rather than a hope.
+
 ### Backfills
 
 Sign-in sweep covers records never looked up (10 credits/company);
 `ImageMirrorService` in the same sweep re-hosts off-site pictures (free);
-`backfill:images` fixes enriched records missing only pictures (free).
+`backfill:images` fixes enriched records missing only pictures (free);
+`backfill:facts` is the blank-field sweep above run by hand, with `--dry` to read it
+first — the cron covers it, so this is for a machine pointed at another database.
 
 - **The image sweep keeps "every picture is ours" true**, not true-since-Tuesday.
   25 rows/table/sweep.
+- **Nobody clicks a suggestion into a blank field.** The rule is enforced at the write
+  path, so no queue forms; the sweep is for rows written before it existed and for the
+  field a rep clears while a suggestion is pending. **An unreachable agent leaves the
+  suggestions where they are** — the API cannot apply one itself.
 - **A finished `portrait` task stands that contact down for thirty days** — that third
   source costs credits and usually finds nothing.
 - **No button, deliberately** — a rep cannot know which records predate a resolver.
@@ -129,7 +156,29 @@ wrong in the direction that looks useful.
 - **`lib/facts.ts` is the only write path to a contact's fields.** Applies at
   `VERIFIED`, proposes below it, and enforces three things a prompt cannot: never
   overwrite a human, never re-offer a dismissal, never write without a primary source.
-- **Bands are behaviour.** `PROBABLE` means *a rep decides* — a correct outcome.
+- **A band decides only when there is something to lose.** An empty field is filled by
+  whatever cleared the floor for keeping, whatever the band — approving a sourced guess
+  into a blank is a click that can only say yes, and a rep with four hundred contacts
+  reads none of them. `fillsBlank` is the whole rule: no human value in the way and
+  nothing already found. **`PROBABLE` still means *a rep decides* when the field is
+  already filled**, which is the case where a wrong answer costs something. The dispatch
+  tick applies the same rule to rows that predate it — `sweepBlankFacts`, above.
+- **Applying settles the field's other suggestions.** They were all offers to fill the
+  same blank, and the sheet shows one at a time — so left alone, accepting one reveals
+  the next, forever. The same rule holds when a rep accepts one (`decideFact`).
+- **The same value is never offered twice.** A second `PROPOSED` row with a value
+  already waiting is refused at the write path, not deduplicated on read.
+- **"The same value" is `sameValue`, and a URL is compared as an address, not a
+  string.** `canonicalValue` lowercases, collapses whitespace, and for `http(s)` drops
+  the scheme, `www.`, a trailing slash and the query, and reads `twitter.com` as
+  `x.com`. Compared byte for byte, `…/in/pogrebs/` is not `…/in/pogrebs`, so the record
+  showed a suggestion offering back the URL already in the field — the exact click this
+  whole rule exists to remove. **The stored value is still what the source said**; only
+  the comparison normalises. **The refusal
+  is for offers only** — the check runs after `applies` is decided, so evidence that has
+  reached `VERIFIED` since the offer was made still lands, settles the suggestion it
+  matches, and replaces the older value. Refusing it there left a weaker value on the
+  record with the answer sitting unread beneath it.
 - **A new fact field goes in `FIELDS` (`lib/facts.ts`) *and* `FACT_COLUMNS`**
   (`apps/api/src/contacts/contacts.service.ts`).
 

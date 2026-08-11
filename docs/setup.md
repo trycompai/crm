@@ -102,7 +102,7 @@ the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
 
 `apps/api/scripts/build-func.mjs` runs `prisma migrate deploy` during the crm-api
 build, gated on `VERCEL_ENV === "production"`. The schema therefore moves when the
-promotion pull request merges and `release` deploys — with the code that needs it,
+release pull request merges and `release` deploys — with the code that needs it,
 and once rather than once per branch.
 
 Preview deploys share the production database: `DATABASE_URL` is a single value

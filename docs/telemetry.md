@@ -98,10 +98,11 @@ whose event never arrived, which cannot be recovered.
 
 `cap_rapidapi`, `cap_perplexity`, `cap_context_dev`, `cap_blob`, `cap_github`, `cap_redis`,
 `cap_agent_bridge`, `cap_cron_secret`, `cap_ai_gateway`, `cap_google_oauth`, `cap_sso_provider`,
-`is_marketing`.
+`cap_tracking`, `is_marketing`.
 
 Each is only whether the key is set. `cap_context_dev` is whether an `AppSetting` row holds one,
-`cap_sso_provider` whether an `ssoProvider` row exists. No key, value or last-four is sent.
+`cap_sso_provider` whether an `ssoProvider` row exists, `cap_tracking` whether a tracking site id
+has been minted — never the id itself. No key, value or last-four is sent.
 
 #### The agent
 
@@ -158,6 +159,17 @@ sent.
 | `enrichment_by_status` | `Company` counts by `EnrichmentStatus` |
 | `suppressed_domains`, `suppressed_contacts` | Counts. Never the domains or addresses |
 | `workspace_profile_written` | Whether a `WorkspaceProfile` row exists |
+
+#### Website tracking
+
+| Property | What it is |
+| --- | --- |
+| `tracking_domains` | How many domains are on the allow list, in bands. Never a host |
+| `tracking_page_views` | Page views recorded in the window. A count, never a path |
+| `tracking_forms` | Form submissions stored in the window. A count, never a field |
+| `tracking_contacts_created` | Contacts created **by** tracking in the window — `Contact.source = TRACKING`, not submissions that attached to somebody already filed |
+| `tracking_capped` | Submissions the hourly contact cap refused. Matched against `CONTACT_CAP_REASON` (`@crm/db/tracking`) exactly, so the wording is a constant two files share rather than prose one of them may reword |
+| `tracking_paused` | Whether collection is paused |
 
 ### The setup funnel
 

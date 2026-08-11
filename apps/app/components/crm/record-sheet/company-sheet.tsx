@@ -37,6 +37,7 @@ import { OwnerCell } from "@/components/crm/owner-cell";
 import { CompanySocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
+import { WebsiteActivity } from "@/components/crm/website-activity";
 import {
 	DetailSheetBody,
 	DetailSheetEmpty,
@@ -172,15 +173,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 				{
 					value: "overview",
 					label: "Overview",
-					content: (
-						<CompanyOverview
-							company={company}
-							onAddContact={() => {
-								setAdding("contact");
-								setTab("contacts");
-							}}
-						/>
-					),
+					content: <CompanyOverview company={company} />,
 				},
 				{
 					value: "contacts",
@@ -303,13 +296,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 	);
 }
 
-function CompanyOverview({
-	company,
-	onAddContact,
-}: {
-	company: Company;
-	onAddContact: () => void;
-}) {
+function CompanyOverview({ company }: { company: Company }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -341,14 +328,7 @@ function CompanyOverview({
 						</DetailSheetSection>
 					) : null}
 
-					<DetailSheetSection title="People">
-						<CompanyContacts
-							company={company}
-							adding={false}
-							onAdd={onAddContact}
-							onDone={() => undefined}
-						/>
-					</DetailSheetSection>
+					<WebsiteActivity companyId={company.id} />
 				</DetailSheetMain>
 
 				<DetailSheetRail>
