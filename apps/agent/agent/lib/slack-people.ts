@@ -1,24 +1,48 @@
 import { db } from "@crm/db";
 import { WORKSPACE_ID } from "@crm/db/workspace";
+import { parse, schemas } from "@crm/validation";
+import { z } from "zod";
 import { SLACK } from "./slack-config";
 import { slackAccessToken, slackUserToken } from "./slack-connection";
 
-type SlackMember = {
-	id: string;
-	name: string;
-	profile?: { email?: string };
-	deleted?: boolean;
-	is_bot?: boolean;
+const slackMember = z.object({
+	id: z.string().trim().min(1),
+	name: z.string().trim().min(1).optional(),
+	profile: z.object({ email: z.string().trim().min(1).nullish() }).nullish(),
+	deleted: z.boolean().optional(),
+	is_bot: z.boolean().optional(),
+});
+
+const slackChannel = z.object({
+	id: z.string().trim().min(1),
+	name: z.string().trim().min(1),
+	num_members: z.number().int().nonnegative().nullish(),
+	is_member: z.boolean().optional(),
+	is_archived: z.boolean().optional(),
+	is_private: z.boolean().optional(),
+});
+
+const pageMetadata = z.object({ next_cursor: z.string().nullish() }).nullish();
+
+const memberPage = schemas.slack.reply.extend({
+	members: z.array(slackMember).default([]),
+	response_metadata: pageMetadata,
+});
+
+const channelPage = schemas.slack.reply.extend({
+	channels: z.array(slackChannel).default([]),
+	response_metadata: pageMetadata,
+});
+
+type SlackMember = z.infer<typeof slackMember>;
+type SlackChannel = z.infer<typeof slackChannel>;
+type SlackPage = {
+	ok: boolean;
+	error?: string;
+	response_metadata?: { next_cursor?: string | null } | null;
 };
 
-type SlackChannel = {
-	id: string;
-	name: string;
-	num_members?: number;
-	is_member?: boolean;
-	is_archived?: boolean;
-	is_private?: boolean;
-};
+const RECONNECT_ERRORS = ["invalid_auth", "account_inactive", "token_revoked"];
 
 export async function runSlackPeopleMatch(): Promise<string> {
 	const accessToken = await slackAccessToken();
@@ -35,7 +59,7 @@ export async function runSlackPeopleMatch(): Promise<string> {
 	const byEmail = new Map(
 		availableMembers.flatMap((member) => {
 			const email = member.profile?.email?.trim().toLowerCase();
-			return email ? [[email, member]] : [];
+			return email ? [[email, member] as const] : [];
 		}),
 	);
 	const crmMembers = await db.member.findMany({
@@ -53,7 +77,7 @@ export async function runSlackPeopleMatch(): Promise<string> {
 	let matched = 0;
 	for (const { user } of crmMembers) {
 		const slack = byEmail.get(user.email.trim().toLowerCase());
-		const slackHandle = slack ? `@${slack.name || slack.id}` : null;
+		const slackHandle = slack ? `@${slack.name ?? slack.id}` : null;
 		await db.slackMemberMatch.upsert({
 			where: { crmUserId: user.id },
 			create: {
@@ -108,56 +132,75 @@ async function visibleChannels(
 	return [...seen.values()];
 }
 
-async function persistSlackChannels(
+export async function persistSlackChannels(
 	channels: SlackChannel[],
 	canInviteItself: boolean,
 ): Promise<number> {
-	const available = channels.filter(
-		(channel) =>
-			!channel.is_archived &&
-			(channel.is_member || !channel.is_private || canInviteItself),
-	);
-	await db.$transaction(async (tx) => {
-		await tx.slackChannel.updateMany({ data: { available: false } });
-		for (const channel of available) {
-			const shape = {
-				name: channel.name,
-				memberCount: channel.num_members,
-				isPrivate: channel.is_private ?? false,
-				isMember: channel.is_member ?? false,
-			};
+	const available = [
+		...new Map(
+			channels
+				.filter(
+					(channel) =>
+						!channel.is_archived &&
+						(channel.is_member || !channel.is_private || canInviteItself),
+				)
+				.map((channel) => [channel.id, channel] as const),
+		).values(),
+	];
 
-			await tx.slackChannel.upsert({
-				where: { id: channel.id },
-				create: { id: channel.id, ...shape },
-				update: { ...shape, available: true },
-			});
-		}
+	return db.$transaction(async (tx) => {
+		const [account] = await tx.$queryRaw<Array<{ id: string }>>`
+			SELECT id
+			FROM "account"
+			WHERE "providerId" = 'slack' AND "accessToken" IS NOT NULL
+			ORDER BY "updatedAt" DESC
+			LIMIT 1
+			FOR UPDATE
+		`;
+		if (!account) return 0;
+
+		const ids = available.map((channel) => channel.id);
+		await tx.slackChannel.updateMany({
+			where: { id: { notIn: ids } },
+			data: { available: false },
+		});
+		if (ids.length === 0) return 0;
+
+		await tx.$executeRaw`
+			INSERT INTO "slackChannel" (id, name, "memberCount", "isPrivate", "isMember", available, "createdAt", "updatedAt")
+			SELECT id, name, "memberCount", "isPrivate", "isMember", true, NOW(), NOW()
+			FROM UNNEST(
+				${ids}::text[],
+				${available.map((channel) => channel.name)}::text[],
+				${available.map((channel) => channel.num_members ?? null)}::int[],
+				${available.map((channel) => channel.is_private ?? false)}::boolean[],
+				${available.map((channel) => channel.is_member ?? false)}::boolean[]
+			) AS incoming(id, name, "memberCount", "isPrivate", "isMember")
+			ON CONFLICT (id) DO UPDATE SET
+				name = EXCLUDED.name,
+				"memberCount" = EXCLUDED."memberCount",
+				"isPrivate" = EXCLUDED."isPrivate",
+				"isMember" = EXCLUDED."isMember",
+				available = true,
+				"updatedAt" = NOW()
+		`;
+
+		return ids.length;
 	});
-
-	return available.length;
 }
 
 async function listSlackMembers(accessToken: string): Promise<SlackMember[]> {
 	const members: SlackMember[] = [];
 	let cursor = "";
 	do {
-		const url = new URL("https://slack.com/api/users.list");
-		url.searchParams.set("limit", String(SLACK.inventory.pageSize));
-		if (cursor) url.searchParams.set("cursor", cursor);
-		const response = await fetch(url, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-		if (!response.ok) throw new Error("Slack member lookup failed.");
-		const data = await response.json();
-		assertSlackResponse(data, "member lookup");
-		const page = Reflect.get(data, "members");
-		if (Array.isArray(page)) members.push(...(page as SlackMember[]));
-		const metadata = Reflect.get(data, "response_metadata");
-		cursor =
-			metadata && typeof metadata === "object"
-				? String(Reflect.get(metadata, "next_cursor") ?? "")
-				: "";
+		const page = await readSlackPage(
+			accessToken,
+			listUrl("users.list", cursor),
+			memberPage,
+			"member lookup",
+		);
+		members.push(...page.members);
+		cursor = page.response_metadata?.next_cursor ?? "";
 	} while (cursor);
 	return members;
 }
@@ -166,45 +209,62 @@ async function listSlackChannels(accessToken: string): Promise<SlackChannel[]> {
 	const channels: SlackChannel[] = [];
 	let cursor = "";
 	do {
-		const url = new URL("https://slack.com/api/conversations.list");
-		url.searchParams.set("limit", String(SLACK.inventory.pageSize));
-		url.searchParams.set("exclude_archived", "true");
-		url.searchParams.set("types", "public_channel,private_channel");
-		if (cursor) url.searchParams.set("cursor", cursor);
-		const response = await fetch(url, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-		if (!response.ok) throw new Error("Slack channel lookup failed.");
-		const data = await response.json();
-		assertSlackResponse(data, "channel lookup");
-		const page = Reflect.get(data, "channels");
-		if (Array.isArray(page)) channels.push(...(page as SlackChannel[]));
-		const metadata = Reflect.get(data, "response_metadata");
-		cursor =
-			metadata && typeof metadata === "object"
-				? String(Reflect.get(metadata, "next_cursor") ?? "")
-				: "";
+		const page = await readSlackPage(
+			accessToken,
+			listUrl("conversations.list", cursor, {
+				exclude_archived: "true",
+				types: SLACK.inventory.channelTypes,
+			}),
+			channelPage,
+			"channel lookup",
+		);
+		channels.push(...page.channels);
+		cursor = page.response_metadata?.next_cursor ?? "";
 	} while (cursor);
 	return channels;
 }
 
-function assertSlackResponse(value: unknown, operation: string): void {
-	if (value && typeof value === "object" && Reflect.get(value, "ok") === true) {
-		return;
+function listUrl(
+	method: string,
+	cursor: string,
+	params: Record<string, string> = {},
+): URL {
+	const url = new URL(`https://slack.com/api/${method}`);
+	url.searchParams.set("limit", String(SLACK.inventory.pageSize));
+	for (const [key, value] of Object.entries(params)) {
+		url.searchParams.set(key, value);
 	}
-	const reason =
-		value && typeof value === "object"
-			? String(Reflect.get(value, "error") ?? "rejected")
-			: "rejected";
+	if (cursor) url.searchParams.set("cursor", cursor);
+	return url;
+}
+
+async function readSlackPage<Schema extends z.ZodType<SlackPage>>(
+	token: string,
+	url: URL,
+	schema: Schema,
+	operation: string,
+): Promise<z.infer<Schema>> {
+	const response = await fetch(url, {
+		headers: { authorization: `Bearer ${token}` },
+		signal: AbortSignal.timeout(SLACK.request.timeoutMs),
+	});
+	if (!response.ok) throw new Error(`Slack ${operation} failed.`);
+
+	const page = parse(schema, await response.json(), `Slack ${operation}`);
+	if (!page.ok) throw rejected(page.error ?? "rejected", operation);
+	return page;
+}
+
+function rejected(reason: string, operation: string): Error {
 	if (reason === "missing_scope") {
-		throw new Error(
+		return new Error(
 			`Slack ${operation} needs an additional permission. Reconnect Slack and retry.`,
 		);
 	}
-	if (["invalid_auth", "account_inactive", "token_revoked"].includes(reason)) {
-		throw new Error(
+	if (RECONNECT_ERRORS.includes(reason)) {
+		return new Error(
 			`Slack ${operation} needs the workspace to be reconnected.`,
 		);
 	}
-	throw new Error(`Slack ${operation} was rejected (${reason}).`);
+	return new Error(`Slack ${operation} was rejected (${reason}).`);
 }

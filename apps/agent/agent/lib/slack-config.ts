@@ -9,5 +9,6 @@ export const SLACK = {
 
 	inventory: {
 		pageSize: 200,
+		channelTypes: "public_channel,private_channel",
 	},
 } as const;
