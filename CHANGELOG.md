@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/trycompai/crm/compare/v1.5.1...v1.6.0) (2026-08-11)
+
+
+### Features
+
+* **tracking:** add website tracking with form capture and attribution ([e050ff9](https://github.com/trycompai/crm/commit/e050ff9cd62897880da6cceebe765d51aef8f723))
+
+
+### Fixes
+
+* **ci:** make the release guard reject only genuinely untagged pull requests ([#105](https://github.com/trycompai/crm/issues/105)) ([815a832](https://github.com/trycompai/crm/commit/815a832fbefe4c96ad15cee1679be116e590e132))
+* **ci:** stop the auto-titler downgrading a release ([8a1e390](https://github.com/trycompai/crm/commit/8a1e3901ec5e6eeca13b0b0af4c3edbc0e57736d))
+
 ## [1.5.1](https://github.com/trycompai/crm/compare/v1.5.0...v1.5.1) (2026-08-08)
 
 
