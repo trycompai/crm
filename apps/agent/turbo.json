@@ -57,7 +57,7 @@
 		 */
 		"test": {
 			"dependsOn": ["topo", "^build", "@crm/auth#test"],
-			"passThroughEnv": ["DATABASE_URL"]
+			"passThroughEnv": ["DATABASE_URL", "TEST_DATABASE_URL", "TEST_RUN_ID"]
 		}
 	}
 }

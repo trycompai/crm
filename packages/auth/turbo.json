@@ -8,6 +8,10 @@
 		},
 		"check-types": {
 			"passThroughEnv": ["DATABASE_URL"]
+		},
+		"test": {
+			"dependsOn": ["topo", "^build"],
+			"passThroughEnv": ["DATABASE_URL", "TEST_DATABASE_URL", "TEST_RUN_ID"]
 		}
 	}
 }
