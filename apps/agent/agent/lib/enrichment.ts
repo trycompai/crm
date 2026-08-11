@@ -1,6 +1,14 @@
 import { db, EnrichmentStatus } from "@crm/db";
 import type { TaskSubject } from "./tasks";
 
+type SettleGuard = {
+	enrichmentStatus?: EnrichmentStatus;
+	OR?: Array<{
+		enrichmentStatus: EnrichmentStatus;
+		updatedAt?: { lt: Date };
+	}>;
+};
+
 export async function markRunning(subject: TaskSubject): Promise<void> {
 	await write(subject, EnrichmentStatus.RUNNING, null, false);
 }
@@ -19,18 +27,17 @@ async function write(
 	error: string | null,
 	onlyIfRunning: boolean,
 ): Promise<void> {
+	if (!subject.contactId && !subject.companyId) return;
+
 	const data = {
 		enrichmentStatus: status,
 		enrichmentError: error,
 		...(status === EnrichmentStatus.COMPLETE ? { enrichedAt: new Date() } : {}),
 	};
 
-	const settleable =
-		status === EnrichmentStatus.FAILED
-			? [EnrichmentStatus.RUNNING, EnrichmentStatus.PENDING]
-			: [EnrichmentStatus.RUNNING];
-
-	const guard = onlyIfRunning ? { enrichmentStatus: { in: settleable } } : {};
+	const guard: SettleGuard = onlyIfRunning
+		? await settleable(subject, status)
+		: {};
 
 	if (subject.contactId) {
 		await db.contact.updateMany({
@@ -45,4 +52,33 @@ async function write(
 			data,
 		});
 	}
+}
+
+async function settleable(
+	subject: TaskSubject,
+	status: EnrichmentStatus,
+): Promise<SettleGuard> {
+	const running = { enrichmentStatus: EnrichmentStatus.RUNNING };
+	if (status !== EnrichmentStatus.FAILED) return running;
+
+	const endedAt = await taskEndedAt(subject.id);
+
+	return {
+		OR: [
+			running,
+			{
+				enrichmentStatus: EnrichmentStatus.PENDING,
+				updatedAt: { lt: endedAt },
+			},
+		],
+	};
+}
+
+async function taskEndedAt(taskId: string): Promise<Date> {
+	const task = await db.agentTask.findUnique({
+		where: { id: taskId },
+		select: { finishedAt: true },
+	});
+
+	return task?.finishedAt ?? new Date();
 }

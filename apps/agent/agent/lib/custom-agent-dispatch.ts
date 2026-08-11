@@ -411,18 +411,22 @@ export async function drainAgentRuns(send: SendFn): Promise<number> {
 		const ids = await pendingAgentRunIds();
 		if (ids.length === 0) break;
 
-		await Promise.all(
+		const outcomes = await Promise.all(
 			ids.map((id) =>
-				dispatchAgentRun(id, send).catch((error) => {
-					console.error(
-						`[agent] run ${id} could not be dispatched: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-				}),
+				dispatchAgentRun(id, send).then(
+					() => true,
+					(error) => {
+						console.error(
+							`[agent] run ${id} could not be dispatched: ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						);
+						return false;
+					},
+				),
 			),
 		);
-		dispatched += ids.length;
+		dispatched += outcomes.filter(Boolean).length;
 	}
 
 	return dispatched;

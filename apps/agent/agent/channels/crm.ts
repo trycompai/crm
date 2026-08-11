@@ -75,6 +75,7 @@ export default defineChannel({
 					finishedAt: null,
 					dueAt: { lte: new Date(now.getTime() - STALE_QUEUE_MS) },
 					attempts: { lt: MAX_ATTEMPTS },
+					OR: [{ leasedUntil: null }, { leasedUntil: { lt: now } }],
 				},
 			});
 

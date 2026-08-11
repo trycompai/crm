@@ -36,6 +36,14 @@ async function company(status: EnrichmentStatus) {
 	return row.id;
 }
 
+const subjectOf = (companyId: string) => ({
+	id: `keyless-${companyId}`,
+	kind: "brand",
+	contactId: null,
+	companyId,
+	dealId: null,
+});
+
 const statusOf = async (id: string) =>
 	(
 		await db.company.findUnique({
@@ -49,7 +57,7 @@ describe("a brand task with no key", () => {
 		const id = await company(EnrichmentStatus.PENDING);
 
 		await settle(
-			{ companyId: id },
+			subjectOf(id),
 			EnrichmentStatus.SKIPPED,
 			"Context.dev is not configured, so there is nowhere to look.",
 		);
@@ -60,7 +68,7 @@ describe("a brand task with no key", () => {
 	it("does not strand a company that had already failed", async () => {
 		const id = await company(EnrichmentStatus.FAILED);
 
-		await settle({ companyId: id }, EnrichmentStatus.SKIPPED, "no key");
+		await settle(subjectOf(id), EnrichmentStatus.SKIPPED, "no key");
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.FAILED);
 	});
@@ -68,7 +76,7 @@ describe("a brand task with no key", () => {
 	it("still settles a lookup that genuinely ran", async () => {
 		const id = await company(EnrichmentStatus.RUNNING);
 
-		await settle({ companyId: id }, EnrichmentStatus.SKIPPED, "No brand.");
+		await settle(subjectOf(id), EnrichmentStatus.SKIPPED, "No brand.");
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.SKIPPED);
 	});
@@ -77,7 +85,7 @@ describe("a brand task with no key", () => {
 		const id = await company(EnrichmentStatus.PENDING);
 
 		await settle(
-			{ companyId: id },
+			subjectOf(id),
 			EnrichmentStatus.FAILED,
 			"Research was attempted several times and never completed.",
 		);
@@ -88,7 +96,7 @@ describe("a brand task with no key", () => {
 	it("does not revive a company that already completed", async () => {
 		const id = await company(EnrichmentStatus.COMPLETE);
 
-		await settle({ companyId: id }, EnrichmentStatus.FAILED, "too late");
+		await settle(subjectOf(id), EnrichmentStatus.FAILED, "too late");
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.COMPLETE);
 	});

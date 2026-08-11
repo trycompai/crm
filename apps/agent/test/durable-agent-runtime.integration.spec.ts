@@ -181,12 +181,13 @@ async function createRun(
 	status: "QUEUED" | "RUNNING" = "RUNNING",
 	startedAt: Date | null = new Date(),
 	sessionId: string | null = null,
+	triggerType: "MANUAL" | "EVENT" = "MANUAL",
 ) {
 	return db.agentRun.create({
 		data: {
 			agentId,
 			versionId,
-			triggerType: "MANUAL",
+			triggerType,
 			status,
 			startedAt,
 			sessionId,
@@ -718,6 +719,57 @@ describe("durable custom-agent runtime", () => {
 			status: "FAILED",
 			errorCode: "ACTION_NOT_PERFORMED",
 		});
+	});
+
+	it("refuses a self-reported no-action ending on a manual run", async () => {
+		const run = await createRun();
+		let stageError: Error | null = null;
+		try {
+			await stageRunResult(run.id, {
+				summary: "Nothing to do",
+				noActionNeeded: { reason: "The condition was not met." },
+			});
+		} catch (error) {
+			stageError = error as Error;
+		}
+		expect(stageError?.message).toContain(
+			"manual run cannot end with no action needed",
+		);
+
+		const finished = await finishRun(run.id, {
+			summary: "Nothing to do",
+			result: { noActionNeeded: "The condition was not met." },
+		});
+		expect(finished).toEqual({ id: run.id, status: "FAILED" });
+		expect(
+			await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }),
+		).toMatchObject({ status: "FAILED", errorCode: "ACTION_NOT_PERFORMED" });
+		expect(
+			await db.agentRunEvent.count({
+				where: { runId: run.id, type: "run.completed" },
+			}),
+		).toBe(0);
+	});
+
+	it("accepts a no-action ending on an event run whose condition was not met", async () => {
+		const run = await createRun("RUNNING", new Date(), null, "EVENT");
+		await stageRunResult(run.id, {
+			summary: "The deal was already closed",
+			noActionNeeded: { reason: "The condition was not met." },
+		});
+		const staged = await db.agentRun.findUniqueOrThrow({
+			where: { id: run.id },
+		});
+		expect(staged.result).toMatchObject({
+			noActionNeeded: "The condition was not met.",
+		});
+
+		const finished = await finishRun(run.id, {
+			summary: staged.summary ?? "The deal was already closed",
+			result: staged.result as Record<string, unknown>,
+		});
+		expect(finished).toEqual({ id: run.id, status: "SUCCEEDED" });
+		expect(await db.agentAction.count({ where: { runId: run.id } })).toBe(0);
 	});
 
 	it("claims an approved CRM action once and rejects scope before target access", async () => {

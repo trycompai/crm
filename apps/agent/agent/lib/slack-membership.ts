@@ -7,7 +7,7 @@ export type JoinOutcome =
 	| { joined: true; already: boolean }
 	| { joined: false; reason: string; needsHuman: boolean };
 
-const ALREADY_IN = ["already_in_channel", "is_archived"];
+const ALREADY_IN_CHANNEL = "already_in_channel";
 
 async function call(
 	token: string,
@@ -80,7 +80,7 @@ export async function joinSlackChannel(
 		? await inviteWithUserToken(channelId, bot)
 		: await call(bot, "conversations.join", { channel: channelId });
 
-	if (!outcome.ok && !ALREADY_IN.includes(outcome.error ?? "")) {
+	if (!outcome.ok && outcome.error !== ALREADY_IN_CHANNEL) {
 		return {
 			joined: false,
 			reason: explain(outcome.error ?? "rejected"),
@@ -93,7 +93,7 @@ export async function joinSlackChannel(
 		data: { isMember: true, available: true, inviteRequestedAt: null },
 	});
 
-	return { joined: true, already: outcome.error === "already_in_channel" };
+	return { joined: true, already: outcome.error === ALREADY_IN_CHANNEL };
 }
 
 async function inviteWithUserToken(
@@ -117,6 +117,7 @@ function needsHuman(error: string): boolean {
 		"not_in_channel",
 		"invalid_auth",
 		"token_revoked",
+		"is_archived",
 	].includes(error);
 }
 
@@ -126,6 +127,8 @@ function explain(error: string): string {
 			return "This workspace did not grant Comp AI permission to add itself to a private channel.";
 		case "channel_not_found":
 			return "Slack cannot see this channel. A member has to invite Comp AI.";
+		case "is_archived":
+			return "This channel is archived. Somebody has to unarchive it before Comp AI can join.";
 		case "missing_scope":
 			return "Slack refused: a permission is missing. Reconnect Slack.";
 		case "invalid_auth":
