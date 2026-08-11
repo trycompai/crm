@@ -451,9 +451,7 @@ async function ensureCandidate(
 									proposedContactId: contact.id,
 									proposedCompanyId: contact.companyId,
 								}
-							: suppressed
-								? { proposedContactId: null, proposedCompanyId: null }
-								: {}),
+							: { proposedContactId: null, proposedCompanyId: null }),
 					},
 				});
 			}
@@ -629,7 +627,7 @@ export async function runInboundCandidateReplay(
 			},
 		});
 		const page = websites.slice(0, pageLimit);
-		if (websites.length > page.length) websiteHasMore = true;
+		websiteHasMore = websites.length > page.length;
 		if (page.length === 0) break;
 		for (const row of page) {
 			websiteRead += 1;
@@ -649,6 +647,17 @@ export async function runInboundCandidateReplay(
 				metadata: {},
 			};
 			if (!email) {
+				const receipt = await ensureReceipt(database, source);
+				if (receipt.created) outcome.receipts += 1;
+				else duplicate(outcome, "receipt");
+				outcome.excluded += 1;
+				continue;
+			}
+			const excluded = excludedParticipant(
+				{ email, name: clean(row.name) },
+				rules,
+			);
+			if (excluded.internal) {
 				const receipt = await ensureReceipt(database, source);
 				if (receipt.created) outcome.receipts += 1;
 				else duplicate(outcome, "receipt");
@@ -708,7 +717,7 @@ export async function runInboundCandidateReplay(
 			},
 		});
 		const page = messages.slice(0, pageLimit);
-		if (messages.length > page.length) messageHasMore = true;
+		messageHasMore = messages.length > page.length;
 		if (page.length === 0) break;
 		for (const row of page) {
 			messageRead += 1;

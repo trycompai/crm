@@ -21,6 +21,11 @@ import { scheduleTask } from "../agent/lib/tasks";
 
 const suffix = `${process.env.TEST_RUN_ID ?? "replay"}-${crypto.randomUUID()}`;
 const websiteExternalId = `000000-replay-website-${suffix}`;
+const internalWebsiteExternalIds = [
+	`000000-replay-website-internal-member-${suffix}`,
+	`000000-replay-website-internal-richard-${suffix}`,
+	`000000-replay-website-internal-admin-${suffix}`,
+] as const;
 const emailMessageId = `000000-replay-message-${suffix}`;
 const emailThreadId = `000000-replay-thread-${suffix}`;
 const externalEmail = `replay-${suffix}@external.example.test`;
@@ -100,6 +105,25 @@ beforeAll(async () => {
 			test: false,
 		},
 	});
+	for (const [index, externalId] of internalWebsiteExternalIds.entries()) {
+		await db.websiteEnquiry.create({
+			data: {
+				externalId,
+				createdAtSource: new Date(`2026-08-01T12:0${index + 1}:00.000Z`),
+				name: "Internal Website Sender",
+				email: [
+					workspaceMemberEmail,
+					"richard@trylodeagent.io",
+					"admin@trylodeagent.io",
+				][index],
+				company: "Internal Sender Company",
+				source: "request_access",
+				sourcePath: "/request-access",
+				utm: { campaign: "internal" },
+				test: false,
+			},
+		});
+	}
 	await db.emailThread.create({
 		data: {
 			id: emailThreadId,
@@ -141,6 +165,7 @@ afterAll(async () => {
 		where: {
 			OR: [
 				{ sourceObjectId: websiteExternalId },
+				{ sourceObjectId: { in: [...internalWebsiteExternalIds] } },
 				{ sourceObjectId: emailMessageId },
 			],
 		},
@@ -302,6 +327,17 @@ describe("persisted inbound replay", () => {
 			where: { canonicalEmail: externalEmail },
 			include: { observations: true },
 		});
+		const internalWebsiteCandidates = await db.contactCandidate.findMany({
+			where: {
+				canonicalEmail: {
+					in: [
+						workspaceMemberEmail,
+						"richard@trylodeagent.io",
+						"admin@trylodeagent.io",
+					],
+				},
+			},
+		});
 		const suppressedCandidate = await db.contactCandidate.findFirst({
 			where: { canonicalEmail: suppressedEmail },
 		});
@@ -323,6 +359,7 @@ describe("persisted inbound replay", () => {
 			ContactCandidatePermissionState.PROHIBITED,
 		);
 		expect(removedCandidate?.status).toBe(ContactCandidateStatus.PENDING);
+		expect(internalWebsiteCandidates).toHaveLength(0);
 		expect(
 			candidate?.observations.some(
 				(observation) => observation.observedName === null,
@@ -486,6 +523,17 @@ describe("persisted inbound replay", () => {
 			decisionReason: "Human rejected for replay test",
 		});
 		expect(await db.contact.count()).toBe(beforeContacts);
+		await db.contact.delete({ where: { id: contact.id } });
+		await db.company.delete({ where: { id: company.id } });
+		await runInboundCandidateReplay();
+		const clearedCandidate = await db.contactCandidate.findFirst({
+			where: { canonicalEmail: exactEmail },
+		});
+		expect(clearedCandidate).toMatchObject({
+			status: ContactCandidateStatus.PENDING,
+			proposedContactId: null,
+			proposedCompanyId: null,
+		});
 		if (candidate?.id) {
 			await db.contactCandidateObservation.deleteMany({
 				where: { candidateId: candidate.id },
@@ -504,8 +552,6 @@ describe("persisted inbound replay", () => {
 		await db.websiteEnquiry.deleteMany({
 			where: { externalId: terminalExternalId },
 		});
-		await db.contact.delete({ where: { id: contact.id } });
-		await db.company.delete({ where: { id: company.id } });
 	});
 
 	it("does not create a task storm for a completed bucket", async () => {
