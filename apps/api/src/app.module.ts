@@ -4,6 +4,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule as BetterAuthModule } from "@thallesp/nestjs-better-auth";
 import { ActivitiesModule } from "./activities/activities.module";
 import { AgentModule } from "./agent/agent.module";
+import { ApprovalModule } from "./approval/approval.module";
 import { AuthModule } from "./auth/auth.module";
 import { BackfillModule } from "./backfill/backfill.module";
 import { AppCacheModule } from "./cache/cache.module";
@@ -32,6 +33,7 @@ import { SettingsModule } from "./settings/settings.module";
 import { SsoModule } from "./sso/sso.module";
 import { SyncModule } from "./sync/sync.module";
 import { TelemetryModule } from "./telemetry/telemetry.module";
+import { TodayModule } from "./today/today.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 import { WorkModule } from "./work/work.module";
@@ -63,6 +65,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		FieldsModule,
 		ActivitiesModule,
 		AgentModule,
+		ApprovalModule,
 		DashboardModule,
 		SearchModule,
 		MailboxModule,
@@ -77,6 +80,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		SsoModule,
 		BackfillModule,
 		TelemetryModule,
+		TodayModule,
 	],
 })
 export class AppModule {}

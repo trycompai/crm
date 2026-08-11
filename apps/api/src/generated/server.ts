@@ -15,6 +15,7 @@ const t = initTRPC.create();
 const publicProcedure = t.procedure;
 import { timelineInput, timelineCountsInput, myTasksInput, granolaNotesInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
 import { agentIdInput, agentHistoryInput, agentUpdateInput, agentDeployInput, agentRunNowInput } from "../agent/agents.contracts";
+import { approvalListInput, approvalIdInput, approvalMutationInput } from "../approval/approval.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, companyBulkOwnerInput, companyBulkInput, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, contactBulkOwnerInput, contactBulkCompanyInput, contactBulkInput, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, builderResourceSearchInput, conversationIdInput, conversationEventsInput, conversationSaveInput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, sharedConversationInput } from "../conversations/conversations.contracts";
@@ -29,10 +30,12 @@ import { leadDiscoveryInput, outreachProspectInput, outreachPermissionInput, out
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
+import { todayInput } from "../today/today.contracts";
 import { workListInput, workIdInput, workMutationInput, workAssignInput, workWaitInput, workReasonInput } from "../work/work.contracts";
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { AgentsRouter } from "../agent/agents.router";
+import type { ApprovalRouter } from "../approval/approval.router";
 import type { CalendarRouter } from "../calendar/calendar.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
@@ -49,6 +52,7 @@ import type { ProspectsRouter } from "../prospects/prospects.router";
 import type { SearchRouter } from "../search/search.router";
 import type { SettingsRouter } from "../settings/settings.router";
 import type { SsoRouter } from "../sso/sso.router";
+import type { TodayRouter } from "../today/today.router";
 import type { UsersRouter } from "../users/users.router";
 import type { WorkRouter } from "../work/work.router";
 import type { WorkspaceRouter } from "../workspace/workspace.router";
@@ -110,6 +114,23 @@ const appRouter = t.router({
     runNow: publicProcedure
       .input(agentRunNowInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["runNow"]>>)
+    }),
+  approval: t.router({
+    list: publicProcedure
+      .input(approvalListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ApprovalRouter["list"]>>),
+    detail: publicProcedure
+      .input(approvalIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ApprovalRouter["detail"]>>),
+    approve: publicProcedure
+      .input(approvalMutationInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ApprovalRouter["approve"]>>),
+    reject: publicProcedure
+      .input(approvalMutationInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ApprovalRouter["reject"]>>),
+    invalidate: publicProcedure
+      .input(approvalMutationInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ApprovalRouter["invalidate"]>>)
     }),
   calendar: t.router({
     agenda: publicProcedure
@@ -482,6 +503,11 @@ const appRouter = t.router({
     remove: publicProcedure
       .input(deleteSsoProviderInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SsoRouter["remove"]>>)
+    }),
+  today: t.router({
+    get: publicProcedure
+      .input(todayInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TodayRouter["get"]>>)
     }),
   users: t.router({
     me: publicProcedure

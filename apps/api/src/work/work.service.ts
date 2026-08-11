@@ -26,6 +26,7 @@ import {
 	type WorkReasonInput,
 	type WorkWaitInput,
 } from "./work.contracts";
+import { workCapabilities } from "./work-capabilities";
 
 const OWNER_SELECT = {
 	id: true,
@@ -93,7 +94,12 @@ function serializeMutation(work: WorkRecord): WorkMutationResult {
 	};
 }
 
-function serializeWork(work: WorkRecord, subject: SubjectSummary) {
+function serializeWork(
+	work: WorkRecord,
+	subject: SubjectSummary,
+	userId: string,
+	isAdmin: boolean,
+) {
 	return {
 		id: work.id,
 		state: work.state,
@@ -106,6 +112,12 @@ function serializeWork(work: WorkRecord, subject: SubjectSummary) {
 		evidence: work.evidence,
 		owner: ownerSummary(work.owner),
 		subject,
+		capabilities: workCapabilities({
+			state: work.state,
+			ownerId: work.ownerId,
+			userId,
+			isAdmin,
+		}),
 		version: work.version,
 		startedAt: isoDate(work.startedAt),
 		completedAt: isoDate(work.completedAt),
@@ -163,7 +175,7 @@ export class WorkService {
 		input: WorkListInput,
 		userId: string,
 	): Promise<ListResult<ReturnType<typeof serializeWork>>> {
-		await this.access.assertMember(userId);
+		const member = await this.access.assertMember(userId);
 		const where = this.buildWhere(input, userId);
 		const { skip, take } = paginate(input);
 		const orderBy = [
@@ -239,6 +251,8 @@ export class WorkService {
 						label: null,
 						missing: true,
 					},
+					userId,
+					member.isAdmin,
 				),
 			),
 			total,
@@ -253,7 +267,7 @@ export class WorkService {
 	}
 
 	async detail(id: string, userId: string) {
-		await this.access.assertMember(userId);
+		const member = await this.access.assertMember(userId);
 		const work = await this.db.workItem.findUnique({
 			where: { id },
 			select: WORK_SELECT,
@@ -263,7 +277,7 @@ export class WorkService {
 			type: work.subjectType,
 			id: work.subjectId,
 		});
-		return serializeWork(work, subject);
+		return serializeWork(work, subject, userId, member.isAdmin);
 	}
 
 	claim(input: WorkMutationInput, userId: string) {
