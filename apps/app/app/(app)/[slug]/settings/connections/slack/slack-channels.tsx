@@ -35,6 +35,7 @@ type Channel = {
 	isPrivate: boolean;
 	isMember: boolean;
 	inviteRequestedAt: string | null;
+	pending: boolean;
 };
 
 const INVITE_COMMAND = "/invite @Comp AI";
@@ -43,7 +44,11 @@ export function SlackChannels() {
 	const trpc = useTRPC();
 	const [asking, setAsking] = useState<Channel | null>(null);
 	const [query, setQuery] = useState("");
-	const channels = useQuery(trpc.slack.channels.queryOptions());
+	const channels = useQuery({
+		...trpc.slack.channels.queryOptions(),
+		refetchInterval: (query) =>
+			query.state.data?.rows.some((row) => row.pending) ? 2000 : false,
+	});
 	const join = useMutation(
 		trpc.slack.joinChannel.mutationOptions({
 			onSuccess: async (result) => {
@@ -186,7 +191,9 @@ function ChannelRow({
 			</div>
 
 			<span className="flex w-20 shrink-0 items-center justify-end">
-				{channel.isMember ? (
+				{channel.pending ? (
+					<span className="text-muted-foreground text-xs">Creating…</span>
+				) : channel.isMember ? (
 					<Icon
 						icon={Checkmark}
 						motion="none"
@@ -215,6 +222,7 @@ function describe(channel: Channel, canInviteItself: boolean): string {
 	const people =
 		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
 
+	if (channel.pending) return "Slack is making this channel now";
 	if (channel.isMember) return `Comp AI is in${people}`;
 	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
 	if (canInviteItself) return `Private. Comp AI joins as you${people}`;

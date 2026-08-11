@@ -1,5 +1,6 @@
 import { isSlackConfigured, WORKSPACE_ID } from "@crm/auth";
 import type { Db } from "@crm/db";
+import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
 	Injectable,
@@ -144,7 +145,7 @@ export class SlackConnectionService {
 	}
 
 	async channels() {
-		const [rows, grant] = await Promise.all([
+		const [rows, grant, creating] = await Promise.all([
 			this.db.slackChannel.findMany({
 				where: { available: true },
 				orderBy: [{ isMember: "desc" }, { name: "asc" }],
@@ -158,14 +159,41 @@ export class SlackConnectionService {
 				},
 			}),
 			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
+			this.db.agentTask.findMany({
+				where: { kind: "slack-channel-create", finishedAt: null },
+				orderBy: { createdAt: "desc" },
+				select: { id: true, payload: true },
+			}),
 		]);
+
+		const known = new Set(rows.map((row) => row.name));
+		const pending = creating.flatMap((task) => {
+			const parsed = schemas.slack.createPayload.safeParse(task.payload);
+			if (!parsed.success || known.has(parsed.data.channelName)) return [];
+
+			return [
+				{
+					id: `pending:${task.id}`,
+					name: parsed.data.channelName,
+					memberCount: null,
+					isPrivate: parsed.data.isPrivate,
+					isMember: false,
+					inviteRequestedAt: null,
+					pending: true,
+				},
+			];
+		});
 
 		return {
 			canInviteItself: Boolean(grant),
-			rows: rows.map((row) => ({
-				...row,
-				inviteRequestedAt: row.inviteRequestedAt?.toISOString() ?? null,
-			})),
+			rows: [
+				...pending,
+				...rows.map((row) => ({
+					...row,
+					inviteRequestedAt: row.inviteRequestedAt?.toISOString() ?? null,
+					pending: false,
+				})),
+			],
 		};
 	}
 

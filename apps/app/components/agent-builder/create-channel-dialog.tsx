@@ -13,7 +13,7 @@ import {
 import { Input } from "@crm/ui/components/input";
 import { Label } from "@crm/ui/components/label";
 import { Switch } from "@crm/ui/components/switch";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
@@ -26,6 +26,7 @@ export function CreateChannelDialog({
 	onCreated: () => Promise<void> | void;
 }) {
 	const trpc = useTRPC();
+	const queryClient = useQueryClient();
 	const [open, setOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [isPrivate, setIsPrivate] = useState(false);
@@ -33,6 +34,9 @@ export function CreateChannelDialog({
 	const create = useMutation(
 		trpc.slack.createChannel.mutationOptions({
 			onSuccess: async () => {
+				await queryClient.invalidateQueries({
+					queryKey: trpc.slack.channels.queryKey(),
+				});
 				await onCreated();
 				setOpen(false);
 				setName("");
