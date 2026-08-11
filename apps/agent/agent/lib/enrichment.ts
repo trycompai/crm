@@ -1,8 +1,19 @@
-import { db, EnrichmentStatus } from "@crm/db";
-import type { TaskSubject } from "./tasks";
+import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { type TaskLeaseScope, type TaskSubject, withTaskLease } from "./tasks";
 
-export async function markRunning(subject: TaskSubject): Promise<void> {
-	await write(subject, EnrichmentStatus.RUNNING, null, false);
+export async function markRunning(
+	subject: TaskSubject,
+	lease?: TaskLeaseScope,
+): Promise<boolean> {
+	if (lease) {
+		const result = await withTaskLease(lease, async (tx) => {
+			await write(tx, subject, EnrichmentStatus.RUNNING, null, false);
+		});
+		return result.owned;
+	}
+
+	await write(db, subject, EnrichmentStatus.RUNNING, null, false);
+	return true;
 }
 
 export async function settle(
@@ -10,10 +21,11 @@ export async function settle(
 	status: EnrichmentStatus,
 	error?: string,
 ): Promise<void> {
-	await write(subject, status, error ?? null, true);
+	await write(db, subject, status, error ?? null, true);
 }
 
 async function write(
+	client: Pick<Prisma.TransactionClient, "contact" | "company" | "prospect">,
 	subject: TaskSubject,
 	status: EnrichmentStatus,
 	error: string | null,
@@ -30,21 +42,21 @@ async function write(
 		: {};
 
 	if (subject.contactId) {
-		await db.contact.updateMany({
+		await client.contact.updateMany({
 			where: { id: subject.contactId, ...guard },
 			data,
 		});
 	}
 
 	if (subject.companyId) {
-		await db.company.updateMany({
+		await client.company.updateMany({
 			where: { id: subject.companyId, ...guard },
 			data,
 		});
 	}
 
 	if (subject.prospectId) {
-		await db.prospect.updateMany({
+		await client.prospect.updateMany({
 			where: { id: subject.prospectId, ...guard },
 			data,
 		});

@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db, EnrichmentStatus } from "@crm/db";
 import { markRunning, settle } from "../agent/lib/enrichment";
+import { claimDue } from "../agent/lib/tasks";
 
 const domain = "lifecycle.example.test";
+const taskKind = "test-enrichment-lease";
 
 async function clear() {
+	await db.agentTask.deleteMany({ where: { kind: taskKind } });
 	await db.company.deleteMany({ where: { domain } });
 	await db.contact.deleteMany({
 		where: { email: { startsWith: "lifecycle-" } },
@@ -46,6 +49,21 @@ async function statusOfContact(id: string) {
 		select: { enrichmentStatus: true, enrichedAt: true },
 	});
 	return row;
+}
+
+async function leaseContact(contactId: string) {
+	const task = await db.agentTask.create({
+		data: {
+			kind: taskKind,
+			reason: "lease guard test",
+			dueAt: new Date(Date.now() - 1000),
+			contactId,
+		},
+		select: { id: true },
+	});
+	const leased = (await claimDue(1, { only: [taskKind] }))[0];
+	if (!leased || leased.id !== task.id) throw new Error("Task was not leased.");
+	return leased;
 }
 
 describe("the record follows the task", () => {
@@ -133,5 +151,56 @@ describe("the record follows the task", () => {
 		await db.contact.delete({ where: { id: person.id } });
 
 		await settle(subject, EnrichmentStatus.COMPLETE);
+	});
+
+	it("does not mark a record running after its task moves to approval", async () => {
+		const person = await contact();
+		const task = await leaseContact(person.id);
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { state: "WAITING_FOR_APPROVAL", leasedUntil: null },
+		});
+
+		expect(
+			await markRunning(subjectOf({ contactId: person.id }), {
+				taskId: task.id,
+				expectedAttempt: task.attempts,
+				contactId: person.id,
+			}),
+		).toBe(false);
+		expect((await statusOfContact(person.id))?.enrichmentStatus).toBe(
+			EnrichmentStatus.PENDING,
+		);
+	});
+
+	it("does not let an expired worker mark a later lease running", async () => {
+		const person = await contact();
+		const first = await leaseContact(person.id);
+		await db.agentTask.update({
+			where: { id: first.id },
+			data: { leasedUntil: new Date(Date.now() - 1000) },
+		});
+		const second = (await claimDue(1, { only: [taskKind] }))[0];
+
+		expect(
+			await markRunning(subjectOf({ contactId: person.id }), {
+				taskId: first.id,
+				expectedAttempt: first.attempts,
+				contactId: person.id,
+			}),
+		).toBe(false);
+		expect((await statusOfContact(person.id))?.enrichmentStatus).toBe(
+			EnrichmentStatus.PENDING,
+		);
+		expect(
+			await markRunning(subjectOf({ contactId: person.id }), {
+				taskId: second?.id ?? "",
+				expectedAttempt: second?.attempts ?? 0,
+				contactId: person.id,
+			}),
+		).toBe(true);
+		expect((await statusOfContact(person.id))?.enrichmentStatus).toBe(
+			EnrichmentStatus.RUNNING,
+		);
 	});
 });

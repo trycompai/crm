@@ -71,7 +71,14 @@ export async function runVisibleLane(): Promise<number> {
 async function runDirect(task: LeasedTask): Promise<void> {
 	try {
 		if (task.kind === "brand" && task.companyId) {
-			const result = await runBrand({ companyId: task.companyId });
+			const result = await runBrand({
+				companyId: task.companyId,
+				lease: {
+					taskId: task.id,
+					expectedAttempt: task.attempts,
+					companyId: task.companyId,
+				},
+			});
 			if (result.retryable) return;
 
 			await completeTask(task.id, task.attempts, brandOutcome(result));
@@ -187,9 +194,18 @@ export async function runResearchLane(
 	await Promise.all(
 		tasks.map(async (task) => {
 			try {
-				await markRunning(task);
+				const running = await markRunning(task, {
+					taskId: task.id,
+					expectedAttempt: task.attempts,
+					contactId: task.contactId,
+					companyId: task.companyId,
+					prospectId: task.prospectId,
+					dealId: task.dealId,
+					emailDraftId: task.emailDraftId,
+				});
+				if (!running) return;
 				const session = await start(task);
-				await noteSession(task.id, task.attempts, session.id);
+				if (!(await noteSession(task.id, task.attempts, session.id))) return;
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				if (task.attempts >= MAX_ATTEMPTS) {

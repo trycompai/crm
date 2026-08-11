@@ -1,7 +1,8 @@
-import { db, EnrichmentStatus } from "@crm/db";
+import { db, EnrichmentStatus, type Prisma } from "@crm/db";
 import { mirrorBrandImages } from "./brand-images";
 import { brandToUpdate, filledFields, stillFillable } from "./brand-mapping";
 import { brandByDomain, contextDevEnabled } from "./context-dev";
+import { type TaskLeaseScope, withTaskLease } from "./tasks";
 
 export type BrandResult = {
 	enriched: boolean;
@@ -45,10 +46,12 @@ export async function runBrand({
 	companyId,
 	fresh = false,
 	spend = FREE,
+	lease,
 }: {
 	companyId: string;
 	fresh?: boolean;
 	spend?: Spend;
+	lease?: TaskLeaseScope;
 }): Promise<BrandResult> {
 	const company = await db.company.findUnique({
 		where: { id: companyId },
@@ -70,23 +73,25 @@ export async function runBrand({
 	const charge = spend(2);
 	if (!charge.ok) return { enriched: false, reason: charge.reason };
 
-	await db.company.update({
-		where: { id: companyId },
-		data: {
-			enrichmentStatus: EnrichmentStatus.RUNNING,
-			enrichmentError: null,
-		},
-	});
+	if (!(await markBrandRunning(companyId, lease))) return leaseLost();
 
 	const result = await brandByDomain(company.domain, fresh ? 0 : undefined);
 
 	if (result.outcome === "skipped") {
-		await settle(companyId, EnrichmentStatus.SKIPPED, result.reason);
+		if (
+			!(await settle(companyId, EnrichmentStatus.SKIPPED, result.reason, lease))
+		) {
+			return leaseLost();
+		}
 		return { enriched: false, reason: result.reason };
 	}
 
 	if (result.outcome === "failed") {
-		await settle(companyId, EnrichmentStatus.FAILED, result.reason);
+		if (
+			!(await settle(companyId, EnrichmentStatus.FAILED, result.reason, lease))
+		) {
+			return leaseLost();
+		}
 		return {
 			enriched: false,
 			reason: result.reason,
@@ -98,7 +103,7 @@ export async function runBrand({
 
 	const { mirrored } = await mirrorBrandImages(companyId, update);
 
-	const filled = await db.$transaction(async (tx) => {
+	const write = async (tx: Prisma.TransactionClient) => {
 		const current = await tx.company.findUnique({
 			where: { id: companyId },
 			select: COMPANY_FIELDS,
@@ -125,7 +130,13 @@ export async function runBrand({
 		});
 
 		return filledFields(data);
-	});
+	};
+	const committed = lease
+		? await withTaskLease({ ...lease, companyId }, write)
+		: { owned: true as const, value: await db.$transaction(write) };
+
+	if (!committed.owned) return leaseLost();
+	const filled = committed.value;
 
 	if (!filled) return { enriched: false, reason: "No such company." };
 
@@ -159,9 +170,50 @@ async function settle(
 	companyId: string,
 	status: EnrichmentStatus,
 	error: string,
-): Promise<void> {
-	await db.company.updateMany({
-		where: { id: companyId, enrichmentStatus: EnrichmentStatus.RUNNING },
-		data: { enrichmentStatus: status, enrichmentError: error },
-	});
+	lease?: TaskLeaseScope,
+): Promise<boolean> {
+	const write = async (client: Prisma.TransactionClient) => {
+		await client.company.updateMany({
+			where: { id: companyId, enrichmentStatus: EnrichmentStatus.RUNNING },
+			data: { enrichmentStatus: status, enrichmentError: error },
+		});
+	};
+
+	if (lease) {
+		return (await withTaskLease({ ...lease, companyId }, write)).owned;
+	}
+
+	await db.$transaction(write);
+	return true;
+}
+
+async function markBrandRunning(
+	companyId: string,
+	lease?: TaskLeaseScope,
+): Promise<boolean> {
+	const write = async (client: Prisma.TransactionClient) => {
+		const { count } = await client.company.updateMany({
+			where: { id: companyId },
+			data: {
+				enrichmentStatus: EnrichmentStatus.RUNNING,
+				enrichmentError: null,
+			},
+		});
+		return count === 1;
+	};
+
+	if (lease) {
+		const result = await withTaskLease({ ...lease, companyId }, write);
+		return result.owned && result.value;
+	}
+
+	return db.$transaction(write);
+}
+
+function leaseLost(): BrandResult {
+	return {
+		enriched: false,
+		reason: "The task lease is no longer active.",
+		retryable: true,
+	};
 }

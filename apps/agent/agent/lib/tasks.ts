@@ -31,9 +31,45 @@ export type TaskSubject = {
 	kind: string;
 };
 
+export type TaskLeaseScope = {
+	taskId: string;
+	expectedAttempt: number;
+	contactId?: string | null;
+	companyId?: string | null;
+	prospectId?: string | null;
+	dealId?: string | null;
+	emailDraftId?: string | null;
+};
+
 const LEASE_MS = 10 * 60_000;
 
 export { DIRECT_KINDS, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+
+export async function withTaskLease<T>(
+	scope: TaskLeaseScope,
+	work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<{ owned: true; value: T } | { owned: false }> {
+	return db.$transaction(async (tx) => {
+		const { count } = await tx.agentTask.updateMany({
+			where: {
+				id: scope.taskId,
+				finishedAt: null,
+				state: "LEASED",
+				attempts: scope.expectedAttempt,
+				...(scope.contactId ? { contactId: scope.contactId } : {}),
+				...(scope.companyId ? { companyId: scope.companyId } : {}),
+				...(scope.prospectId ? { prospectId: scope.prospectId } : {}),
+				...(scope.dealId ? { dealId: scope.dealId } : {}),
+				...(scope.emailDraftId ? { emailDraftId: scope.emailDraftId } : {}),
+			},
+			data: { state: "LEASED" },
+		});
+
+		if (count !== 1) return { owned: false };
+
+		return { owned: true, value: await work(tx) };
+	});
+}
 
 export async function researchInFlightCount(): Promise<number> {
 	return db.agentTask.count({
