@@ -37,6 +37,7 @@ function Combobox({
 	empty = "Nothing matches.",
 	search,
 	onSearchChange,
+	stale,
 	size = "default",
 	variant,
 	className,
@@ -52,6 +53,7 @@ function Combobox({
 		empty?: React.ReactNode;
 		search?: string;
 		onSearchChange?: (search: string) => void;
+		stale?: boolean;
 		size?: "sm" | "default";
 	}) {
 	const [open, setOpen] = useState(false);
@@ -105,6 +107,7 @@ function Combobox({
 									key={option.value}
 									value={option.label}
 									keywords={option.keywords}
+									disabled={stale}
 									data-checked={option.value === value}
 									onSelect={() => {
 										close();

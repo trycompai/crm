@@ -58,6 +58,7 @@ export function CompanyPicker({
 
 	const cleared = none ? [{ value: none.value, label: none.label }] : [];
 	const options = query.trim() ? matches : [...cleared, ...matches];
+	const stale = companies.isFetching || text.trim() !== query.trim();
 
 	const current =
 		chosen?.value === value
@@ -81,6 +82,7 @@ export function CompanyPicker({
 			empty={companies.isFetching ? "Searching…" : "No company matches."}
 			search={text}
 			onSearchChange={setText}
+			stale={stale}
 			variant={variant}
 			className={className}
 		/>
@@ -106,6 +108,8 @@ export function CompanyMenuSearch({
 		placeholderData: (previous) => previous,
 	});
 
+	const stale = companies.isFetching || text.trim() !== query.trim();
+
 	return (
 		<Command
 			shouldFilter={false}
@@ -124,7 +128,11 @@ export function CompanyMenuSearch({
 				</CommandEmpty>
 				<CommandGroup>
 					{none && !query.trim() ? (
-						<CommandItem value="none" onSelect={() => onSelect(null)}>
+						<CommandItem
+							value="none"
+							disabled={stale}
+							onSelect={() => onSelect(null)}
+						>
 							{none}
 						</CommandItem>
 					) : null}
@@ -132,6 +140,7 @@ export function CompanyMenuSearch({
 						<CommandItem
 							key={company.id}
 							value={company.id}
+							disabled={stale}
 							onSelect={() => onSelect(company.id)}
 						>
 							<span className="truncate">{company.name}</span>

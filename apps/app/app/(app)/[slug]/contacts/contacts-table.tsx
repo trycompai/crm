@@ -167,6 +167,7 @@ export function ContactsTable() {
 			searchable: true,
 			search: companyText,
 			onSearchChange: setCompanyText,
+			stale: companies.isFetching || companyText.trim() !== companyQuery.trim(),
 			empty: companies.isFetching ? "Searching…" : "No company matches.",
 			options: [
 				...(companyQuery.trim()

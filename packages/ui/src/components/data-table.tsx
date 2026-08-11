@@ -79,6 +79,7 @@ export type DataTableFacet = {
 	searchable?: boolean;
 	search?: string;
 	onSearchChange?: (search: string) => void;
+	stale?: boolean;
 	empty?: ReactNode;
 };
 
@@ -231,6 +232,7 @@ function SearchableFacet({
 							{facet.search?.trim() ? null : (
 								<CommandItem
 									value={facet.label}
+									disabled={facet.stale}
 									data-checked={selected === "all"}
 									onSelect={() => choose("all")}
 								>
@@ -241,6 +243,7 @@ function SearchableFacet({
 								<CommandItem
 									key={option.value}
 									value={option.label}
+									disabled={facet.stale}
 									data-checked={selected === option.value}
 									onSelect={() => choose(option.value)}
 								>
