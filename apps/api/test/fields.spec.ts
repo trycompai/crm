@@ -27,7 +27,7 @@ const queued: { entity: FieldEntity; key: string; reason: string }[] = [];
 
 const agent = {
 	contactCreated: async () => undefined,
-	companyEnrichmentRequested: async () => undefined,
+	companyCreated: async () => undefined,
 	companyRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
 	fieldBackfill: async (entity: FieldEntity, key: string, reason: string) => {

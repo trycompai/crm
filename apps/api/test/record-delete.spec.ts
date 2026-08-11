@@ -26,7 +26,7 @@ const stamp = new ActivityStampService(db);
 
 const agent = {
 	contactCreated: async () => undefined,
-	companyEnrichmentRequested: async () => undefined,
+	companyCreated: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
 	companyRequested: async () => undefined,
 } as unknown as AgentTriggerService;

@@ -21,7 +21,7 @@ const movedRoot = `outlook-conversation:${suffix}`;
 
 const agent = {
 	contactCreated: async () => undefined,
-	companyEnrichmentRequested: async () => undefined,
+	companyCreated: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
 	companyRequested: async () => undefined,
 } as unknown as AgentTriggerService;

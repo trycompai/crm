@@ -33,7 +33,7 @@ export class AgentTriggerService {
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async companyEnrichmentRequested(
+	async companyCreated(
 		companyId: string,
 		reason = "New company",
 	): Promise<void> {

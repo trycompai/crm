@@ -45,7 +45,7 @@ export class CompanyDirectoryService {
 		});
 		if (!outcome.created) return outcome.id;
 
-		await this.agent.companyEnrichmentRequested(
+		await this.agent.companyCreated(
 			outcome.id,
 			`Created from an email domain (${domain}) — it has no name but the domain`,
 		);
