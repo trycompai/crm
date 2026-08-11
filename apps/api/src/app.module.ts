@@ -34,6 +34,7 @@ import { SyncModule } from "./sync/sync.module";
 import { TelemetryModule } from "./telemetry/telemetry.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
+import { WorkModule } from "./work/work.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 
 @Module({
@@ -72,6 +73,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		SyncModule,
 		SettingsModule,
 		WorkspaceModule,
+		WorkModule,
 		SsoModule,
 		BackfillModule,
 		TelemetryModule,
