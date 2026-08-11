@@ -15,12 +15,13 @@ import { AgentAccessService } from "../agent/agent-access.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
 import type {
+	SlackChannelsInput,
 	SlackCreateChannelInput,
 	SlackJoinChannelInput,
 } from "./slack.contracts";
 import { SlackChannelsService } from "./slack-channels.service";
+import { SLACK, type SlackSyncState } from "./slack-config";
 
-const PEOPLE_SYNC_ACTIVE_MS = 30_000;
 const SLACK_WORKSPACE_RESOURCE_ID =
 	schemas.agents.CAPABILITY_RESOURCE_IDS.slack;
 
@@ -120,11 +121,7 @@ export class SlackConnectionService {
 					},
 				},
 			}),
-			this.db.agentTask.findFirst({
-				where: { kind: "slack-people-match", finishedAt: null },
-				orderBy: { createdAt: "desc" },
-				select: { createdAt: true },
-			}),
+			this.peopleSyncState(),
 		]);
 
 		return {
@@ -134,11 +131,27 @@ export class SlackConnectionService {
 				email: user.email,
 				match: user.slackMemberMatch,
 			})),
-			syncing: Boolean(
-				syncing &&
-					Date.now() - syncing.createdAt.getTime() < PEOPLE_SYNC_ACTIVE_MS,
-			),
+			sync: syncing,
 		};
+	}
+
+	private async peopleSyncState(): Promise<SlackSyncState> {
+		const pending = await this.db.agentTask.findFirst({
+			where: { kind: "slack-people-match", finishedAt: null },
+			orderBy: { createdAt: "desc" },
+			select: { createdAt: true, startedAt: true, leasedUntil: true },
+		});
+		if (!pending) return "idle";
+
+		const now = Date.now();
+		const leaseHeld = pending.leasedUntil
+			? pending.leasedUntil.getTime() > now
+			: false;
+		if (leaseHeld || pending.startedAt) return "syncing";
+
+		return now - pending.createdAt.getTime() < SLACK.sync.stalledAfterMs
+			? "syncing"
+			: "stalled";
 	}
 
 	async refreshPeople(userId: string) {
@@ -158,12 +171,23 @@ export class SlackConnectionService {
 		return { requested: true };
 	}
 
-	async channels(userId: string) {
+	async channels(input: SlackChannelsInput, userId: string) {
 		await this.access.assertMember(userId);
-		const [rows, grant] = await Promise.all([
+
+		const take = input.limit ?? SLACK.channels.pageSize;
+		const needle = input.query?.trim() ?? "";
+
+		const [rows, grant, sync] = await Promise.all([
 			this.db.slackChannel.findMany({
-				where: { available: true },
-				orderBy: [{ isMember: "desc" }, { name: "asc" }],
+				where: {
+					available: true,
+					...(needle
+						? { name: { contains: needle, mode: "insensitive" } }
+						: {}),
+				},
+				orderBy: [{ isMember: "desc" }, { name: "asc" }, { id: "asc" }],
+				take: take + 1,
+				...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
 				select: {
 					id: true,
 					name: true,
@@ -174,11 +198,16 @@ export class SlackConnectionService {
 				},
 			}),
 			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
+			this.peopleSyncState(),
 		]);
+
+		const page = rows.slice(0, take);
 
 		return {
 			canInviteItself: Boolean(grant),
-			rows: rows.map((row) => ({
+			sync,
+			nextCursor: rows.length > take ? (page.at(-1)?.id ?? null) : null,
+			rows: page.map((row) => ({
 				...row,
 				inviteRequestedAt: row.inviteRequestedAt?.toISOString() ?? null,
 			})),

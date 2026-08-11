@@ -20,6 +20,7 @@ import {
 	ChannelPicker,
 	type PickerChannel,
 } from "@/components/slack/channel-picker";
+import { useSlackChannels } from "@/components/slack/use-slack-channels";
 import { useTRPC } from "@/lib/trpc/client";
 import { CreateChannelDialog } from "./create-channel-dialog";
 
@@ -59,12 +60,11 @@ export function AgentCapabilities({
 	const [off, setOff] = useState<string[]>([]);
 	const [resources, setResources] = useState<Resource[] | null>(null);
 
-	const channels = useQuery({
-		...trpc.slack.channels.queryOptions(),
+	const channels = useSlackChannels({
 		enabled: capabilities.channel !== null,
 	});
-	const rows = channels.data?.rows ?? [];
-	const canInviteItself = channels.data?.canInviteItself ?? false;
+	const rows = channels.channels;
+	const canInviteItself = channels.canInviteItself;
 
 	const reset = () => {
 		setPicked(null);
@@ -88,7 +88,7 @@ export function AgentCapabilities({
 	const join = useMutation(
 		trpc.slack.joinChannel.mutationOptions({
 			onSuccess: async () => {
-				await channels.refetch();
+				await channels.reload();
 				toast.success("Asked someone to invite Comp AI.");
 			},
 			onError: (error) => toast.error(error.message),
@@ -170,7 +170,7 @@ export function AgentCapabilities({
 						canManage ? (
 							<CreateChannelDialog
 								onCreated={async () => {
-									await channels.refetch();
+									await channels.reload();
 								}}
 							>
 								<Button size="sm" variant="outline">

@@ -11,6 +11,7 @@ import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
+	slackChannelsInput,
 	slackCreateChannelInput,
 	slackJoinChannelInput,
 } from "./slack.contracts";
@@ -34,9 +35,12 @@ export class SlackRouter {
 		return this.connection.matches(ctx.user.id);
 	}
 
-	@Query()
-	channels(@Ctx() ctx: AuthedTrpcContext) {
-		return this.connection.channels(ctx.user.id);
+	@Query({ input: slackChannelsInput })
+	channels(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof slackChannelsInput>,
+	) {
+		return this.connection.channels(input, ctx.user.id);
 	}
 
 	@Mutation({ input: slackJoinChannelInput })

@@ -25,7 +25,11 @@ function serviceFor(input: {
 	}>;
 	memberCount?: number;
 	agents?: unknown[];
-	syncingCreatedAt?: Date;
+	syncingTask?: {
+		createdAt: Date;
+		startedAt: Date | null;
+		leasedUntil: Date | null;
+	};
 	grant?: boolean;
 	role?: WorkspaceRole;
 }) {
@@ -74,8 +78,7 @@ function serviceFor(input: {
 			findMany: async () => input.members ?? [],
 		},
 		agentTask: {
-			findFirst: async () =>
-				input.syncingCreatedAt ? { createdAt: input.syncingCreatedAt } : null,
+			findFirst: async () => input.syncingTask ?? null,
 		},
 	} as unknown as Db;
 	const agent = {
@@ -155,7 +158,11 @@ describe("Slack connection", () => {
 					},
 				},
 			],
-			syncingCreatedAt: new Date(),
+			syncingTask: {
+				createdAt: new Date(),
+				startedAt: null,
+				leasedUntil: null,
+			},
 		});
 
 		expect(await service.matches(userId)).toEqual({
@@ -171,8 +178,38 @@ describe("Slack connection", () => {
 					},
 				},
 			],
-			syncing: true,
+			sync: "syncing",
 		});
+	});
+
+	it("reports a stalled sync when nothing picks the task up", async () => {
+		const { service } = serviceFor({
+			syncingTask: {
+				createdAt: new Date(Date.now() - 10 * 60_000),
+				startedAt: null,
+				leasedUntil: null,
+			},
+		});
+
+		expect((await service.matches(userId)).sync).toBe("stalled");
+	});
+
+	it("reports a running sync while the agent holds the lease", async () => {
+		const { service } = serviceFor({
+			syncingTask: {
+				createdAt: new Date(Date.now() - 10 * 60_000),
+				startedAt: null,
+				leasedUntil: new Date(Date.now() + 60_000),
+			},
+		});
+
+		expect((await service.matches(userId)).sync).toBe("syncing");
+	});
+
+	it("reports an idle sync when no task waits", async () => {
+		const { service } = serviceFor({});
+
+		expect((await service.matches(userId)).sync).toBe("idle");
 	});
 
 	it("refuses to disconnect the workspace for a member", async () => {

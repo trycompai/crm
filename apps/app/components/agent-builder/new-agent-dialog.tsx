@@ -23,10 +23,11 @@ import {
 } from "@crm/ui/components/select";
 import { Textarea } from "@crm/ui/components/textarea";
 import { InvalidInput, type Permission, parse, schemas } from "@crm/validation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useSlackChannels } from "@/components/slack/use-slack-channels";
 import { handoffBrief, handoffResources } from "@/lib/agent-handoff";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -45,11 +46,8 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 		schemas.agents.defaultPermissions,
 	);
 
-	const channels = useQuery({
-		...trpc.slack.channels.queryOptions(),
-		enabled: open,
-	});
-	const rows = channels.data?.rows ?? [];
+	const channels = useSlackChannels({ enabled: open });
+	const rows = channels.channels;
 	const channel = rows.find((row) => row.id === channelId);
 
 	const create = useMutation(

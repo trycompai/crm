@@ -20,15 +20,15 @@ import {
 	InputGroupAddon,
 	InputGroupInput,
 } from "@crm/ui/components/input-group";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import {
 	ChannelPicker,
 	type PickerChannel,
 } from "@/components/slack/channel-picker";
+import { useSlackChannels } from "@/components/slack/use-slack-channels";
 import { useTRPC } from "@/lib/trpc/client";
-import { SLACK_CONNECTION } from "./slack-config";
 
 const INVITE_COMMAND = "/invite @Comp AI";
 
@@ -36,20 +36,12 @@ export function SlackChannels() {
 	const trpc = useTRPC();
 	const [asking, setAsking] = useState<PickerChannel | null>(null);
 	const [query, setQuery] = useState("");
-	const sync = useQuery({
-		...trpc.slack.matches.queryOptions(),
-		refetchInterval: (result) =>
-			result.state.data?.syncing ? SLACK_CONNECTION.sync.pollMs : false,
-	});
-	const syncing = sync.data?.syncing ?? false;
-	const channels = useQuery({
-		...trpc.slack.channels.queryOptions(),
-		refetchInterval: syncing ? SLACK_CONNECTION.sync.pollMs : false,
-	});
+	const search = useDeferredValue(query);
+	const channels = useSlackChannels({ query: search });
 	const join = useMutation(
 		trpc.slack.joinChannel.mutationOptions({
 			onSuccess: async (result) => {
-				await channels.refetch();
+				await channels.reload();
 				setAsking(null);
 				toast.success(
 					result.alreadyJoined
@@ -69,19 +61,15 @@ export function SlackChannels() {
 		trpc.slack.refreshPeople.mutationOptions({
 			onSuccess: async () => {
 				toast.success("Reading the channel list from Slack.");
-				await sync.refetch();
+				await channels.reload();
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
-	const refreshing = refresh.isPending || syncing || channels.isFetching;
-	const rows = channels.data?.rows ?? [];
-	const canInviteItself = channels.data?.canInviteItself ?? false;
-	const needle = query.trim().toLowerCase();
-	const shown = needle
-		? rows.filter((channel) => channel.name.toLowerCase().includes(needle))
-		: rows;
+	const refreshing = refresh.isPending || channels.syncing;
+	const rows = channels.channels;
+	const canInviteItself = channels.canInviteItself;
 
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
@@ -102,14 +90,20 @@ export function SlackChannels() {
 				</Button>
 			</div>
 
-			{rows.length > 0 ? (
+			{channels.stalled ? (
+				<p className="text-warning text-xs">
+					Comp AI is not reading Slack right now. The list can be out of date.
+				</p>
+			) : null}
+
+			{rows.length > 0 || query ? (
 				<InputGroup>
 					<InputGroupAddon>
 						<Icon icon={Search} motion="none" className="size-4" />
 					</InputGroupAddon>
 					<InputGroupInput
 						onChange={(event) => setQuery(event.target.value)}
-						placeholder={`Search ${rows.length} channels`}
+						placeholder="Search channels"
 						value={query}
 					/>
 				</InputGroup>
@@ -117,20 +111,31 @@ export function SlackChannels() {
 
 			<ChannelPicker
 				canInviteItself={canInviteItself}
-				channels={shown}
+				channels={rows}
 				empty={
 					<p className="px-4 py-4 text-muted-foreground text-sm">
-						{rows.length === 0
-							? channels.isPending
-								? "Reading the channel list from Slack…"
-								: "No channels yet. Comp AI reads the list from Slack after it connects."
-							: `No channel matches “${query}”.`}
+						{channels.pending
+							? "Reading the channel list from Slack…"
+							: query
+								? `No channel matches “${query}”.`
+								: "No channels yet. Comp AI reads the list from Slack after it connects."}
 					</p>
 				}
 				onAdd={(channel) => void joinAction.run(channel.id)}
 				onRequest={(channel) => setAsking(channel)}
 				pending={joinAction.pending}
 			/>
+
+			{channels.hasMore ? (
+				<Button
+					disabled={channels.fetchingMore}
+					onClick={channels.loadMore}
+					size="sm"
+					variant="outline"
+				>
+					{channels.fetchingMore ? "Loading…" : "Load more"}
+				</Button>
+			) : null}
 
 			<AskDialog
 				canInviteItself={canInviteItself}

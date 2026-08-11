@@ -5,9 +5,11 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
+import { SLACK_CHANNELS } from "@/components/slack/use-slack-channels";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import { SLACK_CONNECTION } from "../slack-config";
+
+type SlackSync = "idle" | "syncing" | "stalled";
 
 type MatchRow = {
 	crmUserId: string;
@@ -25,7 +27,7 @@ export function SlackPeopleMatches({
 	initialMatches,
 }: {
 	slug: string;
-	initialMatches: { rows: MatchRow[]; syncing: boolean };
+	initialMatches: { rows: MatchRow[]; sync: SlackSync };
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -33,7 +35,7 @@ export function SlackPeopleMatches({
 		...trpc.slack.matches.queryOptions(),
 		initialData: initialMatches,
 		refetchInterval: (query) =>
-			query.state.data?.syncing ? SLACK_CONNECTION.sync.pollMs : false,
+			query.state.data?.sync === "syncing" ? SLACK_CHANNELS.pollMs : false,
 	});
 	const refresh = useMutation(
 		trpc.slack.refreshPeople.mutationOptions({
@@ -42,7 +44,7 @@ export function SlackPeopleMatches({
 		}),
 	);
 	const rows = matches.data.rows;
-	const refreshing = refresh.isPending || matches.data.syncing;
+	const refreshing = refresh.isPending || matches.data.sync === "syncing";
 	return (
 		<div className="flex flex-col gap-4 px-(--spacing-block-inline)">
 			<div className="flex items-center justify-center gap-3">
@@ -60,6 +62,12 @@ export function SlackPeopleMatches({
 					{refreshing ? "Refreshing…" : "Refresh from Slack"}
 				</Button>
 			</div>
+			{matches.data.sync === "stalled" ? (
+				<p className="text-center text-warning text-xs">
+					Comp AI is not reading Slack right now. These matches can be out of
+					date.
+				</p>
+			) : null}
 			<div className="flex flex-col divide-y border-y">
 				{rows.length === 0 ? (
 					<p className="py-5 text-center text-muted-foreground text-sm">
