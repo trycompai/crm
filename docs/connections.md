@@ -42,7 +42,7 @@ undo it.
 
 ## Connecting Slack is refused at the OAuth endpoints, not in the UI
 
-Connecting is the same decision as disconnecting, because `pruneOtherSlackAccounts`
+Connecting is the same decision as disconnecting, because `replaceSlackConnection`
 deletes every other Slack account row: a second person connecting *replaces* the
 workspace's Slack, and every deployed agent then reads from and posts to whichever
 Slack they installed. Hiding the button is not enough — `authClient.oauth2.link`
@@ -102,6 +102,23 @@ person who clicked Connect. `packages/auth/src/slack-grant.ts` writes it, and
 
 A missing user grant is a capability that is off, not an error. The connection
 page names it, and the private-channel row falls back to asking a human.
+
+**The cached row does not choose the token.** `joinSlackChannel`
+(`apps/agent/agent/lib/slack-membership.ts`) reads the channel from Slack with
+`conversations.info` before it picks a path. `slackChannel.isPrivate` and
+`isMember` are a cache, and a cache is wrong the moment somebody adds the bot in
+Slack — or the moment a new column arrives with a default, which classifies every
+existing row as public and non-member until the inventory next runs. A bot that
+cannot see the channel at all is read as private and not a member, which is the
+only safe reading. When Slack and the row disagree the row is corrected and a
+`slack-people-match` task is queued, so the connection page stops showing the
+stale classification too.
+
+**Nothing else calls Slack to read the channel list.** The agent builder reads
+the cached rows and, when they are older than `SLACK.inventory.staleMs`, queues
+the same background task rather than waiting on a round trip
+(`apps/agent/agent/lib/slack-people.ts`). A builder chat that blocks on Slack is
+a builder chat that is as slow as Slack is.
 
 ## Permissions are shown in groups, not one line each
 
