@@ -1,4 +1,7 @@
+import { schemas } from "@crm/validation";
 import { z } from "zod";
+
+export const agentManifest = schemas.agents.capabilities.loose();
 
 export const agentIdInput = z.object({ id: z.string().min(1) });
 

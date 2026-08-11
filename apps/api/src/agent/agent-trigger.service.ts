@@ -102,6 +102,7 @@ export class AgentTriggerService {
 	async slackChannelJoinRequested(
 		channelId: string,
 		channelName: string,
+		client?: Prisma.TransactionClient,
 	): Promise<void> {
 		await this.enqueue(
 			{
@@ -117,6 +118,7 @@ export class AgentTriggerService {
 				},
 			},
 			true,
+			client,
 		);
 	}
 
@@ -294,9 +296,10 @@ export class AgentTriggerService {
 			subject?: string;
 		},
 		required = false,
+		client?: Prisma.TransactionClient,
 	): Promise<void> {
 		try {
-			const created = await this.db.$transaction(async (tx) => {
+			const write = async (tx: Prisma.TransactionClient) => {
 				await lockIdempotencyKey(
 					tx,
 					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.subject ?? ""}`,
@@ -326,7 +329,11 @@ export class AgentTriggerService {
 					},
 				});
 				return true;
-			});
+			};
+
+			const created = client
+				? await write(client)
+				: await this.db.$transaction(write);
 			if (!created) return;
 
 			this.logger.log({

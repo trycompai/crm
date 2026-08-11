@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
-import { db } from "@crm/db";
+import { db, type Prisma } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { AgentAccessService } from "../src/agent/agent-access.service";
 import { AgentDefinitionsService } from "../src/agent/agent-definitions.service";
@@ -11,6 +11,8 @@ const userId = `agent-lifecycle-user-${suffix}`;
 const teammateId = `agent-lifecycle-teammate-${suffix}`;
 const memberId = `agent-lifecycle-member-${suffix}`;
 const teammateMemberId = `agent-lifecycle-teammate-member-${suffix}`;
+const joinChannel = `renewals-${suffix}`;
+const joinReason = `Add Comp AI to #${joinChannel}`;
 const access = new AgentAccessService(db);
 const agents = new AgentDefinitionsService(
 	db,
@@ -100,6 +102,9 @@ afterAll(async () => {
 			where: { id: { in: agentIds } },
 		});
 	}
+	await db.agentTask.deleteMany({
+		where: { kind: "slack-channel-join", reason: joinReason },
+	});
 	await db.member.deleteMany({
 		where: { id: { in: [memberId, teammateMemberId] } },
 	});
@@ -134,6 +139,43 @@ async function createAgent(versionCount = 1, status = "DRAFT" as const) {
 		);
 	}
 	return { agentId: agent.id, versions };
+}
+
+const postAction = {
+	type: "slack.message.post",
+	provider: "slack",
+	summary: "Post the summary",
+	destination: { kind: "channel", id: "C0001", label: "#renewals" },
+};
+
+const noteAction = {
+	type: "crm.note.write",
+	provider: "crm",
+	summary: "Write a note",
+};
+
+const capableManifest = {
+	name: "Renewal watcher",
+	description: "Watch renewals.",
+	actions: [postAction, noteAction],
+	dataScope: { mode: "WORKSPACE", summary: "Everything", resources: [] },
+};
+
+async function deployedAgent(manifest: Prisma.InputJsonObject) {
+	const { agentId, versions } = await createAgent();
+	const versionId = versions[0]?.id;
+	if (!versionId) throw new Error("Missing version");
+
+	await db.agentVersion.update({
+		where: { id: versionId },
+		data: { manifest },
+	});
+	await agents.deploy(
+		{ id: agentId, versionId, clientRequestId: crypto.randomUUID() },
+		userId,
+	);
+
+	return { agentId, versionId };
 }
 
 describe("agent lifecycle", () => {
@@ -181,8 +223,8 @@ describe("agent lifecycle", () => {
 			{ id: agentId, versionId, clientRequestId: crypto.randomUUID() },
 			userId,
 		);
-		const nextRunAt = new Date("2026-08-06T12:00:00.000Z");
-		const lastRunAt = new Date("2026-08-05T12:00:00.000Z");
+		const nextRunAt = new Date("2036-08-06T12:00:00.000Z");
+		const lastRunAt = new Date("2036-08-05T12:00:00.000Z");
 		await db.agentTrigger.create({
 			data: {
 				agentId,
@@ -408,6 +450,167 @@ describe("agent lifecycle", () => {
 				where: { agentId, status: "DEPLOYED" },
 			}),
 		).toBe(1);
+	});
+
+	it("moves triggers onto the version a revision creates", async () => {
+		const { agentId, versionId } = await deployedAgent(capableManifest);
+		const trigger = await db.agentTrigger.create({
+			data: {
+				agentId,
+				versionId,
+				type: "SCHEDULE",
+				name: "Every morning",
+				config: { intervalMinutes: 1440 },
+				createdById: userId,
+				enabled: true,
+				nextRunAt: new Date("2036-08-12T06:00:00.000Z"),
+			},
+			select: { id: true },
+		});
+
+		const revised = await agents.revise(
+			{
+				id: agentId,
+				clientRequestId: crypto.randomUUID(),
+				actions: ["slack.message.post"],
+				resources: [{ id: "acme", kind: "company", label: "Acme" }],
+			},
+			userId,
+		);
+		const revisedId = revised.versionId;
+		if (!revisedId) throw new Error("Missing revised version");
+
+		const [definition, revision, moved] = await Promise.all([
+			db.agentDefinition.findUniqueOrThrow({
+				where: { id: agentId },
+				select: { currentVersionId: true },
+			}),
+			db.agentVersion.findUniqueOrThrow({
+				where: { id: revisedId },
+				select: { manifest: true },
+			}),
+			db.agentTrigger.findUniqueOrThrow({
+				where: { id: trigger.id },
+				select: { versionId: true, enabled: true },
+			}),
+		]);
+
+		expect(revisedId).not.toBe(versionId);
+		expect(definition.currentVersionId).toBe(revisedId);
+		expect(moved).toEqual({ versionId: revisedId, enabled: true });
+		expect(revision.manifest).toMatchObject({
+			name: "Renewal watcher",
+			description: "Watch renewals.",
+			actions: [
+				{
+					type: "slack.message.post",
+					destination: { id: "C0001", label: "#renewals" },
+				},
+			],
+			dataScope: {
+				mode: "SELECTED",
+				resources: [{ id: "acme", kind: "company", label: "Acme" }],
+			},
+		});
+	});
+
+	it("numbers a revision above every existing version", async () => {
+		const { agentId } = await deployedAgent(capableManifest);
+		await db.agentVersion.create({
+			data: {
+				agentId,
+				number: 9,
+				status: "DRAFT",
+				instructions: "A later draft",
+				manifest: capableManifest,
+				modelId: "test/model",
+				sandboxPolicy: {},
+				createdById: userId,
+			},
+		});
+
+		const revised = await agents.revise(
+			{
+				id: agentId,
+				clientRequestId: crypto.randomUUID(),
+				resources: [],
+			},
+			userId,
+		);
+		if (!revised.versionId) throw new Error("Missing revised version");
+
+		expect(
+			await db.agentVersion.findUniqueOrThrow({
+				where: { id: revised.versionId },
+				select: { number: true },
+			}),
+		).toEqual({ number: 10 });
+	});
+
+	it("queues the channel join with the version that moves the agent", async () => {
+		const { agentId } = await deployedAgent(capableManifest);
+
+		const revised = await agents.revise(
+			{
+				id: agentId,
+				clientRequestId: crypto.randomUUID(),
+				channel: { id: "C0009", name: joinChannel },
+			},
+			userId,
+		);
+		if (!revised.versionId) throw new Error("Missing revised version");
+
+		const [version, join] = await Promise.all([
+			db.agentVersion.findUniqueOrThrow({
+				where: { id: revised.versionId },
+				select: { manifest: true },
+			}),
+			db.agentTask.findFirst({
+				where: { kind: "slack-channel-join", reason: joinReason },
+				select: { payload: true },
+			}),
+		]);
+
+		expect(version.manifest).toMatchObject({
+			actions: [
+				{
+					type: "slack.message.post",
+					destination: { id: "C0009", label: `#${joinChannel}` },
+				},
+				{ type: "crm.note.write" },
+			],
+		});
+		expect(join?.payload).toMatchObject({
+			type: "slack.channel.join",
+			channelId: "C0009",
+			channelName: joinChannel,
+		});
+	});
+
+	it("refuses a channel change when no action posts anywhere", async () => {
+		const { agentId } = await deployedAgent({
+			...capableManifest,
+			actions: [noteAction],
+		});
+
+		let refusal: unknown;
+		try {
+			await agents.revise(
+				{
+					id: agentId,
+					clientRequestId: crypto.randomUUID(),
+					channel: { id: "C0002", name: "wins" },
+				},
+				userId,
+			);
+		} catch (error) {
+			refusal = error;
+		}
+
+		expect((refusal as Error).message).toBe(
+			"None of this agent's actions post to a channel, so its channel cannot be changed.",
+		);
+		expect(await db.agentVersion.count({ where: { agentId } })).toBe(1);
 	});
 
 	it("cannot resurrect an agent when deletion races a transition", async () => {

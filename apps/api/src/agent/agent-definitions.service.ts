@@ -10,11 +10,12 @@ import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentTriggerService } from "./agent-trigger.service";
 import { TEAM_AGENT_STATUSES } from "./agent-visibility";
-import type {
-	AgentDeployInput,
-	AgentReviseInput,
-	AgentSaveFileInput,
-	AgentUpdateInput,
+import {
+	type AgentDeployInput,
+	type AgentReviseInput,
+	type AgentSaveFileInput,
+	type AgentUpdateInput,
+	agentManifest,
 } from "./agents.contracts";
 
 const INSTRUCTIONS_PATH = "agent/instructions.md";
@@ -240,7 +241,6 @@ export class AgentDefinitionsService {
 			const current = await tx.agentVersion.findFirstOrThrow({
 				where: { id: agent.currentVersionId },
 				select: {
-					number: true,
 					status: true,
 					instructions: true,
 					manifest: true,
@@ -266,7 +266,7 @@ export class AgentDefinitionsService {
 			const version = await tx.agentVersion.create({
 				data: {
 					agentId: input.id,
-					number: current.number + 1,
+					number: await nextVersionNumber(tx, input.id),
 					status: current.status,
 					instructions:
 						input.path === INSTRUCTIONS_PATH
@@ -317,7 +317,7 @@ export class AgentDefinitionsService {
 	}
 
 	async revise(input: AgentReviseInput, userId: string) {
-		const outcome = await this.db.$transaction(async (tx) => {
+		const versionId = await this.db.$transaction(async (tx) => {
 			await this.access.assertCanManageInTransaction(tx, input.id, userId);
 			const agent = await this.lockAgent(tx, input.id);
 
@@ -329,7 +329,7 @@ export class AgentDefinitionsService {
 				},
 				select: { versionId: true },
 			});
-			if (replay) return { versionId: replay.versionId, joined: null };
+			if (replay) return replay.versionId;
 
 			if (!agent.currentVersionId) {
 				throw new BadRequestException("This agent has no deployed version.");
@@ -338,7 +338,6 @@ export class AgentDefinitionsService {
 			const current = await tx.agentVersion.findFirstOrThrow({
 				where: { id: agent.currentVersionId },
 				select: {
-					number: true,
 					status: true,
 					instructions: true,
 					manifest: true,
@@ -352,37 +351,45 @@ export class AgentDefinitionsService {
 				},
 			});
 
-			const parsed = schemas.agents.capabilities.safeParse(current.manifest);
+			const parsed = agentManifest.safeParse(current.manifest);
 			if (!parsed.success) {
 				throw new BadRequestException(
 					"This version's manifest cannot be read, so it cannot be changed.",
 				);
 			}
 
-			const manifest = current.manifest as Record<string, unknown>;
-			const before = parsed.data.actions.find(
+			const manifest = parsed.data;
+			const before = manifest.actions.find(
 				(action) => action.destination !== undefined,
 			);
 
-			let actions = manifest.actions as Array<Record<string, unknown>>;
+			let actions = manifest.actions;
 
 			if (input.actions) {
 				const keep = new Set(input.actions);
-				actions = actions.filter((action) => keep.has(String(action.type)));
+				actions = actions.filter((action) => keep.has(action.type));
 				if (actions.length === 0) {
 					throw new BadRequestException("An agent needs at least one action.");
 				}
 			}
 
-			if (input.channel) {
+			const channel = input.channel;
+
+			if (channel) {
+				if (!actions.some((action) => action.destination !== undefined)) {
+					throw new BadRequestException(
+						"None of this agent's actions post to a channel, so its channel cannot be changed.",
+					);
+				}
+
 				actions = actions.map((action) =>
 					action.destination
 						? {
 								...action,
 								destination: {
-									...(action.destination as Record<string, unknown>),
-									id: input.channel?.id,
-									label: `#${input.channel?.name}`,
+									...action.destination,
+									id: channel.id,
+									label: `#${channel.name}`,
 								},
 							}
 						: action,
@@ -391,7 +398,7 @@ export class AgentDefinitionsService {
 
 			const dataScope = input.resources
 				? {
-						...(manifest.dataScope as Record<string, unknown>),
+						...manifest.dataScope,
 						mode: input.resources.length > 0 ? "SELECTED" : "WORKSPACE",
 						resources: input.resources,
 					}
@@ -400,7 +407,7 @@ export class AgentDefinitionsService {
 			const version = await tx.agentVersion.create({
 				data: {
 					agentId: input.id,
-					number: current.number + 1,
+					number: await nextVersionNumber(tx, input.id),
 					status: current.status,
 					instructions: current.instructions,
 					manifest: {
@@ -413,8 +420,8 @@ export class AgentDefinitionsService {
 					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
 					validation: reviseValidation(
 						current.validation,
-						parsed.data.actions.map((action) => action.type),
-						actions.map((action) => String(action.type)),
+						manifest.actions.map((action) => action.type),
+						actions.map((action) => action.type),
 					),
 					sourceConversationId: current.sourceConversationId,
 					approvedAt: current.approvedAt,
@@ -431,6 +438,19 @@ export class AgentDefinitionsService {
 				data: { currentVersionId: version.id },
 			});
 
+			const repointed = await tx.agentTrigger.updateMany({
+				where: { agentId: input.id, versionId: agent.currentVersionId },
+				data: { versionId: version.id },
+			});
+
+			if (channel && channel.id !== before?.destination?.id) {
+				await this.trigger.slackChannelJoinRequested(
+					channel.id,
+					channel.name,
+					tx,
+				);
+			}
+
 			await tx.agentAuditEvent.create({
 				data: {
 					agentId: input.id,
@@ -442,35 +462,23 @@ export class AgentDefinitionsService {
 					summary: reviseSummary(input),
 					before: {
 						channel: before?.destination?.label ?? null,
-						actions: parsed.data.actions.map((action) => action.type),
-						resources: parsed.data.dataScope.resources.length,
+						actions: manifest.actions.map((action) => action.type),
+						resources: manifest.dataScope.resources.length,
 					},
 					after: {
-						channel: input.channel ? `#${input.channel.name}` : null,
+						channel: channel ? `#${channel.name}` : null,
 						actions: input.actions ?? null,
 						resources: input.resources?.length ?? null,
+						triggers: repointed.count,
 					},
 					requestId: input.clientRequestId,
 				},
 			});
 
-			return {
-				versionId: version.id,
-				joined:
-					input.channel && input.channel.id !== before?.destination?.id
-						? input.channel
-						: null,
-			};
+			return version.id;
 		});
 
-		if (outcome.joined) {
-			await this.trigger.slackChannelJoinRequested(
-				outcome.joined.id,
-				outcome.joined.name,
-			);
-		}
-
-		return { versionId: outcome.versionId };
+		return { versionId };
 	}
 
 	async deploy(input: AgentDeployInput, userId: string) {
@@ -866,6 +874,19 @@ function reviseValidation(
 		checkedAt: new Date().toISOString(),
 		capabilities,
 	} as Prisma.InputJsonValue;
+}
+
+async function nextVersionNumber(
+	tx: Prisma.TransactionClient,
+	agentId: string,
+): Promise<number> {
+	const latest = await tx.agentVersion.findFirst({
+		where: { agentId },
+		orderBy: { number: "desc" },
+		select: { number: true },
+	});
+
+	return (latest?.number ?? 0) + 1;
 }
 
 async function carryArtifactsForward(
