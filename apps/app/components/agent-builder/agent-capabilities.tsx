@@ -280,25 +280,31 @@ export function AgentCapabilities({
 			</Section>
 
 			{dirty ? (
-				<div className="flex items-center gap-4 border-t pt-5">
-					<div className="min-w-0 flex-1">
-						<p className="font-medium text-sm">
-							{channelChanged
-								? `Moving from #${from} to #${to}`
-								: "Changing what this agent can do"}
-						</p>
-						<p className="text-muted-foreground text-sm">
-							{channelChanged
-								? `Saving makes a new version and adds Comp AI to #${to}. It stays in #${from} until you remove it.`
-								: "Saving makes a new version. The old one stays in the history."}
-						</p>
+				<div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-6">
+					<div className="pointer-events-auto flex w-full max-w-(--container-page-wide) items-center gap-4 rounded-lg border bg-popover px-5 py-4 shadow-lg">
+						<div className="min-w-0 flex-1">
+							<p className="font-medium text-sm">
+								{channelChanged
+									? `Moving from #${from} to #${to}`
+									: "Changing what this agent can do"}
+							</p>
+							<p className="text-muted-foreground text-sm">
+								{channelChanged
+									? `Saving makes a new version and adds Comp AI to #${to}. It stays in #${from} until you remove it.`
+									: "Saving makes a new version. The old one stays in the history."}
+							</p>
+						</div>
+						<Button
+							disabled={revise.isPending}
+							onClick={reset}
+							variant="outline"
+						>
+							Discard
+						</Button>
+						<Button disabled={revise.isPending} onClick={save}>
+							{revise.isPending ? "Saving…" : "Save and hand to the builder"}
+						</Button>
 					</div>
-					<Button disabled={revise.isPending} onClick={reset} variant="outline">
-						Discard
-					</Button>
-					<Button disabled={revise.isPending} onClick={save}>
-						{revise.isPending ? "Saving…" : "Save and hand to the builder"}
-					</Button>
 				</div>
 			) : null}
 		</div>
