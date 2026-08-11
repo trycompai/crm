@@ -2,7 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
 import { queueEventAgentRuns } from "./custom-agent-dispatch";
-import { withDeadline } from "./deadline";
+import { settledWithin, withDeadline } from "./deadline";
 import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
@@ -58,7 +58,7 @@ export async function runVisibleLane(signal?: AbortSignal): Promise<number> {
 
 		if (tasks.length === 0) break;
 
-		await runLimited(VISIBLE_CONCURRENCY, tasks, runDirect);
+		await runLimited(VISIBLE_CONCURRENCY, tasks, runDirect, signal);
 		handled += tasks.length;
 	}
 
@@ -73,8 +73,9 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			`This ${task.kind} task ran longer than ${DISPATCH.sweep.itemTimeoutMs}ms and was abandoned.`,
 		);
 	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
+		await settle(task, EnrichmentStatus.FAILED, reasonOf(error)).catch(
+			() => {},
+		);
 	}
 }
 
@@ -126,8 +127,9 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 
 		await completeTask(task.id, "The record this names is gone.");
 	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
+		await settle(task, EnrichmentStatus.FAILED, reasonOf(error)).catch(
+			() => {},
+		);
 	}
 }
 
@@ -144,24 +146,70 @@ export async function runResearchLane(
 	);
 	if (tasks.length === 0) return 0;
 
+	let started = 0;
+
 	await Promise.all(
 		tasks.map(async (task) => {
-			try {
-				await markRunning(task);
-				const session = await withDeadline(
-					start(task),
-					DISPATCH.sweep.startTimeoutMs,
-					"The agent did not accept this task in time.",
-				);
-				await noteSession(task.id, session.id);
-			} catch (error) {
-				const reason = error instanceof Error ? error.message : String(error);
-				await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
-			}
+			if (signal?.aborted) return;
+			started += 1;
+			await beginResearch(task, start);
 		}),
 	);
 
-	return tasks.length;
+	return started;
+}
+
+type StartOutcome =
+	| { accepted: true; sessionId: string }
+	| { accepted: false; reason: string };
+
+async function beginResearch(
+	task: LeasedTask,
+	start: (task: LeasedTask) => Promise<{ id: string }>,
+): Promise<void> {
+	try {
+		await markRunning(task);
+	} catch (error) {
+		await settle(task, EnrichmentStatus.FAILED, reasonOf(error)).catch(
+			() => {},
+		);
+		return;
+	}
+
+	const send: Promise<StartOutcome> = start(task).then(
+		(session) => ({ accepted: true, sessionId: session.id }) as const,
+		(error) => ({ accepted: false, reason: reasonOf(error) }) as const,
+	);
+
+	const outcome = await settledWithin(send, DISPATCH.sweep.startTimeoutMs);
+
+	if (outcome.settled) {
+		await reconcileStart(task, outcome.value);
+		return;
+	}
+
+	pendingStarts += 1;
+	void send
+		.then((late) => reconcileStart(task, late))
+		.finally(() => {
+			pendingStarts -= 1;
+		});
+}
+
+async function reconcileStart(
+	task: LeasedTask,
+	outcome: StartOutcome,
+): Promise<void> {
+	if (outcome.accepted) {
+		await noteSession(task.id, outcome.sessionId).catch(() => {});
+		return;
+	}
+
+	await settle(task, EnrichmentStatus.FAILED, outcome.reason).catch(() => {});
+}
+
+function reasonOf(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
@@ -184,28 +232,60 @@ let lastSweepStartedAt: Date | null = null;
 let lastSweepFinishedAt: Date | null = null;
 let lastSweepError: string | null = null;
 let abandonedSweeps = 0;
+let pendingStarts = 0;
+
+const unsettledSweeps = new Set<{ startedAt: Date }>();
+
+function oldestUnsettledAt(): Date | null {
+	let oldest: Date | null = null;
+
+	for (const sweep of unsettledSweeps) {
+		if (!oldest || sweep.startedAt.getTime() < oldest.getTime()) {
+			oldest = sweep.startedAt;
+		}
+	}
+
+	return oldest;
+}
 
 export function dispatchHealth() {
 	const startedAt = lastSweepStartedAt;
 	const finishedAt = lastSweepFinishedAt;
-	const running = Boolean(
+	const collapsed = Boolean(
 		startedAt && (!finishedAt || finishedAt.getTime() < startedAt.getTime()),
 	);
+	const unsettledAt = oldestUnsettledAt();
+	const running = collapsed || unsettledAt !== null;
+
+	const since = collapsed && startedAt ? startedAt : unsettledAt;
+	const oldest =
+		since && unsettledAt && unsettledAt.getTime() < since.getTime()
+			? unsettledAt
+			: since;
 
 	return {
 		startedAt: startedAt?.toISOString() ?? null,
 		finishedAt: finishedAt?.toISOString() ?? null,
 		running,
-		stalledMs:
-			running && startedAt ? Math.max(0, Date.now() - startedAt.getTime()) : 0,
+		stalledMs: oldest ? Math.max(0, Date.now() - oldest.getTime()) : 0,
 		abandonedSweeps,
+		unsettledSweeps: unsettledSweeps.size,
+		pendingStarts,
 		lastError: lastSweepError,
 	};
 }
 
 export const drainAll = collapsing(
 	async (start: (task: LeasedTask) => Promise<{ id: string }>) => {
-		lastSweepStartedAt = new Date();
+		if (unsettledSweeps.size >= DISPATCH.sweep.maxAbandoned) {
+			lastSweepError =
+				"An abandoned dispatch sweep is still in flight, so this sweep did not start.";
+			console.error(`[agent] ${lastSweepError}`);
+			return;
+		}
+
+		const startedAt = new Date();
+		lastSweepStartedAt = startedAt;
 		lastSweepError = null;
 
 		const controller = new AbortController();
@@ -223,6 +303,29 @@ export const drainAll = collapsing(
 		const abandon = new Promise<never>((_, reject) => {
 			timer = setTimeout(() => {
 				abandonedSweeps += 1;
+
+				const unsettled = { startedAt };
+				unsettledSweeps.add(unsettled);
+
+				const forget = setTimeout(() => {
+					if (!unsettledSweeps.delete(unsettled)) return;
+					console.error(
+						`[agent] An abandoned dispatch sweep never settled within ${DISPATCH.sweep.abandonGraceMs}ms, so dispatch is starting again without it.`,
+					);
+				}, DISPATCH.sweep.abandonGraceMs);
+				forget.unref?.();
+
+				void sweep
+					.catch((error) => {
+						console.error(
+							`[agent] An abandoned dispatch sweep then failed: ${reasonOf(error)}`,
+						);
+					})
+					.finally(() => {
+						clearTimeout(forget);
+						unsettledSweeps.delete(unsettled);
+					});
+
 				controller.abort();
 				reject(
 					new Error(
@@ -237,7 +340,7 @@ export const drainAll = collapsing(
 		try {
 			await Promise.race([sweep, abandon]);
 		} catch (error) {
-			lastSweepError = error instanceof Error ? error.message : String(error);
+			lastSweepError = reasonOf(error);
 			console.error(`[agent] ${lastSweepError}`);
 			throw error;
 		} finally {

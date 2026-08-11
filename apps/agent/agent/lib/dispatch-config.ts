@@ -35,5 +35,7 @@ export const DISPATCH = {
 		staleQueueMs: 5 * MINUTE_MS,
 		startTimeoutMs: MINUTE_MS,
 		itemTimeoutMs: 2 * MINUTE_MS,
+		maxAbandoned: 1,
+		abandonGraceMs: 15 * MINUTE_MS,
 	},
 } as const;
