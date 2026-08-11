@@ -7,6 +7,7 @@ import {
 	loaderUrl,
 	mintSiteId,
 	normalizeHost,
+	normalizePath,
 	originAllowed,
 	type TrackingConfig,
 	trackingReady,
@@ -94,6 +95,25 @@ describe("a domain", () => {
 	test("is refused when it is not one", () => {
 		for (const value of ["localhost", "acme", "", " ", "..", "a b.com"]) {
 			expect(normalizeHost(value)).toBeNull();
+		}
+	});
+});
+
+describe("a page path", () => {
+	test("drops the query and the fragment so one page is one row", () => {
+		expect(normalizePath("/?utm_source=google&utm_medium=cpc")).toBe("/");
+		expect(normalizePath("/pricing?plan=team")).toBe("/pricing");
+		expect(normalizePath("/docs/api#install")).toBe("/docs/api");
+	});
+
+	test("drops a trailing slash so /pricing and /pricing/ are one page", () => {
+		expect(normalizePath("/pricing/")).toBe("/pricing");
+		expect(normalizePath("/")).toBe("/");
+	});
+
+	test("falls back to the root when it is not a path", () => {
+		for (const value of ["", "  ", null, undefined, "pricing", "//"]) {
+			expect(normalizePath(value)).toBe("/");
 		}
 	});
 });

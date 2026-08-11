@@ -1,8 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import {
+	DetailSheetProperties,
+	DetailSheetProperty,
+} from "@/components/detail-sheet";
 import { LocalRelativeTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
+
+type Touch = {
+	source: string;
+	medium: string | null;
+	campaign: string | null;
+	at: string | null;
+};
 
 export function WebsiteActivity({
 	companyId,
@@ -32,81 +43,65 @@ export function WebsiteActivity({
 	if (!activity?.identified) return null;
 	if (activity.pages.length === 0 && !activity.firstTouch) return null;
 
+	const topPage = activity.pages[0];
+	const first = activity.firstTouch;
+	const last = activity.lastTouch;
+	const channelChanged = last != null && channel(last) !== channel(first);
+	const campaign = last?.campaign ?? first?.campaign ?? null;
+
 	return (
-		<div className="flex flex-col gap-3">
-			<div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-				<span className="font-medium text-sm tabular-nums">
-					{activity.views.toLocaleString()} page views
-				</span>
+		<DetailSheetProperties>
+			<DetailSheetProperty label="Page views">
+				<span className="tabular-nums">{activity.views.toLocaleString()}</span>
 				{activity.lastSeenAt ? (
-					<span className="text-muted-foreground text-xs">
-						Last seen <LocalRelativeTime date={activity.lastSeenAt} />
+					<span className="text-muted-foreground">
+						{" · last seen "}
+						<LocalRelativeTime date={activity.lastSeenAt} />
 					</span>
 				) : null}
-			</div>
+			</DetailSheetProperty>
 
-			{activity.firstTouch ? (
-				<dl className="flex flex-col gap-2 border-b pb-3">
-					<Touch label="Original source" touch={activity.firstTouch} />
-					{activity.lastTouch &&
-					activity.lastTouch.label !== activity.firstTouch.label ? (
-						<Touch label="Latest source" touch={activity.lastTouch} />
-					) : null}
-				</dl>
+			{first ? (
+				<DetailSheetProperty label="Original source">
+					{channel(first)}
+				</DetailSheetProperty>
 			) : null}
 
-			<ul className="flex flex-col">
-				{activity.pages.map((page) => (
-					<li
-						key={`${page.host}${page.path}`}
-						className="flex items-center justify-between gap-4 border-b py-2 last:border-b-0"
-					>
-						<span className="min-w-0 truncate font-mono text-xs">
-							{page.path}
+			{topPage ? (
+				<DetailSheetProperty label="Top page">
+					<span className="flex min-w-0 items-baseline gap-1">
+						<span className="truncate font-mono" title={topPage.path}>
+							{topPage.path}
 						</span>
-						<span className="flex shrink-0 items-center gap-3 text-muted-foreground text-xs">
-							<LocalRelativeTime date={page.lastSeenAt} />
-							<span className="w-8 text-right tabular-nums">{page.views}</span>
+						<span className="shrink-0 text-muted-foreground">
+							{"· "}
+							<span className="tabular-nums">{topPage.views}</span> views
 						</span>
-					</li>
-				))}
-			</ul>
+					</span>
+				</DetailSheetProperty>
+			) : null}
 
-			<p className="text-muted-foreground text-xs/relaxed">
-				Only visits from people who have submitted a form are counted here.
-				Anonymous traffic is not attributed to anybody.
-			</p>
-		</div>
+			{channelChanged ? (
+				<DetailSheetProperty label="Latest source">
+					{channel(last)}
+				</DetailSheetProperty>
+			) : null}
+
+			{first?.at ? (
+				<DetailSheetProperty label="First seen">
+					<LocalRelativeTime date={first.at} />
+				</DetailSheetProperty>
+			) : null}
+
+			{campaign ? (
+				<DetailSheetProperty label="Campaign">{campaign}</DetailSheetProperty>
+			) : null}
+		</DetailSheetProperties>
 	);
 }
 
-function Touch({
-	label,
-	touch,
-}: {
-	label: string;
-	touch: {
-		label: string;
-		campaign: string | null;
-		landing: string | null;
-		at: string | null;
-	};
-}) {
-	return (
-		<div className="flex items-baseline justify-between gap-4">
-			<dt className="shrink-0 text-muted-foreground text-xs">{label}</dt>
-			<dd className="flex min-w-0 flex-col items-end gap-0.5 text-right">
-				<span className="truncate text-xs">{touch.label}</span>
-				{touch.landing || touch.at ? (
-					<span className="truncate text-muted-foreground text-xs">
-						{touch.landing ? (
-							<span className="font-mono">{touch.landing}</span>
-						) : null}
-						{touch.landing && touch.at ? " · " : null}
-						{touch.at ? <LocalRelativeTime date={touch.at} /> : null}
-					</span>
-				) : null}
-			</dd>
-		</div>
-	);
+function channel(touch: Touch | null): string {
+	if (!touch) return "Unknown";
+	if (!touch.medium || touch.medium === "direct") return touch.source;
+	return `${touch.source} · ${touch.medium}`;
 }

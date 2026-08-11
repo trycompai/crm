@@ -5,6 +5,7 @@ import {
 	EVENTS_PER_MINUTE,
 	hostAllowed,
 	MAX_EVENTS_PER_BATCH,
+	normalizePath,
 	originAllowed,
 	rateWindowKey,
 	type TrackingConfig,
@@ -111,7 +112,7 @@ export class TrackingIngestService {
 					visitorId,
 					type: event.type,
 					host,
-					path: trim(event.path ?? "/", MAX_PATH),
+					path: trim(normalizePath(event.path), MAX_PATH),
 					referrer: event.referrer ? trim(event.referrer, MAX_PATH) : null,
 					label: event.label ? trim(event.label, MAX_LABEL) : null,
 					source: touch?.source ?? null,
@@ -145,7 +146,7 @@ export class TrackingIngestService {
 
 		const fields = clean(event.fields ?? {});
 		const email = emailFrom(fields);
-		const path = trim(event.path ?? "/", MAX_PATH);
+		const path = trim(normalizePath(event.path), MAX_PATH);
 		const at = occurredAt(event.at);
 
 		const lastTouch = classifyTouch(event.touch ?? {}, at);

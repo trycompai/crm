@@ -36,8 +36,8 @@ export function TrafficSources() {
 			<CardHeader>
 				<CardTitle>Traffic sources</CardTitle>
 				<CardDescription>
-					Where your visitors come from, and which of those channels turn into
-					contacts.
+					Where your visitors come from. Only people who have submitted a form
+					are attributed to a record.
 				</CardDescription>
 			</CardHeader>
 

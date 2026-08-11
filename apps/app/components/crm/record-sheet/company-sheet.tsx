@@ -173,15 +173,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 				{
 					value: "overview",
 					label: "Overview",
-					content: (
-						<CompanyOverview
-							company={company}
-							onAddContact={() => {
-								setAdding("contact");
-								setTab("contacts");
-							}}
-						/>
-					),
+					content: <CompanyOverview company={company} />,
 				},
 				{
 					value: "contacts",
@@ -304,13 +296,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 	);
 }
 
-function CompanyOverview({
-	company,
-	onAddContact,
-}: {
-	company: Company;
-	onAddContact: () => void;
-}) {
+function CompanyOverview({ company }: { company: Company }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -341,15 +327,6 @@ function CompanyOverview({
 							<DetailSheetProse>{company.description}</DetailSheetProse>
 						</DetailSheetSection>
 					) : null}
-
-					<DetailSheetSection title="People">
-						<CompanyContacts
-							company={company}
-							adding={false}
-							onAdd={onAddContact}
-							onDone={() => undefined}
-						/>
-					</DetailSheetSection>
 
 					<DetailSheetSection title="Website activity">
 						<WebsiteActivity companyId={company.id} />

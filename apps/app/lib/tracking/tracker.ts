@@ -87,7 +87,7 @@ function send(e){
  q.push(e);
  if(q.length>=20){clearTimeout(timer);flush();return}
  clearTimeout(timer);timer=setTimeout(flush,2000)}
-function view(){send({type:"page_view",path:loc.pathname+loc.search,referrer:d.referrer||undefined,touch:last})}
+function view(){send({type:"page_view",path:loc.pathname,referrer:d.referrer||undefined,touch:last})}
 function label(el){
  var t=(el.getAttribute("aria-label")||el.textContent||"").replace(/\\s+/g," ").trim();
  return t?t.slice(0,80):undefined}

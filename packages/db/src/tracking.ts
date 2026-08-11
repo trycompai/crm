@@ -154,6 +154,18 @@ export function normalizeHost(input: string | null | undefined): string | null {
 	return bare;
 }
 
+export function normalizePath(input: string | null | undefined): string {
+	const raw = input?.trim();
+	if (!raw) return "/";
+
+	const path = raw.split(/[?#]/)[0] ?? "/";
+	if (!path.startsWith("/")) return "/";
+
+	const trimmed = path.length > 1 ? path.replace(/\/+$/, "") : path;
+
+	return trimmed === "" ? "/" : trimmed;
+}
+
 export function hostAllowed(host: string, config: TrackingConfig): boolean {
 	if (!config.limitToDomains) return true;
 
