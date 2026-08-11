@@ -1,9 +1,16 @@
 import { isSlackConfigured, WORKSPACE_ID } from "@crm/auth";
 import type { Db } from "@crm/db";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+	BadRequestException,
+	Injectable,
+	NotFoundException,
+} from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
-import type { SlackJoinChannelInput } from "./slack.contracts";
+import type {
+	SlackCreateChannelInput,
+	SlackJoinChannelInput,
+} from "./slack.contracts";
 
 const PEOPLE_SYNC_ACTIVE_MS = 30_000;
 
@@ -183,6 +190,19 @@ export class SlackConnectionService {
 
 		await this.agent.slackChannelJoinRequested(channel.id, channel.name);
 		return { queued: true, alreadyJoined: false };
+	}
+
+	async createChannel(input: SlackCreateChannelInput) {
+		const existing = await this.db.slackChannel.findFirst({
+			where: { name: input.name },
+			select: { id: true },
+		});
+		if (existing) {
+			throw new BadRequestException("A channel with that name already exists.");
+		}
+
+		await this.agent.slackChannelCreateRequested(input.name, input.isPrivate);
+		return { queued: true };
 	}
 
 	async disconnect() {

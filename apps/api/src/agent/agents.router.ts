@@ -18,8 +18,8 @@ import {
 	agentHistoryInput,
 	agentIdInput,
 	agentRetryRunInput,
+	agentReviseInput,
 	agentRunNowInput,
-	agentSetChannelInput,
 	agentUpdateInput,
 } from "./agents.contracts";
 
@@ -38,12 +38,12 @@ export class AgentsRouter {
 		return this.agents.list(ctx.user.id);
 	}
 
-	@Mutation({ input: agentSetChannelInput })
-	async setChannel(
+	@Mutation({ input: agentReviseInput })
+	async revise(
 		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof agentSetChannelInput>,
+		@Input() input: z.infer<typeof agentReviseInput>,
 	) {
-		return this.agents.setChannel(input, ctx.user.id);
+		return this.agents.revise(input, ctx.user.id);
 	}
 
 	@Query({ input: agentIdInput })

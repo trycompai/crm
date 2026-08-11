@@ -1,9 +1,16 @@
 "use client";
 
+import Add from "@carbon/icons-react/es/Add";
+import Close from "@carbon/icons-react/es/Close";
 import Warning from "@carbon/icons-react/es/Warning";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@crm/ui/components/popover";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -13,6 +20,9 @@ import {
 	type PickerChannel,
 } from "@/components/slack/channel-picker";
 import { useTRPC } from "@/lib/trpc/client";
+import { CreateChannelDialog } from "./create-channel-dialog";
+
+export type Resource = { id: string; kind: string; label: string };
 
 export type Capabilities = {
 	readable: boolean;
@@ -22,7 +32,7 @@ export type Capabilities = {
 	dataScope: {
 		mode: "SELECTED" | "WORKSPACE";
 		summary: string;
-		resources: Array<{ id: string; kind: string; label: string }>;
+		resources: Resource[];
 	} | null;
 };
 
@@ -43,7 +53,10 @@ export function AgentCapabilities({
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
+
 	const [picked, setPicked] = useState<PickerChannel | null>(null);
+	const [off, setOff] = useState<string[]>([]);
+	const [resources, setResources] = useState<Resource[] | null>(null);
 
 	const channels = useQuery({
 		...trpc.slack.channels.queryOptions(),
@@ -52,14 +65,20 @@ export function AgentCapabilities({
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;
 
-	const setChannel = useMutation(
-		trpc.agents.setChannel.mutationOptions({
+	const reset = () => {
+		setPicked(null);
+		setOff([]);
+		setResources(null);
+	};
+
+	const revise = useMutation(
+		trpc.agents.revise.mutationOptions({
 			onSuccess: async () => {
 				await queryClient.invalidateQueries({
 					queryKey: trpc.agents.byId.pathKey(),
 				});
-				setPicked(null);
-				toast.success("Saved. The agent moves to the new channel.");
+				reset();
+				toast.success("Saved. A new version is live.");
 			},
 			onError: (error) => toast.error(error.message),
 		}),
@@ -90,7 +109,42 @@ export function AgentCapabilities({
 	const current = capabilities.channel;
 	const from = current?.label.replace(/^#/, "") ?? null;
 	const to = picked?.name ?? null;
-	const dirty = to !== null && to !== from;
+	const shownResources = resources ?? capabilities.dataScope?.resources ?? [];
+
+	const channelChanged = to !== null && to !== from;
+	const actionsChanged = off.length > 0;
+	const scopeChanged = resources !== null;
+	const dirty = channelChanged || actionsChanged || scopeChanged;
+
+	const save = () => {
+		revise.mutate({
+			id: agentId,
+			clientRequestId: crypto.randomUUID(),
+			...(channelChanged && picked
+				? { channel: { id: picked.id, name: picked.name } }
+				: {}),
+			...(actionsChanged
+				? {
+						actions: capabilities.actions
+							.map((action) => action.type)
+							.filter((type) => !off.includes(type)),
+					}
+				: {}),
+			...(scopeChanged
+				? {
+						resources: shownResources.map((resource) => ({
+							id: resource.id,
+							kind: resource.kind as
+								| "company"
+								| "contact"
+								| "deal"
+								| "integration",
+							label: resource.label,
+						})),
+					}
+				: {}),
+		});
+	};
 
 	return (
 		<div className="flex flex-col gap-9">
@@ -98,9 +152,15 @@ export function AgentCapabilities({
 				<Section
 					action={
 						canManage ? (
-							<Button size="sm" variant="outline">
-								Create a channel
-							</Button>
+							<CreateChannelDialog
+								onCreated={async () => {
+									await channels.refetch();
+								}}
+							>
+								<Button size="sm" variant="outline">
+									Create a channel
+								</Button>
+							</CreateChannelDialog>
 						) : null
 					}
 					summary="One channel. Comp AI joins it when you save."
@@ -110,8 +170,10 @@ export function AgentCapabilities({
 						canInviteItself={canInviteItself}
 						channels={rows}
 						onRequest={(channel) => join.mutate({ channelId: channel.id })}
-						onSelect={(channel) => canManage && setPicked(channel)}
-						pending={setChannel.isPending}
+						onSelect={(channel) => {
+							if (canManage) setPicked(channel);
+						}}
+						pending={revise.isPending}
 						value={picked?.id ?? current.id}
 					/>
 				</Section>
@@ -135,7 +197,17 @@ export function AgentCapabilities({
 									{action.summary || action.provider}
 								</p>
 							</div>
-							<Switch checked disabled />
+							<Switch
+								checked={!off.includes(action.type)}
+								disabled={!canManage || revise.isPending}
+								onCheckedChange={(on) =>
+									setOff((current) =>
+										on
+											? current.filter((type) => type !== action.type)
+											: [...current, action.type],
+									)
+								}
+							/>
 						</div>
 					))}
 					{capabilities.actions.length === 0 ? (
@@ -153,59 +225,145 @@ export function AgentCapabilities({
 				title="What it can see"
 			>
 				<div className="flex flex-wrap gap-2">
-					{capabilities.dataScope?.mode === "WORKSPACE" &&
-					(capabilities.dataScope?.resources.length ?? 0) === 0 ? (
+					{shownResources.length === 0 &&
+					capabilities.dataScope?.mode === "WORKSPACE" ? (
 						<span className="flex h-7 items-center rounded-md border px-2.5 text-sm">
 							Every record in the workspace
 						</span>
-					) : (
-						capabilities.dataScope?.resources.map((resource) => (
-							<span
-								className="flex h-7 items-center rounded-md border px-2.5 text-sm"
-								key={`${resource.kind}:${resource.id}`}
-							>
-								{resource.label}
-							</span>
-						))
-					)}
+					) : null}
+
+					{shownResources.map((resource) => (
+						<span
+							className="flex h-7 items-center gap-1.5 rounded-md border pr-1.5 pl-2.5 text-sm"
+							key={`${resource.kind}:${resource.id}`}
+						>
+							{resource.label}
+							{canManage ? (
+								<button
+									aria-label={`Remove ${resource.label}`}
+									className="text-muted-foreground hover:text-foreground"
+									onClick={() =>
+										setResources(
+											shownResources.filter(
+												(entry) =>
+													!(
+														entry.id === resource.id &&
+														entry.kind === resource.kind
+													),
+											),
+										)
+									}
+									type="button"
+								>
+									<Icon className="size-3" icon={Close} motion="none" />
+								</button>
+							) : null}
+						</span>
+					))}
+
+					{canManage ? (
+						<ResourcePicker
+							onPick={(resource) =>
+								setResources([
+									...shownResources.filter(
+										(entry) =>
+											!(
+												entry.id === resource.id && entry.kind === resource.kind
+											),
+									),
+									resource,
+								])
+							}
+						/>
+					) : null}
 				</div>
 			</Section>
 
-			{dirty && current ? (
+			{dirty ? (
 				<div className="flex items-center gap-4 border-t pt-5">
 					<div className="min-w-0 flex-1">
 						<p className="font-medium text-sm">
-							Moving from #{from} to #{to}
+							{channelChanged
+								? `Moving from #${from} to #${to}`
+								: "Changing what this agent can do"}
 						</p>
 						<p className="text-muted-foreground text-sm">
-							Saving makes a new version and adds Comp AI to #{to}. It stays in
-							#{from} until you remove it.
+							{channelChanged
+								? `Saving makes a new version and adds Comp AI to #${to}. It stays in #${from} until you remove it.`
+								: "Saving makes a new version. The old one stays in the history."}
 						</p>
 					</div>
-					<Button
-						disabled={setChannel.isPending}
-						onClick={() => setPicked(null)}
-						variant="outline"
-					>
+					<Button disabled={revise.isPending} onClick={reset} variant="outline">
 						Discard
 					</Button>
-					<Button
-						disabled={setChannel.isPending}
-						onClick={() =>
-							picked &&
-							setChannel.mutate({
-								id: agentId,
-								clientRequestId: crypto.randomUUID(),
-								channelId: picked.id,
-								channelName: picked.name,
-							})
-						}
-					>
-						{setChannel.isPending ? "Saving…" : "Save and hand to the builder"}
+					<Button disabled={revise.isPending} onClick={save}>
+						{revise.isPending ? "Saving…" : "Save and hand to the builder"}
 					</Button>
 				</div>
 			) : null}
 		</div>
+	);
+}
+
+function ResourcePicker({ onPick }: { onPick: (resource: Resource) => void }) {
+	const trpc = useTRPC();
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const results = useQuery({
+		...trpc.conversations.builderResources.queryOptions({ q: query }),
+		enabled: open,
+	});
+
+	return (
+		<Popover onOpenChange={setOpen} open={open}>
+			<PopoverTrigger asChild>
+				<button
+					className="flex h-7 items-center gap-1.5 rounded-md border border-dashed px-2.5 text-muted-foreground text-sm hover:text-foreground"
+					type="button"
+				>
+					<Icon className="size-3" icon={Add} motion="none" />
+					Add a record type
+				</button>
+			</PopoverTrigger>
+
+			<PopoverContent align="start" className="w-72 p-0">
+				<input
+					className="w-full border-b bg-transparent px-3 py-2.5 text-sm outline-none"
+					onChange={(event) => setQuery(event.target.value)}
+					placeholder="Search records and integrations"
+					value={query}
+				/>
+				<div className="flex max-h-64 flex-col overflow-y-auto py-1">
+					{(results.data ?? []).map((resource) => (
+						<button
+							className="flex flex-col items-start px-3 py-2 text-left hover:bg-muted"
+							key={`${resource.kind}:${resource.id}`}
+							onClick={() => {
+								onPick({
+									id: resource.id,
+									kind: resource.kind,
+									label: resource.label,
+								});
+								setOpen(false);
+							}}
+							type="button"
+						>
+							<span className="text-sm">{resource.label}</span>
+							{resource.detail ? (
+								<span className="text-muted-foreground text-xs">
+									{resource.detail}
+								</span>
+							) : null}
+						</button>
+					))}
+					{(results.data ?? []).length === 0 ? (
+						<p className="px-3 py-2 text-muted-foreground text-sm">
+							Nothing matches.
+						</p>
+					) : null}
+				</div>
+			</PopoverContent>
+		</Popover>
 	);
 }
 

@@ -120,6 +120,23 @@ export class AgentTriggerService {
 		);
 	}
 
+	async slackChannelCreateRequested(
+		name: string,
+		isPrivate: boolean,
+	): Promise<void> {
+		await this.enqueue(
+			{
+				kind: "slack-channel-create",
+				reason: `Create #${name}`,
+				priority: PRIORITY.slackJoin,
+				budget: 1,
+				subject: name,
+				payload: { type: "slack.channel.create", channelName: name, isPrivate },
+			},
+			true,
+		);
+	}
+
 	async withCrmEvents<Result>(
 		work: (
 			tx: Prisma.TransactionClient,

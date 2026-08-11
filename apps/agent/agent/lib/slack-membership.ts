@@ -137,3 +137,56 @@ function explain(error: string): string {
 			return `Slack refused the request (${error}).`;
 	}
 }
+
+export async function createSlackChannel(
+	name: string,
+	isPrivate: boolean,
+): Promise<{ id: string; name: string } | { error: string }> {
+	const user = await slackUserToken();
+	const bot = await slackAccessToken();
+	const token = isPrivate ? user : (user ?? bot);
+
+	if (!token) {
+		return {
+			error: isPrivate
+				? "This workspace did not grant Comp AI permission to create a private channel."
+				: "Slack is not connected.",
+		};
+	}
+
+	const response = await fetch("https://slack.com/api/conversations.create", {
+		method: "POST",
+		headers: {
+			authorization: `Bearer ${token}`,
+			"content-type": "application/json; charset=utf-8",
+		},
+		body: JSON.stringify({ name, is_private: isPrivate }),
+		signal: AbortSignal.timeout(SLACK.request.timeoutMs),
+	});
+
+	const parsed = schemas.slack.createReply.safeParse(await response.json());
+	if (!parsed.success)
+		return { error: "Slack sent back something unreadable." };
+
+	if (!parsed.data.ok || !parsed.data.channel) {
+		return { error: explain(parsed.data.error ?? "rejected") };
+	}
+
+	const channel = parsed.data.channel;
+
+	await db.slackChannel.upsert({
+		where: { id: channel.id },
+		create: {
+			id: channel.id,
+			name: channel.name,
+			isPrivate,
+			isMember: !isPrivate && token === bot,
+			available: true,
+		},
+		update: { name: channel.name, isPrivate, available: true },
+	});
+
+	if (token === user) await joinSlackChannel(channel.id);
+
+	return channel;
+}

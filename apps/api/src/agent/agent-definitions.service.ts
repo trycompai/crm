@@ -12,7 +12,7 @@ import { AgentTriggerService } from "./agent-trigger.service";
 import { TEAM_AGENT_STATUSES } from "./agent-visibility";
 import type {
 	AgentDeployInput,
-	AgentSetChannelInput,
+	AgentReviseInput,
 	AgentUpdateInput,
 } from "./agents.contracts";
 
@@ -184,7 +184,7 @@ export class AgentDefinitionsService {
 		return updated;
 	}
 
-	async setChannel(input: AgentSetChannelInput, userId: string) {
+	async revise(input: AgentReviseInput, userId: string) {
 		const outcome = await this.db.$transaction(async (tx) => {
 			await this.access.assertCanManageInTransaction(tx, input.id, userId);
 			const agent = await this.lockAgent(tx, input.id);
@@ -192,12 +192,12 @@ export class AgentDefinitionsService {
 			const replay = await tx.agentAuditEvent.findFirst({
 				where: {
 					agentId: input.id,
-					type: "agent.channel.changed",
+					type: "agent.revised",
 					requestId: input.clientRequestId,
 				},
 				select: { versionId: true },
 			});
-			if (replay) return { versionId: replay.versionId, queued: false };
+			if (replay) return { versionId: replay.versionId, joined: null };
 
 			if (!agent.currentVersionId) {
 				throw new BadRequestException("This agent has no deployed version.");
@@ -223,34 +223,47 @@ export class AgentDefinitionsService {
 			const parsed = schemas.agents.capabilities.safeParse(current.manifest);
 			if (!parsed.success) {
 				throw new BadRequestException(
-					"This version's manifest cannot be read, so its channel cannot be changed.",
+					"This version's manifest cannot be read, so it cannot be changed.",
 				);
 			}
 
+			const manifest = current.manifest as Record<string, unknown>;
 			const before = parsed.data.actions.find(
 				(action) => action.destination !== undefined,
 			);
-			if (!before) {
-				throw new BadRequestException("This agent does not post to Slack.");
-			}
-			if (before.destination?.id === input.channelId) {
-				return { versionId: agent.currentVersionId, queued: false };
+
+			let actions = manifest.actions as Array<Record<string, unknown>>;
+
+			if (input.actions) {
+				const keep = new Set(input.actions);
+				actions = actions.filter((action) => keep.has(String(action.type)));
+				if (actions.length === 0) {
+					throw new BadRequestException("An agent needs at least one action.");
+				}
 			}
 
-			const manifest = current.manifest as Record<string, unknown>;
-			const actions = (manifest.actions as Array<Record<string, unknown>>).map(
-				(action) =>
+			if (input.channel) {
+				actions = actions.map((action) =>
 					action.destination
 						? {
 								...action,
 								destination: {
 									...(action.destination as Record<string, unknown>),
-									id: input.channelId,
-									label: `#${input.channelName}`,
+									id: input.channel?.id,
+									label: `#${input.channel?.name}`,
 								},
 							}
 						: action,
-			);
+				);
+			}
+
+			const dataScope = input.resources
+				? {
+						...(manifest.dataScope as Record<string, unknown>),
+						mode: input.resources.length > 0 ? "SELECTED" : "WORKSPACE",
+						resources: input.resources,
+					}
+				: manifest.dataScope;
 
 			const version = await tx.agentVersion.create({
 				data: {
@@ -258,7 +271,11 @@ export class AgentDefinitionsService {
 					number: current.number + 1,
 					status: current.status,
 					instructions: current.instructions,
-					manifest: { ...manifest, actions } as Prisma.InputJsonValue,
+					manifest: {
+						...manifest,
+						actions,
+						dataScope,
+					} as Prisma.InputJsonValue,
 					modelId: current.modelId,
 					modelContextWindowTokens: current.modelContextWindowTokens,
 					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
@@ -283,25 +300,39 @@ export class AgentDefinitionsService {
 					actorUserId: userId,
 					actorType: "USER",
 					actorId: userId,
-					type: "agent.channel.changed",
-					summary: `Moved to #${input.channelName}`,
-					before: { channel: before.destination?.label ?? null },
-					after: { channel: `#${input.channelName}` },
+					type: "agent.revised",
+					summary: reviseSummary(input),
+					before: {
+						channel: before?.destination?.label ?? null,
+						actions: parsed.data.actions.map((action) => action.type),
+						resources: parsed.data.dataScope.resources.length,
+					},
+					after: {
+						channel: input.channel ? `#${input.channel.name}` : null,
+						actions: input.actions ?? null,
+						resources: input.resources?.length ?? null,
+					},
 					requestId: input.clientRequestId,
 				},
 			});
 
-			return { versionId: version.id, queued: true };
+			return {
+				versionId: version.id,
+				joined:
+					input.channel && input.channel.id !== before?.destination?.id
+						? input.channel
+						: null,
+			};
 		});
 
-		if (outcome.queued) {
+		if (outcome.joined) {
 			await this.trigger.slackChannelJoinRequested(
-				input.channelId,
-				input.channelName,
+				outcome.joined.id,
+				outcome.joined.name,
 			);
 		}
 
-		return outcome;
+		return { versionId: outcome.versionId };
 	}
 
 	async deploy(input: AgentDeployInput, userId: string) {
@@ -660,4 +691,16 @@ function readCapabilities(manifest: unknown) {
 		dataScope: parsed.data.dataScope,
 		channel: slack?.destination ?? null,
 	};
+}
+
+function reviseSummary(input: {
+	channel?: { name: string };
+	actions?: string[];
+	resources?: unknown[];
+}): string {
+	const parts: string[] = [];
+	if (input.channel) parts.push(`moved to #${input.channel.name}`);
+	if (input.actions) parts.push(`${input.actions.length} actions`);
+	if (input.resources) parts.push(`${input.resources.length} records`);
+	return parts.length > 0 ? `Changed ${parts.join(", ")}` : "Changed settings";
 }

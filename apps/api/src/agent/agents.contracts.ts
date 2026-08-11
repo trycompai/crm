@@ -39,10 +39,25 @@ export const agentDeployInput = agentIdInput.extend({
 
 export type AgentDeployInput = z.infer<typeof agentDeployInput>;
 
-export const agentSetChannelInput = agentIdInput.extend({
+export const agentReviseInput = agentIdInput.extend({
 	clientRequestId: z.uuid(),
-	channelId: z.string().trim().min(1).max(64),
-	channelName: z.string().trim().min(1).max(120),
+	channel: z
+		.object({
+			id: z.string().trim().min(1).max(64),
+			name: z.string().trim().min(1).max(120),
+		})
+		.optional(),
+	actions: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
+	resources: z
+		.array(
+			z.object({
+				id: z.string().trim().min(1).max(160),
+				kind: z.enum(["company", "contact", "deal", "integration"]),
+				label: z.string().trim().min(1).max(160),
+			}),
+		)
+		.max(50)
+		.optional(),
 });
 
-export type AgentSetChannelInput = z.infer<typeof agentSetChannelInput>;
+export type AgentReviseInput = z.infer<typeof agentReviseInput>;

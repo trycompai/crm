@@ -10,6 +10,7 @@ export const TASK_KINDS = [
 	"field-backfill",
 	"slack-people-match",
 	"slack-channel-join",
+	"slack-channel-create",
 	"agent-event",
 ] as const;
 
@@ -20,6 +21,7 @@ export const DIRECT_KINDS = [
 	"portrait",
 	"slack-people-match",
 	"slack-channel-join",
+	"slack-channel-create",
 	"agent-event",
 ] as const;
 
