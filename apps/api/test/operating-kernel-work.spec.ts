@@ -14,9 +14,13 @@ const suffix = crypto.randomUUID();
 const ownerId = `kernel-owner-${suffix}`;
 const memberId = `kernel-member-${suffix}`;
 const secondMemberId = `kernel-member-two-${suffix}`;
+const adminId = `kernel-admin-${suffix}`;
+const secondAdminId = `kernel-admin-two-${suffix}`;
 const outsiderId = `kernel-outsider-${suffix}`;
 const memberMembershipId = `kernel-membership-${suffix}`;
 const secondMembershipId = `kernel-membership-two-${suffix}`;
+const adminMembershipId = `kernel-admin-membership-${suffix}`;
+const secondAdminMembershipId = `kernel-admin-membership-two-${suffix}`;
 const ownerMembershipId = `kernel-owner-membership-${suffix}`;
 const outsiderMembershipId = `kernel-outsider-membership-${suffix}`;
 const companyId = `kernel-company-${suffix}`;
@@ -87,6 +91,16 @@ beforeAll(async () => {
 				email: `${secondMemberId}@example.test`,
 			},
 			{
+				id: adminId,
+				name: "Kernel Admin",
+				email: `${adminId}@example.test`,
+			},
+			{
+				id: secondAdminId,
+				name: "Kernel Admin Two",
+				email: `${secondAdminId}@example.test`,
+			},
+			{
 				id: outsiderId,
 				name: "Kernel Outsider",
 				email: `${outsiderId}@example.test`,
@@ -114,6 +128,20 @@ beforeAll(async () => {
 				organizationId: WORKSPACE_ID,
 				userId: secondMemberId,
 				role: "member",
+				createdAt: new Date(),
+			},
+			{
+				id: adminMembershipId,
+				organizationId: WORKSPACE_ID,
+				userId: adminId,
+				role: "admin",
+				createdAt: new Date(),
+			},
+			{
+				id: secondAdminMembershipId,
+				organizationId: WORKSPACE_ID,
+				userId: secondAdminId,
+				role: "admin",
 				createdAt: new Date(),
 			},
 			{
@@ -145,11 +173,30 @@ afterAll(async () => {
 	await db.company.deleteMany({ where: { id: companyId } });
 	await db.member.deleteMany({
 		where: {
-			id: { in: [ownerMembershipId, memberMembershipId, secondMembershipId] },
+			id: {
+				in: [
+					ownerMembershipId,
+					memberMembershipId,
+					secondMembershipId,
+					adminMembershipId,
+					secondAdminMembershipId,
+				],
+			},
 		},
 	});
 	await db.user.deleteMany({
-		where: { id: { in: [ownerId, memberId, secondMemberId, outsiderId] } },
+		where: {
+			id: {
+				in: [
+					ownerId,
+					memberId,
+					secondMemberId,
+					adminId,
+					secondAdminId,
+					outsiderId,
+				],
+			},
+		},
 	});
 });
 
@@ -268,12 +315,17 @@ describe("operating kernel Work", () => {
 
 	it("binds replay receipts to the authenticated actor", async () => {
 		const id = `kernel-actor-${suffix}`;
-		await createWork({ id });
-		const input = { id, expectedVersion: 0, clientRequestId: requestId() };
+		await createWork({ id, ownerId: memberId });
+		const input = {
+			id,
+			assigneeId: secondMemberId,
+			expectedVersion: 0,
+			clientRequestId: requestId(),
+		};
 
-		await service.claim(input, memberId);
-		await expect(service.claim(input, secondMemberId)).rejects.toThrow(
-			"assigned to you",
+		await service.assign(input, adminId);
+		await expect(service.assign(input, secondAdminId)).rejects.toThrow(
+			"client request id has already been used",
 		);
 	});
 

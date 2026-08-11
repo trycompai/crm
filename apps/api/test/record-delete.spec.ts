@@ -166,7 +166,7 @@ describe("deleting a contact", () => {
 				select: { state: true, outcome: true },
 			}),
 		).toEqual([{ state: "CANCELLED", outcome: "SUBJECT_DELETED" }]);
-		expect(await db.agentEvent.count({ where: { contactId } })).toBe(1);
+		expect(await db.agentEvent.count({ where: { contactId } })).toBe(0);
 	});
 
 	it("remembers the address so the sync cannot bring them back", async () => {

@@ -339,6 +339,7 @@ export class ContactsService {
 					type: "CONTACT",
 					id,
 				});
+				await tx.agentEvent.deleteMany({ where: { contactId: id } });
 
 				const contact = await tx.contact.delete({
 					where: { id },
