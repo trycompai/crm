@@ -17,6 +17,7 @@
 		"./fields-shape": "./src/fields-shape.ts",
 		"./fx": "./src/fx.ts",
 		"./images": "./src/images.ts",
+		"./inbound/provenance": "./src/inbound/provenance.ts",
 		"./idempotency": "./src/idempotency.ts",
 		"./outreach": "./src/outreach.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",

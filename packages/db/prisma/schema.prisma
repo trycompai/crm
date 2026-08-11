@@ -55,13 +55,18 @@ model User {
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
 
-  ownedWorkItems        WorkItem[]        @relation("WorkItemOwner")
-  requestedApprovals    ApprovalRequest[] @relation("ApprovalRequestRequestor")
-  approvedRequests      ApprovalRequest[] @relation("ApprovalRequestApprover")
-  ownedCampaigns        Campaign[]        @relation("CampaignOwner")
-  ownedSupportCases     SupportCase[]     @relation("SupportCaseOwner")
-  matchedSupportCases   SupportCase[]     @relation("SupportCaseMatchedBy")
-  ownedCustomerAccounts CustomerAccount[] @relation("CustomerAccountOwner")
+  ownedWorkItems            WorkItem[]              @relation("WorkItemOwner")
+  requestedApprovals        ApprovalRequest[]       @relation("ApprovalRequestRequestor")
+  approvedRequests          ApprovalRequest[]       @relation("ApprovalRequestApprover")
+  reviewedCandidates        ContactCandidate[]      @relation("ContactCandidateReviewer")
+  decidedFieldProvenance    EntityFieldProvenance[] @relation("EntityFieldProvenanceReviewer")
+  decidedLinkProvenance     EntityLinkProvenance[]  @relation("EntityLinkProvenanceReviewer")
+  reviewedQuarantines       RecordQuarantine[]      @relation("RecordQuarantineReviewer")
+  reviewedGranolaExclusions GranolaNoteExclusion[]  @relation("GranolaExclusionReviewer")
+  ownedCampaigns            Campaign[]              @relation("CampaignOwner")
+  ownedSupportCases         SupportCase[]           @relation("SupportCaseOwner")
+  matchedSupportCases       SupportCase[]           @relation("SupportCaseMatchedBy")
+  ownedCustomerAccounts     CustomerAccount[]       @relation("CustomerAccountOwner")
 
   members     Member[]
   invitations Invitation[]
@@ -274,6 +279,7 @@ enum SubjectType {
   COMPANY
   CONTACT
   PROSPECT
+  CONTACT_CANDIDATE
   DEAL
   EMAIL_DRAFT
   WORK_ITEM
@@ -607,6 +613,32 @@ enum IncidentSeverity {
   CRITICAL
 }
 
+enum ContactCandidateStatus {
+  PENDING
+  MATCH_PROPOSED
+  ACCEPTED
+  REJECTED
+  EXCLUDED
+  QUARANTINED
+}
+
+enum ContactCandidatePermissionState {
+  REVIEW_REQUIRED
+  PROHIBITED
+}
+
+enum ProvenanceStatus {
+  PROPOSED
+  APPLIED
+  REJECTED
+  SUPERSEDED
+}
+
+enum RecordQuarantineStatus {
+  ACTIVE
+  RESOLVED
+}
+
 model Company {
   id          String  @id @default(cuid())
   name        String
@@ -661,6 +693,7 @@ model Company {
   granolaNotes       GranolaNote[]
   fieldValues        FieldValue[]
   prospects          Prospect[]
+  candidateProposals ContactCandidate[]   @relation("CandidateProposedCompany")
   onboardings        CustomerOnboarding[]
   customerAccount    CustomerAccount?
   approvalQueues     ApprovalQueue[]      @relation("ApprovalQueueCompany")
@@ -726,6 +759,7 @@ model Contact {
   granolaNotes       GranolaNote[]
   fieldValues        FieldValue[]
   prospects          Prospect[]
+  candidateProposals ContactCandidate[]  @relation("CandidateProposedContact")
   discoveryLearnings DiscoveryLearning[] @relation("DiscoveryLearningContact")
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -2092,10 +2126,16 @@ model GranolaNote {
 }
 
 model GranolaNoteExclusion {
-  externalId String   @id
-  reason     String?
-  createdAt  DateTime @default(now())
+  externalId   String    @id
+  reason       String?
+  sourceDigest String?
+  evidence     Json?
+  reviewedById String?
+  reviewedBy   User?     @relation("GranolaExclusionReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
+  @@index([reviewedById, reviewedAt])
   @@map("granolaNoteExclusion")
 }
 
@@ -3532,4 +3572,170 @@ model CostLineItem {
   @@index([instanceId, periodStart, periodEnd])
   @@index([provider, category, periodStart])
   @@map("costLineItem")
+}
+
+model InboundSourceReceipt {
+  id               String    @id @default(cuid())
+  connector        String
+  provider         String
+  accountId        String
+  sourceObjectType String
+  sourceObjectId   String
+  sourceDigest     String
+  sourceCreatedAt  DateTime?
+  sourceUpdatedAt  DateTime?
+  capturedAt       DateTime  @default(now())
+  sourceUrl        String?
+  redactedMetadata Json
+  createdAt        DateTime  @default(now())
+
+  observations      ContactCandidateObservation[]
+  fieldProvenance   EntityFieldProvenance[]       @relation("InboundReceiptFieldProvenance")
+  linkProvenance    EntityLinkProvenance[]        @relation("InboundReceiptLinkProvenance")
+  recordQuarantines RecordQuarantine[]            @relation("InboundReceiptQuarantine")
+
+  @@unique([connector, provider, accountId, sourceObjectType, sourceObjectId], map: "inboundSourceReceipt_source_identity_key")
+  @@index([connector, accountId, capturedAt])
+  @@index([provider, accountId, capturedAt])
+  @@index([sourceDigest])
+  @@map("inboundSourceReceipt")
+}
+
+model ContactCandidate {
+  id                    String                          @id @default(cuid())
+  identityKey           String                          @unique
+  rawEmail              String?
+  canonicalEmail        String?
+  rawName               String?
+  canonicalName         String?
+  rawBusinessName       String?
+  canonicalBusinessName String?
+  rawDomain             String?
+  canonicalDomain       String?
+  status                ContactCandidateStatus          @default(PENDING)
+  permissionState       ContactCandidatePermissionState @default(REVIEW_REQUIRED)
+  proposedCompanyId     String?
+  proposedCompany       Company?                        @relation("CandidateProposedCompany", fields: [proposedCompanyId], references: [id], onDelete: SetNull)
+  proposedContactId     String?
+  proposedContact       Contact?                        @relation("CandidateProposedContact", fields: [proposedContactId], references: [id], onDelete: SetNull)
+  decisionById          String?
+  decisionBy            User?                           @relation("ContactCandidateReviewer", fields: [decisionById], references: [id], onDelete: Restrict)
+  decisionReason        String?
+  decidedAt             DateTime?
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
+
+  observations ContactCandidateObservation[]
+
+  @@index([status, permissionState, updatedAt])
+  @@index([canonicalEmail])
+  @@index([canonicalDomain, status])
+  @@index([proposedCompanyId, status])
+  @@index([proposedContactId, status])
+  @@index([decisionById, decidedAt])
+  @@map("contactCandidate")
+}
+
+model ContactCandidateObservation {
+  id              String               @id @default(cuid())
+  candidateId     String
+  candidate       ContactCandidate     @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  receiptId       String
+  receipt         InboundSourceReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  observationKey  String               @unique
+  observedEmail   String?
+  observedName    String?
+  observedTitle   String?
+  observedCompany String?
+  observedDomain  String?
+  observedRole    String?
+  evidenceClass   String
+  observedAt      DateTime             @default(now())
+  createdAt       DateTime             @default(now())
+
+  @@index([candidateId, observedAt])
+  @@index([receiptId])
+  @@index([evidenceClass, observedAt])
+  @@map("contactCandidateObservation")
+}
+
+model EntityFieldProvenance {
+  id          String               @id @default(cuid())
+  subjectType SubjectType
+  subjectId   String
+  fieldName   String
+  valueDigest String
+  receiptId   String
+  receipt     InboundSourceReceipt @relation("InboundReceiptFieldProvenance", fields: [receiptId], references: [id], onDelete: Restrict)
+  confidence  Float?
+  method      String
+  status      ProvenanceStatus     @default(PROPOSED)
+  observedAt  DateTime             @default(now())
+  freshUntil  DateTime?
+  decidedById String?
+  decidedBy   User?                @relation("EntityFieldProvenanceReviewer", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@unique([subjectType, subjectId, fieldName, valueDigest, receiptId], map: "entityFieldProvenance_identity_key")
+  @@index([subjectType, subjectId, fieldName, status], map: "entityFieldProvenance_subject_scope_idx")
+  @@index([status, freshUntil])
+  @@index([receiptId])
+  @@index([decidedById, decidedAt])
+  @@map("entityFieldProvenance")
+}
+
+model EntityLinkProvenance {
+  id           String               @id @default(cuid())
+  sourceType   SubjectType
+  sourceId     String
+  relationship String
+  targetType   SubjectType
+  targetId     String
+  receiptId    String
+  receipt      InboundSourceReceipt @relation("InboundReceiptLinkProvenance", fields: [receiptId], references: [id], onDelete: Restrict)
+  confidence   Float?
+  method       String
+  status       ProvenanceStatus     @default(PROPOSED)
+  observedAt   DateTime             @default(now())
+  freshUntil   DateTime?
+  decidedById  String?
+  decidedBy    User?                @relation("EntityLinkProvenanceReviewer", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt    DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@unique([sourceType, sourceId, relationship, targetType, targetId, receiptId], map: "entityLinkProvenance_identity_key")
+  @@index([sourceType, sourceId, relationship, status], map: "entityLinkProvenance_source_scope_idx")
+  @@index([targetType, targetId, relationship, status], map: "entityLinkProvenance_target_scope_idx")
+  @@index([status, freshUntil])
+  @@index([receiptId])
+  @@index([decidedById, decidedAt])
+  @@map("entityLinkProvenance")
+}
+
+model RecordQuarantine {
+  id           String                 @id @default(cuid())
+  subjectType  SubjectType
+  subjectId    String
+  sourceBatch  String?
+  receiptId    String?
+  receipt      InboundSourceReceipt?  @relation("InboundReceiptQuarantine", fields: [receiptId], references: [id], onDelete: Restrict)
+  reason       String
+  evidence     Json?
+  status       RecordQuarantineStatus @default(ACTIVE)
+  reviewedById String?
+  reviewedBy   User?                  @relation("RecordQuarantineReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt   DateTime?
+  resolvedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@unique([subjectType, subjectId, reason], map: "recordQuarantine_active_subject_reason_key", where: { status: "ACTIVE" })
+  @@index([subjectType, subjectId, status])
+  @@index([sourceBatch, status])
+  @@index([receiptId])
+  @@index([reviewedById, reviewedAt])
+  @@map("recordQuarantine")
 }
