@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus } from "@crm/db";
 import { defineChannel, POST } from "eve/channels";
-import { sweepBlankFacts } from "../lib/blank-facts";
 import { verifyKey } from "../lib/context-dev";
 import {
 	builderIdFromToken,
@@ -87,22 +86,6 @@ export default defineChannel({
 				return new Response(null, { status: 202 });
 			},
 		),
-
-		POST("/internal/crm/apply-blank-facts", async (request) => {
-			if (!authorised(request)) {
-				return new Response("Unauthorized", { status: 401 });
-			}
-
-			const sweep = await sweepBlankFacts();
-
-			return Response.json({
-				scanned: sweep.scanned,
-				filled: sweep.filled,
-				settled: sweep.settled,
-				waiting: sweep.waiting,
-				unscanned: sweep.unscanned,
-			});
-		}),
 
 		POST("/internal/crm/verify-key", async (request) => {
 			if (!authorised(request)) {

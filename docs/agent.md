@@ -89,29 +89,34 @@ task row; exists because the API may not call Context.
 - **`classifyKey` rejects on `401` and nothing else.**
 - **The candidate key, never the stored one.**
 
-### `POST /internal/crm/apply-blank-facts`
+### Blank fields are filled on the dispatch tick
 
-Applies every pending suggestion whose field is still empty, and clears the ones that
-have stopped saying anything. No session, no model, no task row, no credits —
-`sweepBlankFacts` (`lib/blank-facts.ts`) is a database pass. It exists as a route for
-the same reason `verify-key` does: the rule is `fillsBlank`, the rule lives here, and a
-second copy of it in Nest is what `api.md` forbids. `BlankFactsService` carries the
-question and reports the counts.
+`sweepBlankFacts` (`lib/blank-facts.ts`) applies every pending suggestion whose field is
+still empty and clears the ones that have stopped saying anything. It runs at the top of
+`schedules/dispatch.ts`, every minute, over **every contact in the workspace** — it is a
+database pass with no session, no model, no task row and no credits, so there is nothing
+to ration and nobody to scope it to.
 
-- **Scans 2000 suggestions and fills at most 500 a pass**, and says what it did not
-  reach (`unscanned`) rather than reporting a clean sweep it did not make.
-- **Idempotent** — a second pass over the same rows fills nothing, because they are no
-  longer blank.
-- **The suggestions left are conflicts**, every one of them against a value already on
-  the record. That number should be small and should be read as work for a rep.
+- **Scans 2000 suggestions and fills at most 500 a pass**, and reports what it did not
+  reach (`unscanned`) rather than a clean sweep it did not make.
+- **Idempotent** — a second pass fills nothing, because those fields are no longer blank.
+- **The suggestions left are conflicts**, every one against a value already on the
+  record. That number should stay small and reads as work for a rep.
+- **It does not belong on sign-in, and that is not a preference.** It lived there for one
+  release and never once ran. Two reasons, either fatal: `onSignedIn` fires on
+  `session.create`, so a rep already signed in never triggers it; and `BackfillService`
+  does its work in a detached `void (async () => …)()` after the response, on a Nest API
+  that is a Vercel **serverless function** (`apps/api/api/index.ts`) — the tail of that
+  chain is not guaranteed to run at all. A cron in the agent is the only trigger here
+  that is a fact rather than a hope.
 
 ### Backfills
 
 Sign-in sweep covers records never looked up (10 credits/company);
 `ImageMirrorService` in the same sweep re-hosts off-site pictures (free);
-the same sweep asks `apply-blank-facts` above (free);
 `backfill:images` fixes enriched records missing only pictures (free);
-`backfill:facts` is the same fact sweep run by hand, with `--dry` to read it first.
+`backfill:facts` is the blank-field sweep above run by hand, with `--dry` to read it
+first — the cron covers it, so this is for a machine pointed at another database.
 
 - **The image sweep keeps "every picture is ours" true**, not true-since-Tuesday.
   25 rows/table/sweep.
@@ -144,9 +149,8 @@ wrong in the direction that looks useful.
   into a blank is a click that can only say yes, and a rep with four hundred contacts
   reads none of them. `fillsBlank` is the whole rule: no human value in the way and
   nothing already found. **`PROBABLE` still means *a rep decides* when the field is
-  already filled**, which is the case where a wrong answer costs something. The sign-in
-  sweep applies the same rule to rows that predate it —
-  `POST /internal/crm/apply-blank-facts`, above.
+  already filled**, which is the case where a wrong answer costs something. The dispatch
+  tick applies the same rule to rows that predate it — `sweepBlankFacts`, above.
 - **Applying settles the field's other suggestions.** They were all offers to fill the
   same blank, and the sheet shows one at a time — so left alone, accepting one reveals
   the next, forever. The same rule holds when a rep accepts one (`decideFact`).

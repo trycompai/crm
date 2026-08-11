@@ -1,5 +1,6 @@
 import { defineSchedule } from "eve/schedules";
 import crm from "../channels/crm";
+import { sweepBlankFacts } from "../lib/blank-facts";
 import {
 	pendingAgentRunIds,
 	pendingBuilderSubmissionIds,
@@ -12,6 +13,8 @@ export default defineSchedule({
 	async run({ receive, waitUntil, appAuth }) {
 		waitUntil(
 			Promise.all([
+				sweepBlankFacts(),
+
 				drainAll((task) =>
 					receive(crm, {
 						message: brief(task),

@@ -6,7 +6,6 @@ import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { Cache } from "cache-manager";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
-import { BlankFactsService } from "../agent/blank-facts.service";
 import { FaviconService } from "../companies/favicon.service";
 import { InjectDatabase } from "../database/database.constants";
 import { ImageMirrorService } from "./image-mirror.service";
@@ -54,7 +53,6 @@ export class BackfillService implements OnModuleInit {
 		private readonly agent: AgentTriggerService,
 		private readonly favicon: FaviconService,
 		private readonly images: ImageMirrorService,
-		private readonly facts: BlankFactsService,
 		@Inject(CACHE_MANAGER) private readonly cache: Cache,
 	) {}
 
@@ -76,7 +74,6 @@ export class BackfillService implements OnModuleInit {
 				const contacts = await this.runContacts();
 
 				const mirrored = await this.images.sweep();
-				const facts = await this.facts.sweep();
 
 				this.logger.log({
 					message: "Automatic backfill swept",
@@ -84,9 +81,6 @@ export class BackfillService implements OnModuleInit {
 					remaining: companies.remaining + contacts.remaining,
 					iconsResolving: companies.iconsResolving,
 					imagesMirrored: mirrored.copied,
-					blankFieldsFilled: facts.filled,
-					suggestionsSettled: facts.settled,
-					suggestionsWaiting: facts.waiting + facts.unscanned,
 				});
 			} catch (error) {
 				this.logger.error(
