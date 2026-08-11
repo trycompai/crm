@@ -26,6 +26,7 @@ import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageIn
 import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput } from "../fields/fields.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
+import { instancesListInput, instanceIdInput } from "../instances/instances.contracts";
 import { marketingListInput, marketingCampaignIdInput, marketingPlanInput } from "../marketing/marketing.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { leadDiscoveryInput, leadDiscoveryTaskInput, outreachProspectMutationInput, outreachRegenerateInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
@@ -50,6 +51,7 @@ import type { DealsRouter } from "../deals/deals.router";
 import type { FieldsRouter } from "../fields/fields.router";
 import type { GoogleRouter } from "../google/google.router";
 import type { InboundRouter } from "../inbound/inbound.router";
+import type { InstancesRouter } from "../instances/instances.router";
 import type { MarketingRouter } from "../marketing/marketing.router";
 import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { OutreachRouter } from "../outreach/outreach.router";
@@ -413,6 +415,14 @@ const appRouter = t.router({
     excludeGranola: publicProcedure
       .input(granolaExcludeInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["excludeGranola"]>>)
+    }),
+  instances: t.router({
+    list: publicProcedure
+      .input(instancesListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InstancesRouter["list"]>>),
+    byId: publicProcedure
+      .input(instanceIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InstancesRouter["byId"]>>)
     }),
   marketing: t.router({
     list: publicProcedure

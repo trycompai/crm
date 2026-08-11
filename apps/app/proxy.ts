@@ -19,6 +19,7 @@ const SECTIONS = [
 	"/companies",
 	"/contacts",
 	"/deals",
+	"/instances",
 	"/marketing",
 	"/settings",
 ];
