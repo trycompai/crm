@@ -61,6 +61,7 @@ export class AgentRunsService {
 				finishedAt: true,
 				initiatedBy: { select: { id: true, name: true, image: true } },
 				version: { select: { id: true, number: true } },
+				_count: { select: { events: true } },
 				events: {
 					orderBy: { sequence: "asc" },
 					take: RUN_EVENT_LIMIT,
@@ -95,8 +96,10 @@ export class AgentRunsService {
 			},
 		});
 
-		return rows.map((run) => ({
+		return rows.map(({ _count, ...run }) => ({
 			...run,
+			totalEvents: _count.events,
+			eventsTruncated: _count.events > run.events.length,
 			canCancel:
 				CANCELLABLE_STATUSES.includes(run.status) &&
 				(agent.canManage || run.initiatedBy?.id === userId),

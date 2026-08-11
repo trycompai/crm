@@ -348,6 +348,16 @@ export class AgentTriggerService {
 		});
 	}
 
+	canReachAgent(): boolean {
+		return bridge() !== null;
+	}
+
+	drainQueues(): void {
+		this.poke();
+		this.deployedAgentRunQueued();
+		this.builderConversationQueued();
+	}
+
 	private poke(): void {
 		this.pokeRoute("/internal/crm/dispatch");
 	}

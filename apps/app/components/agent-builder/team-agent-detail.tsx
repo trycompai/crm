@@ -948,6 +948,12 @@ function ExpandedRun({ run }: { run: RunRow }) {
 						{condensedEvents === 1 ? "update" : "updates"} condensed
 					</div>
 				) : null}
+				{run.eventsTruncated ? (
+					<div className="flex min-h-9 items-center border-t px-4 py-2 text-warning text-xs sm:px-5">
+						Showing the first {run.events.length} of {run.totalEvents} steps.
+						This run is too long to display in full.
+					</div>
+				) : null}
 			</div>
 		</div>
 	);
