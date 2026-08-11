@@ -104,8 +104,14 @@ export async function claimDue(
 	);
 }
 
-export async function retireExhausted(): Promise<TaskSubject[]> {
+export async function retireExhausted(
+	excludedKinds: readonly string[] = [],
+): Promise<TaskSubject[]> {
 	const now = new Date();
+	const excluded =
+		excludedKinds.length > 0
+			? Prisma.sql`AND t.kind NOT IN (${Prisma.join(excludedKinds)})`
+			: Prisma.empty;
 
 	return db.$queryRaw<TaskSubject[]>`
 		UPDATE "agentTask" AS t
@@ -114,6 +120,7 @@ export async function retireExhausted(): Promise<TaskSubject[]> {
 		WHERE t."finishedAt" IS NULL
 			AND t."attempts" >= ${MAX_ATTEMPTS}
 			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
+			${excluded}
 		RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind;
 	`;
 }

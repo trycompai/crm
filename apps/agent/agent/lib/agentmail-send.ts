@@ -343,8 +343,8 @@ async function block(id: string, reason: string) {
 }
 
 async function noteError(id: string, reason: string): Promise<void> {
-	await db.emailDraft.update({
-		where: { id },
+	await db.emailDraft.updateMany({
+		where: { id, status: "SENDING" },
 		data: { status: "APPROVED", sendError: reason.slice(0, 500) },
 	});
 }
@@ -353,6 +353,7 @@ async function sendStillAllowed(
 	id: string,
 	recipient: string,
 ): Promise<boolean> {
+	if (outreachSendsPaused()) return false;
 	const domain = recipient.split("@")[1] ?? null;
 	const [draft, suppressedContact, suppressedDomain] = await Promise.all([
 		db.emailDraft.findUnique({

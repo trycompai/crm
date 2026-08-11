@@ -274,6 +274,63 @@ describe("approved AgentMail outreach", () => {
 		});
 	});
 
+	it("rechecks recovery switches after creating the provider draft", async () => {
+		let calls = 0;
+		const result = await sendApprovedAgentMailDraft(draftId, async () => {
+			calls += 1;
+			process.env.OUTREACH_SENDS_PAUSED = "true";
+			return Response.json({ draft_id: `paused-draft-${suffix}` });
+		});
+
+		expect(result.sent).toBe(false);
+		expect(calls).toBe(1);
+		expect(
+			await db.emailDraft.findUnique({
+				where: { id: draftId },
+				select: { status: true },
+			}),
+		).toEqual({ status: "REJECTED" });
+
+		process.env.OUTREACH_SENDS_PAUSED = "false";
+		await db.emailDraft.update({
+			where: { id: draftId },
+			data: {
+				status: "APPROVED",
+				sendError: null,
+				externalDraftId: null,
+			},
+		});
+	});
+
+	it("does not revive a draft rejected during a provider error", async () => {
+		const result = await sendApprovedAgentMailDraft(draftId, async () => {
+			await db.emailDraft.update({
+				where: { id: draftId },
+				data: {
+					status: "REJECTED",
+					sendError: "Paused while the provider was unavailable.",
+				},
+			});
+			return new Response(null, { status: 503 });
+		});
+
+		expect(result.sent).toBe(false);
+		expect(
+			await db.emailDraft.findUnique({
+				where: { id: draftId },
+				select: { status: true, sendError: true },
+			}),
+		).toEqual({
+			status: "REJECTED",
+			sendError: "Paused while the provider was unavailable.",
+		});
+
+		await db.emailDraft.update({
+			where: { id: draftId },
+			data: { status: "APPROVED", sendError: null },
+		});
+	});
+
 	it("sends the approved copy once and records the provider result", async () => {
 		const calls: Array<{ url: string; options: RequestInit }> = [];
 		const request = async (

@@ -2,7 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { sendApprovedAgentMailDraft } from "./agentmail-send";
 import { runAgentMailSync } from "./agentmail-sync";
 import { APP_AUTH, type AppAuth } from "./app-auth";
-import { directTaskKinds } from "./autonomy";
+import { directTaskKinds, outreachSendsPaused } from "./autonomy";
 import { brandOutcome, runBrand } from "./brand";
 import { markRunning, settle } from "./enrichment";
 import { runGranolaSync } from "./granola-sync";
@@ -33,7 +33,9 @@ export async function retireAbandoned(): Promise<void> {
 	let abandoned: TaskSubject[] = [];
 
 	try {
-		abandoned = await retireExhausted();
+		abandoned = await retireExhausted(
+			outreachSendsPaused() ? ["email-draft-send"] : [],
+		);
 	} catch {
 		return;
 	}

@@ -175,6 +175,23 @@ describe("retireExhausted", () => {
 
 		expect(await retireExhausted()).toHaveLength(0);
 	});
+
+	it("does not retire a channel that is paused", async () => {
+		const task = await queue();
+
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			await claimDue(10, RESEARCH);
+			await expire(task.id);
+		}
+
+		expect(await retireExhausted([kind])).toHaveLength(0);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { finishedAt: true, outcome: true },
+			}),
+		).toEqual({ finishedAt: null, outcome: null });
+	});
 });
 
 describe("completeTask", () => {
