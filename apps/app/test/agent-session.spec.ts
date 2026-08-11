@@ -159,6 +159,17 @@ describe("the panel", () => {
 		expect(source()).toContain("Start a new conversation");
 		expect(source()).toContain("onClick={onNewThread}");
 	});
+
+	it("exposes stable composer and async status semantics", () => {
+		const panel = source();
+
+		expect(panel).toContain('aria-label="Message the agent"');
+		expect(panel).toContain("aria-busy={busy}");
+		expect(panel).toContain("aria-disabled={locked}");
+		expect(panel).toContain('role="alert"');
+		expect(panel).toContain('aria-live="polite"');
+		expect(panel.match(/role="status"/g)).toHaveLength(1);
+	});
 });
 
 describe("the record sheet", () => {

@@ -10,13 +10,20 @@ import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useQueryStates } from "nuqs";
 import { searchParsers } from "./list-search-params";
 
-export function ListSearch({ placeholder }: { placeholder: string }) {
+export function ListSearch({
+	placeholder,
+	label = "Search records",
+}: {
+	placeholder: string;
+	label?: string;
+}) {
 	const [{ q }, setState] = useQueryStates(searchParsers);
 
 	return (
 		<ListSearchInput
 			committed={q}
 			commit={(next) => setState({ q: next, page: 1 })}
+			label={label}
 			placeholder={placeholder}
 		/>
 	);
@@ -25,10 +32,12 @@ export function ListSearch({ placeholder }: { placeholder: string }) {
 function ListSearchInput({
 	committed,
 	commit,
+	label,
 	placeholder,
 }: {
 	committed: string;
 	commit: (value: string) => void;
+	label: string;
 	placeholder: string;
 }) {
 	const [value, setValue] = useSearchInput(committed, commit);
@@ -39,6 +48,7 @@ function ListSearchInput({
 				<Search />
 			</InputGroupAddon>
 			<InputGroupInput
+				aria-label={label}
 				placeholder={placeholder}
 				value={value}
 				onChange={(event) => setValue(event.target.value)}

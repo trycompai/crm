@@ -224,6 +224,11 @@ function Thread({
 	const busy = agent.status === "submitted" || agent.status === "streaming";
 	const messages = toTranscript(agent.data.messages);
 	const question = pendingQuestion(agent.data.messages);
+	const statusMessage = busy
+		? "Working on your question."
+		: thread?.status === "working"
+			? "Still working on the last question. Your next one can go in when it finishes."
+			: null;
 
 	const { locked, ended } = composerState(thread, busy);
 
@@ -265,10 +270,14 @@ function Thread({
 
 			{agent.error ? <Failure message={agent.error.message} /> : null}
 
-			{thread?.status === "working" && !busy ? (
-				<p className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5">
-					Still working on the last question. Your next one can go in when it
-					finishes.
+			{statusMessage ? (
+				<p
+					role="status"
+					aria-live="polite"
+					aria-atomic="true"
+					className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5"
+				>
+					{statusMessage}
 				</p>
 			) : null}
 
@@ -294,12 +303,15 @@ function Thread({
 				) : (
 					<form
 						className="flex min-w-0 items-center gap-2"
+						aria-busy={busy}
 						onSubmit={(event) => {
 							event.preventDefault();
 							ask(draft);
 						}}
 					>
 						<Input
+							aria-disabled={locked}
+							aria-label="Message the agent"
 							value={draft}
 							onChange={(event) => setDraft(event.target.value)}
 							placeholder={copy.placeholder}
@@ -366,7 +378,7 @@ function Failure({ message }: { message: string }) {
 			: null;
 
 	return (
-		<div className="border-t px-4 py-3 text-xs sm:px-5">
+		<div role="alert" className="border-t px-4 py-3 text-xs sm:px-5">
 			<p className="wrap-break-word text-destructive">{message}</p>
 			{hint ? (
 				<p className="wrap-break-word text-muted-foreground text-xs">{hint}</p>

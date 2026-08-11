@@ -47,6 +47,21 @@ export const PROPERTY_LABEL = "truncate text-muted-foreground text-xs";
 
 const PROPERTY_CELL = "border border-transparent py-1";
 
+type DetailSheetFocusTarget = {
+	isConnected: boolean;
+	focus: () => void;
+};
+
+export function restoreDetailSheetFocus(
+	target: DetailSheetFocusTarget | null,
+	event?: Pick<Event, "preventDefault">,
+): boolean {
+	if (!target?.isConnected) return false;
+	target.focus();
+	event?.preventDefault();
+	return true;
+}
+
 export function DetailSheet({
 	open,
 	onOpenChange,
@@ -61,6 +76,7 @@ export function DetailSheet({
 	children: ReactNode;
 }) {
 	const content = useRef<HTMLDivElement>(null);
+	const opener = useRef<HTMLElement | null>(null);
 
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
@@ -71,7 +87,18 @@ export function DetailSheet({
 				showCloseButton={false}
 				onOpenAutoFocus={(event) => {
 					event.preventDefault();
+					const active = document.activeElement;
+					opener.current =
+						active instanceof HTMLElement &&
+						active !== document.body &&
+						!content.current?.contains(active)
+							? active
+							: null;
 					content.current?.focus();
+				}}
+				onCloseAutoFocus={(event) => {
+					restoreDetailSheetFocus(opener.current, event);
+					opener.current = null;
 				}}
 				className={cn("flex flex-col gap-0 p-0", className)}
 			>
