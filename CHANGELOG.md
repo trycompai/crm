@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/trycompai/crm/compare/v1.6.1...v1.7.0) (2026-08-11)
+
+
+### Features
+
+* **db:** add peek script for inspecting database contents ([#110](https://github.com/trycompai/crm/issues/110)) ([acae8ec](https://github.com/trycompai/crm/commit/acae8ec1ab29851ec66a8a1e8e89672bef6e7eca))
+
 ## [1.6.1](https://github.com/trycompai/crm/compare/v1.6.0...v1.6.1) (2026-08-11)
 
 
