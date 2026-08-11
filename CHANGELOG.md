@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/trycompai/crm/compare/v1.8.0...v1.8.1) (2026-08-11)
+
+
+### Fixes
+
+* **ci:** ship releases by opening a pull request into release ([#114](https://github.com/trycompai/crm/issues/114)) ([924060b](https://github.com/trycompai/crm/commit/924060bac114d7fba6681c6b1b2f38de19f36440))
+
 ## [1.8.0](https://github.com/trycompai/crm/compare/v1.7.0...v1.8.0) (2026-08-11)
 
 
