@@ -3,6 +3,7 @@ import type { Db } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
+import type { SlackJoinChannelInput } from "./slack.contracts";
 
 const PEOPLE_SYNC_ACTIVE_MS = 30_000;
 
@@ -14,7 +15,7 @@ export class SlackConnectionService {
 	) {}
 
 	async status() {
-		const [account, agents, matches, memberCount] = await Promise.all([
+		const [account, agents, matches, memberCount, grant] = await Promise.all([
 			this.db.account.findFirst({
 				where: { providerId: "slack", accessToken: { not: null } },
 				orderBy: { updatedAt: "desc" },
@@ -43,6 +44,7 @@ export class SlackConnectionService {
 				select: { slackUserId: true, updatedAt: true },
 			}),
 			this.db.member.count({ where: { organizationId: WORKSPACE_ID } }),
+			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
 		]);
 
 		const linkedAgents = agents
@@ -69,6 +71,7 @@ export class SlackConnectionService {
 				.split(",")
 				.map((scope) => scope.trim())
 				.filter(Boolean),
+			canInviteItself: Boolean(grant),
 			agents: linkedAgents,
 			people: { matched, reviewed },
 		};
@@ -133,12 +136,62 @@ export class SlackConnectionService {
 		return { requested: true };
 	}
 
+	async channels() {
+		const [rows, grant] = await Promise.all([
+			this.db.slackChannel.findMany({
+				where: { available: true },
+				orderBy: [{ isMember: "desc" }, { name: "asc" }],
+				select: {
+					id: true,
+					name: true,
+					memberCount: true,
+					isPrivate: true,
+					isMember: true,
+					inviteRequestedAt: true,
+				},
+			}),
+			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
+		]);
+
+		return {
+			canInviteItself: Boolean(grant),
+			rows: rows.map((row) => ({
+				...row,
+				inviteRequestedAt: row.inviteRequestedAt?.toISOString() ?? null,
+			})),
+		};
+	}
+
+	async joinChannel(input: SlackJoinChannelInput) {
+		const channel = await this.db.slackChannel.findUnique({
+			where: { id: input.channelId },
+			select: { id: true, name: true, isMember: true, isPrivate: true },
+		});
+		if (!channel) throw new NotFoundException("No such Slack channel.");
+		if (channel.isMember) return { queued: false, alreadyJoined: true };
+
+		const grant = await this.db.slackWorkspaceGrant.findFirst({
+			select: { id: true },
+		});
+		if (channel.isPrivate && !grant) {
+			await this.db.slackChannel.update({
+				where: { id: channel.id },
+				data: { inviteRequestedAt: new Date() },
+			});
+			return { queued: false, alreadyJoined: false };
+		}
+
+		await this.agent.slackChannelJoinRequested(channel.id, channel.name);
+		return { queued: true, alreadyJoined: false };
+	}
+
 	async disconnect() {
 		const removed = await this.db.$transaction(async (tx) => {
 			const accounts = await tx.account.deleteMany({
 				where: { providerId: "slack" },
 			});
 			await tx.slackChannel.deleteMany({});
+			await tx.slackWorkspaceGrant.deleteMany({});
 			return accounts.count;
 		});
 

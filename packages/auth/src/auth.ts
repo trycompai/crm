@@ -15,7 +15,8 @@ import {
 	SYNC_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
-import { SLACK_REQUESTED_SCOPES } from "./slack-scopes";
+import { storeSlackUserGrant } from "./slack-grant";
+import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
@@ -123,6 +124,9 @@ export const auth = betterAuth({
 								disableSignUp: true,
 								redirectURI: slackRedirectUri,
 								scopes: [...SLACK_REQUESTED_SCOPES],
+								authorizationUrlParams: {
+									user_scope: SLACK_USER_SCOPES.join(","),
+								},
 								getToken: async ({ code }) => {
 									const response = await fetch(
 										"https://slack.com/api/oauth.v2.access",
@@ -147,6 +151,8 @@ export const auth = betterAuth({
 											message: `Slack authorization failed (${reason}).`,
 										});
 									}
+									await storeSlackUserGrant(raw);
+
 									return {
 										accessToken,
 										tokenType: stringValue(raw, "token_type"),

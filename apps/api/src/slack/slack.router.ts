@@ -1,6 +1,8 @@
 import { Inject } from "@nestjs/common";
-import { Mutation, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import { Input, Mutation, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import type { z } from "zod";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
+import { slackJoinChannelInput } from "./slack.contracts";
 import { SlackConnectionService } from "./slack-connection.service";
 
 @Router({ alias: "slack" })
@@ -19,6 +21,16 @@ export class SlackRouter {
 	@Query()
 	matches() {
 		return this.connection.matches();
+	}
+
+	@Query()
+	channels() {
+		return this.connection.channels();
+	}
+
+	@Mutation({ input: slackJoinChannelInput })
+	joinChannel(@Input() input: z.infer<typeof slackJoinChannelInput>) {
+		return this.connection.joinChannel(input);
 	}
 
 	@Mutation()

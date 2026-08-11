@@ -41,12 +41,19 @@ export {
 	signsInWithMicrosoft,
 } from "./scopes";
 export { onSignedIn, type SignedInHandler } from "./signed-in";
+export { clearSlackUserGrant, storeSlackUserGrant } from "./slack-grant";
 export {
 	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,
+	SLACK_SCOPE_GROUPS,
 	SLACK_SCOPES,
+	SLACK_USER_GRANT,
+	SLACK_USER_SCOPES,
 	type SlackScope,
+	type SlackScopeGroup,
+	type SlackScopeSummary,
 	slackScopeDrift,
+	summariseSlackScopes,
 } from "./slack-scopes";
 export {
 	canConfigureSso,

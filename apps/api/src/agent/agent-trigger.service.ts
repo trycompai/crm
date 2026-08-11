@@ -99,6 +99,27 @@ export class AgentTriggerService {
 		);
 	}
 
+	async slackChannelJoinRequested(
+		channelId: string,
+		channelName: string,
+	): Promise<void> {
+		await this.enqueue(
+			{
+				kind: "slack-channel-join",
+				reason: `Add Comp AI to #${channelName}`,
+				priority: PRIORITY.slackJoin,
+				budget: 1,
+				subject: channelId,
+				payload: {
+					type: "slack.channel.join",
+					channelId,
+					channelName,
+				},
+			},
+			true,
+		);
+	}
+
 	async withCrmEvents<Result>(
 		work: (
 			tx: Prisma.TransactionClient,
@@ -269,6 +290,8 @@ export class AgentTriggerService {
 			reason: string;
 			priority: number;
 			budget: number;
+			payload?: Prisma.InputJsonValue;
+			subject?: string;
 		},
 		required = false,
 	): Promise<void> {
@@ -276,7 +299,7 @@ export class AgentTriggerService {
 			const created = await this.db.$transaction(async (tx) => {
 				await lockIdempotencyKey(
 					tx,
-					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}`,
+					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.subject ?? ""}`,
 				);
 				const pending = await tx.agentTask.findFirst({
 					where: {
@@ -284,6 +307,7 @@ export class AgentTriggerService {
 						finishedAt: null,
 						...(task.contactId ? { contactId: task.contactId } : {}),
 						...(task.companyId ? { companyId: task.companyId } : {}),
+						...(task.subject ? { reason: task.reason } : {}),
 					},
 					select: { id: true },
 				});
@@ -298,6 +322,7 @@ export class AgentTriggerService {
 						priority: task.priority,
 						budget: task.budget,
 						dueAt: new Date(),
+						...(task.payload ? { payload: task.payload } : {}),
 					},
 				});
 				return true;

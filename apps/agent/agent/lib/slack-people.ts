@@ -1,5 +1,6 @@
 import { db } from "@crm/db";
 import { WORKSPACE_ID } from "@crm/db/workspace";
+import { SLACK } from "./slack-config";
 import { slackAccessToken } from "./slack-connection";
 
 type SlackMember = {
@@ -88,18 +89,17 @@ async function persistSlackChannels(channels: SlackChannel[]): Promise<number> {
 	await db.$transaction(async (tx) => {
 		await tx.slackChannel.updateMany({ data: { available: false } });
 		for (const channel of available) {
+			const shape = {
+				name: channel.name,
+				memberCount: channel.num_members,
+				isPrivate: channel.is_private ?? false,
+				isMember: channel.is_member ?? false,
+			};
+
 			await tx.slackChannel.upsert({
 				where: { id: channel.id },
-				create: {
-					id: channel.id,
-					name: channel.name,
-					memberCount: channel.num_members,
-				},
-				update: {
-					name: channel.name,
-					memberCount: channel.num_members,
-					available: true,
-				},
+				create: { id: channel.id, ...shape },
+				update: { ...shape, available: true },
 			});
 		}
 	});
@@ -112,7 +112,7 @@ async function listSlackMembers(accessToken: string): Promise<SlackMember[]> {
 	let cursor = "";
 	do {
 		const url = new URL("https://slack.com/api/users.list");
-		url.searchParams.set("limit", "200");
+		url.searchParams.set("limit", String(SLACK.inventory.pageSize));
 		if (cursor) url.searchParams.set("cursor", cursor);
 		const response = await fetch(url, {
 			headers: { Authorization: `Bearer ${accessToken}` },
@@ -136,7 +136,7 @@ async function listSlackChannels(accessToken: string): Promise<SlackChannel[]> {
 	let cursor = "";
 	do {
 		const url = new URL("https://slack.com/api/conversations.list");
-		url.searchParams.set("limit", "200");
+		url.searchParams.set("limit", String(SLACK.inventory.pageSize));
 		url.searchParams.set("exclude_archived", "true");
 		url.searchParams.set("types", "public_channel,private_channel");
 		if (cursor) url.searchParams.set("cursor", cursor);

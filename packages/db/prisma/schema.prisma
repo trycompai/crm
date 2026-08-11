@@ -66,15 +66,30 @@ model SlackMemberMatch {
 }
 
 model SlackChannel {
-  id          String   @id
-  name        String
-  memberCount Int?
-  available   Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String    @id
+  name              String
+  memberCount       Int?
+  available         Boolean   @default(true)
+  isPrivate         Boolean   @default(false)
+  isMember          Boolean   @default(false)
+  inviteRequestedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([available, name])
   @@map("slackChannel")
+}
+
+model SlackWorkspaceGrant {
+  id         String   @id @default(cuid())
+  teamId     String   @unique
+  teamName   String?
+  userToken  String
+  userScopes String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("slackWorkspaceGrant")
 }
 
 model Session {

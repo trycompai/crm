@@ -1,11 +1,11 @@
-import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Close from "@carbon/icons-react/es/Close";
 import Warning from "@carbon/icons-react/es/Warning";
 import {
-	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,
+	SLACK_USER_GRANT,
 	type SlackScope,
 	slackScopeDrift,
+	summariseSlackScopes,
 } from "@crm/auth";
 import {
 	Alert,
@@ -22,10 +22,15 @@ import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { ConnectionPage } from "../connection-page";
+import { SlackChannels } from "./slack-channels";
 import { SlackConnectButton } from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
 
-const PRIVATE_CHANNEL_SCOPES = ["groups:read", "groups:history"];
+const PRIVATE_CHANNEL_SCOPES = [
+	"groups:read",
+	"groups:history",
+	SLACK_USER_GRANT.scope,
+];
 
 const never = [
 	"Send anything at all until you build an automation and switch it on",
@@ -86,9 +91,9 @@ async function SlackConnectionPageContent({
 					time.
 				</p>
 			</header>
-			<ScopeList
+			<ScopeGroups
 				title="What you are handing over"
-				scopes={describeSlackScopes(SLACK_REQUESTED_SCOPES)}
+				scopes={[...SLACK_REQUESTED_SCOPES]}
 			/>
 			<PlainList
 				title="What it will never do"
@@ -152,11 +157,15 @@ function ConnectedSlack({
 			status: string;
 		}>;
 		scopes: string[];
+		canInviteItself: boolean;
 		people: { matched: number; reviewed: number };
 	};
 }) {
 	const agents = status.agents;
 	const drift = slackScopeDrift(status.scopes);
+	const missing = status.canInviteItself
+		? drift.missing
+		: [...drift.missing, SLACK_USER_GRANT];
 	return (
 		<ConnectionPage>
 			<header className="flex flex-col gap-2 px-(--spacing-block-inline)">
@@ -175,12 +184,13 @@ function ConnectedSlack({
 					only to the destination approved in their automation.
 				</p>
 			</header>
-			<MissingGrant missing={drift.missing} slug={slug} />
-			<ScopeList
+			<MissingGrant missing={missing} slug={slug} />
+			<ScopeGroups
 				title="What this workspace granted"
-				scopes={describeSlackScopes(status.scopes)}
-				withheld={drift.missing}
+				scopes={status.scopes}
+				withheld={missing}
 			/>
+			<SlackChannels />
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
 				<div className="flex items-end justify-between gap-4">
 					<div>
@@ -248,80 +258,72 @@ function ConnectedSlack({
 	);
 }
 
-const SCOPE_KEY = [
-	{
-		icon: Checkmark,
-		tone: "text-success",
-		label: "Granted, one channel at a time",
-	},
-	{
-		icon: Warning,
-		tone: "text-warning",
-		label: "Granted, reaches the whole workspace",
-	},
-	{
-		icon: Close,
-		tone: "text-muted-foreground",
-		label: "Withheld, capability off",
-	},
-];
-
-function ScopeKey() {
-	return (
-		<div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md bg-muted px-3 py-2.5">
-			{SCOPE_KEY.map((entry) => (
-				<div className="flex items-center gap-2" key={entry.label}>
-					<Icon
-						icon={entry.icon}
-						motion="none"
-						className={`size-4 shrink-0 ${entry.tone}`}
-					/>
-					<span className="text-xs">{entry.label}</span>
-				</div>
-			))}
-		</div>
-	);
-}
-
-function ScopeList({
+function ScopeGroups({
 	title,
 	scopes,
 	withheld = [],
 }: {
 	title: string;
-	scopes: SlackScope[];
+	scopes: string[];
 	withheld?: SlackScope[];
 }) {
+	const groups = summariseSlackScopes(scopes);
+
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<h2 className="font-medium text-sm">{title}</h2>
-			<ScopeKey />
-			<div className="flex flex-col gap-2">
-				{scopes.map((entry) => (
-					<div className="flex items-start gap-3 text-sm" key={entry.scope}>
-						<Icon
-							icon={entry.sensitive ? Warning : Checkmark}
-							motion="none"
-							className={`mt-0.5 size-4 shrink-0 ${entry.sensitive ? "text-warning" : "text-success"}`}
-						/>
-						<span>{entry.grant}</span>
-					</div>
+			<div>
+				<h2 className="font-medium text-sm">{title}</h2>
+				<p className="text-muted-foreground text-xs">
+					A broad permission reaches the whole workspace, not one channel.
+				</p>
+			</div>
+
+			<div className="flex flex-col divide-y rounded-lg border px-4">
+				{groups.map((group) => (
+					<ScopeRow
+						detail={`${group.broad} broad of ${group.total}`}
+						key={group.id}
+						label={group.label}
+						summary={group.summary}
+					/>
 				))}
 				{withheld.map((entry) => (
-					<div
-						className="flex items-start gap-3 text-muted-foreground text-sm"
+					<ScopeRow
+						detail="Not granted"
 						key={entry.scope}
-					>
-						<Icon
-							icon={Close}
-							motion="none"
-							className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-						/>
-						<span>{entry.grant}</span>
-					</div>
+						label={entry.grant}
+						muted
+						summary="This capability is off until the workspace grants it."
+					/>
 				))}
 			</div>
 		</section>
+	);
+}
+
+function ScopeRow({
+	detail,
+	label,
+	muted = false,
+	summary,
+}: {
+	detail: string;
+	label: string;
+	muted?: boolean;
+	summary: string;
+}) {
+	return (
+		<div className="flex items-start gap-3 py-3.5">
+			<div className="min-w-0 flex-1">
+				<p
+					className={`font-medium text-sm ${muted ? "text-muted-foreground" : ""}`}
+				>
+					{label}
+				</p>
+				<p className="text-muted-foreground text-xs">{summary}</p>
+			</div>
+			<span className="shrink-0 text-muted-foreground text-xs">{detail}</span>
+		</div>
 	);
 }
 
@@ -340,8 +342,8 @@ function MissingGrant({
 
 	return (
 		<div className="px-(--spacing-block-inline)">
-			<Alert>
-				<Icon icon={Warning} className="text-warning" />
+			<Alert variant="warning">
+				<Icon icon={Warning} />
 				<AlertTitle>
 					{privateChannels
 						? "Comp AI cannot reach private channels"

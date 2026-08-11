@@ -53,6 +53,34 @@ channel like `#sales`. A naming pattern for channels the agent creates
 Chosen destinations are collected **in the builder conversation** with the
 Questionnaire, not in a settings form. See "The Questionnaire" below.
 
+## Slack needs two grants, not one
+
+A bot token cannot add itself to a private channel. No Slack scope grants that.
+The workspace must also hand over a **user token** (`xoxp-`), which the app then
+uses to act as the person who connected Slack.
+
+- **Public channel** — the bot self-joins with `conversations.join`. Bot token only.
+- **Private channel** — only a user token can invite the bot. Both tokens.
+
+The bot token lives on `Account`. The user token lives on `SlackWorkspaceGrant`,
+keyed by Slack team id, because the grant belongs to the workspace and not to the
+person who clicked Connect. `packages/auth/src/slack-grant.ts` writes it, and
+`apps/agent/agent/lib/slack-connection.ts` is the only place that reads either.
+
+A missing user grant is a capability that is off, not an error. The connection
+page names it, and the private-channel row falls back to asking a human.
+
+## Permissions are shown in groups, not one line each
+
+Sixteen scopes read as noise. Group them by what they touch — people, channels it
+can read, messages it can send, channels it can change — and give each group a
+count of how many reach the whole workspace. `SLACK_SCOPE_GROUPS` in
+`packages/auth/src/slack-scopes.ts` owns both the grouping and the plain wording.
+
+The catalogue is the single source. `auth.ts` builds its scope request from it and
+the page renders from it, so the screen cannot promise something the app never
+asked for.
+
 ## Identity matching is connection-level
 
 "Message whoever owns the deal" needs a CRM user *and* a Slack member. Those are

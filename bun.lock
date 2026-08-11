@@ -116,6 +116,7 @@
         "@crm/db": "workspace:*",
         "@crm/env": "workspace:*",
         "better-auth": "^1.6.25",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@better-auth/cli": "^1.4.22",

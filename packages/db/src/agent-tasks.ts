@@ -9,6 +9,7 @@ export const TASK_KINDS = [
 	"workspace-profile",
 	"field-backfill",
 	"slack-people-match",
+	"slack-channel-join",
 	"agent-event",
 ] as const;
 
@@ -18,6 +19,7 @@ export const DIRECT_KINDS = [
 	"brand",
 	"portrait",
 	"slack-people-match",
+	"slack-channel-join",
 	"agent-event",
 ] as const;
 
@@ -43,5 +45,6 @@ export const PRIORITY = {
 	fieldBackfill: 20,
 	recheck: 0,
 	slackPeople: 150,
+	slackJoin: 950,
 	event: 700,
 } as const;
