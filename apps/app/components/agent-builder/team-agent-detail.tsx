@@ -108,16 +108,14 @@ export function TeamAgentDetail({
 			queryClient.invalidateQueries({
 				queryKey: trpc.agents.activity.pathKey(),
 			}),
+			queryClient.invalidateQueries({
+				queryKey: trpc.agents.history.pathKey(),
+			}),
 		]);
 	const runNow = useMutation(
 		trpc.agents.runNow.mutationOptions({
 			onSuccess: async () => {
-				await Promise.all([
-					invalidate(),
-					queryClient.invalidateQueries({
-						queryKey: trpc.agents.history.pathKey(),
-					}),
-				]);
+				await invalidate();
 				setRunsOpen(true);
 				toast.success("Agent run queued.");
 			},
@@ -148,12 +146,7 @@ export function TeamAgentDetail({
 	const cancelRun = useMutation(
 		trpc.agents.cancelRun.mutationOptions({
 			onSuccess: async (result) => {
-				await Promise.all([
-					invalidate(),
-					queryClient.invalidateQueries({
-						queryKey: trpc.agents.history.pathKey(),
-					}),
-				]);
+				await invalidate();
 				toast.success(
 					result.cancelled ? "Run stopped." : "That run had already finished.",
 				);
