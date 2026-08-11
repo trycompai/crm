@@ -36,8 +36,13 @@ const ACTIONS: readonly WorkActionDescriptor[] = [
 
 export function workActionDescriptors(
 	capabilities: WorkActionCapabilities,
+	membersReady = true,
 ): WorkActionDescriptor[] {
-	return ACTIONS.filter((action) => capabilities[action.capability]);
+	return ACTIONS.filter(
+		(action) =>
+			capabilities[action.capability] &&
+			(action.name !== "assign" || membersReady),
+	);
 }
 
 const NON_RETRYABLE_ERROR_CODES = new Set([

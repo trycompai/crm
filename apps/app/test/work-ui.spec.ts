@@ -19,7 +19,9 @@ import {
 	toWorkListInput,
 	workAssigneeOptions,
 	workAssigneeUsers,
+	workAssignmentUsers,
 	workFocusHistory,
+	workspaceMemberLoadState,
 	workspaceMemberPageInputs,
 	workspaceMemberSearchInput,
 } from "../lib/work-input";
@@ -154,6 +156,41 @@ test("workspace members map userId for facets and assignment", () => {
 	});
 });
 
+test("empty assignment search keeps all unfiltered member options", () => {
+	const allMembers = Array.from({ length: 101 }, (_, index) => ({
+		id: `user-${index + 1}`,
+		name: `Member ${index + 1}`,
+	}));
+
+	expect(workAssignmentUsers("", undefined, allMembers)).toHaveLength(101);
+	expect(
+		workAssignmentUsers(
+			"angus",
+			[{ id: "user-101", name: "Angus" }],
+			allMembers,
+		),
+	).toEqual([{ id: "user-101", name: "Angus" }]);
+	expect(workActions).toContain('assigneeSearch.trim() !== ""');
+});
+
+test("partial workspace member pages fail closed while loading or errored", () => {
+	expect(
+		workspaceMemberLoadState({ loading: false, error: false }, [
+			{ loading: true, error: false },
+		]),
+	).toEqual({ loading: true, error: false, ready: false });
+	expect(
+		workspaceMemberLoadState({ loading: false, error: false }, [
+			{ loading: false, error: true },
+		]),
+	).toEqual({ loading: false, error: true, ready: false });
+	expect(workTable).toContain("memberLoadState.loading");
+	expect(workTable).toContain(
+		'role={memberLoadState.error ? "alert" : "status"}',
+	);
+	expect(workTable).toContain("retryMembers");
+});
+
 test("dialog reset clears cross-action fields and uses the refreshed owner", () => {
 	expect(resetWorkDialogState("owner-before")).toEqual({
 		reason: "",
@@ -256,6 +293,12 @@ test("work action descriptors are capability-driven", () => {
 	expect(workActionDescriptors({ ...noCapabilities, canAssign: true })).toEqual(
 		[{ name: "assign", capability: "canAssign", label: "Assign" }],
 	);
+	expect(
+		workActionDescriptors(
+			{ ...noCapabilities, canAssign: true, canStart: true },
+			false,
+		),
+	).toEqual([{ name: "start", capability: "canStart", label: "Start" }]);
 });
 
 test("work action inputs are exact and preserve an intent request key", () => {

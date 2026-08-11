@@ -31,6 +31,29 @@ export function workspaceMemberSearchInput(
 	return { ...WORKSPACE_MEMBERS_INPUT, q: query.trim() };
 }
 
+export function workAssignmentUsers(
+	query: string,
+	searchResults: readonly WorkAssigneeUser[] | undefined,
+	allMembers: readonly WorkAssigneeUser[],
+): WorkAssigneeUser[] {
+	return query.trim() ? [...(searchResults ?? [])] : [...allMembers];
+}
+
+export type WorkspaceMemberPageState = {
+	loading: boolean;
+	error: boolean;
+};
+
+export function workspaceMemberLoadState(
+	initial: WorkspaceMemberPageState,
+	pages: readonly WorkspaceMemberPageState[],
+) {
+	const loading = initial.loading || pages.some((page) => page.loading);
+	const error = initial.error || pages.some((page) => page.error);
+
+	return { loading, error, ready: !loading && !error };
+}
+
 const WORK_STATES = [
 	"all",
 	"OPEN",

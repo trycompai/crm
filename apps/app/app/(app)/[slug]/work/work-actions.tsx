@@ -42,6 +42,7 @@ import {
 } from "@/lib/work-action-inputs";
 import {
 	workAssigneeUsers,
+	workAssignmentUsers,
 	workspaceMemberSearchInput,
 } from "@/lib/work-input";
 import {
@@ -75,9 +76,11 @@ type PendingIntent =
 export function WorkActions({
 	work,
 	users,
+	membersReady,
 }: {
 	work: Pick<WorkDetail, "id" | "version" | "owner" | "capabilities">;
 	users: readonly WorkUser[];
+	membersReady: boolean;
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -114,13 +117,16 @@ export function WorkActions({
 		...trpc.workspace.members.queryOptions(
 			workspaceMemberSearchInput(assigneeSearch),
 		),
-		enabled: dialogAction === "assign",
+		enabled:
+			membersReady && dialogAction === "assign" && assigneeSearch.trim() !== "",
 	});
-	const assignmentUsers = assignmentMembers.data
-		? workAssigneeUsers(assignmentMembers.data.rows)
-		: assigneeSearch.trim()
-			? []
-			: users;
+	const assignmentUsers = workAssignmentUsers(
+		assigneeSearch,
+		assignmentMembers.data
+			? workAssigneeUsers(assignmentMembers.data.rows)
+			: undefined,
+		users,
+	);
 
 	const invalidate = async () => {
 		await Promise.all([
@@ -220,7 +226,7 @@ export function WorkActions({
 		complete,
 		dismiss,
 	};
-	const descriptors = workActionDescriptors(work.capabilities);
+	const descriptors = workActionDescriptors(work.capabilities, membersReady);
 	const primary = descriptors[0];
 	const pending = Object.values(mutations).some(
 		(mutation) => mutation.isPending,
@@ -266,6 +272,7 @@ export function WorkActions({
 
 	const submitDialog = () => {
 		if (!dialogAction) return;
+		if (dialogAction === "assign" && !membersReady) return;
 		if (dialogAction === "complete") {
 			const intent: PendingIntent = {
 				action: "complete",
@@ -447,6 +454,14 @@ export function WorkActions({
 					) : null}
 					{dialogAction === "assign" ? (
 						<div className="flex flex-col gap-3">
+							{!membersReady ? (
+								<Alert variant="destructive" role="alert">
+									<AlertDescription>
+										Workspace members are still loading or unavailable.
+										Assignment is disabled.
+									</AlertDescription>
+								</Alert>
+							) : null}
 							<div className="flex flex-col gap-2">
 								<Label htmlFor="work-assignee-search">
 									Search workspace members
@@ -457,7 +472,7 @@ export function WorkActions({
 									onChange={(event) => setAssigneeSearch(event.target.value)}
 									placeholder="Name or email"
 									aria-describedby="work-assignee-search-status"
-									disabled={pending}
+									disabled={!membersReady || pending}
 								/>
 								<div
 									id="work-assignee-search-status"
@@ -476,7 +491,11 @@ export function WorkActions({
 								</div>
 							</div>
 							<Label htmlFor="work-assignee">Assignee</Label>
-							<Select value={assigneeId} onValueChange={setAssigneeId}>
+							<Select
+								value={assigneeId}
+								onValueChange={setAssigneeId}
+								disabled={!membersReady || pending}
+							>
 								<SelectTrigger id="work-assignee" aria-label="Assignee">
 									<SelectValue placeholder="Choose an assignee" />
 								</SelectTrigger>
@@ -543,6 +562,7 @@ export function WorkActions({
 							onClick={submitDialog}
 							disabled={
 								pending ||
+								(dialogAction === "assign" && !membersReady) ||
 								(dialogAction !== "assign" &&
 									dialogAction !== "complete" &&
 									(!reason.trim() ||

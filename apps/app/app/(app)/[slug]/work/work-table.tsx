@@ -1,6 +1,7 @@
 "use client";
 
 import Task from "@carbon/icons-react/es/Task";
+import { Alert, AlertDescription } from "@crm/ui/components/alert";
 import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -39,6 +40,7 @@ import {
 	workAssigneeOptions,
 	workAssigneeUsers,
 	workFocusHistory,
+	workspaceMemberLoadState,
 	workspaceMemberPageInputs,
 } from "@/lib/work-input";
 import { WorkActions } from "./work-actions";
@@ -242,10 +244,26 @@ export function WorkTable() {
 			.slice(1)
 			.map((pageInput) => trpc.workspace.members.queryOptions(pageInput)),
 	});
-	const memberRows = [
+	const memberLoadState = workspaceMemberLoadState(
+		{
+			loading: members.isPending || members.isFetching,
+			error: members.isError,
+		},
+		memberPages.map((page) => ({
+			loading: page.isPending || page.isFetching,
+			error: page.isError,
+		})),
+	);
+	const allMemberRows = [
 		...(members.data?.rows ?? []),
 		...memberPages.flatMap((page) => page.data?.rows ?? []),
 	];
+	const memberRows = memberLoadState.ready ? allMemberRows : [];
+
+	const retryMembers = () => {
+		void members.refetch();
+		for (const page of memberPages) void page.refetch();
+	};
 
 	const focus = useCallback(
 		(id: string) => void setFocusId(id, { history: workFocusHistory(true) }),
@@ -270,7 +288,9 @@ export function WorkTable() {
 		{
 			id: "assignee",
 			label: "Owner",
-			options: workAssigneeOptions(facetCounts?.owner, memberRows),
+			options: memberLoadState.ready
+				? workAssigneeOptions(facetCounts?.owner, memberRows)
+				: [],
 		},
 		{
 			id: "due",
@@ -286,6 +306,27 @@ export function WorkTable() {
 
 	return (
 		<>
+			{memberLoadState.loading || memberLoadState.error ? (
+				<Alert
+					variant={memberLoadState.error ? "destructive" : "default"}
+					role={memberLoadState.error ? "alert" : "status"}
+					aria-live={memberLoadState.error ? "assertive" : "polite"}
+					aria-atomic="true"
+				>
+					<AlertDescription className="flex items-center justify-between gap-2">
+						<span>
+							{memberLoadState.error
+								? "Workspace members could not be loaded. Owner filters and assignment are unavailable."
+								: "Loading workspace members. Owner filters and assignment are unavailable until loading finishes."}
+						</span>
+						{memberLoadState.error ? (
+							<Button variant="outline" size="xs" onClick={retryMembers}>
+								Retry
+							</Button>
+						) : null}
+					</AlertDescription>
+				</Alert>
+			) : null}
 			<DataTable
 				query={query}
 				search={
@@ -331,6 +372,7 @@ export function WorkTable() {
 					<WorkFocus
 						work={detail.data}
 						users={workAssigneeUsers(memberRows)}
+						membersReady={memberLoadState.ready}
 						onClose={() =>
 							void setFocusId(null, { history: workFocusHistory(false) })
 						}
@@ -344,10 +386,12 @@ export function WorkTable() {
 function WorkFocus({
 	work,
 	users,
+	membersReady,
 	onClose,
 }: {
 	work: WorkFocusData;
 	users: readonly { id: string; name: string }[];
+	membersReady: boolean;
 	onClose: () => void;
 }) {
 	return (
@@ -362,7 +406,9 @@ function WorkFocus({
 						size="sm"
 					/>
 				}
-				actions={<WorkActions work={work} users={users} />}
+				actions={
+					<WorkActions work={work} users={users} membersReady={membersReady} />
+				}
 				onClose={onClose}
 			/>
 			<DetailSheetBody>
