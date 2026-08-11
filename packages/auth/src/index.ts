@@ -42,6 +42,12 @@ export {
 } from "./scopes";
 export { onSignedIn, type SignedInHandler } from "./signed-in";
 export {
+	describeSlackScopes,
+	SLACK_REQUESTED_SCOPES,
+	SLACK_SCOPES,
+	type SlackScope,
+} from "./slack-scopes";
+export {
 	canConfigureSso,
 	ssoCallbackBase,
 	ssoCallbackURL,

@@ -18,7 +18,7 @@ export class SlackConnectionService {
 			this.db.account.findFirst({
 				where: { providerId: "slack", accessToken: { not: null } },
 				orderBy: { updatedAt: "desc" },
-				select: { accountId: true, updatedAt: true },
+				select: { accountId: true, updatedAt: true, scope: true },
 			}),
 			this.db.agentDefinition.findMany({
 				where: {
@@ -65,6 +65,10 @@ export class SlackConnectionService {
 			connected: Boolean(account),
 			workspace: account ? "Slack workspace" : null,
 			lastConnectedAt: account?.updatedAt.toISOString() ?? null,
+			scopes: (account?.scope ?? "")
+				.split(",")
+				.map((scope) => scope.trim())
+				.filter(Boolean),
 			agents: linkedAgents,
 			people: { matched, reviewed },
 		};

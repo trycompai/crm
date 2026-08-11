@@ -15,6 +15,7 @@ import {
 	SYNC_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
+import { SLACK_REQUESTED_SCOPES } from "./slack-scopes";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
@@ -121,14 +122,7 @@ export const auth = betterAuth({
 								clientSecret: slackOAuth.clientSecret,
 								disableSignUp: true,
 								redirectURI: slackRedirectUri,
-								scopes: [
-									"channels:read",
-									"chat:write",
-									"groups:read",
-									"im:write",
-									"users:read",
-									"users:read.email",
-								],
+								scopes: [...SLACK_REQUESTED_SCOPES],
 								getToken: async ({ code }) => {
 									const response = await fetch(
 										"https://slack.com/api/oauth.v2.access",

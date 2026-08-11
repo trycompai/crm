@@ -1,5 +1,11 @@
 import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Close from "@carbon/icons-react/es/Close";
+import Warning from "@carbon/icons-react/es/Warning";
+import {
+	describeSlackScopes,
+	SLACK_REQUESTED_SCOPES,
+	type SlackScope,
+} from "@crm/auth";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
@@ -12,17 +18,10 @@ import { ConnectionPage } from "../connection-page";
 import { SlackConnectButton } from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
 
-const grants = [
-	"Seeing workspace members and their email addresses",
-	"Seeing public channels and private channels the app has joined",
-	"Posting messages to an approved channel or person",
-];
-
 const never = [
-	"Read message history or private messages",
-	"See a private channel it has not joined",
 	"Send anything at all until you build an automation and switch it on",
-	"Create channels or invite people",
+	"Post anywhere except the destination approved in that automation",
+	"Read a direct message between two people",
 ];
 
 const suggestions = [
@@ -78,11 +77,9 @@ async function SlackConnectionPageContent({
 					time.
 				</p>
 			</header>
-			<PlainList
+			<ScopeList
 				title="What you are handing over"
-				items={grants}
-				icon={Checkmark}
-				tone="text-success"
+				scopes={describeSlackScopes(SLACK_REQUESTED_SCOPES)}
 			/>
 			<PlainList
 				title="What it will never do"
@@ -145,6 +142,7 @@ function ConnectedSlack({
 			description: string | null;
 			status: string;
 		}>;
+		scopes: string[];
 		people: { matched: number; reviewed: number };
 	};
 }) {
@@ -163,20 +161,13 @@ function ConnectedSlack({
 					/>
 				</div>
 				<p className="text-muted-foreground text-sm">
-					The CRM can see workspace members and channels the app has joined.
-					Deployed agents can post only to the destination approved in their
-					automation.
+					This workspace granted the permissions below. Deployed agents can post
+					only to the destination approved in their automation.
 				</p>
 			</header>
-			<PlainList
-				title="What an agent can do here"
-				items={[
-					"Post a new message to an approved channel",
-					"Send a direct message to an approved teammate",
-					"Use only channels the app has joined",
-				]}
-				icon={Checkmark}
-				tone="text-success"
+			<ScopeList
+				title="What this workspace granted"
+				scopes={describeSlackScopes(status.scopes)}
 			/>
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
 				<div className="flex items-end justify-between gap-4">
@@ -242,6 +233,33 @@ function ConnectedSlack({
 				</Button>
 			</div>
 		</ConnectionPage>
+	);
+}
+
+function ScopeList({ title, scopes }: { title: string; scopes: SlackScope[] }) {
+	const broad = scopes.filter((entry) => entry.sensitive);
+	return (
+		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
+			<div>
+				<h2 className="font-medium text-sm">{title}</h2>
+				<p className="text-muted-foreground text-xs">
+					{broad.length} of these {scopes.length} reach further than one
+					channel. Slack decides the final list, not the CRM.
+				</p>
+			</div>
+			<div className="flex flex-col gap-2">
+				{scopes.map((entry) => (
+					<div className="flex items-start gap-3 text-sm" key={entry.scope}>
+						<Icon
+							icon={entry.sensitive ? Warning : Checkmark}
+							motion="none"
+							className={`mt-0.5 size-4 shrink-0 ${entry.sensitive ? "text-warning" : "text-success"}`}
+						/>
+						<span>{entry.grant}</span>
+					</div>
+				))}
+			</div>
+		</section>
 	);
 }
 

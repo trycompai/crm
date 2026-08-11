@@ -16,6 +16,7 @@ type SlackChannel = {
 	num_members?: number;
 	is_member?: boolean;
 	is_archived?: boolean;
+	is_private?: boolean;
 };
 
 export async function runSlackPeopleMatch(): Promise<string> {
@@ -81,7 +82,8 @@ export async function refreshSlackChannels(): Promise<number> {
 
 async function persistSlackChannels(channels: SlackChannel[]): Promise<number> {
 	const available = channels.filter(
-		(channel) => channel.is_member && !channel.is_archived,
+		(channel) =>
+			!channel.is_archived && (channel.is_member || !channel.is_private),
 	);
 	await db.$transaction(async (tx) => {
 		await tx.slackChannel.updateMany({ data: { available: false } });

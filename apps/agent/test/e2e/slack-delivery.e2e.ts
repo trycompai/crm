@@ -54,6 +54,19 @@ async function main() {
 		});
 	}
 
+	const unjoined = channels.find((row) => row.name === "test2");
+	if (unjoined) {
+		cases.push({
+			name: "public channel the app has not joined",
+			destination: {
+				kind: "channel",
+				id: unjoined.id,
+				label: `#${unjoined.name}`,
+			},
+			expect: "delivered",
+		});
+	}
+
 	cases.push({
 		name: "channel that does not exist",
 		destination: { kind: "channel", id: "C00NOTREAL99", label: "#missing" },
