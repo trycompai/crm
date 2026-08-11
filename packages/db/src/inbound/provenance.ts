@@ -124,7 +124,7 @@ export function inboundSourceIdentityKey(
 	return inboundSourceReceiptVersionKey(identity);
 }
 
-export function contactCandidateIdentityKey(
+export function retainedContactCandidateHash(
 	identity: ContactCandidateIdentity,
 ): string {
 	const email = canonicalizeInboundText(identity.canonicalEmail);
@@ -195,7 +195,7 @@ export function previewInboundObservationIdentityKey(input: {
 		.join("|");
 }
 
-export function contactCandidateObservationKey(input: {
+export function retainedContactCandidateObservationHash(input: {
 	candidateIdentity: ContactCandidateIdentity;
 	source: InboundSourceIdentity;
 	observedEmail?: string | null;
@@ -207,7 +207,7 @@ export function contactCandidateObservationKey(input: {
 	evidenceClass: string;
 }): string {
 	return digest([
-		contactCandidateIdentityKey(input.candidateIdentity),
+		retainedContactCandidateHash(input.candidateIdentity),
 		inboundSourceIdentityKey(input.source),
 		canonicalizeInboundText(input.observedEmail),
 		canonicalizeInboundText(input.observedName),

@@ -3,14 +3,14 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "../src/client";
 import {
 	canonicalizeInboundText,
-	contactCandidateIdentityKey,
-	contactCandidateObservationKey,
 	inboundSourceIdentityKey,
 	inboundSourceReceiptVersionKey,
 	normalizeInboundSourceIdentity,
 	previewInboundCanonicalIdentityKey,
 	previewInboundObservationIdentityKey,
 	provenanceValueDigest,
+	retainedContactCandidateHash,
+	retainedContactCandidateObservationHash,
 	sanitizeInboundRedactedMetadata,
 } from "../src/inbound/provenance";
 
@@ -87,11 +87,11 @@ describe("inbound provenance pure helpers", () => {
 		);
 	});
 
-	it("collapses canonical email across connectors", () => {
+	it("normalizes canonical email in the retained candidate hash", () => {
 		expect(
-			contactCandidateIdentityKey({ canonicalEmail: " Person@Example.com " }),
+			retainedContactCandidateHash({ canonicalEmail: " Person@Example.com " }),
 		).toBe(
-			contactCandidateIdentityKey({ canonicalEmail: "person@example.com" }),
+			retainedContactCandidateHash({ canonicalEmail: "person@example.com" }),
 		);
 	});
 
@@ -110,22 +110,22 @@ describe("inbound provenance pure helpers", () => {
 		);
 	});
 
-	it("requires a business identity when email is absent", () => {
-		expect(() => contactCandidateIdentityKey({})).toThrow();
+	it("requires a business identity for the retained candidate hash", () => {
+		expect(() => retainedContactCandidateHash({})).toThrow();
 		expect(
-			contactCandidateIdentityKey({
+			retainedContactCandidateHash({
 				canonicalBusinessName: "Example Business",
 				canonicalDomain: "example.com",
 			}),
 		).toBe(
-			contactCandidateIdentityKey({
+			retainedContactCandidateHash({
 				canonicalBusinessName: " example business ",
 				canonicalDomain: "EXAMPLE.COM",
 			}),
 		);
 	});
 
-	it("makes observations deterministic and source-scoped", () => {
+	it("makes the retained observation hash deterministic and source-scoped", () => {
 		const input = {
 			candidateIdentity: { canonicalEmail: "person@example.com" },
 			source: source("account-1", "Message-1"),
@@ -133,17 +133,17 @@ describe("inbound provenance pure helpers", () => {
 			observedName: "Person Example",
 			evidenceClass: "header",
 		};
-		expect(contactCandidateObservationKey(input)).toBe(
-			contactCandidateObservationKey(input),
+		expect(retainedContactCandidateObservationHash(input)).toBe(
+			retainedContactCandidateObservationHash(input),
 		);
-		expect(contactCandidateObservationKey(input)).not.toBe(
-			contactCandidateObservationKey({
+		expect(retainedContactCandidateObservationHash(input)).not.toBe(
+			retainedContactCandidateObservationHash({
 				...input,
 				source: source("account-2", "Message-1"),
 			}),
 		);
-		expect(contactCandidateObservationKey(input)).not.toBe(
-			contactCandidateObservationKey({
+		expect(retainedContactCandidateObservationHash(input)).not.toBe(
+			retainedContactCandidateObservationHash({
 				...input,
 				source: source(
 					"account-1",
@@ -223,7 +223,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 					},
 			},
 		});
-		const identityKey = contactCandidateIdentityKey({
+		const identityKey = retainedContactCandidateHash({
 			canonicalEmail: `${suffix}@example.test`,
 		});
 		const candidates = await Promise.allSettled([
@@ -241,7 +241,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		const candidate = await db.contactCandidate.findFirstOrThrow({
 			where: { identityKey },
 		});
-		const observationKey = contactCandidateObservationKey({
+		const observationKey = retainedContactCandidateObservationHash({
 			candidateIdentity: { canonicalEmail: `${suffix}@example.test` },
 			source: source(accountId, objectId),
 			observedEmail: `${suffix}@example.test`,
@@ -338,7 +338,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		const canonicalEmail = `version-${suffix}@example.test`;
 		const candidate = await db.contactCandidate.create({
 			data: {
-				identityKey: contactCandidateIdentityKey({ canonicalEmail }),
+				identityKey: retainedContactCandidateHash({ canonicalEmail }),
 				canonicalEmail,
 			},
 		});
@@ -351,7 +351,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 					candidateId: candidate.id,
 					receiptId: receipt.id,
 					sourceDigest: digest,
-					observationKey: contactCandidateObservationKey({
+					observationKey: retainedContactCandidateObservationHash({
 						candidateIdentity: { canonicalEmail },
 						source: source(accountId, objectId, digest),
 						observedEmail: canonicalEmail,
@@ -407,7 +407,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		const canonicalEmail = `default-${suffix}@example.test`;
 		const candidate = await db.contactCandidate.create({
 			data: {
-				identityKey: contactCandidateIdentityKey({ canonicalEmail }),
+				identityKey: retainedContactCandidateHash({ canonicalEmail }),
 				canonicalEmail,
 			},
 		});
@@ -434,7 +434,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.contactCandidate.create({
 				data: {
-					identityKey: contactCandidateIdentityKey({
+					identityKey: retainedContactCandidateHash({
 						canonicalEmail: `accepted-${suffix}@example.test`,
 					}),
 					canonicalEmail: `accepted-${suffix}@example.test`,
@@ -445,7 +445,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.contactCandidate.create({
 				data: {
-					identityKey: contactCandidateIdentityKey({
+					identityKey: retainedContactCandidateHash({
 						canonicalEmail: `rejected-${suffix}@example.test`,
 					}),
 					canonicalEmail: `rejected-${suffix}@example.test`,
@@ -456,7 +456,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.contactCandidate.create({
 				data: {
-					identityKey: contactCandidateIdentityKey({
+					identityKey: retainedContactCandidateHash({
 						canonicalEmail: `accepted-no-contact-${suffix}@example.test`,
 					}),
 					canonicalEmail: `accepted-no-contact-${suffix}@example.test`,
@@ -476,7 +476,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		});
 		const accepted = await db.contactCandidate.create({
 			data: {
-				identityKey: contactCandidateIdentityKey({
+				identityKey: retainedContactCandidateHash({
 					canonicalEmail: `accepted-valid-${suffix}@example.test`,
 				}),
 				canonicalEmail: `accepted-valid-${suffix}@example.test`,
@@ -490,7 +490,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		expect(accepted.status).toBe("ACCEPTED");
 	});
 
-	it("uses canonical identity uniqueness instead of caller hash authority", async () => {
+	it("uses DB canonical identity uniqueness while retaining non-authoritative hashes", async () => {
 		const retainedHash = provenanceValueDigest(`retained-hash-${suffix}`);
 		const first = await db.contactCandidate.create({
 			data: {
@@ -1026,7 +1026,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		});
 		const candidate = await db.contactCandidate.create({
 			data: {
-				identityKey: contactCandidateIdentityKey({
+				identityKey: retainedContactCandidateHash({
 					canonicalEmail: `blank-${suffix}@example.test`,
 				}),
 				canonicalEmail: `blank-${suffix}@example.test`,
