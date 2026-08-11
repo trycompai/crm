@@ -4,6 +4,7 @@ import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Locked from "@carbon/icons-react/es/Locked";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import { cn } from "@crm/ui/lib/utils";
 
 export type PickerChannel = {
 	id: string;
@@ -41,9 +42,28 @@ export function ChannelPicker({
 				const selected = value !== null && channel.id === value;
 				const blocked = channel.isPrivate && !channel.isMember;
 				const needsHuman = blocked && !canInviteItself;
+				const selectable = Boolean(onSelect) && !needsHuman;
 
-				const row = (
-					<>
+				return (
+					<div
+						className={cn(
+							"relative flex h-14 shrink-0 items-center gap-3 px-4",
+							selected && "bg-muted",
+							selectable && "hover:bg-muted/50",
+						)}
+						key={channel.id}
+					>
+						{onSelect && selectable ? (
+							<button
+								aria-label={`Choose #${channel.name}`}
+								aria-pressed={selected}
+								className="absolute inset-0"
+								disabled={pending}
+								onClick={() => onSelect(channel)}
+								type="button"
+							/>
+						) : null}
+
 						<span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
 							{channel.isPrivate ? (
 								<Icon className="size-3.5" icon={Locked} motion="none" />
@@ -54,7 +74,10 @@ export function ChannelPicker({
 
 						<span className="flex min-w-0 flex-1 flex-col gap-px text-left">
 							<span
-								className={`font-medium text-sm ${selected || channel.isMember ? "" : "text-muted-foreground"}`}
+								className={cn(
+									"font-medium text-sm",
+									!selected && !channel.isMember && "text-muted-foreground",
+								)}
 							>
 								{channel.name}
 							</span>
@@ -63,7 +86,7 @@ export function ChannelPicker({
 							</span>
 						</span>
 
-						<span className="flex w-20 shrink-0 items-center justify-end">
+						<span className="relative flex w-20 shrink-0 items-center justify-end">
 							{selected || (value === null && channel.isMember) ? (
 								<Icon
 									className="size-4 text-success"
@@ -73,10 +96,7 @@ export function ChannelPicker({
 							) : needsHuman && onRequest ? (
 								<Button
 									disabled={pending}
-									onClick={(event) => {
-										event.stopPropagation();
-										onRequest(channel);
-									}}
+									onClick={() => onRequest(channel)}
 									size="xs"
 									variant="outline"
 								>
@@ -85,10 +105,7 @@ export function ChannelPicker({
 							) : !channel.isMember && onAdd ? (
 								<Button
 									disabled={pending}
-									onClick={(event) => {
-										event.stopPropagation();
-										onAdd(channel);
-									}}
+									onClick={() => onAdd(channel)}
 									size="xs"
 									variant="outline"
 								>
@@ -96,26 +113,6 @@ export function ChannelPicker({
 								</Button>
 							) : null}
 						</span>
-					</>
-				);
-
-				const shell = `flex h-14 shrink-0 items-center gap-3 px-4 ${
-					selected ? "bg-muted" : onSelect ? "hover:bg-muted/50" : ""
-				}`;
-
-				return onSelect ? (
-					<button
-						className={`${shell} text-left`}
-						disabled={pending || (needsHuman && !onRequest)}
-						key={channel.id}
-						onClick={() => onSelect(channel)}
-						type="button"
-					>
-						{row}
-					</button>
-				) : (
-					<div className={shell} key={channel.id}>
-						{row}
 					</div>
 				);
 			})}

@@ -283,7 +283,11 @@ export function AgentBuilderChat({
 				clientRequestId,
 				createdAt: new Date().toISOString(),
 				commandType: prompt.commandType ?? "CHAT",
-				message: prompt.message,
+				message: {
+					text: prompt.message,
+					resources: prompt.resources,
+					attachments: prompt.attachments,
+				},
 			},
 		]);
 

@@ -47,6 +47,7 @@ function SaveBar({
 			)}
 			data-slot="save-bar"
 			data-state={open ? "open" : "closed"}
+			inert={open ? undefined : true}
 			{...props}
 		>
 			<div className="min-w-0 flex-1">

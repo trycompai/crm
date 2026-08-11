@@ -16,7 +16,7 @@ export function handoffResources(handoff: Handoff) {
 						label: `#${handoff.channel.name}`,
 						detail: handoff.channel.isMember
 							? "Comp AI is a member"
-							: "Comp AI joins when this is created",
+							: "Comp AI is not in this channel yet",
 					},
 				]
 			: []),
