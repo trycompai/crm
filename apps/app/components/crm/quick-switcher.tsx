@@ -1,5 +1,6 @@
 "use client";
 
+import Task from "@carbon/icons-react/es/Task";
 import {
 	Command,
 	CommandDialog,
@@ -15,10 +16,12 @@ import {
 } from "@crm/ui/components/entity-logo";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 const GROUP_LABEL = {
 	company: "Companies",
@@ -31,6 +34,8 @@ const KINDS = ["company", "contact", "deal"] as const;
 export function QuickSwitcher() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
+	const router = useRouter();
+	const workspaceUrl = useWorkspaceUrl();
 
 	const [open, setOpen] = useQueryState("k", parseAsBoolean.withDefault(false));
 	const [query, setQuery] = useState("");
@@ -61,12 +66,18 @@ export function QuickSwitcher() {
 		openRecord({ kind, id });
 	};
 
+	const goWork = () => {
+		setQuery("");
+		void setOpen(null);
+		router.push(workspaceUrl("/work"));
+	};
+
 	return (
 		<CommandDialog
 			open={open}
 			onOpenChange={(next) => setOpen(next || null)}
 			title="Search"
-			description="Jump to a company, contact or deal"
+			description="Jump to work, a company, contact or deal"
 		>
 			<Command shouldFilter={false}>
 				<CommandInput
@@ -75,6 +86,12 @@ export function QuickSwitcher() {
 					onValueChange={setQuery}
 				/>
 				<CommandList>
+					<CommandGroup heading="Navigation">
+						<CommandItem value="work" onSelect={goWork}>
+							<Task />
+							<span>Work</span>
+						</CommandItem>
+					</CommandGroup>
 					<CommandEmpty>
 						{query.trim().length < 2
 							? "Type at least two characters."

@@ -10,6 +10,7 @@ import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Search from "@carbon/icons-react/es/Search";
 import Settings from "@carbon/icons-react/es/Settings";
+import Task from "@carbon/icons-react/es/Task";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
@@ -61,6 +62,7 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Work", href: "/work", icon: Task, match: "prefix" },
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 
