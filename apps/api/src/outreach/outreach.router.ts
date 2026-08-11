@@ -16,6 +16,7 @@ import {
 	outreachPermissionInput,
 	outreachProspectInput,
 	outreachProspectMutationInput,
+	outreachRegenerateInput,
 	outreachSequenceInput,
 	outreachUpdateInput,
 } from "./outreach.contracts";
@@ -75,6 +76,19 @@ export class OutreachRouter {
 	) {
 		return this.outreach.prepare(
 			input.prospectId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
+	}
+
+	@Mutation({ input: outreachRegenerateInput })
+	async regenerate(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachRegenerateInput>,
+	) {
+		return this.outreach.regenerate(
+			input.prospectId,
+			input.expectedDraftSetDigest,
 			ctx.user.id,
 			input.clientRequestId,
 		);

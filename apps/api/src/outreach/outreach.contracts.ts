@@ -11,6 +11,12 @@ const clientRequestInput = z.object({
 export const outreachProspectMutationInput =
 	outreachProspectInput.merge(clientRequestInput);
 
+export const outreachRegenerateInput = outreachProspectInput
+	.merge(clientRequestInput)
+	.extend({
+		expectedDraftSetDigest: z.string().length(64),
+	});
+
 export const outreachPermissionInput = outreachProspectInput
 	.merge(clientRequestInput)
 	.extend({

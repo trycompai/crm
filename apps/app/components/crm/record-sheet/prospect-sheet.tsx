@@ -1,6 +1,7 @@
 "use client";
 
 import Copy from "@carbon/icons-react/es/Copy";
+import Renew from "@carbon/icons-react/es/Renew";
 import Save from "@carbon/icons-react/es/Save";
 import Send from "@carbon/icons-react/es/Send";
 import StopOutline from "@carbon/icons-react/es/StopOutline";
@@ -840,6 +841,16 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	const regenerate = useMutation(
+		trpc.outreach.regenerate.mutationOptions({
+			onSuccess: async () => {
+				intent.clear();
+				await refresh();
+				toast.success("Regeneration proposed. Model execution remains paused.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const approve = useMutation(
 		trpc.outreach.approveSequence.mutationOptions({
 			onSuccess: async () => {
@@ -905,6 +916,8 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 		drafts.every((draft) =>
 			["DRAFT", "PENDING_APPROVAL", "REJECTED"].includes(draft.status),
 		);
+	const canRegenerate =
+		canDelete && Boolean(query.data?.draftSetDigest) && !query.data?.queued;
 
 	return (
 		<DetailSheetBody>
@@ -1053,6 +1066,24 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 							>
 								<Icon icon={Send} />
 								Approve proposal
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={!canRegenerate || regenerate.isPending}
+								onClick={() => {
+									const digest = query.data?.draftSetDigest;
+									if (!digest) return;
+									regenerate.mutate({
+										...intent.build("outreach.regenerate", {
+											prospectId: prospect.id,
+											expectedDraftSetDigest: digest,
+										}),
+									});
+								}}
+							>
+								<Icon icon={Renew} />
+								Request regeneration
 							</Button>
 							<Button
 								size="sm"

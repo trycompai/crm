@@ -41,6 +41,11 @@ test("prospect table and sheet show readiness from the API read model", () => {
 	expect(prospectSheet).toContain(
 		"prospect.readiness.actions.canApproveSequence",
 	);
+	expect(prospectSheet).toContain("trpc.outreach.regenerate");
+	expect(prospectSheet).toContain("Request regeneration");
+	expect(prospectSheet).toContain("expectedDraftSetDigest");
+	expect(prospectSheet).toContain("draftSetDigest");
+	expect(prospectSheet).toContain("Model execution remains paused");
 	expect(prospectSheet).toContain("executionDisabledReason");
 	expect(sequenceList).toContain("sequence.executionDisabledReason");
 	expect(sequenceList).toContain("Approved · execution disabled");

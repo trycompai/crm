@@ -41,6 +41,9 @@ const OUTREACH_PROVIDER = "lode-crm";
 const OUTREACH_CHANNEL = "outreach";
 const OUTREACH_POLICY_VERSION = "outreach-sequence-v1";
 const OUTREACH_SEQUENCE_APPROVAL_ACTION = "outreach.sequence.approve";
+const OUTREACH_REGENERATE_OPERATION = "outreach.sequence.regenerate";
+const OUTREACH_REGENERATE_APPROVAL_ACTION =
+	"outreach.sequence.regenerate.execute";
 const OUTREACH_APPROVAL_TTL_MS = 24 * 60 * 60 * 1_000;
 const SCHEDULE_GRACE_MS = 5 * 60 * 1_000;
 const LEAD_DISCOVERY_POLICY_VERSION = "lead-discovery-paused-v1";
@@ -147,6 +150,19 @@ type LeadDiscoveryScope = {
 	historicalReplayStatus: string;
 };
 
+type OutreachDraftDigestRecord = {
+	id: string;
+	sequenceId: string | null;
+	sequenceStep: number | null;
+	status: EmailDraftStatus;
+	subject: string;
+	plainTextBody: string;
+	recipients: Prisma.JsonValue;
+	scheduledFor: Date | null;
+	approvalDigest: string | null;
+	updatedAt: Date;
+};
+
 function emailDomain(email: string): string | null {
 	const [, domain] = email.split("@");
 	return domain || null;
@@ -243,6 +259,28 @@ function isSuppressedRoute(
 			(suppressedEmails.has(normalized) ||
 				(domain && suppressedDomains.has(domain))),
 	);
+}
+
+function outreachDraftSetDigest(
+	prospectId: string,
+	drafts: OutreachDraftDigestRecord[],
+): string {
+	return kernelRequestHash({
+		kind: "outreach-draft-set",
+		prospectId,
+		drafts: drafts.map((draft) => ({
+			id: draft.id,
+			sequenceId: draft.sequenceId,
+			sequenceStep: draft.sequenceStep,
+			status: draft.status,
+			subject: draft.subject,
+			plainTextBody: draft.plainTextBody,
+			recipients: draft.recipients,
+			scheduledFor: draft.scheduledFor?.toISOString() ?? null,
+			approvalDigest: draft.approvalDigest,
+			updatedAt: draft.updatedAt.toISOString(),
+		})),
+	});
 }
 
 @Injectable()
@@ -852,6 +890,263 @@ export class OutreachService {
 		return result;
 	}
 
+	async regenerate(
+		prospectId: string,
+		expectedDraftSetDigest: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation: OUTREACH_REGENERATE_OPERATION,
+			prospectId,
+			expectedDraftSetDigest,
+		});
+		return this.db.$transaction(async (tx) => {
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: OUTREACH_REGENERATE_OPERATION,
+			});
+			if (replay) return replay;
+			const [prospect, drafts, queued, inbox] = await Promise.all([
+				tx.prospect.findUnique({
+					where: { id: prospectId },
+					select: {
+						id: true,
+						companyName: true,
+						status: true,
+						routeStatus: true,
+						emailAllowed: true,
+						companyId: true,
+						contactId: true,
+						routeEmail: true,
+					},
+				}),
+				tx.emailDraft.findMany({
+					where: { prospectId },
+					orderBy: [{ sequenceId: "asc" }, { sequenceStep: "asc" }],
+					select: {
+						id: true,
+						sequenceId: true,
+						sequenceStep: true,
+						status: true,
+						subject: true,
+						plainTextBody: true,
+						recipients: true,
+						scheduledFor: true,
+						approvalDigest: true,
+						updatedAt: true,
+					},
+				}),
+				tx.agentTask.findFirst({
+					where: {
+						prospectId,
+						kind: "outreach-compose",
+						state: { notIn: TERMINAL_TASK_STATES },
+					},
+					select: { id: true },
+				}),
+				tx.emailInbox.findFirst({
+					where: { provider: "AGENTMAIL", isEnabled: true },
+					select: { externalInboxId: true },
+				}),
+			]);
+			if (!prospect) throw new NotFoundException("Prospect not found.");
+			if (queued) {
+				throw new BadRequestException(
+					"An outreach regeneration request is already pending.",
+				);
+			}
+			if (drafts.length === 0) {
+				throw new BadRequestException("There is no sequence to regenerate.");
+			}
+			if (
+				drafts.some((draft) =>
+					["APPROVED", "SENDING", "SENT"].includes(draft.status),
+				)
+			) {
+				throw new BadRequestException(
+					"Approved or sent steps must be stopped before regeneration.",
+				);
+			}
+			const currentDigest = outreachDraftSetDigest(prospectId, drafts);
+			if (currentDigest !== expectedDraftSetDigest) {
+				throw new ConflictException(
+					"The sequence changed before regeneration was requested.",
+				);
+			}
+			if (!inbox) {
+				throw new BadRequestException("AgentMail is unavailable.");
+			}
+			if (
+				prospect.status !== "PROMOTED" ||
+				prospect.routeStatus !== "SEND_READY_REVIEW" ||
+				!prospect.emailAllowed ||
+				!prospect.companyId ||
+				!prospect.contactId ||
+				!prospect.routeEmail
+			) {
+				throw new BadRequestException(
+					"Regeneration stays locked until the prospect still has a verified, permitted public work route.",
+				);
+			}
+
+			const now = new Date();
+			const expiresAt = new Date(now.getTime() + OUTREACH_APPROVAL_TTL_MS);
+			const supersededDraftIds = drafts.map((draft) => draft.id);
+			const contentSnapshot = {
+				kind: "outreach-regeneration",
+				prospectId,
+				companyName: prospect.companyName,
+				expectedDraftSetDigest,
+				supersededDraftIds,
+				modelExecutionPaused: true,
+				providerExecutionDisabled: true,
+			};
+			const contentDigest = approvalContentDigest({
+				action: OUTREACH_REGENERATE_APPROVAL_ACTION,
+				contentSnapshot,
+				targetType: "PROSPECT",
+				targetId: prospectId,
+				risk: "MEDIUM",
+				policyVersion: OUTREACH_POLICY_VERSION,
+				expiresAt,
+				invalidationVersion: 0,
+			});
+			await this.invalidateOutreachApprovals(tx, prospectId);
+			const approval = await tx.approvalRequest.create({
+				data: {
+					action: OUTREACH_REGENERATE_APPROVAL_ACTION,
+					contentDigest,
+					contentSnapshot: contentSnapshot as Prisma.InputJsonValue,
+					targetType: "PROSPECT",
+					targetId: prospectId,
+					targetLabel: `Regenerate outreach for ${prospect.companyName}`,
+					risk: "MEDIUM",
+					policyVersion: OUTREACH_POLICY_VERSION,
+					requestorId: userId,
+					expiresAt,
+					status: "PENDING",
+					idempotencyKey: `outreach-regenerate-approval:${clientRequestId}`,
+				},
+				select: { id: true, contentDigest: true },
+			});
+			for (const draft of drafts) {
+				await tx.emailDraft.update({
+					where: { id: draft.id },
+					data: {
+						status: "REJECTED",
+						sequenceStep: null,
+						experimentKey: `superseded:${draft.id}`,
+						approvedAt: null,
+						approvedById: null,
+						approvalDigest: null,
+						sendError:
+							"Superseded by a governed regeneration request before any provider execution.",
+					},
+				});
+			}
+			await this.cancelDraftTasks(tx, {
+				draftIds: supersededDraftIds,
+				outcome: "OUTREACH_REGENERATION_REQUESTED",
+			});
+			await this.ensureOutreachWork(tx, {
+				prospectId,
+				userId,
+				subjectLabel: "Review regenerated A/B/C outreach sequence",
+				reason:
+					"Review the regenerated sequence proposal before any model or provider execution is allowed.",
+				primaryAction: "Review regenerated A/B/C outreach sequence",
+			});
+			await tx.workItem.updateMany({
+				where: {
+					subjectType: "PROSPECT",
+					subjectId: prospectId,
+					queue: "outreach",
+					state: { notIn: ["DONE", "DISMISSED"] },
+				},
+				data: {
+					primaryAction: "Review regenerated A/B/C outreach sequence",
+					reason:
+						"Review the regenerated sequence proposal before any model or provider execution is allowed.",
+					version: { increment: 1 },
+					evidence: {
+						source: OUTREACH_REGENERATE_OPERATION,
+						prospectId,
+						expectedDraftSetDigest,
+						supersededDraftIds,
+						modelExecutionPaused: true,
+						providerExecutionDisabled: true,
+					},
+				},
+			});
+			const work = await tx.workItem.findFirst({
+				where: {
+					subjectType: "PROSPECT",
+					subjectId: prospectId,
+					queue: "outreach",
+					state: { notIn: ["DONE", "DISMISSED"] },
+				},
+				orderBy: { updatedAt: "desc" },
+				select: { id: true },
+			});
+			const task = await tx.agentTask.create({
+				data: {
+					prospectId,
+					subjectType: "PROSPECT",
+					subjectId: prospectId,
+					subjectLabel: prospect.companyName,
+					kind: "outreach-compose",
+					reason:
+						"Regenerate a review-only A/B/C outreach sequence after operator approval",
+					priority: PRIORITY.outreachCompose,
+					budget: 8,
+					state: "WAITING_FOR_APPROVAL",
+					dueAt: now,
+					operationKey: OUTREACH_REGENERATE_OPERATION,
+					idempotencyKey: `outreach-regenerate:${clientRequestId}`,
+					budgetUsd: usdDecimal(0),
+					costUsd: usdDecimal(0),
+					channel: OUTREACH_CHANNEL,
+					provider: "agent",
+					approvalRequestId: approval.id,
+					approvalContentDigest: approval.contentDigest,
+					scopes: {
+						policyVersion: OUTREACH_POLICY_VERSION,
+						expectedDraftSetDigest,
+						supersededDraftIds,
+						workItemId: work?.id ?? null,
+						approvalRequestId: approval.id,
+						approvalContentDigest: approval.contentDigest,
+						modelExecutionPaused: true,
+						providerExecutionDisabled: true,
+					},
+				},
+				select: { id: true },
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: OUTREACH_REGENERATE_OPERATION,
+				result: {
+					prospectId,
+					taskId: task.id,
+					workItemId: work?.id ?? null,
+					approvalRequestId: approval.id,
+					approvalContentDigest: approval.contentDigest,
+					expectedDraftSetDigest,
+					supersededDraftIds,
+					modelExecutionPaused: true,
+					providerExecutionDisabled: true,
+					state: "WAITING_FOR_APPROVAL",
+				},
+			});
+		});
+	}
+
 	async setPermission(
 		prospectId: string,
 		allowed: boolean,
@@ -1075,6 +1370,7 @@ export class OutreachService {
 
 		return {
 			queued: queued !== null,
+			draftSetDigest: outreachDraftSetDigest(prospectId, drafts),
 			work: work ? { ...work, updatedAt: work.updatedAt.toISOString() } : null,
 			approvals: approvals.map((approval) => ({
 				...approval,
