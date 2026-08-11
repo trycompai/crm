@@ -111,6 +111,18 @@ export class EnvironmentVariables {
 	BLOB_READ_WRITE_TOKEN?: string;
 
 	@IsOptional()
+	@IsString()
+	AI_GATEWAY_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	VERCEL_OIDC_TOKEN?: string;
+
+	@IsOptional()
+	@IsString()
+	AI_GATEWAY_SPEND_PAUSED?: string;
+
+	@IsOptional()
 	@IsUrl(
 		{ require_tld: false, require_protocol: true },
 		{

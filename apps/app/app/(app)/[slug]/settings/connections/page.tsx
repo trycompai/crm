@@ -12,6 +12,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { AiGatewayConnection } from "./ai-gateway-connection";
 import { GoogleConnection } from "./google-connection";
 import { InboundConnections } from "./inbound-connections";
 import { MicrosoftConnection } from "./microsoft-connection";
@@ -29,7 +30,7 @@ export default function ConnectionsSettingsPage({
 				<PageShellHeading>
 					<PageShellTitle>Connections</PageShellTitle>
 					<PageShellDescription>
-						Your meetings and email, on the companies they belong to.
+						Connection health, operator controls and replay status.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>
@@ -56,6 +57,7 @@ async function Connections({
 		queryClient.prefetchQuery(trpc.google.status.queryOptions()),
 		queryClient.prefetchQuery(trpc.microsoft.status.queryOptions()),
 		queryClient.prefetchQuery(trpc.inbound.status.queryOptions()),
+		queryClient.prefetchQuery(trpc.settings.aiGatewayStatus.queryOptions()),
 	]);
 
 	const connectError = first(error);
@@ -64,6 +66,8 @@ async function Connections({
 	return (
 		<HydrateClient>
 			<div className="flex max-w-3xl flex-col gap-6">
+				<AiGatewayConnection />
+
 				<GoogleConnection
 					connectError={failed === "google" ? connectError : undefined}
 				/>

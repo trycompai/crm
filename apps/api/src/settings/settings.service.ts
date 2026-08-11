@@ -4,6 +4,7 @@ import {
 	maskKey,
 	readAgentModel,
 	readContextDevKey,
+	SETTINGS_ID,
 	writeAgentModel,
 	writeContextDevKey,
 } from "@crm/db/settings";
@@ -32,6 +33,27 @@ export interface ModelCatalogResult {
 export interface ResearchKeySettings {
 	configured: boolean;
 	hint: string | null;
+}
+
+export interface AiGatewaySettings {
+	configured: boolean;
+	paused: boolean;
+	credentialSource: "ai_gateway_key" | "vercel_oidc" | "missing";
+	selectedId: string | null;
+	effectiveId: string;
+	defaultId: string;
+	updatedAt: string | null;
+	lastModelTaskAt: string | null;
+	lastError: string | null;
+	canTest: boolean;
+}
+
+function hasEnv(key: string): boolean {
+	return Boolean(process.env[key]?.trim());
+}
+
+function aiGatewaySpendPaused(): boolean {
+	return process.env.AI_GATEWAY_SPEND_PAUSED?.trim().toLowerCase() !== "false";
 }
 
 @Injectable()
@@ -96,6 +118,57 @@ export class SettingsService {
 	async modelCatalog(): Promise<ModelCatalogResult> {
 		const models = await this.catalog.models();
 		return { models: models ?? [], available: models !== null };
+	}
+
+	async aiGatewayStatus(): Promise<AiGatewaySettings> {
+		const [model, row, latestModelTask] = await Promise.all([
+			readAgentModel(this.db),
+			this.db.appSetting.findUnique({
+				where: { id: SETTINGS_ID },
+				select: { updatedAt: true },
+			}),
+			this.db.agentTask.findFirst({
+				where: { modelId: { not: null } },
+				orderBy: [
+					{ finishedAt: { sort: "desc", nulls: "last" } },
+					{ createdAt: "desc" },
+				],
+				select: {
+					state: true,
+					outcome: true,
+					createdAt: true,
+					finishedAt: true,
+				},
+			}),
+		]);
+		const keyConfigured = hasEnv("AI_GATEWAY_API_KEY");
+		const oidcConfigured = hasEnv("VERCEL_OIDC_TOKEN");
+		const configured = keyConfigured || oidcConfigured;
+		const paused = aiGatewaySpendPaused();
+
+		return {
+			configured,
+			paused,
+			credentialSource: keyConfigured
+				? "ai_gateway_key"
+				: oidcConfigured
+					? "vercel_oidc"
+					: "missing",
+			selectedId: model.isDefault ? null : model.id,
+			effectiveId: model.id,
+			defaultId: DEFAULT_AGENT_MODEL.id,
+			updatedAt: row?.updatedAt.toISOString() ?? null,
+			lastModelTaskAt:
+				(
+					latestModelTask?.finishedAt ?? latestModelTask?.createdAt
+				)?.toISOString() ?? null,
+			lastError:
+				latestModelTask?.state === "FAILED" ||
+				latestModelTask?.state === "UNKNOWN"
+					? latestModelTask.outcome
+					: null,
+			canTest: configured,
+		};
 	}
 
 	async researchKey(): Promise<ResearchKeySettings> {

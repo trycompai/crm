@@ -13,6 +13,10 @@ export function outreachSendsPaused(): boolean {
 	);
 }
 
+export function modelSpendPaused(): boolean {
+	return !isExplicitlyEnabled(process.env.AI_GATEWAY_SPEND_PAUSED);
+}
+
 export function directTaskKinds(kinds: readonly string[]): readonly string[] {
 	if (providerMutationsPaused()) {
 		return kinds.filter(

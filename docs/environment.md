@@ -113,6 +113,8 @@ single place that knows what is set.
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
+| `VERCEL_OIDC_TOKEN` | Provider-injected AI Gateway auth on Vercel; leave unset locally |
+| `AI_GATEWAY_SPEND_PAUSED` | Defaults to paused; set to `false` only when model-backed agent work is approved |
 | `OPENAI_API_KEY` | Optional direct OpenAI model access for the agent |
 | `TAVILY_API_KEY` | Current public-web discovery for prospect research |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |

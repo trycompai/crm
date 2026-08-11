@@ -6,6 +6,23 @@ import { bridge } from "./bridge";
 
 const POKE_TIMEOUT_MS = 2_000;
 
+const INBOUND_SYNC_TASKS = [
+	{
+		kind: "website-intake-sync",
+		reason: "Website intake check requested from Connections",
+	},
+	{
+		kind: "agentmail-sync",
+		reason: "AgentMail check requested from Connections",
+	},
+	{
+		kind: "granola-sync",
+		reason: "Granola check requested from Connections",
+	},
+] as const;
+
+export type InboundSyncTaskKind = (typeof INBOUND_SYNC_TASKS)[number]["kind"];
+
 @Injectable()
 export class AgentTriggerService {
 	private readonly logger = new Logger(AgentTriggerService.name);
@@ -120,21 +137,13 @@ export class AgentTriggerService {
 		}
 	}
 
-	async syncInbound(): Promise<{ queued: number; configured: number }> {
-		const tasks = [
-			{
-				kind: "website-intake-sync",
-				reason: "Website intake check requested from Connections",
-			},
-			{
-				kind: "agentmail-sync",
-				reason: "AgentMail check requested from Connections",
-			},
-			{
-				kind: "granola-sync",
-				reason: "Granola check requested from Connections",
-			},
-		];
+	async syncInbound(
+		kinds: readonly InboundSyncTaskKind[] = INBOUND_SYNC_TASKS.map(
+			(task) => task.kind,
+		),
+	): Promise<{ queued: number; configured: number }> {
+		const allowed = new Set(kinds);
+		const tasks = INBOUND_SYNC_TASKS.filter((task) => allowed.has(task.kind));
 
 		const results = await Promise.all(
 			tasks.map((task) => this.enqueueGlobal(task.kind, task.reason)),

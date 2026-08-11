@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+export const inboundSyncInput = z.object({
+	source: z.enum(["all", "website", "agentMail", "granola"]).default("all"),
+});
+
+export type InboundSyncInput = z.infer<typeof inboundSyncInput>;
+
 export const granolaMatchInput = z.object({
 	id: z.string(),
 	companyId: z.string(),

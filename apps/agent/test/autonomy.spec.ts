@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { directTaskKinds, outreachSendsPaused } from "../agent/lib/autonomy";
-import { runDirect } from "../agent/lib/dispatch";
+import {
+	directTaskKinds,
+	modelSpendPaused,
+	outreachSendsPaused,
+} from "../agent/lib/autonomy";
+import { runDirect, runResearchLane } from "../agent/lib/dispatch";
 import { runPortrait } from "../agent/lib/portrait";
 import { claimDue } from "../agent/lib/tasks";
 
 const providerPause = process.env.PROVIDER_MUTATIONS_PAUSED;
 const outreachPause = process.env.OUTREACH_SENDS_PAUSED;
+const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
 const taskIds: string[] = [];
 const contactIds: string[] = [];
 
@@ -21,6 +26,7 @@ function restoreEnv(key: string, value: string | undefined): void {
 afterEach(async () => {
 	restoreEnv("PROVIDER_MUTATIONS_PAUSED", providerPause);
 	restoreEnv("OUTREACH_SENDS_PAUSED", outreachPause);
+	restoreEnv("AI_GATEWAY_SPEND_PAUSED", aiGatewaySpendPause);
 	if (taskIds.length > 0) {
 		await db.agentTask.deleteMany({ where: { id: { in: taskIds.splice(0) } } });
 	}
@@ -62,6 +68,33 @@ describe("outbound autonomy", () => {
 		process.env.PROVIDER_MUTATIONS_PAUSED = "false";
 		process.env.OUTREACH_SENDS_PAUSED = "true";
 		expect(outreachSendsPaused()).toBe(true);
+	});
+
+	it("does not lease model-backed research while AI Gateway spend is paused", async () => {
+		delete process.env.AI_GATEWAY_SPEND_PAUSED;
+		const task = await db.agentTask.create({
+			data: {
+				kind: "company-profile",
+				reason: `model spend pause ${crypto.randomUUID()}`,
+				dueAt: new Date(Date.now() - 1000),
+			},
+			select: { id: true },
+		});
+		taskIds.push(task.id);
+
+		const handled = await runResearchLane(async () => ({ id: "not-started" }));
+
+		expect(modelSpendPaused()).toBe(true);
+		expect(handled).toBe(0);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, leasedUntil: true, finishedAt: true },
+			}),
+		).toEqual({ state: "QUEUED", leasedUntil: null, finishedAt: null });
+
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		expect(modelSpendPaused()).toBe(false);
 	});
 
 	it("does not start portrait provider work while mutations are paused", async () => {

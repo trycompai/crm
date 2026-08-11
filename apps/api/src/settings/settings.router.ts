@@ -22,6 +22,11 @@ export class SettingsRouter {
 		return this.settings.modelCatalog();
 	}
 
+	@Query()
+	async aiGatewayStatus() {
+		return this.settings.aiGatewayStatus();
+	}
+
 	@Mutation({ input: setAgentModelInput })
 	async setAgentModel(@Input() input: z.infer<typeof setAgentModelInput>) {
 		return this.settings.setAgentModel(input.modelId);

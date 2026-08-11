@@ -2,7 +2,11 @@ import { EnrichmentStatus } from "@crm/db";
 import { sendApprovedAgentMailDraft } from "./agentmail-send";
 import { runAgentMailSync } from "./agentmail-sync";
 import { APP_AUTH, type AppAuth } from "./app-auth";
-import { directTaskKinds, outreachSendsPaused } from "./autonomy";
+import {
+	directTaskKinds,
+	modelSpendPaused,
+	outreachSendsPaused,
+} from "./autonomy";
 import { brandOutcome, runBrand } from "./brand";
 import { markRunning, settle } from "./enrichment";
 import { runGranolaSync } from "./granola-sync";
@@ -236,6 +240,8 @@ export async function runDirect(task: LeasedTask): Promise<void> {
 export async function runResearchLane(
 	start: (task: LeasedTask) => Promise<{ id: string }>,
 ): Promise<number> {
+	if (modelSpendPaused()) return 0;
+
 	const capacity = directOpenAiEnabled() ? RESEARCH_BATCH : 1;
 	const available = Math.max(
 		0,

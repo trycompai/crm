@@ -30,6 +30,8 @@ type ConnectionState = {
 	busy: boolean;
 };
 
+type InboundSyncSource = "website" | "agentMail" | "granola";
+
 export function InboundConnections() {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -39,7 +41,8 @@ export function InboundConnections() {
 		refetchInterval: (query) =>
 			isPendingTask(query.state.data?.website.task?.state) ||
 			isPendingTask(query.state.data?.agentMail.task?.state) ||
-			isPendingTask(query.state.data?.granola.task?.state)
+			isPendingTask(query.state.data?.granola.task?.state) ||
+			isPendingTask(query.state.data?.replay.task?.state)
 				? 1_500
 				: false,
 	});
@@ -48,7 +51,7 @@ export function InboundConnections() {
 			onSuccess: async (result) => {
 				await cache.inbound();
 				if (result.configured === 0) {
-					toast.error("No inbound connection is configured yet.");
+					toast.error("That inbound connection is not configured yet.");
 				} else {
 					toast.success(
 						result.queued > 0
@@ -60,6 +63,7 @@ export function InboundConnections() {
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	const checkingSource = sync.isPending ? sync.variables?.source : null;
 	const agentMailControl = useMutation(
 		trpc.inbound.setAgentMailEnabled.mutationOptions({
 			onSuccess: async (result) => {
@@ -102,6 +106,32 @@ export function InboundConnections() {
 				? status.data.granola.task.outcome
 				: null,
 	});
+	const replayState = connectionState({
+		configured: true,
+		connected:
+			status.data.replay.receipts > 0 || status.data.replay.candidates > 0,
+		queued: isPendingTask(status.data.replay.task?.state),
+		error:
+			status.data.replay.task?.state === "failed"
+				? status.data.replay.task.outcome
+				: null,
+	});
+	const agentMailCanToggle =
+		Boolean(status.data.agentMail.inbox) &&
+		(status.data.agentMail.inboxEnabled ||
+			(status.data.agentMail.configured &&
+				status.data.agentMail.canResumeOutbound));
+	const agentMailOutbound = agentMailOutboundCopy({
+		configured: status.data.agentMail.configured,
+		inboxEnabled: status.data.agentMail.inboxEnabled,
+		outboundEnabled: status.data.agentMail.outboundEnabled,
+		providerPaused: status.data.agentMail.providerPaused,
+		outreachPaused: status.data.agentMail.outreachPaused,
+	});
+
+	function check(source: InboundSyncSource) {
+		sync.mutate({ source });
+	}
 
 	return (
 		<>
@@ -123,16 +153,17 @@ export function InboundConnections() {
 						<Button
 							variant="contrast"
 							size="sm"
-							disabled={!status.data.website.configured || sync.isPending}
-							onClick={() => sync.mutate()}
+							disabled={!status.data.website.canCheck || sync.isPending}
+							onClick={() => check("website")}
 						>
-							{sync.isPending ? "Checking…" : "Check now"}
+							{checkingSource === "website" ? "Checking…" : "Check now"}
 						</Button>
 					</CardAction>
 				</CardHeader>
 
 				<CardContent>
-					{status.data.website.configured ? (
+					{status.data.website.configured ||
+					status.data.website.hasHistoricalData ? (
 						<>
 							<p className="text-sm">
 								{status.data.website.live.toLocaleString()} live enquiries
@@ -152,6 +183,12 @@ export function InboundConnections() {
 									? ` · ${status.data.website.tests.toLocaleString()} isolated test records`
 									: ""}
 							</p>
+							{status.data.website.configured ? null : (
+								<p className="text-muted-foreground text-xs">
+									Historical enquiries remain in the CRM, but new website checks
+									are unavailable until the Supabase service key is restored.
+								</p>
+							)}
 						</>
 					) : (
 						<p className="text-muted-foreground text-xs">
@@ -181,20 +218,15 @@ export function InboundConnections() {
 						<Button
 							variant="contrast"
 							size="sm"
-							disabled={!status.data.agentMail.configured || sync.isPending}
-							onClick={() => sync.mutate()}
+							disabled={!status.data.agentMail.canCheck || sync.isPending}
+							onClick={() => check("agentMail")}
 						>
-							{sync.isPending ? "Checking…" : "Check now"}
+							{checkingSource === "agentMail" ? "Checking…" : "Check now"}
 						</Button>
 						<Button
 							variant="outline"
 							size="sm"
-							disabled={
-								!status.data.agentMail.configured ||
-								agentMailControl.isPending ||
-								(!status.data.agentMail.inboxEnabled &&
-									!status.data.agentMail.canResumeOutbound)
-							}
+							disabled={agentMailControl.isPending || !agentMailCanToggle}
 							onClick={() =>
 								agentMailControl.mutate({
 									enabled: !status.data.agentMail.inboxEnabled,
@@ -221,7 +253,8 @@ export function InboundConnections() {
 						</Alert>
 					) : null}
 
-					{status.data.agentMail.configured ? (
+					{status.data.agentMail.configured ||
+					status.data.agentMail.hasHistoricalData ? (
 						<>
 							<p className="text-sm">
 								{status.data.agentMail.messages.toLocaleString()} received
@@ -242,12 +275,16 @@ export function InboundConnections() {
 									"Ready for the first check"
 								)}
 							</p>
-							{status.data.agentMail.providerPaused ||
-							status.data.agentMail.outreachPaused ? (
+							<p className="text-muted-foreground text-xs">
+								{agentMailOutbound}
+							</p>
+							{status.data.agentMail.configured ? null : (
 								<p className="text-muted-foreground text-xs">
-									Provider writes remain paused by the recovery switch.
+									Historical AgentMail messages remain in the CRM, but new
+									checks are unavailable until the API key and inbox ID are
+									restored.
 								</p>
-							) : null}
+							)}
 						</>
 					) : (
 						<p className="text-muted-foreground text-xs">
@@ -277,10 +314,10 @@ export function InboundConnections() {
 						<Button
 							variant="contrast"
 							size="sm"
-							disabled={!status.data.granola.configured || sync.isPending}
-							onClick={() => sync.mutate()}
+							disabled={!status.data.granola.canCheck || sync.isPending}
+							onClick={() => check("granola")}
 						>
-							{sync.isPending ? "Checking…" : "Check now"}
+							{checkingSource === "granola" ? "Checking…" : "Check now"}
 						</Button>
 					</CardAction>
 				</CardHeader>
@@ -296,7 +333,8 @@ export function InboundConnections() {
 						</Alert>
 					) : null}
 
-					{status.data.granola.configured ? (
+					{status.data.granola.configured ||
+					status.data.granola.hasHistoricalData ? (
 						<>
 							<p className="text-sm">
 								{status.data.granola.notes.toLocaleString()} meeting notes ·{" "}
@@ -325,6 +363,12 @@ export function InboundConnections() {
 									</Link>
 								</Button>
 							) : null}
+							{status.data.granola.configured ? null : (
+								<p className="text-muted-foreground text-xs">
+									Historical Granola notes remain in the CRM, but new imports
+									are unavailable until the Granola API key is restored.
+								</p>
+							)}
 						</>
 					) : (
 						<p className="text-muted-foreground text-xs">
@@ -332,6 +376,69 @@ export function InboundConnections() {
 							imports.
 						</p>
 					)}
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Historical replay</CardTitle>
+					<CardDescription>
+						Replays stored website and mailbox envelopes into reviewable contact
+						candidates. It never calls providers, spends on a model or creates
+						contacts automatically.
+					</CardDescription>
+
+					<CardAction>
+						<StatusIndicator
+							size="sm"
+							tone={replayState.tone}
+							label={replayState.label}
+							busy={replayState.busy}
+						/>
+					</CardAction>
+				</CardHeader>
+
+				<CardContent>
+					{status.data.replay.task?.state === "failed" ? (
+						<Alert variant="destructive">
+							<Icon icon={Warning} />
+							<AlertTitle>Replay failed</AlertTitle>
+							<AlertDescription>
+								{status.data.replay.task.outcome}
+							</AlertDescription>
+						</Alert>
+					) : null}
+
+					<p className="text-sm">
+						{status.data.replay.receipts.toLocaleString()} source receipts ·{" "}
+						{status.data.replay.candidates.toLocaleString()} contact candidates
+					</p>
+					<p className="text-muted-foreground text-xs">
+						{status.data.replay.reviewCandidates.toLocaleString()} awaiting
+						review · {status.data.replay.prohibitedCandidates.toLocaleString()}{" "}
+						prohibited or excluded
+					</p>
+					<p className="text-muted-foreground text-xs">
+						{status.data.replay.latestCandidateAt ? (
+							<>
+								Last candidate replayed{" "}
+								<LocalRelativeTime
+									date={status.data.replay.latestCandidateAt}
+								/>
+							</>
+						) : status.data.replay.latestReceiptAt ? (
+							<>
+								Last receipt captured{" "}
+								<LocalRelativeTime date={status.data.replay.latestReceiptAt} />
+							</>
+						) : (
+							"No local replay receipts yet"
+						)}
+					</p>
+					<p className="text-muted-foreground text-xs">
+						Proposal-only replay is local and read-only; approve candidates
+						before any CRM record changes.
+					</p>
 				</CardContent>
 			</Card>
 		</>
@@ -352,6 +459,28 @@ function connectionState(input: {
 	if (input.connected)
 		return { label: "Connected", tone: "success", busy: false };
 	return { label: "Ready", tone: "info", busy: false };
+}
+
+function agentMailOutboundCopy(input: {
+	configured: boolean;
+	inboxEnabled: boolean;
+	outboundEnabled: boolean;
+	providerPaused: boolean;
+	outreachPaused: boolean;
+}): string {
+	if (input.providerPaused || input.outreachPaused) {
+		return "Outbound paused by recovery switches; inbound checks stay read-only.";
+	}
+	if (!input.inboxEnabled) {
+		return "Outbound paused by operator; inbound checks stay read-only.";
+	}
+	if (!input.configured) {
+		return "Outbound unavailable until AgentMail credentials are restored.";
+	}
+	if (input.outboundEnabled) {
+		return "Outbound available only for approved, receipted sequence steps.";
+	}
+	return "Outbound unavailable until the inbox is ready.";
 }
 
 function isPendingTask(state: string | null | undefined): boolean {

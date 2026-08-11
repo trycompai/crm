@@ -24,7 +24,7 @@ import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput, onboardingUpdateInput, onboardingItemCreateInput, onboardingItemUpdateInput, dealContactsInput, dealAttachContactInput, dealDetachContactInput, dealContactRoleInput, dealBulkOwnerInput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
 import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput } from "../fields/fields.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
-import { agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
+import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { leadDiscoveryInput, outreachProspectInput, outreachPermissionInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
@@ -386,6 +386,7 @@ const appRouter = t.router({
     status: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["status"]>>),
     syncNow: publicProcedure
+      .input(inboundSyncInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<InboundRouter["syncNow"]>>),
     setAgentMailEnabled: publicProcedure
       .input(agentMailEnabledInput)
@@ -480,6 +481,8 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SettingsRouter["agentModel"]>>),
     modelCatalog: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SettingsRouter["modelCatalog"]>>),
+    aiGatewayStatus: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SettingsRouter["aiGatewayStatus"]>>),
     setAgentModel: publicProcedure
       .input(setAgentModelInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SettingsRouter["setAgentModel"]>>),

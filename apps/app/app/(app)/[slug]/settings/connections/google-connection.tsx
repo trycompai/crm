@@ -35,11 +35,14 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Label } from "@crm/ui/components/label";
 import { Spinner } from "@crm/ui/components/spinner";
-import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	StatusIndicator,
+	type StatusTone,
+} from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { LocalRelativeTime } from "@/components/local-date-time";
 import { isSyncing, SYNC_POLL_MS } from "@/lib/sync-status";
@@ -48,14 +51,20 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const SOURCES = {
 	calendar: {
-		label: "Meetings",
+		label: "Calendar",
 		autoCreate: "Add the company and contact when you meet someone new",
 	},
 	gmail: {
-		label: "Email",
+		label: "Gmail",
 		autoCreate: "Add the company and contact when you reply to someone new",
 	},
 } as const;
+
+type SourceState = {
+	label: string;
+	tone: StatusTone;
+	busy: boolean;
+};
 
 const RESOLVE_HOSTS = [
 	"console.cloud.google.com",
@@ -104,13 +113,51 @@ function failureSignature(
 	return failures.sort().join("|");
 }
 
+function syncSourceState(input: {
+	connected: boolean;
+	status: string | null;
+	lastError: string | null;
+	lastSyncedAt: string | null;
+	hasRefreshToken: boolean;
+}): SourceState {
+	if (!input.connected)
+		return { label: "Not granted", tone: "neutral", busy: false };
+	if (!input.hasRefreshToken)
+		return { label: "Needs attention", tone: "error", busy: false };
+	if (input.status === "NEEDS_RECONNECT" || input.lastError) {
+		return { label: "Needs attention", tone: "error", busy: false };
+	}
+	if (input.status === "RUNNING")
+		return { label: "Checking", tone: "info", busy: true };
+	if (input.lastSyncedAt)
+		return { label: "Fresh", tone: "success", busy: false };
+	return { label: "Ready", tone: "info", busy: false };
+}
+
+function syncSourceFreshness(source: {
+	connected: boolean;
+	lastError: string | null;
+	lastSyncedAt: string | null;
+}): ReactNode {
+	if (!source.connected) return "OAuth scope not granted";
+	if (source.lastError) return source.lastError;
+	if (source.lastSyncedAt) {
+		return (
+			<>
+				Last checked <LocalRelativeTime date={source.lastSyncedAt} />
+			</>
+		);
+	}
+	return "Waiting for the first check";
+}
+
 function GoogleUnavailable() {
 	return (
 		<Card>
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Google
+						Gmail and Calendar
 						<StatusIndicator size="sm" tone="neutral" label="Not configured" />
 					</div>
 				</CardTitle>
@@ -156,7 +203,7 @@ function ConnectGoogle({ connectError }: { connectError?: string }) {
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Google
+						Gmail and Calendar
 						<StatusIndicator size="sm" tone="neutral" label="Not connected" />
 					</div>
 				</CardTitle>
@@ -283,7 +330,7 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Google
+						Gmail and Calendar
 						<StatusIndicator
 							size="sm"
 							tone={healthy ? "success" : "warning"}
@@ -292,8 +339,8 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 					</div>
 				</CardTitle>
 				<CardDescription>
-					Meetings and email threads land on the matching company as they
-					happen.
+					Google Calendar meetings and Gmail threads land on the matching
+					company as they happen.
 				</CardDescription>
 
 				<CardAction>
@@ -360,6 +407,13 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 
 				{sources.map((source) => {
 					const copy = SOURCES[source.source];
+					const sourceHealth = syncSourceState({
+						connected: source.connected,
+						status: source.status,
+						lastError: source.lastError,
+						lastSyncedAt: source.lastSyncedAt,
+						hasRefreshToken,
+					});
 
 					return (
 						<div
@@ -370,16 +424,31 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 								htmlFor={`auto-create-${source.source}`}
 								className="flex flex-col items-start gap-1"
 							>
-								<span className="text-sm">{copy.label}</span>
+								<span className="flex min-w-0 items-center gap-2">
+									<span className="text-sm">{copy.label}</span>
+									<StatusIndicator
+										size="sm"
+										tone={sourceHealth.tone}
+										label={sourceHealth.label}
+										busy={sourceHealth.busy}
+									/>
+								</span>
 								<span className="font-normal text-muted-foreground text-xs">
 									{copy.autoCreate}
+								</span>
+								<span className="font-normal text-muted-foreground text-xs">
+									{syncSourceFreshness(source)}
 								</span>
 							</Label>
 
 							<Switch
 								id={`auto-create-${source.source}`}
 								checked={source.autoCreate}
-								disabled={setAutoCreate.isPending}
+								disabled={
+									!hasRefreshToken ||
+									!source.connected ||
+									setAutoCreate.isPending
+								}
 								onCheckedChange={(enabled) =>
 									setAutoCreate.mutate({ source: source.source, enabled })
 								}
@@ -387,6 +456,12 @@ export function GoogleConnection({ connectError }: { connectError?: string }) {
 						</div>
 					);
 				})}
+
+				<p className="text-muted-foreground text-xs">
+					Gmail and Calendar checks are forward-only from their provider
+					cursors. Deleted synced data starts again from now rather than
+					replaying older provider history.
+				</p>
 
 				<CardFooter>
 					<div className="-ml-2 flex flex-wrap items-center gap-1 text-muted-foreground">

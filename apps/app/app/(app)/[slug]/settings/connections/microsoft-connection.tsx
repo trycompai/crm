@@ -29,11 +29,14 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Label } from "@crm/ui/components/label";
 import { Spinner } from "@crm/ui/components/spinner";
-import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	StatusIndicator,
+	type StatusTone,
+} from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { LocalRelativeTime } from "@/components/local-date-time";
 import { isSyncing, SYNC_POLL_MS } from "@/lib/sync-status";
@@ -42,10 +45,54 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const AUTO_CREATE = "Add the company and contact when you reply to someone new";
 
+type SourceState = {
+	label: string;
+	tone: StatusTone;
+	busy: boolean;
+};
+
 const CONNECT_ERRORS: Record<string, string> = {
 	"email_doesn't_match":
 		"That Microsoft account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Microsoft account that matches your sign-in address.",
 };
+
+function syncSourceState(input: {
+	connected: boolean;
+	status: string | null;
+	lastError: string | null;
+	lastSyncedAt: string | null;
+	hasRefreshToken: boolean;
+}): SourceState {
+	if (!input.connected)
+		return { label: "Not granted", tone: "neutral", busy: false };
+	if (!input.hasRefreshToken)
+		return { label: "Needs attention", tone: "error", busy: false };
+	if (input.status === "NEEDS_RECONNECT" || input.lastError) {
+		return { label: "Needs attention", tone: "error", busy: false };
+	}
+	if (input.status === "RUNNING")
+		return { label: "Checking", tone: "info", busy: true };
+	if (input.lastSyncedAt)
+		return { label: "Fresh", tone: "success", busy: false };
+	return { label: "Ready", tone: "info", busy: false };
+}
+
+function syncSourceFreshness(source: {
+	connected: boolean;
+	lastError: string | null;
+	lastSyncedAt: string | null;
+}): ReactNode {
+	if (!source.connected) return "OAuth scope not granted";
+	if (source.lastError) return source.lastError;
+	if (source.lastSyncedAt) {
+		return (
+			<>
+				Last checked <LocalRelativeTime date={source.lastSyncedAt} />
+			</>
+		);
+	}
+	return "Waiting for the first check";
+}
 
 function MicrosoftUnavailable() {
 	return (
@@ -53,7 +100,7 @@ function MicrosoftUnavailable() {
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Microsoft
+						Outlook
 						<StatusIndicator size="sm" tone="neutral" label="Not configured" />
 					</div>
 				</CardTitle>
@@ -94,7 +141,7 @@ function ConnectMicrosoft({ connectError }: { connectError?: string }) {
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Microsoft
+						Outlook
 						<StatusIndicator size="sm" tone="neutral" label="Not connected" />
 					</div>
 				</CardTitle>
@@ -212,7 +259,7 @@ export function MicrosoftConnection({
 			<CardHeader>
 				<CardTitle>
 					<div className="flex items-center gap-2">
-						Microsoft
+						Outlook
 						<StatusIndicator
 							size="sm"
 							tone={healthy ? "success" : "warning"}
@@ -265,31 +312,62 @@ export function MicrosoftConnection({
 					</p>
 				)}
 
-				{sources.map((source) => (
-					<div
-						key={source.source}
-						className="flex items-center justify-between gap-6"
-					>
-						<Label
-							htmlFor={`auto-create-${source.source}`}
-							className="flex flex-col items-start gap-1"
-						>
-							<span className="text-sm">Email</span>
-							<span className="font-normal text-muted-foreground text-xs">
-								{AUTO_CREATE}
-							</span>
-						</Label>
+				{sources.map((source) => {
+					const sourceHealth = syncSourceState({
+						connected: source.connected,
+						status: source.status,
+						lastError: source.lastError,
+						lastSyncedAt: source.lastSyncedAt,
+						hasRefreshToken,
+					});
 
-						<Switch
-							id={`auto-create-${source.source}`}
-							checked={source.autoCreate}
-							disabled={setAutoCreate.isPending}
-							onCheckedChange={(enabled) =>
-								setAutoCreate.mutate({ source: source.source, enabled })
-							}
-						/>
-					</div>
-				))}
+					return (
+						<div
+							key={source.source}
+							className="flex items-center justify-between gap-6"
+						>
+							<Label
+								htmlFor={`auto-create-${source.source}`}
+								className="flex flex-col items-start gap-1"
+							>
+								<span className="flex min-w-0 items-center gap-2">
+									<span className="text-sm">Outlook mail</span>
+									<StatusIndicator
+										size="sm"
+										tone={sourceHealth.tone}
+										label={sourceHealth.label}
+										busy={sourceHealth.busy}
+									/>
+								</span>
+								<span className="font-normal text-muted-foreground text-xs">
+									{AUTO_CREATE}
+								</span>
+								<span className="font-normal text-muted-foreground text-xs">
+									{syncSourceFreshness(source)}
+								</span>
+							</Label>
+
+							<Switch
+								id={`auto-create-${source.source}`}
+								checked={source.autoCreate}
+								disabled={
+									!hasRefreshToken ||
+									!source.connected ||
+									setAutoCreate.isPending
+								}
+								onCheckedChange={(enabled) =>
+									setAutoCreate.mutate({ source: source.source, enabled })
+								}
+							/>
+						</div>
+					);
+				})}
+
+				<p className="text-muted-foreground text-xs">
+					Outlook checks are forward-only from the last received timestamp.
+					Deleted synced data starts again from now rather than replaying older
+					provider history.
+				</p>
 
 				<CardFooter>
 					<div className="-ml-2 flex flex-wrap items-center gap-1 text-muted-foreground">

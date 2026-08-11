@@ -13,6 +13,7 @@ import {
 	agentMailEnabledInput,
 	granolaExcludeInput,
 	granolaMatchInput,
+	inboundSyncInput,
 } from "./inbound.contracts";
 import { InboundService } from "./inbound.service";
 
@@ -26,9 +27,12 @@ export class InboundRouter {
 		return this.inbound.status(ctx.user.id);
 	}
 
-	@Mutation()
-	async syncNow(@Ctx() ctx: AuthedTrpcContext) {
-		return this.inbound.syncNow(ctx.user.id);
+	@Mutation({ input: inboundSyncInput })
+	async syncNow(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof inboundSyncInput>,
+	) {
+		return this.inbound.syncNow(ctx.user.id, input.source);
 	}
 
 	@Mutation({ input: agentMailEnabledInput })
