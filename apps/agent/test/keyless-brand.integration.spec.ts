@@ -49,6 +49,12 @@ const subjectOf = (companyId: string) => ({
 });
 
 async function retiredSubjectOf(companyId: string) {
+	await db.$executeRaw`
+		UPDATE "company"
+		SET "updatedAt" = NOW() - INTERVAL '1 second'
+		WHERE id = ${companyId}
+	`;
+
 	const row = await db.agentTask.create({
 		data: {
 			companyId,
