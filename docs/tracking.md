@@ -65,6 +65,14 @@ somebody else's page. That imposes rules nothing else in this repo has:
 `POST /api/t/e`, anonymous, 204, in `TrackingController`. It answers nothing: a
 tracker that could read a response is a tracker whose failures a stranger can probe.
 
+**It is the one route that sets `Cross-Origin-Resource-Policy: cross-origin`**, and
+it must. `helmet()` puts `same-origin` on every response, which is right for an API
+only its own app calls — but this one is called by a `no-cors` beacon on somebody
+else's marketing site, so Chrome blocks the reply with
+`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and logs a failure under every page view.
+The header is set on the response, not switched off in `helmet`, so the exception
+stays with the route that needs it.
+
 The gauntlet, in order, in `TrackingIngestService.accept`:
 
 1. **User agent** — the `BOT` pattern.
