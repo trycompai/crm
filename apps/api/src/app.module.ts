@@ -30,6 +30,7 @@ import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { OutreachModule } from "./outreach/outreach.module";
 import { ProspectsModule } from "./prospects/prospects.module";
 import { SearchModule } from "./search/search.module";
+import { ServiceModule } from "./service/service.module";
 import { SettingsModule } from "./settings/settings.module";
 import { SsoModule } from "./sso/sso.module";
 import { SyncModule } from "./sync/sync.module";
@@ -77,6 +78,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		ProspectsModule,
 		SyncModule,
 		SettingsModule,
+		ServiceModule,
 		WorkspaceModule,
 		WorkModule,
 		SsoModule,

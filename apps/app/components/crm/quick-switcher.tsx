@@ -2,6 +2,7 @@
 
 import Building from "@carbon/icons-react/es/Building";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
+import Email from "@carbon/icons-react/es/Email";
 import Task from "@carbon/icons-react/es/Task";
 import {
 	Command,
@@ -23,6 +24,7 @@ import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
 import {
 	showCustomersNavigation,
+	showServiceNavigation,
 	showTodayNavigation,
 	showWorkNavigation,
 } from "@/components/crm/quick-switcher-navigation";
@@ -85,6 +87,12 @@ export function QuickSwitcher() {
 		router.push(workspaceUrl("/customers"));
 	};
 
+	const goService = () => {
+		setQuery("");
+		void setOpen(null);
+		router.push(workspaceUrl("/service"));
+	};
+
 	const goToday = () => {
 		setQuery("");
 		void setOpen(null);
@@ -126,6 +134,14 @@ export function QuickSwitcher() {
 							<CommandItem value="customers" onSelect={goCustomers}>
 								<Building />
 								<span>Customers</span>
+							</CommandItem>
+						</CommandGroup>
+					) : null}
+					{showServiceNavigation(query) ? (
+						<CommandGroup heading="Navigation">
+							<CommandItem value="service" onSelect={goService}>
+								<Email />
+								<span>Service</span>
 							</CommandItem>
 						</CommandGroup>
 					) : null}

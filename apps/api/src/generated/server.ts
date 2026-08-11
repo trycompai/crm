@@ -29,6 +29,7 @@ import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcl
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { leadDiscoveryInput, leadDiscoveryTaskInput, outreachProspectMutationInput, outreachRegenerateInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
+import { serviceListInput, serviceCaseIdInput, serviceRecoverInboundInput } from "../service/service.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
 import { todayInput } from "../today/today.contracts";
@@ -52,6 +53,7 @@ import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { OutreachRouter } from "../outreach/outreach.router";
 import type { ProspectsRouter } from "../prospects/prospects.router";
 import type { SearchRouter } from "../search/search.router";
+import type { ServiceRouter } from "../service/service.router";
 import type { SettingsRouter } from "../settings/settings.router";
 import type { SsoRouter } from "../sso/sso.router";
 import type { TodayRouter } from "../today/today.router";
@@ -496,6 +498,17 @@ const appRouter = t.router({
     quick: publicProcedure
       .input(z.object({ q: z.string().default("") }))
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SearchRouter["quick"]>>)
+    }),
+  service: t.router({
+    list: publicProcedure
+      .input(serviceListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ServiceRouter["list"]>>),
+    byId: publicProcedure
+      .input(serviceCaseIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ServiceRouter["byId"]>>),
+    recoverInbound: publicProcedure
+      .input(serviceRecoverInboundInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ServiceRouter["recoverInbound"]>>)
     }),
   settings: t.router({
     agentModel: publicProcedure
