@@ -107,13 +107,14 @@ function. `classifyTouch` turns UTM parameters and a referrer into a `Touch`.
 - **An explicit `utm_source` beats the referrer**, because the marketer said so.
 - **The referrer host is matched on DNS labels, never on a substring**, and the
   provider's labels must sit at the registrable name — one tail label, or two when
-  the first is a second-level suffix (`co.uk`, `com.au`). So `images.google.de` and
-  `scholar.google.co.jp` are Google, while `notgoogle.com`,
-  `google.com.phish.example` and `google.evil.com` are all plain referrals. A
-  substring match hands a phisher a trusted source name in the rep's report.
-  **`SECOND_LEVEL` is a heuristic, not the public suffix list** — a provider label
-  under an unusual two-label suffix reads as a referral, which is the safe way to
-  be wrong.
+  the first is a second-level suffix **and the last is a two-letter country code**
+  (`co.uk`, `com.au`, `co.jp`). So `images.google.de` and `scholar.google.co.jp` are
+  Google, while `notgoogle.com`, `google.evil.com`, `google.com.phish.example` and
+  `google.com.example` are all plain referrals. A substring match hands a phisher a
+  trusted source name in the rep's report, and so does `com.<anything>`: the country
+  code is what stops `SECOND_LEVEL` from waving through every `com.` lookalike.
+  **It is still a heuristic, not the public suffix list** — a provider under an
+  unusual two-label suffix reads as a referral, which is the safe way to be wrong.
 - **Webmail is checked before search.** `mail.google.com` contains `google.`, so
   order alone decides whether a campaign's own click-throughs read as *email* or as
   *organic search* — and reading your newsletter as Google organic is how a
