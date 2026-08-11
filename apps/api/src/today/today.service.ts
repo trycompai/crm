@@ -36,7 +36,6 @@ const WORK_SELECT = {
 	dueAt: true,
 	nextReviewAt: true,
 	version: true,
-	evidence: true,
 	reason: true,
 	state: true,
 	primaryAction: true,
@@ -143,14 +142,18 @@ export class TodayService {
 			incidents,
 		] = await Promise.all([
 			this.workSection(
-				{ ownerId: userId, state: { in: ["OPEN", "IN_PROGRESS"] } },
+				member.isAdmin
+					? { state: { in: ["OPEN", "IN_PROGRESS"] } }
+					: { ownerId: userId, state: { in: ["OPEN", "IN_PROGRESS"] } },
 				input.limit,
 				userId,
 				member.isAdmin,
 			),
 			this.approvalSection(input.limit, member),
 			this.workSection(
-				{ ownerId: userId, state: "WAITING" },
+				member.isAdmin
+					? { state: "WAITING" }
+					: { ownerId: userId, state: "WAITING" },
 				input.limit,
 				userId,
 				member.isAdmin,
@@ -219,7 +222,7 @@ export class TodayService {
 			urgency: row.urgency,
 			reason: row.reason,
 			primaryAction: row.primaryAction,
-			evidence: row.evidence,
+			evidence: null,
 			owner: ownerSummary(row.owner),
 			subject: subjectMap.get(`${row.subjectType}:${row.subjectId}`) ?? {
 				type: row.subjectType,

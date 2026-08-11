@@ -19,6 +19,7 @@ const suffix = crypto.randomUUID();
 const ownerId = `today-owner-${suffix}`;
 const adminId = `today-admin-${suffix}`;
 const memberId = `today-member-${suffix}`;
+const otherMemberId = `today-other-member-${suffix}`;
 const foreignId = `today-foreign-${suffix}`;
 const companyId = `today-company-${suffix}`;
 const accountId = `today-account-${suffix}`;
@@ -26,10 +27,12 @@ const instanceId = `today-instance-${suffix}`;
 const ownerMembershipId = `today-owner-membership-${suffix}`;
 const adminMembershipId = `today-admin-membership-${suffix}`;
 const memberMembershipId = `today-member-membership-${suffix}`;
+const otherMemberMembershipId = `today-other-member-membership-${suffix}`;
 const membershipIds = [
 	ownerMembershipId,
 	adminMembershipId,
 	memberMembershipId,
+	otherMemberMembershipId,
 ];
 const approvalIds: string[] = [];
 const approvalRequestKeys: string[] = [];
@@ -130,6 +133,11 @@ beforeAll(async () => {
 			{ id: adminId, name: "Today Admin", email: `${adminId}@example.test` },
 			{ id: memberId, name: "Today Member", email: `${memberId}@example.test` },
 			{
+				id: otherMemberId,
+				name: "Today Other Member",
+				email: `${otherMemberId}@example.test`,
+			},
+			{
 				id: foreignId,
 				name: "Foreign Member",
 				email: `${foreignId}@example.test`,
@@ -156,6 +164,13 @@ beforeAll(async () => {
 				id: memberMembershipId,
 				organizationId: WORKSPACE_ID,
 				userId: memberId,
+				role: "member",
+				createdAt: new Date(),
+			},
+			{
+				id: otherMemberMembershipId,
+				organizationId: WORKSPACE_ID,
+				userId: otherMemberId,
 				role: "member",
 				createdAt: new Date(),
 			},
@@ -192,7 +207,9 @@ afterAll(async () => {
 	await db.company.deleteMany({ where: { id: companyId } });
 	await db.member.deleteMany({ where: { id: { in: membershipIds } } });
 	await db.user.deleteMany({
-		where: { id: { in: [ownerId, adminId, memberId, foreignId] } },
+		where: {
+			id: { in: [ownerId, adminId, memberId, otherMemberId, foreignId] },
+		},
 	});
 });
 
@@ -479,10 +496,36 @@ describe("Today and Work projections", () => {
 	it("returns role-filtered Today sections with bounded safe rows", async () => {
 		const ownOpen = `today-do-next-${suffix}`;
 		const ownWaiting = `today-waiting-${suffix}`;
+		const otherMemberOpen = `today-other-member-open-${suffix}`;
+		const otherMemberWaiting = `today-other-member-waiting-${suffix}`;
 		const ownBlocked = `today-blocked-${suffix}`;
 		const foreignBlocked = `today-foreign-blocked-${suffix}`;
 		await createWork({ id: ownOpen, ownerId: memberId });
 		await createWork({ id: ownWaiting, ownerId: memberId, state: "WAITING" });
+		await createWork({ id: otherMemberOpen, ownerId: otherMemberId });
+		await createWork({
+			id: otherMemberWaiting,
+			ownerId: otherMemberId,
+			state: "WAITING",
+		});
+		await db.workItem.update({
+			where: { id: ownOpen },
+			data: {
+				evidence: {
+					provider: "secret-provider",
+					apiKey: "secret-token-should-not-leak",
+				},
+			},
+		});
+		await db.workItem.update({
+			where: { id: otherMemberOpen },
+			data: {
+				evidence: {
+					provider: "other-provider",
+					credential: "other-secret-should-not-leak",
+				},
+			},
+		});
 		await createWork({ id: ownBlocked, ownerId: memberId, state: "BLOCKED" });
 		await createWork({
 			id: foreignBlocked,
@@ -535,8 +578,18 @@ describe("Today and Work projections", () => {
 			memberToday.sections.doNext.rows.some((row) => row.id === ownOpen),
 		).toBe(true);
 		expect(
+			memberToday.sections.doNext.rows.some(
+				(row) => row.id === otherMemberOpen,
+			),
+		).toBe(false);
+		expect(
 			memberToday.sections.waiting.rows.some((row) => row.id === ownWaiting),
 		).toBe(true);
+		expect(
+			memberToday.sections.waiting.rows.some(
+				(row) => row.id === otherMemberWaiting,
+			),
+		).toBe(false);
 		expect(
 			memberToday.sections.blockedOrFailed.rows.some(
 				(row) => row.id === ownBlocked,
@@ -559,8 +612,17 @@ describe("Today and Work projections", () => {
 		const serializedMember = JSON.stringify(memberToday);
 		expect(serializedMember).not.toContain("contentSnapshot");
 		expect(serializedMember).not.toContain("Private approval body");
+		expect(serializedMember).not.toContain("secret-token-should-not-leak");
+		expect(serializedMember).not.toContain("secret-provider");
+		expect(
+			memberToday.sections.doNext.rows.find((row) => row.id === ownOpen)
+				?.evidence,
+		).toBeNull();
 
-		const adminToday = await today.get(todayInput.parse({ limit: 1 }), adminId);
+		const adminToday = await today.get(
+			todayInput.parse({ limit: 25 }),
+			adminId,
+		);
 		expect(adminToday.viewer).toEqual({
 			role: "admin",
 			isAdmin: true,
@@ -571,8 +633,23 @@ describe("Today and Work projections", () => {
 		expect(
 			adminToday.sections.incidents.rows.some((row) => row.id === incidentId),
 		).toBe(true);
+		expect(
+			adminToday.sections.doNext.rows.some((row) => row.id === otherMemberOpen),
+		).toBe(true);
+		expect(
+			adminToday.sections.waiting.rows.some(
+				(row) => row.id === otherMemberWaiting,
+			),
+		).toBe(true);
+		const serializedAdmin = JSON.stringify(adminToday);
+		expect(serializedAdmin).not.toContain("other-secret-should-not-leak");
+		expect(serializedAdmin).not.toContain("other-provider");
+		expect(
+			adminToday.sections.doNext.rows.find((row) => row.id === otherMemberOpen)
+				?.evidence,
+		).toBeNull();
 		for (const section of Object.values(adminToday.sections)) {
-			expect(section.rows.length).toBeLessThanOrEqual(1);
+			expect(section.rows.length).toBeLessThanOrEqual(25);
 		}
 	});
 });
