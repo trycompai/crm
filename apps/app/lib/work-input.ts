@@ -62,6 +62,7 @@ const SUBJECT_TYPES: Record<NonNullable<WorkListInput["subjectType"]>, true> = {
 	PLAN: true,
 	CONTROL_COMMAND: true,
 	PROVIDER_OPERATION: true,
+	CONTACT_CANDIDATE: true,
 };
 
 type SubjectType = NonNullable<WorkListInput["subjectType"]>;

@@ -23,6 +23,7 @@ export const subjectTypeValues = [
 	"PLAN",
 	"CONTROL_COMMAND",
 	"PROVIDER_OPERATION",
+	"CONTACT_CANDIDATE",
 ] as const;
 
 export const subjectTypeInput = z.enum(subjectTypeValues);

@@ -18,6 +18,7 @@ const outsiderId = `kernel-repair-outsider-${suffix}`;
 const membershipId = `kernel-repair-membership-${suffix}`;
 const companyId = `kernel-repair-company-${suffix}`;
 const contactId = `kernel-repair-contact-${suffix}`;
+const candidateId = `kernel-repair-candidate-${suffix}`;
 const prospectId = `kernel-repair-prospect-${suffix}`;
 const dealId = `kernel-repair-deal-${suffix}`;
 const inboxId = `kernel-repair-inbox-${suffix}`;
@@ -93,6 +94,15 @@ beforeAll(async () => {
 			firstName: "Repair",
 			lastName: "Contact",
 			companyId,
+		},
+	});
+	await db.contactCandidate.create({
+		data: {
+			id: candidateId,
+			identityKey: "a".repeat(64),
+			canonicalEmail: `candidate-${suffix}@example.test`,
+			canonicalName: "Repair Candidate",
+			canonicalDomain: "example.test",
 		},
 	});
 	await db.prospect.create({
@@ -371,6 +381,7 @@ afterAll(async () => {
 	await db.agentTask.deleteMany({ where: { id: emailDraftTaskId } });
 	await db.deal.deleteMany({ where: { id: dealId } });
 	await db.prospect.deleteMany({ where: { id: prospectId } });
+	await db.contactCandidate.deleteMany({ where: { id: candidateId } });
 	await db.contact.deleteMany({ where: { id: contactId } });
 	await db.company.deleteMany({ where: { id: companyId } });
 	await db.member.deleteMany({ where: { id: membershipId } });
@@ -401,6 +412,7 @@ describe("operating kernel repair", () => {
 			{ type: "PLAN", id: planId },
 			{ type: "CONTROL_COMMAND", id: commandId },
 			{ type: "PROVIDER_OPERATION", id: operationId },
+			{ type: "CONTACT_CANDIDATE", id: candidateId },
 		] as const;
 		const resolved = await resolver.resolveMany(refs);
 		expect(resolved).toHaveLength(subjectTypeValues.length);

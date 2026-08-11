@@ -60,6 +60,7 @@ export class SubjectResolverService {
 			plans,
 			controlCommands,
 			providerOperations,
+			contactCandidates,
 		] = await Promise.all([
 			client.organization.findMany({
 				where: {
@@ -155,6 +156,16 @@ export class SubjectResolverService {
 				where: { id: { in: byType("PROVIDER_OPERATION") } },
 				select: { id: true, operation: true },
 			}),
+			client.contactCandidate.findMany({
+				where: { id: { in: byType("CONTACT_CANDIDATE") } },
+				select: {
+					id: true,
+					canonicalName: true,
+					canonicalEmail: true,
+					canonicalBusinessName: true,
+					canonicalDomain: true,
+				},
+			}),
 		]);
 
 		const labels = new Map<string, string>();
@@ -210,6 +221,16 @@ export class SubjectResolverService {
 			labels.set(`CONTROL_COMMAND:${row.id}`, row.command);
 		for (const row of providerOperations)
 			labels.set(`PROVIDER_OPERATION:${row.id}`, row.operation);
+		for (const row of contactCandidates) {
+			labels.set(
+				`CONTACT_CANDIDATE:${row.id}`,
+				row.canonicalName ??
+					row.canonicalEmail ??
+					row.canonicalBusinessName ??
+					row.canonicalDomain ??
+					"Contact candidate",
+			);
+		}
 
 		return values.map((ref) => ({
 			...ref,
