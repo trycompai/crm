@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+	approvalIntentAfterError,
+	approvalIntentFingerprint,
+	classifyApprovalActionError,
+	createApprovalIntent,
+} from "../app/(app)/[slug]/approval-action-intent";
 import { todayFocusHistory } from "../app/(app)/[slug]/today-search-params";
 import { showTodayNavigation } from "../components/crm/quick-switcher-navigation";
 
@@ -66,14 +72,75 @@ test("approval actions remain server-capability and integrity gated", () => {
 	expect(approvalSheet).toContain("approval.viewer.canReject");
 	expect(approvalSheet).toContain("approval.viewer.canInvalidate");
 	expect(approvalSheet).toContain("!current?.integrityValid");
-	expect(approvalSheet).toContain("expectedVersion: current.version");
-	expect(approvalSheet).toContain("contentDigest: current.contentDigest");
+	expect(approvalSheet).toContain("expectedVersion: snapshot.version");
+	expect(approvalSheet).toContain("contentDigest: snapshot.contentDigest");
 	expect(approvalSheet).toContain(
-		"invalidationVersion: current.invalidationVersion",
+		"invalidationVersion: snapshot.invalidationVersion",
 	);
-	expect(approvalSheet).toContain("clientRequestId: crypto.randomUUID()");
+	expect(approvalSheet).toContain("createApprovalIntent");
+	expect(todayDesk).toContain('key={approvalId ?? "closed"}');
 	expect(approvalSheet).toContain('aria-live="polite"');
 	expect(approvalSheet).toContain('aria-live="assertive"');
+});
+
+test("approval intents keep one key for an explicit retry and rotate for new intent", () => {
+	const snapshot = {
+		id: "approval-1",
+		version: 2,
+		contentDigest: "digest-1",
+		invalidationVersion: 0,
+	};
+	const first = createApprovalIntent(
+		"approve",
+		snapshot,
+		null,
+		() => "request-1",
+	);
+	const retry = createApprovalIntent(
+		"approve",
+		snapshot,
+		first,
+		() => "request-2",
+	);
+	const changed = createApprovalIntent(
+		"approve",
+		{ ...snapshot, version: 3 },
+		first,
+		() => "request-3",
+	);
+	const differentOperation = createApprovalIntent(
+		"reject",
+		snapshot,
+		first,
+		() => "request-4",
+	);
+
+	expect(retry).toEqual(first);
+	expect(approvalIntentAfterError(first, { retryable: true })).toEqual(first);
+	expect(approvalIntentAfterError(first, { retryable: false })).toBeNull();
+	expect(changed.clientRequestId).toBe("request-3");
+	expect(differentOperation.clientRequestId).toBe("request-4");
+	expect(approvalIntentFingerprint("approve", snapshot)).toBe(
+		first.fingerprint,
+	);
+});
+
+test("approval errors retain only transport/server intents and classify conflicts", () => {
+	const transport = classifyApprovalActionError(new TypeError("offline"));
+	const server = classifyApprovalActionError({
+		data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500 },
+	});
+	const conflict = classifyApprovalActionError({
+		data: { code: "CONFLICT", httpStatus: 409 },
+	});
+	const auth = classifyApprovalActionError({
+		data: { code: "FORBIDDEN", httpStatus: 403 },
+	});
+
+	expect(transport.retryable).toBe(true);
+	expect(server.retryable).toBe(true);
+	expect(conflict.retryable).toBe(false);
+	expect(auth.retryable).toBe(false);
 });
 
 test("Today navigation is named consistently and history semantics are explicit", () => {

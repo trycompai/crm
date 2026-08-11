@@ -13,7 +13,7 @@ import {
 	type StatusTone,
 } from "@crm/ui/components/status-indicator";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
 	DetailSheet,
 	DetailSheetBody,
@@ -27,6 +27,16 @@ import {
 import { LocalDateTime } from "@/components/local-date-time";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
+import {
+	type ApprovalActionError,
+	type ApprovalActionIntent,
+	type ApprovalIntentSnapshot,
+	type ApprovalOperation,
+	approvalIntentAfterError,
+	approvalIntentFingerprint,
+	classifyApprovalActionError,
+	createApprovalIntent,
+} from "./approval-action-intent";
 
 type Approval = {
 	id: string;
@@ -47,18 +57,12 @@ type Approval = {
 		canInvalidate: boolean;
 	};
 };
-type Operation = "approve" | "reject" | "invalidate";
-
 function snapshotText(snapshot: unknown): string {
 	try {
 		return JSON.stringify(snapshot, null, 2) ?? "null";
 	} catch {
 		return "Unable to display this snapshot.";
 	}
-}
-
-function errorText(error: unknown): string {
-	return error instanceof Error ? error.message : "The approval action failed.";
 }
 
 export function ApprovalFocusSheet({
@@ -74,56 +78,84 @@ export function ApprovalFocusSheet({
 		...trpc.approval.detail.queryOptions({ id: approvalId ?? "" }),
 		enabled: approvalId !== null,
 	});
+	const intent = useRef<ApprovalActionIntent | null>(null);
 	const [resultMessage, setResultMessage] = useState("");
-	const [errorMessage, setErrorMessage] = useState("");
+	const [actionError, setActionError] = useState<ApprovalActionError | null>(
+		null,
+	);
 
 	const refresh = async () => {
 		if (approvalId) await cache.approval(approvalId);
 	};
 
-	const handleSuccess = async (operation: Operation, receiptId: string) => {
-		setErrorMessage("");
+	const handleSuccess = async (
+		operation: ApprovalOperation,
+		receiptId: string,
+	) => {
+		intent.current = null;
+		setActionError(null);
 		setResultMessage(
 			`${operationLabel(operation)} recorded. Receipt ${receiptId}.`,
 		);
 		await refresh();
 	};
-	const handleError = async (error: unknown) => {
+	const handleError = async (operation: ApprovalOperation, error: unknown) => {
+		const failure = classifyApprovalActionError(error);
+		intent.current = approvalIntentAfterError(intent.current, failure);
 		setResultMessage("");
-		setErrorMessage(errorText(error));
+		setActionError({ operation, ...failure });
 		await refresh();
 	};
 
 	const approve = useMutation(
 		trpc.approval.approve.mutationOptions({
 			onSuccess: (result) => handleSuccess("approve", result.receipt.id),
-			onError: handleError,
+			onError: (error) => handleError("approve", error),
 		}),
 	);
 	const reject = useMutation(
 		trpc.approval.reject.mutationOptions({
 			onSuccess: (result) => handleSuccess("reject", result.receipt.id),
-			onError: handleError,
+			onError: (error) => handleError("reject", error),
 		}),
 	);
 	const invalidate = useMutation(
 		trpc.approval.invalidate.mutationOptions({
 			onSuccess: (result) => handleSuccess("invalidate", result.receipt.id),
-			onError: handleError,
+			onError: (error) => handleError("invalidate", error),
 		}),
 	);
 	const pending = approve.isPending || reject.isPending || invalidate.isPending;
 
-	const submit = (operation: Operation) => {
+	const submit = (operation: ApprovalOperation) => {
 		const current = approval.data;
-		if (!current?.integrityValid || errorMessage || pending) return;
+		if (
+			!current?.integrityValid ||
+			approval.isError ||
+			approval.isFetching ||
+			pending
+		) {
+			return;
+		}
 		if (!current) return;
-		const input = {
+		const snapshot: ApprovalIntentSnapshot = {
 			id: current.id,
-			expectedVersion: current.version,
+			version: current.version,
 			contentDigest: current.contentDigest,
 			invalidationVersion: current.invalidationVersion,
-			clientRequestId: crypto.randomUUID(),
+		};
+		const nextIntent = createApprovalIntent(
+			operation,
+			snapshot,
+			intent.current,
+		);
+		intent.current = nextIntent;
+		const input = {
+			id: snapshot.id,
+			expectedVersion: snapshot.version,
+			contentDigest: snapshot.contentDigest,
+			invalidationVersion: snapshot.invalidationVersion,
+			clientRequestId: nextIntent.clientRequestId,
 		};
 		if (operation === "approve") approve.mutate(input);
 		if (operation === "reject") reject.mutate(input);
@@ -135,13 +167,13 @@ export function ApprovalFocusSheet({
 			open={approvalId !== null}
 			onOpenChange={(open) => !open && onClose()}
 		>
-			{approval.isPending ? (
+			{approval.isPending && !approval.data ? (
 				<DetailSheetEmpty
 					icon={Checkmark}
 					title="Loading approval"
 					description="The exact approval snapshot is loading."
 				/>
-			) : approval.isError || !approval.data ? (
+			) : !approval.data ? (
 				<DetailSheetEmpty
 					icon={WarningAlt}
 					title="Approval unavailable"
@@ -150,9 +182,11 @@ export function ApprovalFocusSheet({
 			) : (
 				<ApprovalFocus
 					approval={approval.data}
+					detailReady={!approval.isError && !approval.isFetching}
 					pending={pending}
 					resultMessage={resultMessage}
-					errorMessage={errorMessage}
+					actionError={actionError}
+					intent={intent.current}
 					onAction={submit}
 					onClose={onClose}
 				/>
@@ -163,21 +197,35 @@ export function ApprovalFocusSheet({
 
 function ApprovalFocus({
 	approval,
+	detailReady,
 	pending,
 	resultMessage,
-	errorMessage,
+	actionError,
+	intent,
 	onAction,
 	onClose,
 }: {
 	approval: Approval;
+	detailReady: boolean;
 	pending: boolean;
 	resultMessage: string;
-	errorMessage: string;
-	onAction: (operation: Operation) => void;
+	actionError: ApprovalActionError | null;
+	intent: ApprovalActionIntent | null;
+	onAction: (operation: ApprovalOperation) => void;
 	onClose: () => void;
 }) {
-	const canReview = approval.integrityValid && !errorMessage;
+	const canReview = approval.integrityValid && detailReady;
 	const statusTone: StatusTone = approval.integrityValid ? "success" : "error";
+	const retryOperation = actionError?.retryable ? actionError.operation : null;
+	const canRetry = Boolean(
+		retryOperation &&
+			intent &&
+			approval.integrityValid &&
+			detailReady &&
+			intent.operation === retryOperation &&
+			intent.fingerprint ===
+				approvalIntentFingerprint(retryOperation, approval),
+	);
 	return (
 		<>
 			<DetailSheetHeader
@@ -233,6 +281,18 @@ function ApprovalFocus({
 								Invalidate
 							</Button>
 						) : null}
+						{canRetry ? (
+							<Button
+								type="button"
+								variant="outline"
+								disabled={pending}
+								onClick={() => {
+									if (retryOperation) onAction(retryOperation);
+								}}
+							>
+								Retry {retryOperation ? operationLabel(retryOperation) : null}
+							</Button>
+						) : null}
 					</div>
 					{!approval.integrityValid ? (
 						<DetailSheetProse>
@@ -244,7 +304,7 @@ function ApprovalFocus({
 						{resultMessage}
 					</div>
 					<div aria-live="assertive" role="alert">
-						{errorMessage}
+						{actionError?.message}
 					</div>
 				</DetailSheetSection>
 				<DetailSheetSection title="Target and expiry">
@@ -285,7 +345,7 @@ function ApprovalFocus({
 	);
 }
 
-function operationLabel(operation: Operation): string {
+function operationLabel(operation: ApprovalOperation): string {
 	return operation === "approve"
 		? "Approval"
 		: operation === "reject"

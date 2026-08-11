@@ -186,7 +186,11 @@ export function TodayDesk() {
 					))}
 				</div>
 			</div>
-			<ApprovalFocusSheet approvalId={approvalId} onClose={closeApproval} />
+			<ApprovalFocusSheet
+				key={approvalId ?? "closed"}
+				approvalId={approvalId}
+				onClose={closeApproval}
+			/>
 		</>
 	);
 }
