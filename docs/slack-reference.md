@@ -63,8 +63,28 @@ try {
 }
 ```
 
-Matching the string `"Unique constraint"` is fragile. Our `lockIdempotencyKey`
-in `@crm/db/idempotency` is the better version of the same idea.
+Matching the string `"Unique constraint"` is fragile. `lockIdempotencyKey` in
+`@crm/db/idempotency` is **not** a replacement for it. The two do different
+jobs, and only one of them survives a commit.
+
+`lockIdempotencyKey` takes a `pg_advisory_xact_lock` on a hash of the key. That
+lock lives exactly as long as the transaction: Postgres releases it at commit or
+rollback and keeps no record that it was ever held. So it serialises two
+deliveries of the same key that arrive *at the same time*, and it does nothing
+at all about one that arrives a second later. Used on its own it is not
+deduplication, it is a queue of one.
+
+The persisted unique row is what makes a handler idempotent, and it is still
+required. Use both together: take the lock first so the racing delivery waits
+rather than colliding, then read or insert the row inside that same transaction
+and let the unique constraint refuse the duplicate. `queueEventAgentRuns`
+(`apps/agent/agent/lib/custom-agent-dispatch.ts`) is the pattern — it calls
+`lockIdempotencyKey`, then upserts `agentRun` on its unique `idempotencyKey`.
+
+What is worth taking from Comp's version is the shape, not the string match:
+catch the violation from the constraint, and treat it as *already handled*
+rather than as an error. Prisma reports it as `P2002`, so check the error code
+and never the message text.
 
 ## Signature verification
 

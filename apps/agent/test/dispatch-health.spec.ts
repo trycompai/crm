@@ -10,46 +10,56 @@ import type { LeasedTask } from "../agent/lib/tasks";
 
 describe("dispatch wedging", () => {
 	it("swallows every later call while a sweep never settles", async () => {
+		const gate = deferred();
+		let runs = 0;
+
 		const never = collapsing(async () => {
-			await new Promise(() => {});
+			runs += 1;
+			await gate.promise;
 		});
-		never().catch(() => {});
 
+		const first = never();
 		let second = "pending";
-		never()
-			.then(() => {
-				second = "resolved";
-			})
-			.catch(() => {
-				second = "rejected";
-			});
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		const later = never().then(() => {
+			second = "resolved";
+		});
 
+		expect(runs).toBe(1);
 		expect(second).toBe("pending");
+
+		gate.release();
+		await Promise.all([first, later]);
+
+		expect(second).toBe("resolved");
+		expect(runs).toBe(2);
 	});
 
 	it("accepts the next sweep once a hung one is abandoned", async () => {
+		const abandon = deferred();
+		const finish = deferred();
+		const gates = [abandon, finish];
+		let runs = 0;
+
 		const timed = collapsing(async () => {
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const bail = new Promise((_, reject) => {
-				timer = setTimeout(() => reject(new Error("abandoned")), 100);
-			});
-			try {
-				await Promise.race([new Promise(() => {}), bail]);
-			} finally {
-				clearTimeout(timer);
-			}
+			const gate = gates[runs];
+			runs += 1;
+			await gate?.promise;
+			if (runs === 1) throw new Error("abandoned");
 		});
 
-		await timed().catch(() => {});
+		const hung = timed();
+		abandon.release();
+		await expect(hung).rejects.toThrow("abandoned");
+
 		let after = "pending";
-		const next = timed().catch(() => {
+		const next = timed().then(() => {
 			after = "recovered";
 		});
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		await next.catch(() => {});
+		finish.release();
+		await next;
 
 		expect(after).toBe("recovered");
+		expect(runs).toBe(2);
 	});
 
 	it("reports health before any sweep has run", () => {

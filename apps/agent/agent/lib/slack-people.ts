@@ -1,4 +1,5 @@
 import { db } from "@crm/db";
+import { queueSlackInventorySync } from "@crm/db/slack-inventory";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { parse, schemas } from "@crm/validation";
 import { z } from "zod";
@@ -43,6 +44,30 @@ type SlackPage = {
 };
 
 const RECONNECT_ERRORS = ["invalid_auth", "account_inactive", "token_revoked"];
+
+const INVENTORY_REASON =
+	"Read Slack people and channels again: the cached inventory is stale";
+
+export async function requestSlackInventorySync(): Promise<void> {
+	await queueSlackInventorySync(INVENTORY_REASON);
+}
+
+export async function requestStaleSlackInventorySync(): Promise<void> {
+	try {
+		const newest = await db.slackChannel.findFirst({
+			orderBy: { updatedAt: "desc" },
+			select: { updatedAt: true },
+		});
+		const fresh =
+			newest !== null &&
+			Date.now() - newest.updatedAt.getTime() < SLACK.inventory.staleMs;
+		if (fresh) return;
+	} catch {
+		return;
+	}
+
+	await requestSlackInventorySync();
+}
 
 export async function runSlackPeopleMatch(): Promise<string> {
 	const accessToken = await slackAccessToken();

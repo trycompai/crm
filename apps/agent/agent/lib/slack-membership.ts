@@ -1,13 +1,28 @@
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
+import { z } from "zod";
 import { SLACK } from "./slack-config";
 import { slackAccessToken, slackUserToken } from "./slack-connection";
+import { requestSlackInventorySync } from "./slack-people";
 
 export type JoinOutcome =
 	| { joined: true; already: boolean }
 	| { joined: false; reason: string; needsHuman: boolean };
 
+type ChannelState = { isPrivate: boolean; isMember: boolean };
+
 const ALREADY_IN_CHANNEL = "already_in_channel";
+
+const CHANNEL_NOT_FOUND = "channel_not_found";
+
+const channelInfo = schemas.slack.reply.extend({
+	channel: z
+		.object({
+			is_private: z.boolean().optional(),
+			is_member: z.boolean().optional(),
+		})
+		.nullish(),
+});
 
 async function call(
 	token: string,
@@ -54,6 +69,58 @@ async function botUserId(token: string): Promise<string | null> {
 		: null;
 }
 
+async function liveChannelState(
+	token: string,
+	channelId: string,
+): Promise<ChannelState | null> {
+	const url = new URL("https://slack.com/api/conversations.info");
+	url.searchParams.set("channel", channelId);
+
+	try {
+		const response = await fetch(url, {
+			headers: { authorization: `Bearer ${token}` },
+			signal: AbortSignal.timeout(SLACK.request.timeoutMs),
+		});
+		const parsed = channelInfo.safeParse(await response.json());
+		if (!parsed.success) return null;
+
+		if (parsed.data.ok && parsed.data.channel) {
+			return {
+				isPrivate: parsed.data.channel.is_private ?? false,
+				isMember: parsed.data.channel.is_member ?? false,
+			};
+		}
+
+		return parsed.data.error === CHANNEL_NOT_FOUND
+			? { isPrivate: true, isMember: false }
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+async function classifyChannel(
+	channelId: string,
+	cached: ChannelState,
+	token: string,
+): Promise<ChannelState> {
+	const live = await liveChannelState(token, channelId);
+	if (!live) return cached;
+	if (
+		live.isPrivate === cached.isPrivate &&
+		live.isMember === cached.isMember
+	) {
+		return live;
+	}
+
+	await db.slackChannel
+		.update({ where: { id: channelId }, data: live })
+		.catch(() => null);
+	await requestSlackInventorySync();
+
+	return live;
+}
+
 export async function joinSlackChannel(
 	channelId: string,
 ): Promise<JoinOutcome> {
@@ -65,7 +132,6 @@ export async function joinSlackChannel(
 	if (!channel) {
 		return { joined: false, reason: "No such channel.", needsHuman: false };
 	}
-	if (channel.isMember) return { joined: true, already: true };
 
 	const bot = await slackAccessToken();
 	if (!bot) {
@@ -76,7 +142,14 @@ export async function joinSlackChannel(
 		};
 	}
 
-	const outcome = channel.isPrivate
+	const state = await classifyChannel(
+		channelId,
+		{ isPrivate: channel.isPrivate, isMember: channel.isMember },
+		bot,
+	);
+	if (state.isMember) return { joined: true, already: true };
+
+	const outcome = state.isPrivate
 		? await inviteWithUserToken(channelId, bot)
 		: await call(bot, "conversations.join", { channel: channelId });
 

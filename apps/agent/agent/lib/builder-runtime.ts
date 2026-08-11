@@ -8,7 +8,7 @@ import {
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
-import { refreshSlackChannels } from "./slack-people";
+import { requestStaleSlackInventorySync } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
@@ -638,15 +638,8 @@ async function connectionStatus(userId: string) {
 			},
 		}),
 	]);
-	if (slackAccount) {
-		try {
-			await refreshSlackChannels();
-		} catch (error) {
-			console.warn("[builder] could not refresh Slack channels", {
-				reason: error instanceof Error ? error.message : String(error),
-			});
-		}
-	}
+	if (slackAccount) void requestStaleSlackInventorySync();
+
 	const slackChannels = await db.slackChannel.findMany({
 		where: { available: true },
 		orderBy: { name: "asc" },
