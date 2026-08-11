@@ -7,6 +7,7 @@ import {
 	workActionDescriptors,
 	workActionRetryState,
 } from "../app/(app)/[slug]/work/work-action-descriptors";
+import { resetWorkDialogState } from "../app/(app)/[slug]/work/work-dialog-state";
 import { showWorkNavigation } from "../components/crm/quick-switcher-navigation";
 import {
 	workAssignInput,
@@ -19,6 +20,7 @@ import {
 	workAssigneeOptions,
 	workAssigneeUsers,
 	workFocusHistory,
+	workspaceMemberSearchInput,
 } from "../lib/work-input";
 
 const appRoot = resolve(import.meta.dir, "..");
@@ -149,6 +151,48 @@ test("workspace members map userId for facets and assignment", () => {
 		value: "removed-user",
 		label: "Removed user",
 	});
+});
+
+test("dialog reset clears cross-action fields and uses the refreshed owner", () => {
+	expect(resetWorkDialogState("owner-before")).toEqual({
+		reason: "",
+		nextReviewAt: "",
+		assigneeId: "owner-before",
+		assigneeSearch: "",
+	});
+	expect(resetWorkDialogState("owner-after")).toEqual({
+		reason: "",
+		nextReviewAt: "",
+		assigneeId: "owner-after",
+		assigneeSearch: "",
+	});
+	expect(resetWorkDialogState(null).assigneeId).toBe("unassigned");
+});
+
+test("member search reaches a matching member beyond the initial page", () => {
+	const initialPage = Array.from({ length: 100 }, (_, index) => ({
+		userId: `user-${index + 1}`,
+		name: `Member ${index + 1}`,
+	}));
+	const beyondInitialPage = {
+		userId: "user-101",
+		name: "Beyond Initial Page",
+	};
+	const searchInput = workspaceMemberSearchInput("Beyond Initial Page");
+
+	expect(searchInput).toMatchObject({
+		q: "Beyond Initial Page",
+		page: 1,
+		pageSize: 100,
+	});
+	expect(
+		initialPage.some((member) => member.userId === beyondInitialPage.userId),
+	).toBe(false);
+	expect(workAssigneeUsers([beyondInitialPage])).toEqual([
+		{ id: "user-101", name: "Beyond Initial Page" },
+	]);
+	expect(workActions).toContain('id="work-assignee-search"');
+	expect(workActions).toContain("workspaceMemberSearchInput(assigneeSearch)");
 });
 
 test("inherited subject-type keys are rejected before the API input", () => {

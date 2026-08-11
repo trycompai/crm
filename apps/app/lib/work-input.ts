@@ -11,6 +11,12 @@ export const WORKSPACE_MEMBERS_INPUT = {
 	role: "all",
 } satisfies RouterInputs["workspace"]["members"];
 
+export function workspaceMemberSearchInput(
+	query: string,
+): RouterInputs["workspace"]["members"] {
+	return { ...WORKSPACE_MEMBERS_INPUT, q: query.trim() };
+}
+
 const WORK_STATES = [
 	"all",
 	"OPEN",

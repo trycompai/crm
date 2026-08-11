@@ -30,7 +30,7 @@ import {
 } from "@crm/ui/components/select";
 import { Spinner } from "@crm/ui/components/spinner";
 import { Textarea } from "@crm/ui/components/textarea";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc/types";
@@ -41,6 +41,10 @@ import {
 	workWaitInput,
 } from "@/lib/work-action-inputs";
 import {
+	workAssigneeUsers,
+	workspaceMemberSearchInput,
+} from "@/lib/work-input";
+import {
 	canRetryWorkAction,
 	rememberWorkActionIntent,
 	type WorkActionDescriptor,
@@ -48,6 +52,7 @@ import {
 	workActionDescriptors,
 	workActionRetryState,
 } from "./work-action-descriptors";
+import { resetWorkDialogState } from "./work-dialog-state";
 
 type WorkDetail = RouterOutputs["work"]["detail"];
 type WorkInputs = RouterInputs["work"];
@@ -79,6 +84,7 @@ export function WorkActions({
 	const [reason, setReason] = useState("");
 	const [nextReviewAt, setNextReviewAt] = useState("");
 	const [assigneeId, setAssigneeId] = useState(work.owner?.id ?? "unassigned");
+	const [assigneeSearch, setAssigneeSearch] = useState("");
 	const [lastIntent, setLastIntent] = useState<PendingIntent | null>(null);
 	const lastIntentRef = useRef<PendingIntent | null>(null);
 	const [status, setStatus] = useState<{
@@ -87,6 +93,31 @@ export function WorkActions({
 		requestReference?: string;
 		retryable?: boolean;
 	} | null>(null);
+
+	const resetDialogState = () => {
+		const initial = resetWorkDialogState(work.owner?.id);
+		setReason(initial.reason);
+		setNextReviewAt(initial.nextReviewAt);
+		setAssigneeId(initial.assigneeId);
+		setAssigneeSearch(initial.assigneeSearch);
+	};
+
+	const closeDialog = () => {
+		resetDialogState();
+		setDialogAction(null);
+	};
+
+	const assignmentMembers = useQuery({
+		...trpc.workspace.members.queryOptions(
+			workspaceMemberSearchInput(assigneeSearch),
+		),
+		enabled: dialogAction === "assign",
+	});
+	const assignmentUsers = assignmentMembers.data
+		? workAssigneeUsers(assignmentMembers.data.rows)
+		: assigneeSearch.trim()
+			? []
+			: users;
 
 	const invalidate = async () => {
 		await Promise.all([
@@ -101,9 +132,7 @@ export function WorkActions({
 	) => {
 		lastIntentRef.current = null;
 		setLastIntent(null);
-		setDialogAction(null);
-		setReason("");
-		setNextReviewAt("");
+		closeDialog();
 		setStatus({
 			kind: "success",
 			message: "Work updated.",
@@ -227,6 +256,7 @@ export function WorkActions({
 			start.mutate(intent.input);
 			return;
 		}
+		resetDialogState();
 		setDialogAction(descriptor.name);
 		setStatus(null);
 	};
@@ -382,7 +412,7 @@ export function WorkActions({
 			) : null}
 			<Dialog
 				open={dialogAction !== null}
-				onOpenChange={(open) => !open && setDialogAction(null)}
+				onOpenChange={(open) => !open && closeDialog()}
 			>
 				<DialogContent>
 					<DialogHeader>
@@ -413,7 +443,35 @@ export function WorkActions({
 						</Alert>
 					) : null}
 					{dialogAction === "assign" ? (
-						<div className="flex flex-col gap-2">
+						<div className="flex flex-col gap-3">
+							<div className="flex flex-col gap-2">
+								<Label htmlFor="work-assignee-search">
+									Search workspace members
+								</Label>
+								<Input
+									id="work-assignee-search"
+									value={assigneeSearch}
+									onChange={(event) => setAssigneeSearch(event.target.value)}
+									placeholder="Name or email"
+									aria-describedby="work-assignee-search-status"
+									disabled={pending}
+								/>
+								<div
+									id="work-assignee-search-status"
+									role="status"
+									aria-live="polite"
+									aria-atomic="true"
+									className="text-muted-foreground text-xs"
+								>
+									{assignmentMembers.isFetching
+										? "Searching workspace members…"
+										: assignmentMembers.isError
+											? "Workspace members could not be loaded."
+											: assignmentUsers.length === 0
+												? "No workspace members match."
+												: `${assignmentUsers.length} workspace members found.`}
+								</div>
+							</div>
 							<Label htmlFor="work-assignee">Assignee</Label>
 							<Select value={assigneeId} onValueChange={setAssigneeId}>
 								<SelectTrigger id="work-assignee" aria-label="Assignee">
@@ -422,7 +480,7 @@ export function WorkActions({
 								<SelectContent>
 									<SelectLabel>People</SelectLabel>
 									<SelectItem value="unassigned">Unassigned</SelectItem>
-									{users.map((user) => (
+									{assignmentUsers.map((user) => (
 										<SelectItem key={user.id} value={user.id}>
 											{user.name}
 										</SelectItem>
@@ -471,11 +529,7 @@ export function WorkActions({
 						</p>
 					)}
 					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setDialogAction(null)}
-							disabled={pending}
-						>
+						<Button variant="outline" onClick={closeDialog} disabled={pending}>
 							Cancel
 						</Button>
 						<Button
