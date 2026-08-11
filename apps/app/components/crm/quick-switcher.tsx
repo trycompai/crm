@@ -1,5 +1,6 @@
 "use client";
 
+import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Task from "@carbon/icons-react/es/Task";
 import {
 	Command,
@@ -19,7 +20,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
-import { showWorkNavigation } from "@/components/crm/quick-switcher-navigation";
+import {
+	showTodayNavigation,
+	showWorkNavigation,
+} from "@/components/crm/quick-switcher-navigation";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -73,12 +77,18 @@ export function QuickSwitcher() {
 		router.push(workspaceUrl("/work"));
 	};
 
+	const goToday = () => {
+		setQuery("");
+		void setOpen(null);
+		router.push(workspaceUrl("/"));
+	};
+
 	return (
 		<CommandDialog
 			open={open}
 			onOpenChange={(next) => setOpen(next || null)}
 			title="Search"
-			description="Jump to work, a company, contact or deal"
+			description="Jump to Today, Work, a company, contact or deal"
 		>
 			<Command shouldFilter={false}>
 				<CommandInput
@@ -87,6 +97,14 @@ export function QuickSwitcher() {
 					onValueChange={setQuery}
 				/>
 				<CommandList>
+					{showTodayNavigation(query) ? (
+						<CommandGroup heading="Navigation">
+							<CommandItem value="today" onSelect={goToday}>
+								<Dashboard />
+								<span>Today</span>
+							</CommandItem>
+						</CommandGroup>
+					) : null}
 					{showWorkNavigation(query) ? (
 						<CommandGroup heading="Navigation">
 							<CommandItem value="work" onSelect={goWork}>

@@ -33,6 +33,7 @@ export type CrmCache = {
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
+	approval(id?: string, options?: Options): Promise<void>;
 	everything(): Promise<void>;
 };
 
@@ -304,6 +305,17 @@ export function useCrmCache(): CrmCache {
 			run(
 				[trpc.sso.list.pathKey()],
 				[trpc.sso.settings.queryKey(), trpc.sso.signInOptions.queryKey()],
+				options,
+			),
+
+		approval: (id, options) =>
+			run(
+				[
+					id
+						? trpc.approval.detail.queryKey({ id })
+						: trpc.approval.detail.queryKey(),
+				],
+				[trpc.approval.list.queryKey(), trpc.today.get.queryKey()],
 				options,
 			),
 

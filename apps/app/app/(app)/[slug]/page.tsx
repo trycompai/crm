@@ -1,67 +1,68 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import {
 	PageShell,
-	PageShellActions,
 	PageShellContent,
+	PageShellDescription,
 	PageShellHeader,
 	PageShellHeading,
 	PageShellLoading,
+	PageShellTitle,
 } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { DashboardSummary } from "./dashboard-summary";
-import {
-	OverviewGreeting,
-	OverviewGreetingFallback,
-} from "./overview-greeting";
-import {
-	OverviewScopeToggle,
-	OverviewScopeToggleFallback,
-} from "./overview-scope";
-import { loadOverviewSearchParams } from "./overview-search-params";
+import { TodayDesk } from "./today-desk";
+import { loadTodaySearchParams } from "./today-search-params";
+
+export const metadata: Metadata = { title: "Today" };
 
 export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
 	return (
 		<PageShell>
 			<PageShellHeader>
 				<PageShellHeading>
-					<Suspense fallback={<OverviewGreetingFallback />}>
-						<OverviewGreeting />
-					</Suspense>
+					<PageShellTitle>Today</PageShellTitle>
+					<PageShellDescription>
+						A calm operating desk for what needs attention now.
+					</PageShellDescription>
 				</PageShellHeading>
-				<PageShellActions>
-					<Suspense fallback={<OverviewScopeToggleFallback />}>
-						<OverviewScopeToggle />
-					</Suspense>
-				</PageShellActions>
 			</PageShellHeader>
 
 			<PageShellContent>
 				<Suspense fallback={<PageShellLoading />}>
-					<Summary searchParams={searchParams} />
+					<Today searchParams={searchParams} />
 				</Suspense>
 			</PageShellContent>
 		</PageShell>
 	);
 }
 
-async function Summary({
+async function Today({
 	searchParams,
 }: Pick<PageProps<"/[slug]">, "searchParams">) {
-	const [, { scope }] = await Promise.all([
+	const [, { approval }] = await Promise.all([
 		requireSession(),
-		loadOverviewSearchParams(searchParams),
+		loadTodaySearchParams(searchParams),
 	]);
 
+	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
-	await queryClient.prefetchQuery(
-		getServerTrpc().dashboard.summary.queryOptions({ scope }),
-	);
+	const queries = [
+		queryClient.prefetchQuery(trpc.today.get.queryOptions({ limit: 25 })),
+	];
+	if (approval) {
+		queries.push(
+			queryClient.prefetchQuery(
+				trpc.approval.detail.queryOptions({ id: approval }),
+			),
+		);
+	}
+	await Promise.all(queries);
 
 	return (
 		<HydrateClient>
-			<DashboardSummary />
+			<TodayDesk />
 		</HydrateClient>
 	);
 }
