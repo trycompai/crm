@@ -1,5 +1,6 @@
 import { db, FactStatus } from "@crm/db";
 import {
+	canonicalValue,
 	type FactField,
 	type FactSubject,
 	factColumn,
@@ -178,11 +179,12 @@ function groupByField(proposals: Proposal[]): [Proposal, ...Proposal[]][] {
 }
 
 function redundant(group: Proposal[], value: string | null): Proposal[] {
+	const onRecord = value ? canonicalValue(value) : null;
 	const kept = new Set<string>();
 
 	return group.filter((row) => {
-		const seen = row.value.trim().toLowerCase();
-		if (value && seen === value.trim().toLowerCase()) return true;
+		const seen = canonicalValue(row.value);
+		if (seen === onRecord) return true;
 		if (kept.has(seen)) return true;
 
 		kept.add(seen);

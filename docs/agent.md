@@ -155,7 +155,14 @@ wrong in the direction that looks useful.
   same blank, and the sheet shows one at a time — so left alone, accepting one reveals
   the next, forever. The same rule holds when a rep accepts one (`decideFact`).
 - **The same value is never offered twice.** A second `PROPOSED` row with a value
-  already waiting is refused at the write path, not deduplicated on read. **The refusal
+  already waiting is refused at the write path, not deduplicated on read.
+- **"The same value" is `sameValue`, and a URL is compared as an address, not a
+  string.** `canonicalValue` lowercases, collapses whitespace, and for `http(s)` drops
+  the scheme, `www.`, a trailing slash and the query, and reads `twitter.com` as
+  `x.com`. Compared byte for byte, `…/in/pogrebs/` is not `…/in/pogrebs`, so the record
+  showed a suggestion offering back the URL already in the field — the exact click this
+  whole rule exists to remove. **The stored value is still what the source said**; only
+  the comparison normalises. **The refusal
   is for offers only** — the check runs after `applies` is decided, so evidence that has
   reached `VERIFIED` since the offer was made still lands, settles the suggestion it
   matches, and replaces the older value. Refusing it there left a weaker value on the

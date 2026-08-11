@@ -112,6 +112,25 @@ describe("sweepBlankFacts", () => {
 		expect(await statusOf(echo)).toBe("SUPERSEDED");
 	});
 
+	it("clears a suggestion that differs only by a trailing slash", async () => {
+		await db.contact.update({
+			where: { id: contactId },
+			data: { linkedinUrl: "https://www.linkedin.com/in/pogrebs" },
+		});
+
+		const echo = await propose({
+			field: "linkedinUrl",
+			value: "https://www.linkedin.com/in/pogrebs/",
+			score: 0.61,
+		});
+
+		const sweep = await sweepBlankFacts();
+
+		expect(sweep.settled).toBe(1);
+		expect(sweep.waiting).toBe(0);
+		expect(await statusOf(echo)).toBe("SUPERSEDED");
+	});
+
 	it("keeps one of two suggestions offering the same value", async () => {
 		await db.contact.update({
 			where: { id: contactId },

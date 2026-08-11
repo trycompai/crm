@@ -345,6 +345,32 @@ function isEmpty({
 	return !contact[column];
 }
 
-function sameValue(a: string, b: string): boolean {
-	return a.trim().toLowerCase() === b.trim().toLowerCase();
+const HOST_ALIASES: Record<string, string> = {
+	"twitter.com": "x.com",
+	"mobile.twitter.com": "x.com",
+};
+
+export function sameValue(a: string, b: string): boolean {
+	return canonicalValue(a) === canonicalValue(b);
+}
+
+export function canonicalValue(value: string): string {
+	const text = value.trim().replace(/\s+/g, " ").toLowerCase();
+	const url = asWebUrl(text);
+
+	if (!url) return text;
+
+	const host = url.host.replace(/^www\./, "");
+	const path = url.pathname.replace(/\/+$/, "");
+
+	return `${HOST_ALIASES[host] ?? host}${path}`;
+}
+
+function asWebUrl(value: string): URL | null {
+	try {
+		const url = new URL(value);
+		return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+	} catch {
+		return null;
+	}
 }
