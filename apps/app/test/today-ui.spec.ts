@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
 	approvalIntentAfterError,
 	approvalIntentFingerprint,
+	canRetryApprovalIntent,
 	classifyApprovalActionError,
 	createApprovalIntent,
 	retryApprovalIntent,
@@ -167,6 +168,22 @@ test("approval intents keep exact retry input and rotate ordinary actions", () =
 		invalidationVersion: 0,
 	});
 	expect(freshInvalidated.input).not.toEqual(invalidatedRetry);
+	expect(
+		canRetryApprovalIntent(
+			first,
+			{ operation: "approve", retryable: true },
+			true,
+			false,
+		),
+	).toBe(false);
+	expect(
+		canRetryApprovalIntent(
+			first,
+			{ operation: "approve", retryable: true },
+			true,
+			true,
+		),
+	).toBe(true);
 });
 
 test("approval errors retain only transport/server intents and classify conflicts", () => {

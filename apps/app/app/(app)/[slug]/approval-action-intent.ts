@@ -62,6 +62,21 @@ export function retryApprovalIntent(
 	return intent?.input ?? null;
 }
 
+export function canRetryApprovalIntent(
+	intent: ApprovalActionIntent | null,
+	error: Pick<ApprovalActionError, "operation" | "retryable"> | null,
+	detailReady: boolean,
+	integrityValid: boolean,
+): boolean {
+	return Boolean(
+		error?.retryable &&
+			integrityValid &&
+			detailReady &&
+			intent &&
+			intent.operation === error.operation,
+	);
+}
+
 export function approvalIntentAfterError(
 	intent: ApprovalActionIntent | null,
 	failure: Pick<ApprovalActionError, "retryable">,

@@ -33,6 +33,7 @@ import {
 	type ApprovalIntentSnapshot,
 	type ApprovalOperation,
 	approvalIntentAfterError,
+	canRetryApprovalIntent,
 	classifyApprovalActionError,
 	createApprovalIntent,
 	retryApprovalIntent,
@@ -159,7 +160,7 @@ export function ApprovalFocusSheet({
 
 	const retry = () => {
 		if (
-			!approval.data ||
+			!approval.data?.integrityValid ||
 			approval.isError ||
 			approval.isFetching ||
 			pending ||
@@ -230,11 +231,11 @@ function ApprovalFocus({
 	const canReview = approval.integrityValid && detailReady;
 	const statusTone: StatusTone = approval.integrityValid ? "success" : "error";
 	const retryOperation = actionError?.retryable ? actionError.operation : null;
-	const canRetry = Boolean(
-		retryOperation &&
-			intent &&
-			detailReady &&
-			intent.operation === retryOperation,
+	const canRetry = canRetryApprovalIntent(
+		intent,
+		actionError,
+		detailReady,
+		approval.integrityValid,
 	);
 	return (
 		<>
