@@ -59,7 +59,36 @@ async function seedAgent() {
 	return { agentId: agent.id, versionId: version.id };
 }
 
+const LOAD_AGENT_PREFIX = "E2E Load Agent";
+
+async function removeAgent(agentId: string) {
+	await db.agentRunEvent.deleteMany({ where: { run: { agentId } } });
+	await db.agentAction.deleteMany({ where: { agentId } });
+	await db.agentAuditEvent.deleteMany({ where: { agentId } });
+	await db.agentRun.deleteMany({ where: { agentId } });
+	await db.agentTrigger.deleteMany({ where: { agentId } });
+	await db.agentDefinition.update({
+		where: { id: agentId },
+		data: { currentVersionId: null },
+	});
+	await db.agentVersion.deleteMany({ where: { agentId } });
+	await db.agentDefinition.delete({ where: { id: agentId } });
+}
+
+async function sweepLeftovers() {
+	const stale = await db.agentDefinition.findMany({
+		where: { name: { startsWith: LOAD_AGENT_PREFIX } },
+		select: { id: true, name: true },
+	});
+
+	for (const agent of stale) {
+		await removeAgent(agent.id);
+		console.log(`  removed leftover ${agent.name}`);
+	}
+}
+
 async function main() {
+	await sweepLeftovers();
 	const { agentId } = await seedAgent();
 	const owner = await db.user.findFirstOrThrow({ select: { id: true } });
 	const company = await db.company.create({
