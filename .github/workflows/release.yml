@@ -45,16 +45,34 @@ jobs:
         run: |
           set -euo pipefail
 
-          stuck=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state merged --label "autorelease: pending" --limit 1 --json number,title --jq '.[0] | select(.) | "#\(.number) \(.title)"')
+          candidates=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state merged --label "autorelease: pending" --limit 20 --json number --jq '.[].number')
+
+          stuck=""
+
+          for pr in $candidates; do
+            state=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/labels" --jq 'map(.name) | if index("autorelease: tagged") then "tagged" elif index("autorelease: pending") then "pending" else "cleared" end')
+
+            if [ "$state" != "pending" ]; then
+              continue
+            fi
+
+            title=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" --jq '.title')
+            stuck="${stuck}#${pr} ${title}"$'\n'
+          done
 
           if [ -z "$stuck" ]; then
             exit 0
           fi
 
           {
-            echo "**$stuck merged without a tag.** release-please aborts on it, so nothing releases and no release"
-            echo "pull request opens until it is cleared: create the tag and GitHub Release at that pull request's"
-            echo "merge commit, then swap its \`autorelease: pending\` label for \`autorelease: tagged\`."
+            echo "**A merged release pull request was never tagged.** release-please aborts on it, so nothing"
+            echo "releases and no release pull request opens until it is cleared: create the tag and GitHub"
+            echo "Release at that pull request's merge commit, then swap its \`autorelease: pending\` label for"
+            echo "\`autorelease: tagged\`."
+            echo
+            echo '```'
+            echo "$stuck"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit 1

@@ -10,7 +10,7 @@
 		"lint": "turbo run lint",
 		"format": "biome format --write .",
 		"check-types": "turbo run check-types",
-		"test": "turbo run test",
+		"test": "turbo run test --concurrency=1",
 		"auth:generate": "turbo run auth:generate",
 		"db:deploy": "turbo run db:deploy",
 		"db:generate": "turbo run db:generate",

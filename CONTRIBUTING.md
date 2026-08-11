@@ -52,6 +52,16 @@ integration tests. When you need to push past it — a WIP branch, a docker-less
 you are deliberately pushing to ask about — `git push --no-verify` skips it, and `CRM_SKIP_HOOKS=1`
 skips it for a whole shell.
 
+**`test` runs one package at a time (`turbo run test --concurrency=1`), and that is not an
+oversight.** `apps/api`, `apps/agent`, `packages/auth` and `packages/telemetry` all have real
+integration tests and they all point at the *same* database, so running them at once lets one
+package's fixtures land inside another package's assertions. The specs mutate global singletons —
+the workspace `organization` row, `AppSetting`'s reporting currency, the exchange-rate table — and
+none of that is namespaced per package. Left parallel it failed roughly three runs in four, on a
+different test each time, which reads as "flaky tests" and trains everyone to hit re-run. Serial
+costs about ten seconds. **Do not raise the concurrency without giving each package its own
+database.**
+
 A few things that trip people up:
 
 - **The tRPC router type is generated, and committed.** If the app can't see a procedure you just
@@ -171,7 +181,7 @@ release workflow, which cannot wait on a run in another workflow.
 A jam used to be silent — the workflow reported success while doing nothing, and the symptom was
 merges landing with no release PR behind them. **The workflow now fails when a merged release PR
 carries `autorelease: pending`**, which is the state every jam ends in, so the Actions tab tells you
-within a minute of the merge that shipped it. Read the log rather than the status anyway. Two
+within a minute of the merge that shipped it. Read the log rather than the status anyway. Three
 failures have actually happened here:
 
 - **`There are untagged, merged release PRs outstanding - aborting`.** A release PR was merged but
@@ -186,6 +196,15 @@ failures have actually happened here:
   ever tagged automatically — `v1.0.0` through `v1.3.0` were all cut by hand. **A second package
   will bring the Merge plugin back**, and with it this bug: give the packages components in the tag,
   or check that a merged release PR still gets `autorelease: tagged`.
+- **The guard failing on the release it just cut.** Every release run failed — `v1.4.0`, `v1.5.0`
+  and `v1.5.1` were all tagged correctly, and the run that tagged each one then reported it as
+  stuck. `gh pr list --label` reads the **search index, which is eventually consistent**, and
+  release-please swaps `autorelease: pending` for `autorelease: tagged` about a second before the
+  guard runs; the index still held the old label. A guard that cries wolf on every release is worse
+  than no guard, because the one real jam is indistinguishable from the noise. The search is now
+  only a prefilter: each candidate's labels are re-read through `gh api .../issues/N/labels`, which
+  is strongly consistent, and only a pull request that is still genuinely `pending` fails the run.
+  **Any label check written against `gh pr list --search`/`--label` needs the same treatment.**
 - **`commit could not be parsed`, in bulk.** Non-conventional subjects reached `main`. They are not
   errors, they are silently missing changelog lines. The squash-only merge policy and the
   `conventional commit` check exist to stop this; if you see it again, one of the two has been
