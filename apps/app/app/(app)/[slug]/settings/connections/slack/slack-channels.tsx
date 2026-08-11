@@ -65,11 +65,15 @@ export function SlackChannels() {
 	});
 	const refresh = useMutation(
 		trpc.slack.refreshPeople.mutationOptions({
-			onSuccess: () => toast.success("Reading the channel list from Slack."),
+			onSuccess: async () => {
+				toast.success("Reading the channel list from Slack.");
+				await channels.refetch();
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
+	const refreshing = refresh.isPending || channels.isFetching;
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;
 	const needle = query.trim().toLowerCase();
@@ -79,11 +83,21 @@ export function SlackChannels() {
 
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<div>
-				<h2 className="font-medium text-sm">Channels Comp AI can reach</h2>
-				<p className="text-muted-foreground text-xs">
-					Agents pick from this list.
-				</p>
+			<div className="flex items-end justify-between gap-4">
+				<div>
+					<h2 className="font-medium text-sm">Channels Comp AI can reach</h2>
+					<p className="text-muted-foreground text-xs">
+						Agents pick from this list.
+					</p>
+				</div>
+				<Button
+					disabled={refreshing}
+					onClick={() => refresh.mutate()}
+					size="sm"
+					variant="outline"
+				>
+					{refreshing ? "Refreshing…" : "Refresh"}
+				</Button>
 			</div>
 
 			{rows.length > 0 ? (
@@ -101,21 +115,11 @@ export function SlackChannels() {
 
 			<div className="flex flex-col divide-y rounded-lg border">
 				{rows.length === 0 ? (
-					<div className="flex items-center gap-4 px-4 py-4">
-						<p className="flex-1 text-muted-foreground text-sm">
-							{channels.isPending
-								? "Reading the channel list from Slack…"
-								: "No channels yet. Comp AI reads the list from Slack after it connects."}
-						</p>
-						<Button
-							disabled={refresh.isPending}
-							onClick={() => refresh.mutate()}
-							size="sm"
-							variant="outline"
-						>
-							{refresh.isPending ? "Refreshing…" : "Refresh"}
-						</Button>
-					</div>
+					<p className="px-4 py-4 text-muted-foreground text-sm">
+						{channels.isPending
+							? "Reading the channel list from Slack…"
+							: "No channels yet. Comp AI reads the list from Slack after it connects."}
+					</p>
 				) : null}
 				{rows.length > 0 && shown.length === 0 ? (
 					<p className="px-4 py-4 text-muted-foreground text-sm">
