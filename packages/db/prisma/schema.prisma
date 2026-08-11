@@ -279,7 +279,6 @@ enum SubjectType {
   COMPANY
   CONTACT
   PROSPECT
-  CONTACT_CANDIDATE
   DEAL
   EMAIL_DRAFT
   WORK_ITEM
@@ -296,6 +295,7 @@ enum SubjectType {
   PLAN
   CONTROL_COMMAND
   PROVIDER_OPERATION
+  CONTACT_CANDIDATE
 }
 
 enum WorkItemUrgency {
@@ -3594,7 +3594,8 @@ model InboundSourceReceipt {
   linkProvenance    EntityLinkProvenance[]        @relation("InboundReceiptLinkProvenance")
   recordQuarantines RecordQuarantine[]            @relation("InboundReceiptQuarantine")
 
-  @@unique([connector, provider, accountId, sourceObjectType, sourceObjectId], map: "inboundSourceReceipt_source_identity_key")
+  @@unique([connector, provider, accountId, sourceObjectType, sourceObjectId, sourceDigest], map: "inboundSourceReceipt_source_identity_key")
+  @@unique([id, sourceDigest], map: "inboundSourceReceipt_id_sourceDigest_key")
   @@index([connector, accountId, capturedAt])
   @@index([provider, accountId, capturedAt])
   @@index([sourceDigest])
@@ -3641,7 +3642,8 @@ model ContactCandidateObservation {
   candidateId     String
   candidate       ContactCandidate     @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   receiptId       String
-  receipt         InboundSourceReceipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  sourceDigest    String
+  receipt         InboundSourceReceipt @relation(fields: [receiptId, sourceDigest], references: [id, sourceDigest], onDelete: Restrict)
   observationKey  String               @unique
   observedEmail   String?
   observedName    String?
@@ -3654,7 +3656,7 @@ model ContactCandidateObservation {
   createdAt       DateTime             @default(now())
 
   @@index([candidateId, observedAt])
-  @@index([receiptId])
+  @@index([receiptId, sourceDigest])
   @@index([evidenceClass, observedAt])
   @@map("contactCandidateObservation")
 }
@@ -3679,6 +3681,7 @@ model EntityFieldProvenance {
   updatedAt   DateTime             @updatedAt
 
   @@unique([subjectType, subjectId, fieldName, valueDigest, receiptId], map: "entityFieldProvenance_identity_key")
+  @@unique([subjectType, subjectId, fieldName], map: "entityFieldProvenance_applied_subject_field_key", where: { status: "APPLIED" })
   @@index([subjectType, subjectId, fieldName, status], map: "entityFieldProvenance_subject_scope_idx")
   @@index([status, freshUntil])
   @@index([receiptId])
@@ -3707,6 +3710,7 @@ model EntityLinkProvenance {
   updatedAt    DateTime             @updatedAt
 
   @@unique([sourceType, sourceId, relationship, targetType, targetId, receiptId], map: "entityLinkProvenance_identity_key")
+  @@unique([sourceType, sourceId, relationship], map: "entityLinkProvenance_applied_source_relationship_key", where: { status: "APPLIED" })
   @@index([sourceType, sourceId, relationship, status], map: "entityLinkProvenance_source_scope_idx")
   @@index([targetType, targetId, relationship, status], map: "entityLinkProvenance_target_scope_idx")
   @@index([status, freshUntil])

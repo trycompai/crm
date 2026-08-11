@@ -28,7 +28,13 @@ CREATE TABLE "inboundSourceReceipt" (
     "sourceUrl" TEXT,
     "redactedMetadata" JSONB NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "inboundSourceReceipt_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "inboundSourceReceipt_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "inboundSourceReceipt_sourceDigest_check" CHECK ("sourceDigest" ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT "inboundSourceReceipt_redactedMetadata_check" CHECK (
+        jsonb_typeof("redactedMetadata") = 'object'
+        AND pg_column_size("redactedMetadata") <= 16384
+        AND NOT jsonb_path_exists("redactedMetadata", '$.** ? (@.type() == "object").keyvalue() ? (@.key like_regex "(?i)^(body|text|content|html|raw|token|secret|password|authorization|cookie)$")')
+    )
 );
 
 CREATE TABLE "contactCandidate" (
@@ -51,13 +57,27 @@ CREATE TABLE "contactCandidate" (
     "decidedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "contactCandidate_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "contactCandidate_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "contactCandidate_identityKey_check" CHECK ("identityKey" ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT "contactCandidate_canonical_identity_check" CHECK (
+        NULLIF(btrim("canonicalEmail"), '') IS NOT NULL
+        OR (NULLIF(btrim("canonicalName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL)
+        OR (NULLIF(btrim("canonicalBusinessName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL)
+    ),
+    CONSTRAINT "contactCandidate_decision_check" CHECK (
+        "status" NOT IN ('ACCEPTED', 'REJECTED', 'EXCLUDED')
+        OR ("decisionById" IS NOT NULL AND "decidedAt" IS NOT NULL AND NULLIF(btrim("decisionReason"), '') IS NOT NULL)
+    ),
+    CONSTRAINT "contactCandidate_prohibited_status_check" CHECK (
+        "status" NOT IN ('REJECTED', 'EXCLUDED', 'QUARANTINED') OR "permissionState" = 'PROHIBITED'
+    )
 );
 
 CREATE TABLE "contactCandidateObservation" (
     "id" TEXT NOT NULL,
     "candidateId" TEXT NOT NULL,
     "receiptId" TEXT NOT NULL,
+    "sourceDigest" TEXT NOT NULL,
     "observationKey" TEXT NOT NULL,
     "observedEmail" TEXT,
     "observedName" TEXT,
@@ -68,7 +88,9 @@ CREATE TABLE "contactCandidateObservation" (
     "evidenceClass" TEXT NOT NULL,
     "observedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "contactCandidateObservation_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "contactCandidateObservation_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "contactCandidateObservation_sourceDigest_check" CHECK ("sourceDigest" ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT "contactCandidateObservation_observationKey_check" CHECK ("observationKey" ~ '^[0-9a-f]{64}$')
 );
 
 CREATE TABLE "entityFieldProvenance" (
@@ -88,7 +110,15 @@ CREATE TABLE "entityFieldProvenance" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "entityFieldProvenance_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "entityFieldProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL))
+    CONSTRAINT "entityFieldProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL)),
+    CONSTRAINT "entityFieldProvenance_shape_check" CHECK (
+        NULLIF(btrim("subjectId"), '') IS NOT NULL
+        AND NULLIF(btrim("fieldName"), '') IS NOT NULL
+        AND NULLIF(btrim("method"), '') IS NOT NULL
+        AND "valueDigest" ~ '^[0-9a-f]{64}$'
+        AND ("confidence" IS NULL OR "confidence" BETWEEN 0 AND 1)
+        AND ("freshUntil" IS NULL OR "freshUntil" >= "observedAt")
+    )
 );
 
 CREATE TABLE "entityLinkProvenance" (
@@ -109,7 +139,15 @@ CREATE TABLE "entityLinkProvenance" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "entityLinkProvenance_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "entityLinkProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL))
+    CONSTRAINT "entityLinkProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL)),
+    CONSTRAINT "entityLinkProvenance_shape_check" CHECK (
+        NULLIF(btrim("sourceId"), '') IS NOT NULL
+        AND NULLIF(btrim("targetId"), '') IS NOT NULL
+        AND NULLIF(btrim("relationship"), '') IS NOT NULL
+        AND NULLIF(btrim("method"), '') IS NOT NULL
+        AND ("confidence" IS NULL OR "confidence" BETWEEN 0 AND 1)
+        AND ("freshUntil" IS NULL OR "freshUntil" >= "observedAt")
+    )
 );
 
 CREATE TABLE "recordQuarantine" (
@@ -130,7 +168,8 @@ CREATE TABLE "recordQuarantine" (
     CONSTRAINT "recordQuarantine_resolved_evidence_check" CHECK ("status" <> 'RESOLVED' OR ("reviewedById" IS NOT NULL AND "reviewedAt" IS NOT NULL AND "resolvedAt" IS NOT NULL))
 );
 
-CREATE UNIQUE INDEX "inboundSourceReceipt_source_identity_key" ON "inboundSourceReceipt"("connector", "provider", "accountId", "sourceObjectType", "sourceObjectId");
+CREATE UNIQUE INDEX "inboundSourceReceipt_source_identity_key" ON "inboundSourceReceipt"("connector", "provider", "accountId", "sourceObjectType", "sourceObjectId", "sourceDigest");
+CREATE UNIQUE INDEX "inboundSourceReceipt_id_sourceDigest_key" ON "inboundSourceReceipt"("id", "sourceDigest");
 CREATE INDEX "inboundSourceReceipt_connector_accountId_capturedAt_idx" ON "inboundSourceReceipt"("connector", "accountId", "capturedAt");
 CREATE INDEX "inboundSourceReceipt_provider_accountId_capturedAt_idx" ON "inboundSourceReceipt"("provider", "accountId", "capturedAt");
 CREATE INDEX "inboundSourceReceipt_sourceDigest_idx" ON "inboundSourceReceipt"("sourceDigest");
@@ -145,16 +184,18 @@ CREATE INDEX "contactCandidate_decisionById_decidedAt_idx" ON "contactCandidate"
 
 CREATE UNIQUE INDEX "contactCandidateObservation_observationKey_key" ON "contactCandidateObservation"("observationKey");
 CREATE INDEX "contactCandidateObservation_candidateId_observedAt_idx" ON "contactCandidateObservation"("candidateId", "observedAt");
-CREATE INDEX "contactCandidateObservation_receiptId_idx" ON "contactCandidateObservation"("receiptId");
+CREATE INDEX "contactCandidateObservation_receiptId_sourceDigest_idx" ON "contactCandidateObservation"("receiptId", "sourceDigest");
 CREATE INDEX "contactCandidateObservation_evidenceClass_observedAt_idx" ON "contactCandidateObservation"("evidenceClass", "observedAt");
 
 CREATE UNIQUE INDEX "entityFieldProvenance_identity_key" ON "entityFieldProvenance"("subjectType", "subjectId", "fieldName", "valueDigest", "receiptId");
+CREATE UNIQUE INDEX "entityFieldProvenance_applied_subject_field_key" ON "entityFieldProvenance"("subjectType", "subjectId", "fieldName") WHERE "status" = 'APPLIED';
 CREATE INDEX "entityFieldProvenance_subject_scope_idx" ON "entityFieldProvenance"("subjectType", "subjectId", "fieldName", "status");
 CREATE INDEX "entityFieldProvenance_status_freshUntil_idx" ON "entityFieldProvenance"("status", "freshUntil");
 CREATE INDEX "entityFieldProvenance_receiptId_idx" ON "entityFieldProvenance"("receiptId");
 CREATE INDEX "entityFieldProvenance_decidedById_decidedAt_idx" ON "entityFieldProvenance"("decidedById", "decidedAt");
 
 CREATE UNIQUE INDEX "entityLinkProvenance_identity_key" ON "entityLinkProvenance"("sourceType", "sourceId", "relationship", "targetType", "targetId", "receiptId");
+CREATE UNIQUE INDEX "entityLinkProvenance_applied_source_relationship_key" ON "entityLinkProvenance"("sourceType", "sourceId", "relationship") WHERE "status" = 'APPLIED';
 CREATE INDEX "entityLinkProvenance_source_scope_idx" ON "entityLinkProvenance"("sourceType", "sourceId", "relationship", "status");
 CREATE INDEX "entityLinkProvenance_target_scope_idx" ON "entityLinkProvenance"("targetType", "targetId", "relationship", "status");
 CREATE INDEX "entityLinkProvenance_status_freshUntil_idx" ON "entityLinkProvenance"("status", "freshUntil");
@@ -173,7 +214,7 @@ ALTER TABLE "contactCandidate" ADD CONSTRAINT "contactCandidate_proposedCompanyI
 ALTER TABLE "contactCandidate" ADD CONSTRAINT "contactCandidate_proposedContactId_fkey" FOREIGN KEY ("proposedContactId") REFERENCES "contact"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "contactCandidate" ADD CONSTRAINT "contactCandidate_decisionById_fkey" FOREIGN KEY ("decisionById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "contactCandidateObservation" ADD CONSTRAINT "contactCandidateObservation_candidateId_fkey" FOREIGN KEY ("candidateId") REFERENCES "contactCandidate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "contactCandidateObservation" ADD CONSTRAINT "contactCandidateObservation_receiptId_fkey" FOREIGN KEY ("receiptId") REFERENCES "inboundSourceReceipt"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "contactCandidateObservation" ADD CONSTRAINT "contactCandidateObservation_receiptId_sourceDigest_fkey" FOREIGN KEY ("receiptId", "sourceDigest") REFERENCES "inboundSourceReceipt"("id", "sourceDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "entityFieldProvenance" ADD CONSTRAINT "entityFieldProvenance_receiptId_fkey" FOREIGN KEY ("receiptId") REFERENCES "inboundSourceReceipt"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "entityFieldProvenance" ADD CONSTRAINT "entityFieldProvenance_decidedById_fkey" FOREIGN KEY ("decidedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "entityLinkProvenance" ADD CONSTRAINT "entityLinkProvenance_receiptId_fkey" FOREIGN KEY ("receiptId") REFERENCES "inboundSourceReceipt"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
