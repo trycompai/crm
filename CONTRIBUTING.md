@@ -153,8 +153,17 @@ releasable lands. It accumulates every releasable commit, so a stack of merges i
 rather than five, and the notes are readable *before* you decide to ship them.
 
 Merging it writes `CHANGELOG.md`, bumps the version, tags `v0.2.0`, publishes the GitHub Release
-— and then the workflow merges that exact tagged commit into `release`, which is what a deploy and
-a plain clone both point at. **Nothing else to merge, and no order to remember.**
+— and then the workflow opens a `release: v0.2.0` pull request from `main` into `release` and
+merges it, which is what a deploy and a plain clone both point at. **Nothing else to merge, and no
+order to remember**: that pull request opens and closes inside the same run, and you see it only in
+the branch's history.
+
+**It has to be a pull request, not a push.** `release` carries a ruleset that requires one, and the
+only bypass is the admin role — which `GITHUB_TOKEN` does not have. The step used to call the REST
+`merges` API, which writes a merge commit straight to the branch, so the ruleset refused it: every
+tag from `v1.6.1` to `v1.8.0` was cut on `main`, published, and never shipped, while production sat
+on the last pull request that had reached `release` by hand. The failure was quiet in the worst way
+— the release itself looked perfect, and only the Vercel dashboard's commit line said otherwise.
 
 It used to be two pull requests, the release one and a `release: promote main`, with a warning on
 the promotion telling you to merge the other one first. Get that order wrong and you shipped

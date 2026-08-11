@@ -27,42 +27,59 @@ jobs:
           target-branch: main
           token: ${{ secrets.AUTOMATION_TOKEN || secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # `release` carries a ruleset that requires a pull request, and the only
+      # bypass is the admin role. So this cannot push a merge commit itself:
+      # the REST `merges` API writes straight to the branch, the ruleset refused
+      # it, and every tag from v1.6.1 on was cut on `main` and never shipped —
+      # production sat on whatever pull request last reached `release` by hand.
+      # A pull request from `main` is the one door that is open, which is also
+      # what `pr-base.yml` assumes when it leaves a `main` head alone.
       - name: Put the tag on release
-        if: steps.release.outputs.tag_name
+        if: steps.release.outputs.tag_name || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.release.outputs.tag_name }}
-          SHA: ${{ steps.release.outputs.sha || github.sha }}
           URL: ${{ steps.release.outputs.html_url }}
         run: |
           set -euo pipefail
 
-          if out=$(gh api "repos/$GITHUB_REPOSITORY/merges" \
-            -f base=release \
-            -f head="$SHA" \
-            -f commit_message="release: $TAG" 2>&1); then
-            echo "Released [$TAG]($URL) and put it on \`release\`. It is live." >> "$GITHUB_STEP_SUMMARY"
+          tag="${TAG:-$(gh release view --json tagName --jq .tagName)}"
+          url="${URL:-$(gh release view "$tag" --json url --jq .url)}"
+
+          if [ "$(gh api "repos/$GH_REPO/compare/release...main" --jq .ahead_by)" = "0" ]; then
+            echo "Released [$tag]($url); \`release\` already had it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          case "$out" in
-          *"Already merged"* | *"Nothing to merge"*)
-            echo "Released [$TAG]($URL); \`release\` already had it." >> "$GITHUB_STEP_SUMMARY"
-            ;;
-          *)
-            {
-              echo "**[$TAG]($URL) is tagged but did not reach \`release\`.**"
-              echo
-              echo "\`\`\`"
-              echo "$out"
-              echo "\`\`\`"
-              echo
-              echo "\`release\` only ever receives \`main\`, so this means somebody committed to it"
-              echo "directly. Reconcile the two branches, then re-run this workflow from the Actions tab."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-            ;;
-          esac
+          number=$(gh pr list --base release --head main --state open --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ -z "$number" ]; then
+            gh pr create --base release --head main \
+              --title "release: $tag" \
+              --body "Puts [$tag]($url) on \`release\`, which is the branch production deploys from. Opened by the Release workflow."
+            number=$(gh pr list --base release --head main --state open --limit 1 --json number --jq '.[0].number')
+          fi
+
+          for _ in 1 2 3 4 5; do
+            if out=$(gh pr merge "$number" --merge 2>&1); then
+              echo "Released [$tag]($url) and put it on \`release\` in #$number. It is live." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          {
+            echo "**[$tag]($url) is tagged but did not reach \`release\`.**"
+            echo
+            echo "#$number is open and merging it ships this release."
+            echo
+            echo "\`\`\`"
+            echo "$out"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
 
       - name: Say what happened
         if: ${{ !steps.release.outputs.tag_name }}
