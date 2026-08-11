@@ -192,8 +192,8 @@ export async function persistSlackChannels(
 		if (ids.length === 0) return 0;
 
 		await tx.$executeRaw`
-			INSERT INTO "slackChannel" (id, name, "memberCount", "isPrivate", "isMember", available, "createdAt", "updatedAt")
-			SELECT id, name, "memberCount", "isPrivate", "isMember", true, NOW(), NOW()
+			INSERT INTO "slackChannel" (id, name, "memberCount", "isPrivate", "isMember", available, "classifiedAt", "createdAt", "updatedAt")
+			SELECT id, name, "memberCount", "isPrivate", "isMember", true, NOW(), NOW(), NOW()
 			FROM UNNEST(
 				${ids}::text[],
 				${available.map((channel) => channel.name)}::text[],
@@ -207,6 +207,7 @@ export async function persistSlackChannels(
 				"isPrivate" = EXCLUDED."isPrivate",
 				"isMember" = EXCLUDED."isMember",
 				available = true,
+				"classifiedAt" = NOW(),
 				"updatedAt" = NOW()
 		`;
 

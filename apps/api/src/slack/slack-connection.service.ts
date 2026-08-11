@@ -194,6 +194,7 @@ export class SlackConnectionService {
 					memberCount: true,
 					isPrivate: true,
 					isMember: true,
+					classifiedAt: true,
 					inviteRequestedAt: true,
 				},
 			}),
@@ -207,8 +208,9 @@ export class SlackConnectionService {
 			canInviteItself: Boolean(grant),
 			sync,
 			nextCursor: rows.length > take ? (page.at(-1)?.id ?? null) : null,
-			rows: page.map((row) => ({
+			rows: page.map(({ classifiedAt, ...row }) => ({
 				...row,
+				classified: classifiedAt !== null,
 				inviteRequestedAt: row.inviteRequestedAt?.toISOString() ?? null,
 			})),
 		};

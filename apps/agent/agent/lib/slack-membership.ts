@@ -114,7 +114,10 @@ async function classifyChannel(
 	}
 
 	await db.slackChannel
-		.update({ where: { id: channelId }, data: live })
+		.update({
+			where: { id: channelId },
+			data: { ...live, classifiedAt: new Date() },
+		})
 		.catch(() => null);
 	await requestSlackInventorySync();
 
@@ -163,7 +166,12 @@ export async function joinSlackChannel(
 
 	await db.slackChannel.update({
 		where: { id: channelId },
-		data: { isMember: true, available: true, inviteRequestedAt: null },
+		data: {
+			isMember: true,
+			available: true,
+			inviteRequestedAt: null,
+			classifiedAt: new Date(),
+		},
 	});
 
 	return { joined: true, already: outcome.error === ALREADY_IN_CHANNEL };
@@ -258,8 +266,14 @@ export async function createSlackChannel(
 			isPrivate,
 			isMember: !isPrivate && token === bot,
 			available: true,
+			classifiedAt: new Date(),
 		},
-		update: { name: channel.name, isPrivate, available: true },
+		update: {
+			name: channel.name,
+			isPrivate,
+			available: true,
+			classifiedAt: new Date(),
+		},
 	});
 
 	if (token === user) await joinSlackChannel(channel.id);

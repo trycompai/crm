@@ -12,6 +12,7 @@ export type PickerChannel = {
 	memberCount: number | null;
 	isPrivate: boolean;
 	isMember: boolean;
+	classified: boolean;
 	inviteRequestedAt: string | null;
 };
 
@@ -125,6 +126,7 @@ function describe(channel: PickerChannel, canInviteItself: boolean): string {
 		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
 
 	if (channel.isMember) return `Comp AI is in${people}`;
+	if (!channel.classified) return `Not read from Slack yet${people}`;
 	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
 	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
 	if (channel.inviteRequestedAt)

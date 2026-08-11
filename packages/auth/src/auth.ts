@@ -156,7 +156,7 @@ export const auth = betterAuth({
 											message: `Slack authorization failed (${reason}).`,
 										});
 									}
-									rememberSlackInstall(raw);
+									await rememberSlackInstall(raw);
 
 									return {
 										accessToken,

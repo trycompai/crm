@@ -73,11 +73,24 @@ model SlackChannel {
   isPrivate         Boolean   @default(false)
   isMember          Boolean   @default(false)
   inviteRequestedAt DateTime?
+  classifiedAt      DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   @@index([available, name])
+  @@index([updatedAt])
   @@map("slackChannel")
+}
+
+model SlackInstallation {
+  installerId String   @id
+  teamId      String
+  teamName    String?
+  userToken   String?
+  userScopes  String
+  createdAt   DateTime @default(now())
+
+  @@map("slackInstallation")
 }
 
 model SlackWorkspaceGrant {
@@ -458,11 +471,14 @@ model AgentTask {
   finishedAt DateTime?
   outcome    String?
 
+  subject String?
+
   createdAt DateTime @default(now())
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
   @@index([dealId])
+  @@index([kind, subject], where: { finishedAt: null })
   @@map("agentTask")
 }
 
@@ -785,6 +801,9 @@ model AgentRun {
   createdAt  DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
+
+  cancelRequestedAt DateTime?
+  cancelDeliveredAt DateTime?
 
   events  AgentRunEvent[]
   actions AgentAction[]
