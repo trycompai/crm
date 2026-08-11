@@ -1,5 +1,7 @@
 import "@crm/env/load";
 
+import { getDomain } from "tldts";
+
 type AllowList = {
 	domains: readonly string[];
 	addresses: readonly string[];
@@ -12,11 +14,40 @@ let cached: AllowList = EMPTY;
 let cachedAliasSource: string | undefined;
 let cachedAliases = new Map<string, string>();
 
+const DOMAIN_OPTIONS = {
+	allowPrivateDomains: true,
+	extractHostname: false,
+	mixedInputs: false,
+} as const;
+
+export function isRegistrableWorkspaceHost(host: string): boolean {
+	const value = host.trim().toLowerCase();
+	if (
+		value.length === 0 ||
+		value.length > 253 ||
+		!value
+			.split(".")
+			.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
+	) {
+		return false;
+	}
+
+	return getDomain(value, DOMAIN_OPTIONS) !== null;
+}
+
 function normalizedEmail(email: string | null | undefined): string | undefined {
 	const value = email?.trim().toLowerCase();
 	if (!value) return undefined;
 	const parts = value.split("@");
-	if (parts.length !== 2 || !parts[0] || !parts[1]) return undefined;
+	if (
+		parts.length !== 2 ||
+		!parts[0] ||
+		!parts[1] ||
+		!/^[^\s@]+$/.test(parts[0]) ||
+		!isRegistrableWorkspaceHost(parts[1])
+	) {
+		return undefined;
+	}
 	return value;
 }
 
@@ -47,6 +78,10 @@ export function canonicalWorkspaceEmail(
 	return aliases().get(value) ?? value;
 }
 
+export function workspaceEmailAliases(): readonly string[] {
+	return [...aliases().keys()];
+}
+
 function allowList(): AllowList {
 	const source = process.env.ALLOWED_SIGN_IN ?? "";
 	if (source === cachedSource) return cached;
@@ -57,7 +92,12 @@ function allowList(): AllowList {
 	for (const raw of source.split(",")) {
 		const entry = raw.trim().toLowerCase().replace(/^@/, "");
 		if (!entry) continue;
-		(entry.includes("@") ? addresses : domains).push(entry);
+		if (entry.includes("@")) {
+			const address = normalizedEmail(entry);
+			if (address) addresses.push(address);
+		} else if (isRegistrableWorkspaceHost(entry)) {
+			domains.push(entry);
+		}
 	}
 
 	cachedSource = source;

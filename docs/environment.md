@@ -54,14 +54,17 @@ with none, the sign-in page says so by name rather than rendering nothing.
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
 list, read by the sign-in guard *and* the sync's "which side is external" decision** —
 if they drifted a colleague would be refused at the door or filed as a lead. **An empty
-list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
+list fails closed.** Public suffixes such as `com` and `co.uk` are rejected; a domain
+entry must identify a registrable organization. Parsed on demand.
+`packages/auth/src/workspace.ts`.
 
 **`SIGN_IN_EMAIL_ALIASES`** optionally maps an identity-provider alias to one
 canonical allowed address using comma-separated `alias=canonical` pairs. The
 canonical address must be in `ALLOWED_SIGN_IN`; malformed entries are ignored and do
 not widen access. New users are stored under the canonical address, and every new
 session is checked against the current allow-list so removing access takes effect at
-the next sign-in.
+the next sign-in. Alias source addresses are also treated as internal mailbox
+identities without admitting their entire domains.
 
 ## Where things are
 

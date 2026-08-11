@@ -47,6 +47,13 @@ describe("isWorkspaceEmail", () => {
 		expect(isWorkspaceEmail("lewis@acme.com")).toBe(false);
 	});
 
+	it("does not treat a public suffix as a workspace", () => {
+		process.env.ALLOWED_SIGN_IN = "com,co.uk";
+
+		expect(isWorkspaceEmail("attacker@acme.com")).toBe(false);
+		expect(isWorkspaceEmail("attacker@company.co.uk")).toBe(false);
+	});
+
 	it("admits a single address, for a one-person install", () => {
 		process.env.ALLOWED_SIGN_IN = "lewis@gmail.com";
 

@@ -1,4 +1,4 @@
-import { workspaceDomains } from "@crm/auth/workspace";
+import { workspaceDomains, workspaceEmailAliases } from "@crm/auth/workspace";
 import { type Db, RecordSource } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
@@ -57,6 +57,7 @@ export class MailboxMatchService {
 
 		const addresses = new Set<string>();
 		const domains = new Set<string>(workspaceDomains());
+		for (const alias of workspaceEmailAliases()) addresses.add(alias);
 
 		for (const user of users) {
 			const email = user.email.toLowerCase();

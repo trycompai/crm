@@ -21,7 +21,15 @@ describe("sign-in environment validation", () => {
 	});
 
 	it("rejects empty and malformed allow-lists", () => {
-		for (const value of [" ", "person@", "@", "bad host", "a@@acme.com"]) {
+		for (const value of [
+			" ",
+			"person@",
+			"@",
+			"bad host",
+			"a@@acme.com",
+			"com",
+			"co.uk",
+		]) {
 			expect(() => validateEnv({ ...base, ALLOWED_SIGN_IN: value })).toThrow(
 				"ALLOWED_SIGN_IN",
 			);

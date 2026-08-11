@@ -7,6 +7,7 @@ const suffix = crypto.randomUUID();
 const userId = `outreach-approval-${suffix}`;
 const inboxId = `outreach-approval-inbox-${suffix}`;
 const sequenceId = `outreach-approval-sequence-${suffix}`;
+const pauseSequenceId = `outreach-pause-sequence-${suffix}`;
 const domain = `outreach-approval-${suffix}.example.test`;
 const recipient = `person@${domain}`;
 const agent = {
@@ -17,6 +18,25 @@ let companyId = "";
 let contactId = "";
 let prospectId = "";
 const draftIds: string[] = [];
+const pauseDraftIds: string[] = [];
+
+async function waitForBlockedApproval(): Promise<void> {
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const [row] = await db.$queryRaw<Array<{ waiting: boolean }>>`
+			SELECT EXISTS (
+				SELECT 1
+				FROM pg_stat_activity
+				WHERE datname = current_database()
+					AND wait_event_type = 'Lock'
+					AND query LIKE '%FROM "emailInbox"%FOR UPDATE%'
+			) AS waiting
+		`;
+		if (row?.waiting) return;
+		await Bun.sleep(10);
+	}
+
+	throw new Error("Approval did not reach the inbox lock.");
+}
 
 beforeAll(async () => {
 	await db.user.create({
@@ -81,11 +101,39 @@ beforeAll(async () => {
 		});
 		draftIds.push(draft.id);
 	}
+	for (const step of [1, 2, 3]) {
+		const draft = await db.emailDraft.create({
+			data: {
+				provider: "AGENTMAIL",
+				externalInboxId: inboxId,
+				companyId,
+				contactId,
+				prospectId,
+				createdById: userId,
+				fromEmail: `outreach@${domain}`,
+				recipients: [recipient],
+				subject: `Pause step ${step}`,
+				plainTextBody: `Pause body ${step}`,
+				status: "PENDING_APPROVAL",
+				experimentKey: `approval-pause-${suffix}`,
+				variant: "B",
+				sequenceId: pauseSequenceId,
+				sequenceStep: step,
+				scheduledFor: new Date(),
+			},
+		});
+		pauseDraftIds.push(draft.id);
+	}
 });
 
 afterAll(async () => {
-	await db.agentTask.deleteMany({ where: { emailDraftId: { in: draftIds } } });
-	await db.emailDraft.deleteMany({ where: { sequenceId } });
+	const allDraftIds = [...draftIds, ...pauseDraftIds];
+	await db.agentTask.deleteMany({
+		where: { emailDraftId: { in: allDraftIds } },
+	});
+	await db.emailDraft.deleteMany({
+		where: { sequenceId: { in: [sequenceId, pauseSequenceId] } },
+	});
 	await db.emailInbox.deleteMany({
 		where: { provider: "AGENTMAIL", externalInboxId: inboxId },
 	});
@@ -116,5 +164,63 @@ describe("sequence approval concurrency", () => {
 				},
 			}),
 		).toBe(3);
+	});
+
+	it("cannot approve a sequence after a concurrent pause has locked the inbox", async () => {
+		let markLocked: () => void = () => {};
+		let releasePause: () => void = () => {};
+		const locked = new Promise<void>((resolve) => {
+			markLocked = resolve;
+		});
+		const released = new Promise<void>((resolve) => {
+			releasePause = resolve;
+		});
+		const pause = db.$transaction(async (tx) => {
+			await tx.emailInbox.update({
+				where: {
+					provider_externalInboxId: {
+						provider: "AGENTMAIL",
+						externalInboxId: inboxId,
+					},
+				},
+				data: { isEnabled: false },
+			});
+			markLocked();
+			await released;
+		});
+
+		await locked;
+		const approval = outreach.approveSequence(pauseSequenceId, userId);
+		try {
+			await waitForBlockedApproval();
+		} finally {
+			releasePause();
+			await pause;
+		}
+
+		await expect(approval).rejects.toThrow("AgentMail was paused");
+		expect(
+			await db.agentTask.count({
+				where: { emailDraftId: { in: pauseDraftIds } },
+			}),
+		).toBe(0);
+		expect(
+			await db.emailDraft.count({
+				where: {
+					id: { in: pauseDraftIds },
+					status: "PENDING_APPROVAL",
+				},
+			}),
+		).toBe(3);
+
+		await db.emailInbox.update({
+			where: {
+				provider_externalInboxId: {
+					provider: "AGENTMAIL",
+					externalInboxId: inboxId,
+				},
+			},
+			data: { isEnabled: true },
+		});
 	});
 });

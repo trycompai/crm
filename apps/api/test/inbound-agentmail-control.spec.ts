@@ -7,6 +7,7 @@ import { InboundService } from "../src/inbound/inbound.service";
 const suffix = crypto.randomUUID();
 const ownerId = `agentmail-owner-${suffix}`;
 const memberId = `agentmail-member-${suffix}`;
+const outsiderId = `agentmail-outsider-${suffix}`;
 const inboxId = `agentmail-control-${suffix}`;
 const draftId = `agentmail-draft-${suffix}`;
 const agent = {
@@ -29,6 +30,11 @@ beforeAll(async () => {
 		data: [
 			{ id: ownerId, name: "Owner", email: `${ownerId}@example.test` },
 			{ id: memberId, name: "Member", email: `${memberId}@example.test` },
+			{
+				id: outsiderId,
+				name: "Outsider",
+				email: `${outsiderId}@example.test`,
+			},
 		],
 	});
 	await db.member.createMany({
@@ -80,10 +86,21 @@ afterAll(async () => {
 	await db.member.deleteMany({
 		where: { userId: { in: [ownerId, memberId] } },
 	});
-	await db.user.deleteMany({ where: { id: { in: [ownerId, memberId] } } });
+	await db.user.deleteMany({
+		where: { id: { in: [ownerId, memberId, outsiderId] } },
+	});
 });
 
 describe("AgentMail outbound control", () => {
+	it("requires workspace membership to pause or resume", async () => {
+		await expect(
+			inbound.setAgentMailEnabled(false, outsiderId),
+		).rejects.toThrow("workspace operator");
+		await expect(inbound.setAgentMailEnabled(true, outsiderId)).rejects.toThrow(
+			"workspace operator",
+		);
+	});
+
 	it("lets any operator pause and rejects queued sends", async () => {
 		await inbound.setAgentMailEnabled(false, memberId);
 

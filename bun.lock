@@ -117,6 +117,7 @@
         "@crm/db": "workspace:*",
         "@crm/env": "workspace:*",
         "better-auth": "^1.6.25",
+        "tldts": "^6.1.86",
       },
       "devDependencies": {
         "@better-auth/cli": "^1.4.22",

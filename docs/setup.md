@@ -106,10 +106,12 @@ environment must require Richard and a second explicit confirmation. Configure i
 `PRODUCTION_DIRECT_DATABASE_URL` secret with an unpooled connection, enter the exact
 reviewed commit SHA, and type `DEPLOY DATABASE`.
 
-The workflow checks out that exact commit, applies its additive migrations, and then
-requires an empty Prisma schema diff. The production API build performs the same
-read-only comparison and fails when the database does not match `schema.prisma`; it
-does not attempt to repair production during a normal Vercel build.
+The workflow checks out that exact commit, requires it to equal the protected default
+branch head, reads the migration ledger, and rejects pending SQL containing destructive
+or identity-changing operations before migration execution. It then applies the admitted
+additive migrations and requires an empty Prisma schema diff. The production API build
+performs the same read-only comparison and fails when the database does not match
+`schema.prisma`; it does not attempt to repair production during a normal Vercel build.
 
 Preview deployments do not apply schema changes. A branch that needs a new table must
 be tested against an isolated local or preview database, and production migration must

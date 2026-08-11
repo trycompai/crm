@@ -356,6 +356,17 @@ export class OutreachService {
 		const now = new Date();
 		const delays = [0, 3, 7];
 		await this.db.$transaction(async (tx) => {
+			const [lockedInbox] = await tx.$queryRaw<Array<{ isEnabled: boolean }>>`
+				SELECT "isEnabled"
+				FROM "emailInbox"
+				WHERE id = ${inbox.id}
+				FOR UPDATE
+			`;
+			if (!lockedInbox?.isEnabled) {
+				throw new BadRequestException(
+					"AgentMail was paused while this sequence was being reviewed.",
+				);
+			}
 			const current = await tx.emailDraft.findMany({
 				where: { sequenceId, status: "PENDING_APPROVAL" },
 				orderBy: { sequenceStep: "asc" },

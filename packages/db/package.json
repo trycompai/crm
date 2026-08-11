@@ -27,6 +27,7 @@
 		"check-types": "tsc --noEmit",
 		"db:deploy": "prisma migrate deploy",
 		"db:generate": "prisma generate",
+		"db:verify-additive": "bun scripts/verify-additive-migrations.ts",
 		"db:migrate": "bun scripts/require-local-db.ts db:migrate && prisma migrate dev",
 		"db:push": "bun scripts/require-local-db.ts db:push && prisma db push",
 		"db:reset": "bun scripts/require-local-db.ts db:reset && prisma migrate reset",

@@ -157,6 +157,11 @@ export class InboundService {
 			select: { role: true },
 		});
 		const role = member && isWorkspaceRole(member.role) ? member.role : null;
+		if (!role) {
+			throw new ForbiddenException(
+				"Only a CRM workspace operator can change outbound provider state.",
+			);
+		}
 		if (enabled && !isWorkspaceAdmin(role)) {
 			throw new ForbiddenException(
 				"Only the CRM owner can resume outbound provider actions.",

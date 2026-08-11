@@ -46,7 +46,9 @@ export {
 export {
 	canonicalWorkspaceEmail,
 	hasSignInAllowList,
+	isRegistrableWorkspaceHost,
 	isWorkspaceEmail,
 	primaryWorkspaceDomain,
 	workspaceDomains,
+	workspaceEmailAliases,
 } from "./workspace";

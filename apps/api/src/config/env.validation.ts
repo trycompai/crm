@@ -1,3 +1,4 @@
+import { isRegistrableWorkspaceHost } from "@crm/auth/workspace";
 import { plainToInstance, Type } from "class-transformer";
 import {
 	IsEnum,
@@ -218,11 +219,5 @@ function validAllowListEntry(entry: string): boolean {
 }
 
 function validHost(host: string): boolean {
-	return (
-		host.length > 0 &&
-		host.length <= 253 &&
-		host
-			.split(".")
-			.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
-	);
+	return isRegistrableWorkspaceHost(host);
 }

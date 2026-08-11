@@ -17,6 +17,7 @@ const mailbox = `rep-${suffix}@example.test`;
 const person = `buyer@${domain}`;
 const rootId = `<root-${suffix}@mail.test>`;
 const movedRoot = `outlook-conversation:${suffix}`;
+const alias = `alias-${suffix}@identity.test`;
 
 const agent = {
 	contactCreated: async () => undefined,
@@ -84,6 +85,22 @@ beforeAll(async () => {
 afterAll(clean);
 
 describe("storing a synced email", () => {
+	it("includes configured aliases in the internal mailbox identity", async () => {
+		const previous = process.env.SIGN_IN_EMAIL_ALIASES;
+		process.env.SIGN_IN_EMAIL_ALIASES = `${alias}=${mailbox}`;
+
+		try {
+			const identity = await match.internalIdentity();
+			expect(identity.addresses.has(alias)).toBe(true);
+		} finally {
+			if (previous === undefined) {
+				delete process.env.SIGN_IN_EMAIL_ALIASES;
+			} else {
+				process.env.SIGN_IN_EMAIL_ALIASES = previous;
+			}
+		}
+	});
+
 	it("writes the message, the counts and the activity together", async () => {
 		const stored = await threads.store(
 			row,

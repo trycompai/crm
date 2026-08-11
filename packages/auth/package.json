@@ -21,7 +21,8 @@
 		"@better-auth/sso": "1.6.25",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
-		"better-auth": "^1.6.25"
+		"better-auth": "^1.6.25",
+		"tldts": "^6.1.86"
 	},
 	"peerDependencies": {
 		"react": "^19.2.0"
