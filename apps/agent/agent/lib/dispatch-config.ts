@@ -4,7 +4,7 @@ export const DISPATCH = {
 	visible: {
 		batch: 60,
 		concurrency: 6,
-		leaseMs: 2 * MINUTE_MS,
+		leaseMs: 6 * MINUTE_MS,
 	},
 
 	research: {

@@ -2,7 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
 import { queueEventAgentRuns } from "./custom-agent-dispatch";
-import { settledWithin, withDeadline } from "./deadline";
+import { settledWithin } from "./deadline";
 import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
@@ -65,72 +65,88 @@ export async function runVisibleLane(signal?: AbortSignal): Promise<number> {
 	return handled;
 }
 
-async function runDirect(task: LeasedTask): Promise<void> {
-	try {
-		await withDeadline(
-			handleDirect(task),
-			DISPATCH.sweep.itemTimeoutMs,
-			`This ${task.kind} task ran longer than ${DISPATCH.sweep.itemTimeoutMs}ms and was abandoned.`,
-		);
-	} catch (error) {
-		await settle(task, EnrichmentStatus.FAILED, reasonOf(error)).catch(
-			() => {},
-		);
+type DirectOutcome = { finished: true } | { finished: false; reason: string };
+
+export async function runDirect(
+	task: LeasedTask,
+	handle: (task: LeasedTask) => Promise<void> = handleDirect,
+	timeoutMs: number = DISPATCH.sweep.itemTimeoutMs,
+): Promise<void> {
+	const work: Promise<DirectOutcome> = handle(task).then(
+		() => ({ finished: true }) as const,
+		(error) => ({ finished: false, reason: reasonOf(error) }) as const,
+	);
+
+	const outcome = await settledWithin(work, timeoutMs);
+
+	if (outcome.settled) {
+		await reconcileDirect(task, outcome.value);
+		return;
 	}
+
+	pendingItems += 1;
+	void work
+		.then((late) => reconcileDirect(task, late))
+		.finally(() => {
+			pendingItems -= 1;
+		});
+}
+
+async function reconcileDirect(
+	task: LeasedTask,
+	outcome: DirectOutcome,
+): Promise<void> {
+	if (outcome.finished) return;
+
+	await settle(task, EnrichmentStatus.FAILED, outcome.reason).catch(() => {});
 }
 
 async function handleDirect(task: LeasedTask): Promise<void> {
-	try {
-		if (task.kind === "brand" && task.companyId) {
-			const result = await runBrand({ companyId: task.companyId });
-			if (result.retryable) return;
+	if (task.kind === "brand" && task.companyId) {
+		const result = await runBrand({ companyId: task.companyId });
+		if (result.retryable) return;
 
-			await completeTask(task.id, brandOutcome(result));
-			return;
-		}
-
-		if (task.kind === "portrait" && task.contactId) {
-			const portrait = await runPortrait({
-				contactId: task.contactId,
-				spend: () => ({ ok: true }),
-			});
-
-			await completeTask(
-				task.id,
-				portrait.stored
-					? `Picture stored from ${portrait.source}.`
-					: (portrait.reason ?? "No picture found."),
-			);
-			return;
-		}
-
-		if (task.kind === "slack-people-match") {
-			await completeTask(task.id, await runSlackPeopleMatch());
-			return;
-		}
-
-		if (task.kind === "slack-channel-join") {
-			await completeTask(task.id, await runSlackChannelJoin(task.payload));
-			return;
-		}
-
-		if (task.kind === "agent-event") {
-			const queued = await queueEventAgentRuns(task);
-			await completeTask(
-				task.id,
-				queued === 1
-					? "Queued 1 matching agent run."
-					: `Queued ${queued} matching agent runs.`,
-			);
-			return;
-		}
-
-		await completeTask(task.id, "The record this names is gone.");
-	} catch (error) {
-		await settle(task, EnrichmentStatus.FAILED, reasonOf(error)).catch(
-			() => {},
-		);
+		await completeTask(task.id, brandOutcome(result));
+		return;
 	}
+
+	if (task.kind === "portrait" && task.contactId) {
+		const portrait = await runPortrait({
+			contactId: task.contactId,
+			spend: () => ({ ok: true }),
+		});
+
+		await completeTask(
+			task.id,
+			portrait.stored
+				? `Picture stored from ${portrait.source}.`
+				: (portrait.reason ?? "No picture found."),
+		);
+		return;
+	}
+
+	if (task.kind === "slack-people-match") {
+		await completeTask(task.id, await runSlackPeopleMatch());
+		return;
+	}
+
+	if (task.kind === "slack-channel-join") {
+		await completeTask(task.id, await runSlackChannelJoin(task.payload));
+		return;
+	}
+
+	if (task.kind === "agent-event") {
+		const queued = await queueEventAgentRuns(task);
+		await completeTask(
+			task.id,
+			queued === 1
+				? "Queued 1 matching agent run."
+				: `Queued ${queued} matching agent runs.`,
+		);
+		return;
+	}
+
+	await completeTask(task.id, "The record this names is gone.");
 }
 
 export async function runResearchLane(
@@ -233,6 +249,7 @@ let lastSweepFinishedAt: Date | null = null;
 let lastSweepError: string | null = null;
 let abandonedSweeps = 0;
 let pendingStarts = 0;
+let pendingItems = 0;
 
 const unsettledSweeps = new Set<{ startedAt: Date }>();
 
@@ -271,6 +288,7 @@ export function dispatchHealth() {
 		abandonedSweeps,
 		unsettledSweeps: unsettledSweeps.size,
 		pendingStarts,
+		pendingItems,
 		lastError: lastSweepError,
 	};
 }
