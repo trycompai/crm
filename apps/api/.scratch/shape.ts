@@ -1,5 +1,4 @@
 import { initTRPC } from "@trpc/server";
-import { z } from "zod";
 import { setResearchKeyInput } from "../src/settings/settings.contracts";
 import { formatTrpcError } from "../src/trpc/error-formatter";
 

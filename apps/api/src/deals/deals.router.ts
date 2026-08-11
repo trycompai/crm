@@ -21,10 +21,10 @@ import {
 	dealDetachContactInput,
 	dealIdInput,
 	dealListInput,
+	dealUpdateArgs,
 	onboardingItemCreateInput,
 	onboardingItemUpdateInput,
 	onboardingUpdateInput,
-	dealUpdateArgs,
 	setStageInput,
 } from "./deals.contracts";
 import { DealsService } from "./deals.service";

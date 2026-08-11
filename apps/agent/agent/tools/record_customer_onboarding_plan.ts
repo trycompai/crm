@@ -58,7 +58,7 @@ export default defineTool({
 			where: { dealId: input.dealId },
 			select: { id: true, deal: { select: { stage: true } } },
 		});
-		if (!onboarding || onboarding.deal.stage !== "CLOSED_WON") {
+		if (onboarding?.deal.stage !== "CLOSED_WON") {
 			return {
 				written: false as const,
 				reason: "Onboarding opens only for a closed-won deal.",

@@ -13,8 +13,8 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { prospectsSearchParams } from "./prospects-search-params";
 import { FindMoreLeadsButton, GrowthPulse } from "./growth-controls";
+import { prospectsSearchParams } from "./prospects-search-params";
 import { ProspectsTable } from "./prospects-table";
 import { ResearchGapsButton } from "./research-gaps-button";
 

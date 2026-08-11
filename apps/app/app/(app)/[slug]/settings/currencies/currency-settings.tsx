@@ -11,7 +11,6 @@ import {
 	CardTitle,
 } from "@crm/ui/components/card";
 import { CardTableEmpty } from "@crm/ui/components/card-table";
-import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
 import {

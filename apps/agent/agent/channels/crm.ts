@@ -15,11 +15,7 @@ import { brief, drainAll, taskAuth } from "../lib/dispatch";
 import { settle } from "../lib/enrichment";
 import { ensureInboundSyncTasks } from "../lib/inbound-sync";
 import { finishRun } from "../lib/run-runtime";
-import {
-	completeTask,
-	releaseTaskForRetry,
-	taskSubject,
-} from "../lib/tasks";
+import { completeTask, releaseTaskForRetry, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
 

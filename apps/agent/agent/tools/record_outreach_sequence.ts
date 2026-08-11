@@ -83,12 +83,7 @@ export default defineTool({
 				select: { id: true },
 			}),
 		]);
-		if (
-			!prospect ||
-			!prospect.routeEmail ||
-			!prospect.companyId ||
-			!prospect.contactId
-		) {
+		if (!prospect?.routeEmail || !prospect.companyId || !prospect.contactId) {
 			return {
 				written: false as const,
 				reason: "The promoted prospect route is incomplete.",
