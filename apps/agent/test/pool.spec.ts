@@ -51,6 +51,23 @@ describe("runLimited", () => {
 		expect(calls).toBe(0);
 	});
 
+	it("stops handing out items once the signal aborts", async () => {
+		const controller = new AbortController();
+		const seen: number[] = [];
+
+		await runLimited(
+			1,
+			[1, 2, 3, 4],
+			async (n) => {
+				seen.push(n);
+				if (n === 2) controller.abort();
+			},
+			controller.signal,
+		);
+
+		expect(seen).toEqual([1, 2]);
+	});
+
 	it("does not spawn more workers than items", async () => {
 		let peak = 0;
 		let running = 0;

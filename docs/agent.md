@@ -77,6 +77,16 @@ it after writing any `AgentTask`.
 - **`drainAll` collapses** via `collapsing()` (`lib/pool.ts`) — forty new contacts poke
   forty times, and `claimDue` hands each a disjoint batch. Per-process; cross-process
   overlap is leases and `FOR UPDATE SKIP LOCKED`.
+- **An abandoned sweep is still in flight, and `dispatchHealth()` says so.** The
+  timeout aborts the lanes, which stop between items, but the sweep only leaves
+  `unsettledSweeps` when it truly settles. Until then health reports `running: true`
+  and the endpoint answers `503`, and a new sweep is refused rather than stacked on
+  top of stuck work.
+- **A slow `start(task)` is reconciled, never failed.** Past
+  `sweep.startTimeoutMs` the lane stops waiting, the record stays *Researching*, and
+  the late session id is attached by `noteSession` when the send lands. Only a send
+  that actually rejects settles the record `FAILED`; a send that never lands is
+  retired by `retireExhausted` after `MAX_ATTEMPTS`.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
 ### `POST /internal/crm/verify-key`
