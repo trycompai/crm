@@ -55,6 +55,13 @@ model User {
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
 
+  ownedWorkItems        WorkItem[]        @relation("WorkItemOwner")
+  requestedApprovals    ApprovalRequest[] @relation("ApprovalRequestRequestor")
+  approvedRequests      ApprovalRequest[] @relation("ApprovalRequestApprover")
+  ownedCampaigns        Campaign[]        @relation("CampaignOwner")
+  ownedSupportCases     SupportCase[]     @relation("SupportCaseOwner")
+  ownedCustomerAccounts CustomerAccount[] @relation("CustomerAccountOwner")
+
   members     Member[]
   invitations Invitation[]
 
@@ -256,6 +263,325 @@ enum AgentConversationCommandType {
 enum AgentResponseRating {
   UP
   DOWN
+}
+
+enum SubjectType {
+  WORKSPACE
+  USER
+  COMPANY
+  CONTACT
+  PROSPECT
+  DEAL
+  EMAIL_DRAFT
+  WORK_ITEM
+  CAMPAIGN
+  CONTENT_ITEM
+  CONTENT_VARIANT
+  EXPERIMENT
+  SOCIAL_MENTION
+  SUPPORT_CASE
+  CUSTOMER_ACCOUNT
+  CUSTOMER_INSTANCE
+  PROVIDER_ACCOUNT
+  PROVIDER_RESOURCE
+  PLAN
+  CONTROL_COMMAND
+  PROVIDER_OPERATION
+}
+
+enum WorkItemUrgency {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum WorkItemState {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  DISMISSED
+}
+
+enum AgentTaskState {
+  QUEUED
+  LEASED
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ApprovalRequestRisk {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  INVALIDATED
+  EXECUTED
+  CANCELLED
+}
+
+enum ActionReceiptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum ConnectorBindingStatus {
+  ACTIVE
+  PAUSED
+  REVOKED
+  ERROR
+}
+
+enum ConnectorTestState {
+  NOT_TESTED
+  PENDING
+  PASSED
+  FAILED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ContentItemStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ContentVariantStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ExperimentStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+}
+
+enum SocialMentionStatus {
+  NEW
+  TRIAGED
+  RESPONDED
+  DISMISSED
+}
+
+enum MarketingTriageProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  APPLIED
+  DISMISSED
+}
+
+enum PublicationStatus {
+  PLANNED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum AttributionModel {
+  FIRST_TOUCH
+  LAST_TOUCH
+  LINEAR
+  MANUAL
+}
+
+enum SupportCaseStatus {
+  OPEN
+  PENDING
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportCasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportCaseEventType {
+  CREATED
+  MESSAGE
+  NOTE
+  STATUS_CHANGE
+  ASSIGNMENT
+  INTERNAL
+}
+
+enum SupportSlaPolicyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SupportTriageProposalStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  APPLIED
+  DISMISSED
+}
+
+enum SupportReplyDraftStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENT
+}
+
+enum SupportKnowledgeDocumentStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum SupportEscalationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SupportEscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  CANCELLED
+}
+
+enum SupportProductHandoffStatus {
+  PROPOSED
+  ACCEPTED
+  IN_PROGRESS
+  RESOLVED
+  DECLINED
+}
+
+enum CustomerAccountStatus {
+  PROSPECT
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum CustomerInstanceStatus {
+  PROVISIONING
+  ACTIVE
+  PAUSED
+  DECOMMISSIONED
+  FAILED
+}
+
+enum ProviderAccountStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  REVOKED
+  ERROR
+}
+
+enum ProviderResourceStatus {
+  DISCOVERED
+  ACTIVE
+  DRIFTED
+  DELETED
+  ERROR
+}
+
+enum SecretReferenceStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+}
+
+enum DesiredStateRevisionStatus {
+  DRAFT
+  PLANNED
+  APPLIED
+  SUPERSEDED
+  FAILED
+}
+
+enum ObservedStateStatus {
+  UNKNOWN
+  SYNCING
+  CURRENT
+  STALE
+  ERROR
+}
+
+enum PlanStatus {
+  DRAFT
+  READY
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum PlanStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum ControlCommandStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ProviderOperationStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRYING
+  CANCELLED
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  MITIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 model Company {
@@ -561,12 +887,32 @@ model AgentTask {
   dealId       String?
   emailDraftId String?
 
+  subjectType  SubjectType?
+  subjectId    String?
+  subjectLabel String?
+
   kind   String
   reason String
 
-  priority Int @default(0)
-  budget   Int @default(4)
-  attempts Int @default(0)
+  priority Int             @default(0)
+  budget   Int             @default(4)
+  attempts Int             @default(0)
+  state    AgentTaskState?
+
+  operationKey      String?
+  idempotencyKey    String?          @unique
+  budgetTokens      Int?
+  budgetUsd         Decimal?         @db.Decimal(12, 6)
+  costUsd           Decimal?         @db.Decimal(12, 6)
+  modelId           String?
+  inputTokens       Int?
+  outputTokens      Int?
+  modelUsage        Json?
+  channel           String?
+  provider          String?
+  scopes            Json?
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentTasks", fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   dueAt       DateTime
   leasedUntil DateTime?
@@ -583,6 +929,10 @@ model AgentTask {
   @@index([prospectId])
   @@index([dealId])
   @@index([emailDraftId])
+  @@index([subjectType, subjectId])
+  @@index([operationKey])
+  @@index([approvalRequestId])
+  @@index([channel, provider])
   @@map("agentTask")
 }
 
@@ -879,6 +1229,10 @@ model AgentRun {
   triggerType    AgentTriggerType
   status         AgentRunStatus   @default(QUEUED)
   principalId    String?
+  subjectType    SubjectType?
+  subjectId      String?
+  subjectLabel   String?
+  operationKey   String?
   sessionId      String?          @unique
   idempotencyKey String           @unique
   correlationId  String           @unique
@@ -891,6 +1245,15 @@ model AgentRun {
   inputTokens  Int?
   outputTokens Int?
   costUsd      Decimal? @db.Decimal(12, 6)
+  budgetTokens Int?
+  budgetUsd    Decimal? @db.Decimal(12, 6)
+  modelUsage   Json?
+  channel      String?
+  provider     String?
+  scopes       Json?
+
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentRuns", fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   errorCode    String?
   errorMessage String?
@@ -909,6 +1272,10 @@ model AgentRun {
   @@index([versionId, createdAt])
   @@index([status, createdAt])
   @@index([triggerId, createdAt])
+  @@index([subjectType, subjectId])
+  @@index([operationKey])
+  @@index([approvalRequestId])
+  @@index([channel, provider])
   @@map("agentRun")
 }
 
@@ -937,19 +1304,36 @@ model AgentAction {
   runId String
   run   AgentRun @relation(fields: [runId, agentId], references: [id, agentId], onDelete: Restrict)
 
-  type        String
-  provider    String
-  targetType  String?
-  targetId    String?
-  targetLabel String?
-  summary     String
-  metadata    Json?
+  type         String
+  provider     String
+  targetType   String?
+  targetId     String?
+  targetLabel  String?
+  subjectType  SubjectType?
+  subjectId    String?
+  subjectLabel String?
+  summary      String
+  metadata     Json?
 
   status         AgentActionStatus @default(PLANNED)
   idempotencyKey String            @unique
+  operationKey   String?
   requestHash    String?
   externalId     String?
   attemptCount   Int               @default(0)
+
+  budgetTokens Int?
+  budgetUsd    Decimal? @db.Decimal(12, 6)
+  costUsd      Decimal? @db.Decimal(12, 6)
+  modelId      String?
+  inputTokens  Int?
+  outputTokens Int?
+  modelUsage   Json?
+  channel      String?
+  scopes       Json?
+
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentActions", fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   errorCode    String?
   errorMessage String?
@@ -959,10 +1343,16 @@ model AgentAction {
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt
 
+  receipts ActionReceipt[]
+
   @@index([agentId, plannedAt])
   @@index([runId, plannedAt])
   @@index([provider, externalId])
   @@index([status, plannedAt])
+  @@index([subjectType, subjectId])
+  @@index([operationKey])
+  @@index([approvalRequestId])
+  @@index([channel, provider])
   @@map("agentAction")
 }
 
@@ -2046,4 +2436,963 @@ model HermesAudit {
   @@index([tool, createdAt])
   @@index([sessionId, createdAt])
   @@index([userId])
+}
+
+model WorkItem {
+  id           String      @id @default(cuid())
+  subjectType  SubjectType
+  subjectId    String
+  subjectLabel String?
+
+  ownerId String?
+  owner   User?           @relation("WorkItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  queue   String
+  urgency WorkItemUrgency @default(NORMAL)
+  dueAt   DateTime?
+
+  evidence      Json?
+  reason        String
+  state         WorkItemState @default(OPEN)
+  primaryAction String
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([state, urgency, dueAt])
+  @@index([ownerId, state, dueAt])
+  @@index([queue, state, dueAt])
+  @@index([subjectType, subjectId])
+  @@map("workItem")
+}
+
+model ApprovalRequest {
+  id                  String                @id @default(cuid())
+  action              String
+  contentDigest       String
+  targetType          SubjectType
+  targetId            String
+  targetLabel         String?
+  risk                ApprovalRequestRisk
+  policyVersion       String
+  requestorId         String?
+  requestor           User?                 @relation("ApprovalRequestRequestor", fields: [requestorId], references: [id], onDelete: SetNull)
+  approverId          String?
+  approver            User?                 @relation("ApprovalRequestApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  expiresAt           DateTime
+  invalidationVersion Int                   @default(0)
+  status              ApprovalRequestStatus @default(PENDING)
+  idempotencyKey      String                @unique
+
+  requestedAt DateTime  @default(now())
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  agentTasks         AgentTask[]         @relation("ApprovalRequestAgentTasks")
+  agentRuns          AgentRun[]          @relation("ApprovalRequestAgentRuns")
+  agentActions       AgentAction[]       @relation("ApprovalRequestAgentActions")
+  actionReceipts     ActionReceipt[]     @relation("ApprovalRequestActionReceipts")
+  supportReplyDrafts SupportReplyDraft[]
+  controlCommands    ControlCommand[]
+
+  @@unique([action, contentDigest, targetType, targetId, policyVersion, invalidationVersion])
+  @@index([status, expiresAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([requestorId, createdAt])
+  @@index([approverId, status, createdAt])
+  @@map("approvalRequest")
+}
+
+model PolicyGrant {
+  id        String  @id @default(cuid())
+  actorType String
+  actorId   String
+  channel   String
+  accountId String?
+  operation String
+  limits    Json?
+
+  expiresAt DateTime?
+  revokedAt DateTime?
+  grantKey  String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([actorType, actorId, channel, operation])
+  @@index([accountId, expiresAt])
+  @@index([revokedAt, expiresAt])
+  @@map("policyGrant")
+}
+
+model ActionReceipt {
+  id               String              @id @default(cuid())
+  operationKey     String?
+  idempotencyKey   String              @unique
+  requestHash      String
+  provider         String
+  channel          String?
+  externalId       String?
+  providerReadback Json?
+  costUsd          Decimal?            @db.Decimal(12, 6)
+  result           Json?
+  errorCode        String?
+  errorMessage     String?
+  status           ActionReceiptStatus @default(PENDING)
+
+  agentActionId       String?
+  agentAction         AgentAction?       @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
+  approvalRequestId   String?
+  approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  providerOperationId String?            @unique
+  providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([requestHash])
+  @@index([operationKey])
+  @@index([status, createdAt])
+  @@index([agentActionId, createdAt])
+  @@map("actionReceipt")
+}
+
+model ConnectorBinding {
+  id                String                 @id @default(cuid())
+  provider          String
+  accountId         String
+  scopes            Json
+  secretReferenceId String
+  secretReference   SecretReference        @relation("ConnectorSecretReference", fields: [secretReferenceId], references: [id], onDelete: Restrict)
+  status            ConnectorBindingStatus @default(ACTIVE)
+
+  health    ConnectorHealth?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([provider, accountId])
+  @@index([status, updatedAt])
+  @@map("connectorBinding")
+}
+
+model ConnectorHealth {
+  id          String             @id @default(cuid())
+  bindingId   String             @unique
+  binding     ConnectorBinding   @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  provider    String
+  accountId   String
+  cursor      String?
+  freshnessAt DateTime?
+  paused      Boolean            @default(false)
+  pausedAt    DateTime?
+  pauseReason String?
+  lastError   String?
+  testState   ConnectorTestState @default(NOT_TESTED)
+  testedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provider, accountId])
+  @@index([paused, freshnessAt])
+  @@index([testState, freshnessAt])
+  @@map("connectorHealth")
+}
+
+model Campaign {
+  id        String         @id @default(cuid())
+  name      String
+  channel   String?
+  objective String?
+  status    CampaignStatus @default(DRAFT)
+  ownerId   String?
+  owner     User?          @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  budget    Decimal?       @db.Decimal(14, 2)
+  currency  String         @default("USD")
+  startsAt  DateTime?
+  endsAt    DateTime?
+  metadata  Json?
+
+  contentItems       ContentItem[]
+  experiments        Experiment[]
+  socialMentions     SocialMention[]
+  triageProposals    TriageProposal[]
+  touchpoints        MarketingTouchpoint[]
+  attributionCredits AttributionCredit[]
+  publications       Publication[]
+  sourceReceipts     MarketingSourceReceipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startsAt])
+  @@index([ownerId, status])
+  @@index([channel, status])
+  @@map("campaign")
+}
+
+model ContentItem {
+  id         String            @id @default(cuid())
+  campaignId String?
+  campaign   Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  kind       String
+  title      String?
+  brief      String?
+  body       String?
+  status     ContentItemStatus @default(DRAFT)
+  sourceUrl  String?
+  metadata   Json?
+
+  variants        ContentVariant[]
+  triageProposals TriageProposal[]
+  publications    Publication[]
+  sourceReceipts  MarketingSourceReceipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId, status, updatedAt])
+  @@index([status, updatedAt])
+  @@map("contentItem")
+}
+
+model ContentVariant {
+  id            String               @id @default(cuid())
+  contentItemId String
+  contentItem   ContentItem          @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  key           String
+  channel       String
+  content       String
+  status        ContentVariantStatus @default(DRAFT)
+  experimentId  String?
+  experiment    Experiment?          @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  metadata      Json?
+
+  publications Publication[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contentItemId, key])
+  @@index([channel, status])
+  @@index([experimentId, status])
+  @@map("contentVariant")
+}
+
+model Experiment {
+  id         String           @id @default(cuid())
+  campaignId String?
+  campaign   Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  key        String
+  name       String
+  hypothesis String?
+  metric     String?
+  status     ExperimentStatus @default(DRAFT)
+  startsAt   DateTime?
+  endsAt     DateTime?
+  metadata   Json?
+
+  variants    ContentVariant[]
+  touchpoints MarketingTouchpoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, key])
+  @@index([status, startsAt])
+  @@map("experiment")
+}
+
+model SocialMention {
+  id         String              @id @default(cuid())
+  campaignId String?
+  campaign   Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  source     String
+  externalId String
+  platform   String
+  authorName String?
+  body       String
+  url        String?
+  sentiment  String?
+  occurredAt DateTime?
+  status     SocialMentionStatus @default(NEW)
+  metadata   Json?
+
+  triageProposals TriageProposal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([campaignId, status, occurredAt])
+  @@index([platform, status, occurredAt])
+  @@map("socialMention")
+}
+
+model TriageProposal {
+  id              String                        @id @default(cuid())
+  campaignId      String?
+  campaign        Campaign?                     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentItemId   String?
+  contentItem     ContentItem?                  @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  socialMentionId String?
+  socialMention   SocialMention?                @relation(fields: [socialMentionId], references: [id], onDelete: SetNull)
+  subjectType     SubjectType?
+  subjectId       String?
+  action          String
+  reason          String
+  evidence        Json?
+  status          MarketingTriageProposalStatus @default(PROPOSED)
+  idempotencyKey  String?                       @unique
+  decidedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId, status, createdAt])
+  @@index([socialMentionId, status])
+  @@index([subjectType, subjectId])
+  @@map("triageProposal")
+}
+
+model MarketingTouchpoint {
+  id             String      @id @default(cuid())
+  campaignId     String?
+  campaign       Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  experimentId   String?
+  experiment     Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  subjectType    SubjectType
+  subjectId      String
+  channel        String
+  provider       String?
+  externalId     String?
+  idempotencyKey String?     @unique
+  occurredAt     DateTime
+  metadata       Json?
+
+  attributionCredits AttributionCredit[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([channel, externalId])
+  @@index([campaignId, occurredAt])
+  @@index([subjectType, subjectId, occurredAt])
+  @@index([experimentId, occurredAt])
+  @@map("marketingTouchpoint")
+}
+
+model AttributionCredit {
+  id             String               @id @default(cuid())
+  campaignId     String?
+  campaign       Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  touchpointId   String?
+  touchpoint     MarketingTouchpoint? @relation(fields: [touchpointId], references: [id], onDelete: SetNull)
+  subjectType    SubjectType
+  subjectId      String
+  model          AttributionModel
+  credit         Decimal              @db.Decimal(10, 6)
+  value          Decimal?             @db.Decimal(14, 2)
+  currency       String?
+  idempotencyKey String?              @unique
+  createdAt      DateTime             @default(now())
+
+  @@index([campaignId, model, createdAt])
+  @@index([subjectType, subjectId, model])
+  @@index([touchpointId])
+  @@map("attributionCredit")
+}
+
+model Publication {
+  id               String            @id @default(cuid())
+  campaignId       String?
+  campaign         Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentItemId    String?
+  contentItem      ContentItem?      @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  contentVariantId String?
+  contentVariant   ContentVariant?   @relation(fields: [contentVariantId], references: [id], onDelete: SetNull)
+  channel          String
+  provider         String
+  externalId       String?
+  status           PublicationStatus @default(PLANNED)
+  scheduledAt      DateTime?
+  publishedAt      DateTime?
+  receipt          Json?
+  errorMessage     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([status, scheduledAt])
+  @@index([campaignId, publishedAt])
+  @@index([contentVariantId])
+  @@map("publication")
+}
+
+model MarketingSourceReceipt {
+  id            String       @id @default(cuid())
+  campaignId    String?
+  campaign      Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentItemId String?
+  contentItem   ContentItem? @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  source        String
+  externalId    String
+  url           String?
+  contentHash   String
+  payload       Json
+  capturedAt    DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+
+  @@unique([source, externalId])
+  @@index([campaignId, capturedAt])
+  @@index([contentItemId, capturedAt])
+  @@index([contentHash])
+  @@map("marketingSourceReceipt")
+}
+
+model SupportCase {
+  id              String              @id @default(cuid())
+  subjectType     SubjectType?
+  subjectId       String?
+  provider        String?
+  externalId      String?
+  channel         String
+  queue           String?
+  title           String
+  description     String?
+  status          SupportCaseStatus   @default(OPEN)
+  priority        SupportCasePriority @default(NORMAL)
+  ownerId         String?
+  owner           User?               @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  slaPolicyId     String?
+  slaPolicy       SupportSlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  openedAt        DateTime            @default(now())
+  firstResponseAt DateTime?
+  dueAt           DateTime?
+  resolvedAt      DateTime?
+
+  sources         SupportCaseSource[]
+  events          SupportCaseEvent[]
+  triageProposals SupportTriageProposal[]
+  replyDrafts     SupportReplyDraft[]
+  escalations     SupportEscalation[]
+  productHandoffs SupportProductHandoff[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([status, priority, dueAt])
+  @@index([ownerId, status, dueAt])
+  @@index([queue, status, updatedAt])
+  @@index([subjectType, subjectId])
+  @@index([slaPolicyId, status])
+  @@map("supportCase")
+}
+
+model SupportCaseSource {
+  id          String      @id @default(cuid())
+  caseId      String
+  case        SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  source      String
+  externalId  String
+  url         String?
+  contentHash String?
+  payload     Json
+  receivedAt  DateTime
+  createdAt   DateTime    @default(now())
+
+  @@unique([source, externalId])
+  @@index([caseId, receivedAt])
+  @@index([contentHash])
+  @@map("supportCaseSource")
+}
+
+model SupportCaseEvent {
+  id         String               @id @default(cuid())
+  caseId     String
+  case       SupportCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  eventType  SupportCaseEventType
+  actorType  String?
+  actorId    String?
+  body       String?
+  data       Json?
+  occurredAt DateTime
+  createdAt  DateTime             @default(now())
+
+  @@index([caseId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("supportCaseEvent")
+}
+
+model SupportSlaPolicy {
+  id                   String                 @id @default(cuid())
+  name                 String
+  channel              String?
+  status               SupportSlaPolicyStatus @default(ACTIVE)
+  firstResponseMinutes Int
+  resolutionMinutes    Int
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  cases SupportCase[]
+
+  @@unique([name, channel])
+  @@index([status, channel])
+  @@map("supportSlaPolicy")
+}
+
+model SupportTriageProposal {
+  id              String                      @id @default(cuid())
+  caseId          String
+  case            SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  queue           String?
+  priority        SupportCasePriority?
+  category        String?
+  reason          String
+  evidence        Json?
+  proposedOwnerId String?
+  status          SupportTriageProposalStatus @default(PROPOSED)
+  decidedById     String?
+  decidedAt       DateTime?
+  idempotencyKey  String?                     @unique
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  @@index([caseId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("supportTriageProposal")
+}
+
+model SupportReplyDraft {
+  id                String                  @id @default(cuid())
+  caseId            String
+  case              SupportCase             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  channel           String
+  provider          String?
+  recipients        Json
+  subject           String?
+  body              String
+  status            SupportReplyDraftStatus @default(DRAFT)
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest?        @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  idempotencyKey    String?                 @unique
+  sentAt            DateTime?
+  errorMessage      String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([caseId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("supportReplyDraft")
+}
+
+model SupportKnowledgeDocument {
+  id          String                         @id @default(cuid())
+  source      String
+  externalId  String?
+  title       String
+  uri         String?
+  content     String?
+  checksum    String?
+  version     Int                            @default(1)
+  status      SupportKnowledgeDocumentStatus @default(DRAFT)
+  metadata    Json?
+  publishedAt DateTime?
+  createdAt   DateTime                       @default(now())
+  updatedAt   DateTime                       @updatedAt
+
+  @@unique([source, externalId])
+  @@index([status, updatedAt])
+  @@index([checksum])
+  @@map("supportKnowledgeDocument")
+}
+
+model SupportEscalation {
+  id           String                    @id @default(cuid())
+  caseId       String
+  case         SupportCase               @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  queue        String
+  severity     SupportEscalationSeverity
+  reason       String
+  status       SupportEscalationStatus   @default(OPEN)
+  assignedToId String?
+  dueAt        DateTime?
+  resolvedAt   DateTime?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([caseId, status, createdAt])
+  @@index([status, severity, dueAt])
+  @@map("supportEscalation")
+}
+
+model SupportProductHandoff {
+  id          String                      @id @default(cuid())
+  caseId      String
+  case        SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  productArea String
+  summary     String
+  impact      String?
+  status      SupportProductHandoffStatus @default(PROPOSED)
+  externalKey String?
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  @@unique([caseId, externalKey])
+  @@index([status, createdAt])
+  @@index([productArea, status])
+  @@map("supportProductHandoff")
+}
+
+model CustomerAccount {
+  id          String                @id @default(cuid())
+  name        String
+  externalKey String?               @unique
+  status      CustomerAccountStatus @default(PROSPECT)
+  ownerId     String?
+  owner       User?                 @relation("CustomerAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  metadata    Json?
+
+  instances        CustomerInstance[]
+  providerAccounts ProviderAccount[]
+  secretReferences SecretReference[]
+  usageSamples     UsageSample[]
+  costLineItems    CostLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([ownerId, status])
+  @@map("customerAccount")
+}
+
+model CustomerInstance {
+  id          String                 @id @default(cuid())
+  accountId   String
+  account     CustomerAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  environment String
+  region      String?
+  status      CustomerInstanceStatus @default(PROVISIONING)
+  externalId  String?
+  metadata    Json?
+
+  providerAccounts ProviderAccount[]      @relation("ProviderAccountInstance")
+  resources        ProviderResource[]     @relation("ProviderResourceInstance")
+  desiredRevisions DesiredStateRevision[]
+  observedStates   ObservedState[]
+  plans            Plan[]
+  commands         ControlCommand[]
+  operations       ProviderOperation[]
+  incidents        Incident[]
+  usageSamples     UsageSample[]
+  costLineItems    CostLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, key])
+  @@index([status, updatedAt])
+  @@index([accountId, status])
+  @@map("customerInstance")
+}
+
+model ProviderAccount {
+  id                String                @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount       @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  instanceId        String?
+  instance          CustomerInstance?     @relation("ProviderAccountInstance", fields: [instanceId], references: [id], onDelete: SetNull)
+  provider          String
+  externalAccountId String
+  displayName       String?
+  scopes            Json?
+  secretReferenceId String?
+  secretReference   SecretReference?      @relation("ProviderAccountSecretReference", fields: [secretReferenceId], references: [id], onDelete: SetNull)
+  status            ProviderAccountStatus @default(PENDING)
+  metadata          Json?
+
+  resources     ProviderResource[]
+  operations    ProviderOperation[]
+  usageSamples  UsageSample[]
+  costLineItems CostLineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerAccountId, provider, externalAccountId])
+  @@index([instanceId, provider, status])
+  @@index([provider, status, updatedAt])
+  @@map("providerAccount")
+}
+
+model ProviderResource {
+  id                String                 @id @default(cuid())
+  providerAccountId String
+  providerAccount   ProviderAccount        @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  instanceId        String?
+  instance          CustomerInstance?      @relation("ProviderResourceInstance", fields: [instanceId], references: [id], onDelete: SetNull)
+  provider          String
+  resourceType      String
+  externalId        String
+  name              String?
+  status            ProviderResourceStatus @default(DISCOVERED)
+  observed          Json?
+  observedAt        DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([providerAccountId, resourceType, externalId])
+  @@index([instanceId, resourceType, status])
+  @@index([provider, resourceType, status])
+  @@map("providerResource")
+}
+
+model SecretReference {
+  id                String                @id @default(cuid())
+  customerAccountId String?
+  customerAccount   CustomerAccount?      @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  provider          String
+  reference         String
+  version           String?
+  status            SecretReferenceStatus @default(ACTIVE)
+  metadata          Json?
+
+  connectorBindings ConnectorBinding[] @relation("ConnectorSecretReference")
+  providerAccounts  ProviderAccount[]  @relation("ProviderAccountSecretReference")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, reference, version])
+  @@index([customerAccountId, status])
+  @@index([provider, status])
+  @@map("secretReference")
+}
+
+model DesiredStateRevision {
+  id         String                     @id @default(cuid())
+  instanceId String
+  instance   CustomerInstance           @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  revision   Int
+  digest     String
+  desired    Json
+  status     DesiredStateRevisionStatus @default(DRAFT)
+  source     String?
+  createdAt  DateTime                   @default(now())
+
+  plans Plan[] @relation("DesiredRevisionPlans")
+
+  @@unique([instanceId, revision])
+  @@unique([instanceId, digest])
+  @@index([instanceId, status, revision])
+  @@map("desiredStateRevision")
+}
+
+model ObservedState {
+  id         String              @id @default(cuid())
+  instanceId String
+  instance   CustomerInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  digest     String?
+  observed   Json
+  status     ObservedStateStatus @default(UNKNOWN)
+  source     String?
+  observedAt DateTime
+  createdAt  DateTime            @default(now())
+
+  @@index([instanceId, observedAt])
+  @@index([instanceId, status, observedAt])
+  @@map("observedState")
+}
+
+model Plan {
+  id                String                @id @default(cuid())
+  instanceId        String
+  instance          CustomerInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  desiredRevisionId String?
+  desiredRevision   DesiredStateRevision? @relation("DesiredRevisionPlans", fields: [desiredRevisionId], references: [id], onDelete: SetNull)
+  status            PlanStatus            @default(DRAFT)
+  idempotencyKey    String                @unique
+  summary           String?
+  errorMessage      String?
+  createdAt         DateTime              @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  updatedAt         DateTime              @updatedAt
+
+  steps PlanStep[]
+
+  @@index([instanceId, status, createdAt])
+  @@index([desiredRevisionId])
+  @@map("plan")
+}
+
+model PlanStep {
+  id             String         @id @default(cuid())
+  planId         String
+  plan           Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  position       Int
+  operation      String
+  provider       String?
+  resourceType   String?
+  resourceId     String?
+  desired        Json?
+  observed       Json?
+  status         PlanStepStatus @default(PENDING)
+  operationKey   String?
+  idempotencyKey String?        @unique
+  errorMessage   String?
+  createdAt      DateTime       @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  updatedAt      DateTime       @updatedAt
+
+  providerOperations ProviderOperation[]
+
+  @@unique([planId, position])
+  @@index([planId, status, position])
+  @@index([resourceType, resourceId])
+  @@map("planStep")
+}
+
+model ControlCommand {
+  id                String               @id @default(cuid())
+  instanceId        String
+  instance          CustomerInstance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  command           String
+  payload           Json?
+  status            ControlCommandStatus @default(QUEUED)
+  idempotencyKey    String               @unique
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest?     @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  requestedByType   String?
+  requestedById     String?
+  result            Json?
+  errorMessage      String?
+  createdAt         DateTime             @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  updatedAt         DateTime             @updatedAt
+
+  providerOperations ProviderOperation[]
+
+  @@index([instanceId, status, createdAt])
+  @@index([approvalRequestId])
+  @@map("controlCommand")
+}
+
+model ProviderOperation {
+  id                String                  @id @default(cuid())
+  instanceId        String?
+  instance          CustomerInstance?       @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  providerAccountId String?
+  providerAccount   ProviderAccount?        @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  planStepId        String?
+  planStep          PlanStep?               @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  controlCommandId  String?
+  controlCommand    ControlCommand?         @relation(fields: [controlCommandId], references: [id], onDelete: SetNull)
+  provider          String
+  operation         String
+  operationKey      String?
+  idempotencyKey    String                  @unique
+  status            ProviderOperationStatus @default(QUEUED)
+  request           Json?
+  response          Json?
+  externalId        String?
+  attemptCount      Int                     @default(0)
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime                @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  updatedAt         DateTime                @updatedAt
+
+  receipt ActionReceipt? @relation("ProviderOperationReceipt")
+
+  @@unique([provider, externalId])
+  @@index([instanceId, status, createdAt])
+  @@index([providerAccountId, status, createdAt])
+  @@index([planStepId])
+  @@index([controlCommandId])
+  @@index([operationKey])
+  @@map("providerOperation")
+}
+
+model Incident {
+  id             String           @id @default(cuid())
+  instanceId     String
+  instance       CustomerInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  provider       String?
+  fingerprint    String?          @unique
+  severity       IncidentSeverity
+  status         IncidentStatus   @default(OPEN)
+  title          String
+  summary        String?
+  detectedAt     DateTime         @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([instanceId, status, severity, detectedAt])
+  @@index([provider, status, detectedAt])
+  @@map("incident")
+}
+
+model UsageSample {
+  id                String            @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  instanceId        String?
+  instance          CustomerInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  providerAccountId String?
+  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  provider          String?
+  metric            String
+  quantity          Decimal           @db.Decimal(20, 6)
+  unit              String
+  observedAt        DateTime
+  dimensions        Json?
+  source            String?
+  createdAt         DateTime          @default(now())
+
+  @@unique([customerAccountId, metric, observedAt])
+  @@index([instanceId, metric, observedAt])
+  @@index([providerAccountId, metric, observedAt])
+  @@map("usageSample")
+}
+
+model CostLineItem {
+  id                String            @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  instanceId        String?
+  instance          CustomerInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  providerAccountId String?
+  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  provider          String
+  externalId        String?
+  category          String
+  description       String?
+  quantity          Decimal           @db.Decimal(20, 6)
+  unitCost          Decimal           @db.Decimal(20, 8)
+  totalCost         Decimal           @db.Decimal(20, 8)
+  currency          String
+  periodStart       DateTime
+  periodEnd         DateTime
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+
+  @@unique([provider, externalId])
+  @@index([customerAccountId, periodStart, periodEnd])
+  @@index([instanceId, periodStart, periodEnd])
+  @@index([provider, category, periodStart])
+  @@map("costLineItem")
 }
