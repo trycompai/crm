@@ -381,6 +381,8 @@ export class AgentDefinitionsService {
 				select: { id: true },
 			});
 
+			await carryArtifactsForward(tx, agent.currentVersionId, version.id);
+
 			await tx.agentDefinition.update({
 				where: { id: input.id },
 				data: { currentVersionId: version.id },
@@ -821,4 +823,32 @@ function reviseValidation(
 		checkedAt: new Date().toISOString(),
 		capabilities,
 	} as Prisma.InputJsonValue;
+}
+
+async function carryArtifactsForward(
+	tx: Prisma.TransactionClient,
+	fromVersionId: string,
+	toVersionId: string,
+): Promise<void> {
+	const rows = await tx.agentBuilderArtifact.findMany({
+		where: { versionId: fromVersionId },
+		orderBy: [{ path: "asc" }, { revision: "desc" }],
+	});
+
+	const latest = new Map<string, (typeof rows)[number]>();
+	for (const row of rows) if (!latest.has(row.path)) latest.set(row.path, row);
+
+	if (latest.size === 0) return;
+
+	await tx.agentBuilderArtifact.createMany({
+		data: [...latest.values()].map((row) => ({
+			versionId: toVersionId,
+			path: row.path,
+			language: row.language,
+			content: row.content,
+			previousContent: row.previousContent,
+			revision: row.revision,
+			status: row.status,
+		})),
+	});
 }
