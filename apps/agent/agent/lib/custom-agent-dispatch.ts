@@ -693,14 +693,14 @@ async function recoverBuilderSubmissions() {
 	}
 }
 
-type LockedBuilderConversation = {
+export type LockedBuilderConversation = {
 	id: string;
 	kind: string;
 	sessionId: string | null;
 	continuationToken: string | null;
 };
 
-async function lockBuilderConversation(
+export async function lockBuilderConversation(
 	tx: Prisma.TransactionClient,
 	conversationId: string,
 ): Promise<LockedBuilderConversation | null> {

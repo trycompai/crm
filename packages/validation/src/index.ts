@@ -4,7 +4,14 @@ import * as slack from "./slack";
 
 export const schemas = { agents, slack } as const;
 
-export type { Handoff, HandoffChannel, Permission } from "./agents";
+export type {
+	Handoff,
+	HandoffChannel,
+	InputOption,
+	InputRequest,
+	InputRequested,
+	Permission,
+} from "./agents";
 export type { AuthTest, Installation, JoinPayload, Reply } from "./slack";
 
 export class InvalidInput extends Error {}

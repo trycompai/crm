@@ -79,6 +79,12 @@ describe("builder persistence", () => {
 			kind: "question",
 			requestId: "question-from-child",
 			prompt: "Which channel should receive this?",
+			action: {
+				kind: "tool-call",
+				callId: "call-from-child",
+				toolName: "ask_question",
+				input: { prompt: "Which channel should receive this?" },
+			},
 			display: "select",
 			options: [{ id: "C123", label: "#sales" }],
 		};
@@ -113,6 +119,50 @@ describe("builder persistence", () => {
 			type: "input.requested",
 			data: event,
 		});
+
+		const newer = {
+			...event,
+			sequence: 4,
+			requests: [
+				{
+					...request,
+					requestId: "newer-question-from-child",
+					prompt: "Which deal stage should this watch?",
+				},
+			],
+		};
+		expect(
+			await persistBuilderInputRequest(newer, undefined, conversationId),
+		).toBe(true);
+
+		expect(
+			await persistBuilderInputRequest(event, undefined, conversationId),
+		).toBe(false);
+		expect(
+			await persistBuilderInputRequest(
+				{
+					...event,
+					sequence: 2,
+					requests: [{ ...request, requestId: "stale-question-from-child" }],
+				},
+				undefined,
+				conversationId,
+			),
+		).toBe(false);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversationId },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: newer.requests[0] });
+		expect(
+			await db.agentEvent.count({
+				where: {
+					id: `builder-input:${conversationId}:stale-question-from-child`,
+				},
+			}),
+		).toBe(0);
 	});
 
 	it("sets a concise model-authored title only once", async () => {

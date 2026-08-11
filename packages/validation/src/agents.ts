@@ -31,6 +31,41 @@ export const handoff = z.object({
 export type Handoff = z.infer<typeof handoff>;
 export type HandoffChannel = z.infer<typeof handoffChannel>;
 
+export const inputOption = z.object({
+	id: z.string().min(1),
+	label: z.string().min(1),
+	description: z.string().optional(),
+	style: z.enum(["primary", "danger", "default"]).optional(),
+});
+
+export const inputRequestAction = z.object({
+	kind: z.literal("tool-call"),
+	callId: z.string().min(1),
+	toolName: z.string().min(1),
+	input: z.record(z.string(), z.json()),
+});
+
+export const inputRequest = z.object({
+	kind: z.enum(["question", "session-limit", "tool-approval"]),
+	requestId: z.string().min(1),
+	prompt: z.string().min(1),
+	action: inputRequestAction,
+	display: z.enum(["confirmation", "select", "text"]).optional(),
+	options: z.array(inputOption).optional(),
+	allowFreeform: z.boolean().optional(),
+});
+
+export const inputRequested = z.object({
+	requests: z.array(inputRequest),
+	sequence: z.number().int().nonnegative(),
+	stepIndex: z.number().int().nonnegative(),
+	turnId: z.string().min(1),
+});
+
+export type InputOption = z.infer<typeof inputOption>;
+export type InputRequest = z.infer<typeof inputRequest>;
+export type InputRequested = z.infer<typeof inputRequested>;
+
 export const capabilityDestination = z.object({
 	kind: z.enum(["channel", "user"]),
 	id: z.string().trim().min(1).max(120),
