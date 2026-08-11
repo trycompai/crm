@@ -14,9 +14,11 @@ export {
 	ensureWorkspaceMembership,
 	isWorkspaceAdmin,
 	isWorkspaceRole,
+	toWorkspaceRole,
 	WORKSPACE_ID,
 	WORKSPACE_ROLES,
 	type WorkspaceRole,
+	workspaceRoleOf,
 } from "./organization";
 export {
 	CALENDAR_SCOPE,

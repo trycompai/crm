@@ -7,9 +7,9 @@ import {
 import * as z from "zod";
 import {
 	canManageConnections,
-	isWorkspaceRole,
 	WORKSPACE_ID,
 	WORKSPACE_ROLES,
+	workspaceRoleOf,
 } from "./organization";
 import { SLACK_PROVIDER_ID } from "./scopes";
 
@@ -36,11 +36,8 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 		});
 	}
 
-	const [member, managers] = await Promise.all([
-		db.member.findFirst({
-			where: { organizationId: WORKSPACE_ID, userId: session.user.id },
-			select: { role: true },
-		}),
+	const [role, managers] = await Promise.all([
+		workspaceRoleOf(session.user.id),
 		db.member.count({
 			where: {
 				organizationId: WORKSPACE_ID,
@@ -49,15 +46,13 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 		}),
 	]);
 
-	if (!member) {
+	if (!role) {
 		throw new APIError("FORBIDDEN", {
 			message: "Only a member of this workspace can connect Slack.",
 		});
 	}
 
 	if (managers === 0) return;
-
-	const role = isWorkspaceRole(member.role) ? member.role : "member";
 	if (!canManageConnections(role)) {
 		throw new APIError("FORBIDDEN", {
 			message:

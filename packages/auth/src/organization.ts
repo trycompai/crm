@@ -105,3 +105,18 @@ export async function ensureWorkspaceMembership(
 		return undefined;
 	}
 }
+
+export function toWorkspaceRole(value: string): WorkspaceRole {
+	return isWorkspaceRole(value) ? value : "member";
+}
+
+export async function workspaceRoleOf(
+	userId: string,
+): Promise<WorkspaceRole | null> {
+	const member = await db.member.findUnique({
+		where: { organizationId_userId: { organizationId: WORKSPACE_ID, userId } },
+		select: { role: true },
+	});
+
+	return member ? toWorkspaceRole(member.role) : null;
+}
