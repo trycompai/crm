@@ -17,6 +17,7 @@ import {
 import { notifySignedIn } from "./signed-in";
 import { storeSlackUserGrant } from "./slack-grant";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
+import { queueSlackInventorySync } from "./slack-sync";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
@@ -292,6 +293,7 @@ async function pruneOtherSlackAccounts(account: {
 	await db.account.deleteMany({
 		where: { providerId: "slack", id: { not: account.id } },
 	});
+	await queueSlackInventorySync();
 }
 
 function objectValue(value: unknown, key: string): Record<string, unknown> {
