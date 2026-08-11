@@ -13,6 +13,7 @@ import { TEAM_AGENT_STATUSES } from "./agent-visibility";
 import type {
 	AgentDeployInput,
 	AgentReviseInput,
+	AgentSaveFileInput,
 	AgentUpdateInput,
 } from "./agents.contracts";
 
@@ -182,6 +183,94 @@ export class AgentDefinitionsService {
 		});
 
 		return updated;
+	}
+
+	async files(id: string, userId: string) {
+		await this.access.assertCanRead(id, userId);
+
+		const agent = await this.db.agentDefinition.findFirst({
+			where: { id, status: { not: "DELETED" } },
+			select: { currentVersionId: true },
+		});
+		if (!agent?.currentVersionId) return { versionId: null, files: [] };
+
+		const rows = await this.db.agentBuilderArtifact.findMany({
+			where: { versionId: agent.currentVersionId },
+			orderBy: [{ path: "asc" }, { revision: "desc" }],
+			select: {
+				path: true,
+				language: true,
+				content: true,
+				previousContent: true,
+				revision: true,
+			},
+		});
+
+		const latest = new Map<string, (typeof rows)[number]>();
+		for (const row of rows)
+			if (!latest.has(row.path)) latest.set(row.path, row);
+
+		return {
+			versionId: agent.currentVersionId,
+			files: [...latest.values()],
+		};
+	}
+
+	async saveFile(input: AgentSaveFileInput, userId: string) {
+		return this.db.$transaction(async (tx) => {
+			await this.access.assertCanManageInTransaction(tx, input.id, userId);
+			const agent = await this.lockAgent(tx, input.id);
+
+			const replay = await tx.agentAuditEvent.findFirst({
+				where: {
+					agentId: input.id,
+					type: "agent.file.saved",
+					requestId: input.clientRequestId,
+				},
+				select: { id: true },
+			});
+			if (replay) return { saved: false };
+
+			if (!agent.currentVersionId) {
+				throw new BadRequestException("This agent has no deployed version.");
+			}
+
+			const current = await tx.agentBuilderArtifact.findFirst({
+				where: { versionId: agent.currentVersionId, path: input.path },
+				orderBy: { revision: "desc" },
+			});
+			if (!current) {
+				throw new NotFoundException(`No file at ${input.path}.`);
+			}
+			if (current.content === input.content) return { saved: false };
+
+			await tx.agentBuilderArtifact.create({
+				data: {
+					versionId: agent.currentVersionId,
+					path: input.path,
+					language: current.language,
+					content: input.content,
+					previousContent: current.content,
+					revision: current.revision + 1,
+					status: "READY",
+				},
+			});
+
+			await tx.agentAuditEvent.create({
+				data: {
+					agentId: input.id,
+					versionId: agent.currentVersionId,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "agent.file.saved",
+					summary: `Edited ${input.path}`,
+					requestId: input.clientRequestId,
+				},
+			});
+
+			return { saved: true };
+		});
 	}
 
 	async revise(input: AgentReviseInput, userId: string) {

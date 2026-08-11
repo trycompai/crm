@@ -20,6 +20,7 @@ import {
 	agentRetryRunInput,
 	agentReviseInput,
 	agentRunNowInput,
+	agentSaveFileInput,
 	agentUpdateInput,
 } from "./agents.contracts";
 
@@ -44,6 +45,19 @@ export class AgentsRouter {
 		@Input() input: z.infer<typeof agentReviseInput>,
 	) {
 		return this.agents.revise(input, ctx.user.id);
+	}
+
+	@Query({ input: agentIdInput })
+	async files(@Ctx() ctx: AuthedTrpcContext, @Input("id") id: string) {
+		return this.agents.files(id, ctx.user.id);
+	}
+
+	@Mutation({ input: agentSaveFileInput })
+	async saveFile(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentSaveFileInput>,
+	) {
+		return this.agents.saveFile(input, ctx.user.id);
 	}
 
 	@Query({ input: agentIdInput })

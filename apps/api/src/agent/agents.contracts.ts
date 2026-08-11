@@ -61,3 +61,11 @@ export const agentReviseInput = agentIdInput.extend({
 });
 
 export type AgentReviseInput = z.infer<typeof agentReviseInput>;
+
+export const agentSaveFileInput = agentIdInput.extend({
+	clientRequestId: z.uuid(),
+	path: z.string().trim().min(1).max(400),
+	content: z.string().max(500_000),
+});
+
+export type AgentSaveFileInput = z.infer<typeof agentSaveFileInput>;

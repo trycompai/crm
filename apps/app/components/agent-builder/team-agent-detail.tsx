@@ -43,6 +43,7 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 import { AgentCapabilities, type Capabilities } from "./agent-capabilities";
+import { AgentCode } from "./agent-code";
 import { AgentRunsDrawer } from "./agent-runs-drawer";
 
 type AgentDetail = RouterOutputs["agents"]["byId"];
@@ -545,11 +546,14 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 	}
 
 	return (
-		<AgentCapabilities
-			agentId={agent.id}
-			canManage={agent.canManage}
-			capabilities={capabilities}
-		/>
+		<div className="flex flex-col gap-9">
+			<AgentCapabilities
+				agentId={agent.id}
+				canManage={agent.canManage}
+				capabilities={capabilities}
+			/>
+			<AgentCode agentId={agent.id} canManage={agent.canManage} />
+		</div>
 	);
 }
 
