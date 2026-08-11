@@ -5,6 +5,7 @@ import { GoogleSyncService } from "../google/google-sync.service";
 import {
 	isGoogleSyncSource,
 	isMicrosoftSyncSource,
+	type SyncSource,
 } from "../mailbox/mailbox.constants";
 import { SyncStateService } from "../mailbox/sync-state.service";
 import { MicrosoftConnectionService } from "../microsoft/microsoft-connection.service";
@@ -59,15 +60,18 @@ export class MailboxSyncService {
 			}
 
 			if (!(await this.state.claim(row, new Date()))) continue;
+			const source = row.source as SyncSource;
+			const claimed = await this.state.get(row.userId, source);
+			if (!claimed) continue;
 
 			summary.attempted += 1;
 
 			try {
-				const outcome = await this.runOne(row.userId, row.source);
+				const outcome = await this.runOne(row.userId, source);
 
 				if (outcome === null || outcome.status === "skipped") {
 					summary.skipped += 1;
-					await this.state.release(row.id);
+					await this.state.release(claimed);
 				} else if (outcome.status === "rate-limited") {
 					summary.rateLimited += 1;
 				} else if (
@@ -81,19 +85,19 @@ export class MailboxSyncService {
 			} catch (error) {
 				summary.failed += 1;
 				await this.state.markFailed(
-					row.id,
+					claimed,
 					error instanceof Error ? error.message : String(error),
 				);
 				this.logger.error(
 					{
 						message: "Sync threw",
 						userId: row.userId,
-						source: row.source,
+						source,
 					},
 					error instanceof Error ? error.stack : String(error),
 				);
 
-				syncError({ error, source: row.source });
+				syncError({ error, source });
 			}
 		}
 

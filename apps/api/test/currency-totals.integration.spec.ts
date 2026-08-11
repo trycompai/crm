@@ -1,9 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { WORKSPACE_ID } from "@crm/auth";
 import { DealStage, db, RateSource } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
-import { SETTINGS_ID, writeReportingCurrency } from "@crm/db/settings";
+import {
+	readReportingCurrency,
+	SETTINGS_ID,
+	writeReportingCurrency,
+} from "@crm/db/settings";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
+import { CurrencyService } from "../src/currency/currency.service";
+import type { RateRefresh } from "../src/currency/rates.service";
 import { DashboardService } from "../src/dashboard/dashboard.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
@@ -84,6 +91,29 @@ beforeAll(async () => {
 		},
 		update: {},
 	});
+	await db.organization.upsert({
+		where: { id: WORKSPACE_ID },
+		create: {
+			id: WORKSPACE_ID,
+			name: "Lode Workspace",
+			slug: WORKSPACE_ID,
+			createdAt: new Date("2026-08-01T00:00:00.000Z"),
+		},
+		update: {},
+	});
+	await db.member.upsert({
+		where: {
+			organizationId_userId: { organizationId: WORKSPACE_ID, userId },
+		},
+		create: {
+			id: `member-${suffix}`,
+			organizationId: WORKSPACE_ID,
+			userId,
+			role: "owner",
+			createdAt: new Date("2026-08-01T00:00:00.000Z"),
+		},
+		update: { role: "owner" },
+	});
 
 	const company = await db.company.upsert({
 		where: { domain },
@@ -99,6 +129,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	await db.activity.deleteMany({ where: { createdById: userId } });
 	await db.deal.deleteMany({ where: { companyId } });
+	await db.member.deleteMany({ where: { userId } });
 	await db.company.deleteMany({ where: { domain } });
 	await db.user.deleteMany({ where: { id: userId } });
 	await clearRates();
@@ -203,6 +234,51 @@ describe("a total across currencies", () => {
 
 		expect(row?.fxRate?.toNumber()).toBe(1.5);
 		expect(row?.baseAmount?.toNumber()).toBe(1_500_000);
+	});
+
+	it("does not change reporting currency or clear conversions when refresh fails", async () => {
+		await writeReportingCurrency(db, "USD");
+		await clearRates();
+		await rate("EUR", "1.10", RateSource.FETCHED);
+
+		const deal = await deals.create({
+			name: `Refresh failure ${suffix}`,
+			companyId,
+			ownerId: userId,
+			amountCents: MILLION,
+			currency: "EUR",
+		});
+		const before = await db.deal.findUnique({
+			where: { id: deal.id },
+			select: { baseAmount: true, baseCurrency: true },
+		});
+		const service = new CurrencyService(db, conversion, {
+			refreshedAt: async () => null,
+			refresh: async (): Promise<RateRefresh> => ({
+				ok: false,
+				base: "EUR",
+				written: 0,
+				asOf: null,
+				reason: "rate provider unavailable",
+			}),
+		} as never);
+
+		await expect(service.setReportingCurrency(userId, "EUR")).rejects.toThrow(
+			"rate provider unavailable",
+		);
+
+		expect(await readReportingCurrency(db)).toBe("USD");
+		const after = await db.deal.findUnique({
+			where: { id: deal.id },
+			select: { baseAmount: true, baseCurrency: true },
+		});
+		expect(after?.baseCurrency).toBe(before?.baseCurrency);
+		expect(after?.baseAmount?.toString()).toBe(before?.baseAmount?.toString());
+
+		await db.deal.delete({ where: { id: deal.id } });
+		await rate("EUR", "1.10", RateSource.FETCHED);
+		await rate("EUR", "1.50", RateSource.MANUAL);
+		await rate("CHF", "1.25", RateSource.MANUAL);
 	});
 
 	it("re-rates everything when the reporting currency changes", async () => {

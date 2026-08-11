@@ -1,6 +1,18 @@
-import { isGoogleConfigured, signsInWithGoogle } from "@crm/auth";
+import {
+	isGoogleConfigured,
+	isWorkspaceAdmin,
+	isWorkspaceRole,
+	signsInWithGoogle,
+	WORKSPACE_ID,
+	type WorkspaceRole,
+} from "@crm/auth";
 import { type Db, GoogleSyncStatus, type Prisma } from "@crm/db";
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+	ForbiddenException,
+	Injectable,
+	Logger,
+	NotFoundException,
+} from "@nestjs/common";
 import { normalizeDomain } from "../companies/domain";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -186,9 +198,12 @@ export class GoogleConnectionService {
 	}
 
 	async suppressDomain(
+		actorUserId: string,
 		domain: string,
 		options: { reason?: string; purge: boolean },
 	): Promise<{ domain: string; purged: number }> {
+		await this.requireDomainSuppressionManager(actorUserId);
+
 		const normalised = normalizeDomain(domain);
 		if (!normalised) {
 			throw new NotFoundException(`"${domain}" is not a domain.`);
@@ -230,6 +245,23 @@ export class GoogleConnectionService {
 		});
 
 		return { domain: normalised, purged: threads.count + events.count };
+	}
+
+	private async requireDomainSuppressionManager(userId: string): Promise<void> {
+		const member = await this.db.member.findUnique({
+			where: {
+				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
+			},
+			select: { role: true },
+		});
+		const role: WorkspaceRole | null =
+			member && isWorkspaceRole(member.role) ? member.role : null;
+
+		if (!isWorkspaceAdmin(role)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can suppress a domain.",
+			);
+		}
 	}
 }
 

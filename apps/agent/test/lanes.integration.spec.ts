@@ -9,13 +9,29 @@ const TEST_PRIORITY_OFFSET = 1_000_000;
 
 const VISIBLE = { only: DIRECT_KINDS } as const;
 const RESEARCH = { except: DIRECT_KINDS } as const;
+const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
 
 async function clear() {
 	await db.agentTask.deleteMany({ where: { reason: REASON } });
 }
 
-beforeEach(clear);
-afterEach(clear);
+function restoreEnv() {
+	if (aiGatewaySpendPause === undefined) {
+		delete process.env.AI_GATEWAY_SPEND_PAUSED;
+		return;
+	}
+	process.env.AI_GATEWAY_SPEND_PAUSED = aiGatewaySpendPause;
+}
+
+beforeEach(async () => {
+	await clear();
+	process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+});
+
+afterEach(async () => {
+	await clear();
+	restoreEnv();
+});
 
 async function queue(kind: string, priority: number) {
 	return db.agentTask.create({

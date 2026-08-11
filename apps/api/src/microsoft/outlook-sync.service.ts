@@ -74,7 +74,7 @@ export class OutlookSyncService {
 		}
 
 		if (token.outcome === "needs-reconnect") {
-			await this.state.markNeedsReconnect(row.id, token.reason);
+			await this.state.markNeedsReconnect(row, token.reason);
 			return {
 				source: "outlook",
 				userId: row.userId,
@@ -83,7 +83,7 @@ export class OutlookSyncService {
 			};
 		}
 
-		await this.state.markRunning(row.id);
+		await this.state.markRunning(row);
 
 		const me = await this.graph.me(token.accessToken);
 		if (me.outcome !== "ok") {
@@ -98,7 +98,7 @@ export class OutlookSyncService {
 
 		if (!mailbox) {
 			await this.state.markFailed(
-				row.id,
+				row,
 				"Microsoft returned no mailbox address.",
 			);
 			return {
@@ -120,7 +120,7 @@ export class OutlookSyncService {
 		row: MailboxSync,
 		initializedAt: Date,
 	): Promise<OutlookSyncOutcome> {
-		await this.state.settle(row.id, {
+		await this.state.settle(row, {
 			cursor: initializedAt.toISOString(),
 			status: GoogleSyncStatus.RUNNING,
 		});
@@ -141,7 +141,7 @@ export class OutlookSyncService {
 	): Promise<OutlookSyncOutcome> {
 		const from = new Date(cursor);
 		if (Number.isNaN(from.getTime())) {
-			await this.state.clearCursor(row.id, "The stored cursor was not a date.");
+			await this.state.clearCursor(row, "The stored cursor was not a date.");
 			return {
 				source: "outlook",
 				userId: row.userId,
@@ -209,7 +209,7 @@ export class OutlookSyncService {
 			return this.handleFailure(row, page);
 		}
 
-		await this.state.settle(row.id, {
+		await this.state.settle(row, {
 			cursor: furthest.toISOString(),
 			status: GoogleSyncStatus.RUNNING,
 		});
@@ -332,7 +332,7 @@ export class OutlookSyncService {
 		result: { outcome: string; reason: string; retryAfterMs?: number },
 	): Promise<OutlookSyncOutcome> {
 		if (result.outcome === "unauthorized") {
-			await this.state.markNeedsReconnect(row.id, result.reason);
+			await this.state.markNeedsReconnect(row, result.reason);
 			return {
 				source: "outlook",
 				userId: row.userId,
@@ -342,7 +342,7 @@ export class OutlookSyncService {
 		}
 
 		if (result.outcome === "rate-limited") {
-			await this.state.markRateLimited(row.id, result.retryAfterMs ?? 60_000);
+			await this.state.markRateLimited(row, result.retryAfterMs ?? 60_000);
 			return {
 				source: "outlook",
 				userId: row.userId,
@@ -351,7 +351,7 @@ export class OutlookSyncService {
 			};
 		}
 
-		await this.state.markFailed(row.id, result.reason);
+		await this.state.markFailed(row, result.reason);
 		return {
 			source: "outlook",
 			userId: row.userId,

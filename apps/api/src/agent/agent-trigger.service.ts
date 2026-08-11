@@ -1,4 +1,4 @@
-import type { Db, FieldEntity } from "@crm/db";
+import { type Db, type FieldEntity, Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -311,35 +311,43 @@ export class AgentTriggerService {
 		dueAt?: Date;
 	}): Promise<void> {
 		try {
-			const pending = await this.db.agentTask.findFirst({
-				where: {
-					kind: task.kind,
-					finishedAt: null,
-					...(task.contactId ? { contactId: task.contactId } : {}),
-					...(task.companyId ? { companyId: task.companyId } : {}),
-					...(task.prospectId ? { prospectId: task.prospectId } : {}),
-					...(task.dealId ? { dealId: task.dealId } : {}),
-					...(task.emailDraftId ? { emailDraftId: task.emailDraftId } : {}),
-				},
-				select: { id: true },
+			const queued = await this.db.$transaction(async (tx) => {
+				await lockAgentTask(tx, enqueueLockKey(task));
+
+				const pending = await tx.agentTask.findFirst({
+					where: {
+						kind: task.kind,
+						finishedAt: null,
+						...(task.contactId ? { contactId: task.contactId } : {}),
+						...(task.companyId ? { companyId: task.companyId } : {}),
+						...(task.prospectId ? { prospectId: task.prospectId } : {}),
+						...(task.dealId ? { dealId: task.dealId } : {}),
+						...(task.emailDraftId ? { emailDraftId: task.emailDraftId } : {}),
+					},
+					select: { id: true },
+				});
+
+				if (pending) return false;
+
+				await tx.agentTask.create({
+					data: {
+						contactId: task.contactId ?? null,
+						companyId: task.companyId ?? null,
+						prospectId: task.prospectId ?? null,
+						dealId: task.dealId ?? null,
+						emailDraftId: task.emailDraftId ?? null,
+						kind: task.kind,
+						reason: task.reason,
+						priority: task.priority,
+						budget: task.budget,
+						dueAt: task.dueAt ?? new Date(),
+					},
+				});
+
+				return true;
 			});
 
-			if (pending) return;
-
-			await this.db.agentTask.create({
-				data: {
-					contactId: task.contactId ?? null,
-					companyId: task.companyId ?? null,
-					prospectId: task.prospectId ?? null,
-					dealId: task.dealId ?? null,
-					emailDraftId: task.emailDraftId ?? null,
-					kind: task.kind,
-					reason: task.reason,
-					priority: task.priority,
-					budget: task.budget,
-					dueAt: task.dueAt ?? new Date(),
-				},
-			});
+			if (!queued) return;
 
 			this.logger.log({
 				message: "Agent task queued",
@@ -366,21 +374,30 @@ export class AgentTriggerService {
 		priority: number = PRIORITY.inbound,
 		budget = 0,
 	): Promise<boolean> {
-		const pending = await this.db.agentTask.findFirst({
-			where: { kind, finishedAt: null },
-			select: { id: true },
-		});
-		if (pending) return false;
+		const queued = await this.db.$transaction(async (tx) => {
+			await lockAgentTask(tx, `agent-task:${kind}:global`);
 
-		await this.db.agentTask.create({
-			data: {
-				kind,
-				reason,
-				priority,
-				budget,
-				dueAt: new Date(),
-			},
+			const pending = await tx.agentTask.findFirst({
+				where: { kind, finishedAt: null },
+				select: { id: true },
+			});
+			if (pending) return false;
+
+			await tx.agentTask.create({
+				data: {
+					kind,
+					reason,
+					priority,
+					budget,
+					dueAt: new Date(),
+				},
+			});
+
+			return true;
 		});
+
+		if (!queued) return false;
+
 		this.logger.log({ message: "Inbound task queued", kind });
 		this.poke();
 		return true;
@@ -417,4 +434,36 @@ export class AgentTriggerService {
 			missed(error);
 		}
 	}
+}
+
+type AgentTaskLockClient = Pick<Db, "$executeRaw">;
+
+async function lockAgentTask(
+	db: AgentTaskLockClient,
+	key: string,
+): Promise<void> {
+	await db.$executeRaw(
+		Prisma.sql`SELECT pg_advisory_xact_lock(47001, hashtext(${key}))`,
+	);
+}
+
+function enqueueLockKey(task: {
+	contactId?: string;
+	companyId?: string;
+	prospectId?: string;
+	dealId?: string;
+	emailDraftId?: string;
+	kind: string;
+}): string {
+	const subject = [
+		task.contactId ? `contact:${task.contactId}` : null,
+		task.companyId ? `company:${task.companyId}` : null,
+		task.prospectId ? `prospect:${task.prospectId}` : null,
+		task.dealId ? `deal:${task.dealId}` : null,
+		task.emailDraftId ? `email-draft:${task.emailDraftId}` : null,
+	]
+		.filter((part): part is string => part !== null)
+		.join("|");
+
+	return `agent-task:${task.kind}:${subject || "global"}`;
 }

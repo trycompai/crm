@@ -59,8 +59,9 @@ export class RatesService {
 		return readRatesRefreshedAt(this.db);
 	}
 
-	async refresh(): Promise<RateRefresh> {
-		const base = await readReportingCurrency(this.db);
+	async refresh(baseOverride?: string): Promise<RateRefresh> {
+		const base =
+			normalizeCurrency(baseOverride) || (await readReportingCurrency(this.db));
 		const quotes = await this.fetch(base);
 
 		if (!quotes) {
@@ -124,11 +125,13 @@ export class RatesService {
 		}
 
 		const supported = [...CURRENCY_CODES];
+		const refreshedQuotes = [...rates.keys()];
 
 		const stale = await this.db.exchangeRate.deleteMany({
 			where: {
 				source: RateSource.FETCHED,
 				OR: [
+					{ baseCurrency: base, quoteCurrency: { notIn: refreshedQuotes } },
 					{ baseCurrency: { notIn: supported } },
 					{ quoteCurrency: { notIn: supported } },
 				],
@@ -137,7 +140,7 @@ export class RatesService {
 
 		if (stale.count > 0) {
 			this.logger.log({
-				message: "Dropped fetched rates for currencies that are not supported",
+				message: "Dropped stale or unsupported fetched rates",
 				base,
 				dropped: stale.count,
 			});

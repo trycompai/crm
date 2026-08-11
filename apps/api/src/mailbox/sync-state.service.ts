@@ -9,6 +9,10 @@ import type { SyncSource } from "./mailbox.constants";
 
 export const SYNC_LEASE_MS = 300_000;
 
+export type SyncStateTarget =
+	| string
+	| Pick<MailboxSync, "id" | "retryAfter" | "updatedAt">;
+
 @Injectable()
 export class SyncStateService {
 	private readonly logger = new Logger(SyncStateService.name);
@@ -49,9 +53,9 @@ export class SyncStateService {
 		return count === 1;
 	}
 
-	async release(id: string): Promise<void> {
+	async release(target: SyncStateTarget): Promise<void> {
 		await this.db.mailboxSync.updateMany({
-			where: { id },
+			where: targetWhere(target),
 			data: { retryAfter: null },
 		});
 	}
@@ -77,22 +81,22 @@ export class SyncStateService {
 		});
 	}
 
-	async markRunning(id: string): Promise<void> {
-		await this.db.mailboxSync.update({
-			where: { id },
+	async markRunning(target: SyncStateTarget): Promise<void> {
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: { status: GoogleSyncStatus.RUNNING, lastError: null },
 		});
 	}
 
 	async settle(
-		id: string,
+		target: SyncStateTarget,
 		update: {
 			cursor?: string | null;
 			status: GoogleSyncStatus;
 		},
 	): Promise<void> {
-		await this.db.mailboxSync.update({
-			where: { id },
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: {
 				...update,
 				lastSyncedAt: new Date(),
@@ -102,15 +106,15 @@ export class SyncStateService {
 		});
 	}
 
-	async clearCursor(id: string, reason: string): Promise<void> {
+	async clearCursor(target: SyncStateTarget, reason: string): Promise<void> {
 		this.logger.warn({
 			message: "Sync cursor invalidated — resuming from now",
-			syncId: id,
+			syncId: typeof target === "string" ? target : target.id,
 			reason,
 		});
 
-		await this.db.mailboxSync.update({
-			where: { id },
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: {
 				cursor: null,
 				status: GoogleSyncStatus.IDLE,
@@ -120,9 +124,12 @@ export class SyncStateService {
 		});
 	}
 
-	async markNeedsReconnect(id: string, reason: string): Promise<void> {
-		await this.db.mailboxSync.update({
-			where: { id },
+	async markNeedsReconnect(
+		target: SyncStateTarget,
+		reason: string,
+	): Promise<void> {
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: {
 				status: GoogleSyncStatus.NEEDS_RECONNECT,
 				lastError: reason,
@@ -131,9 +138,12 @@ export class SyncStateService {
 		});
 	}
 
-	async markRateLimited(id: string, retryAfterMs: number): Promise<void> {
-		await this.db.mailboxSync.update({
-			where: { id },
+	async markRateLimited(
+		target: SyncStateTarget,
+		retryAfterMs: number,
+	): Promise<void> {
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: {
 				status: GoogleSyncStatus.IDLE,
 				retryAfter: new Date(Date.now() + retryAfterMs),
@@ -141,9 +151,9 @@ export class SyncStateService {
 		});
 	}
 
-	async markFailed(id: string, reason: string): Promise<void> {
-		await this.db.mailboxSync.update({
-			where: { id },
+	async markFailed(target: SyncStateTarget, reason: string): Promise<void> {
+		await this.db.mailboxSync.updateMany({
+			where: targetWhere(target),
 			data: {
 				status: GoogleSyncStatus.FAILED,
 				lastError: reason,
@@ -174,5 +184,14 @@ function dueWhere(now: Date) {
 	return {
 		status: { notIn: [GoogleSyncStatus.NEEDS_RECONNECT] },
 		OR: [{ retryAfter: null }, { retryAfter: { lte: now } }],
+	};
+}
+
+function targetWhere(target: SyncStateTarget) {
+	if (typeof target === "string") return { id: target };
+
+	return {
+		id: target.id,
+		retryAfter: target.retryAfter,
 	};
 }

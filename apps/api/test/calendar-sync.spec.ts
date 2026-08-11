@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { Db, MailboxSyncModel as MailboxSync } from "@crm/db";
-import { CalendarSyncService } from "../src/google/calendar-sync.service";
 import type {
 	CalendarClient,
 	GoogleEvent,
 } from "../src/google/calendar.client";
+import { CalendarSyncService } from "../src/google/calendar-sync.service";
 import type { MailboxMatchService } from "../src/mailbox/mailbox-match.service";
 import type { MailboxTokenService } from "../src/mailbox/mailbox-token.service";
 import type { SyncStateService } from "../src/mailbox/sync-state.service";

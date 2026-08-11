@@ -169,9 +169,13 @@ export class CurrencyService {
 
 		if (currency === current) return this.settings(actingUserId);
 
-		await writeReportingCurrency(this.db, currency);
+		const refresh = await this.rates.refresh(currency);
 
-		const refresh = await this.rates.refresh();
+		if (!refresh.ok) {
+			throw new BadRequestException(refresh.reason ?? "Could not fetch rates.");
+		}
+
+		await writeReportingCurrency(this.db, currency);
 		const rerated = await this.conversion.rerateAll();
 
 		this.logger.log({

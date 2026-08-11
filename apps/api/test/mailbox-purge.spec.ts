@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { WORKSPACE_ID } from "@crm/auth";
 import { ActivityType, db, EmailDirection, GoogleSyncStatus } from "@crm/db";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { GoogleConnectionService } from "../src/google/google-connection.service";
@@ -29,14 +30,14 @@ const roots = [shared, solo, theirs];
 const tokens = new MailboxTokenService(db);
 const state = new SyncStateService(db);
 const stamp = new ActivityStampService(db);
+const match = {
+	internalIdentity: async () => ({
+		addresses: new Set<string>(),
+		domains: new Set<string>(),
+	}),
+} as unknown as MailboxMatchService;
 
-const google = new GoogleConnectionService(
-	db,
-	tokens,
-	state,
-	{} as unknown as MailboxMatchService,
-	stamp,
-);
+const google = new GoogleConnectionService(db, tokens, state, match, stamp);
 const microsoft = new MicrosoftConnectionService(db, tokens, state, stamp);
 
 function at(hour: number): Date {
@@ -173,7 +174,9 @@ async function clean(): Promise<void> {
 	await db.emailThread.deleteMany({ where: { rootMessageId: { in: roots } } });
 	await db.mailboxSync.deleteMany({ where: { userId: { in: userIds } } });
 	await db.account.deleteMany({ where: { userId: { in: userIds } } });
+	await db.member.deleteMany({ where: { userId: { in: userIds } } });
 	await db.user.deleteMany({ where: { id: { in: userIds } } });
+	await db.suppressedDomain.deleteMany({ where: { domain } });
 	await db.company.deleteMany({ where: { domain } });
 }
 
@@ -210,6 +213,25 @@ beforeEach(async () => {
 			email: `${id}@${domain}`,
 		})),
 	});
+	await db.organization.upsert({
+		where: { id: WORKSPACE_ID },
+		create: {
+			id: WORKSPACE_ID,
+			name: "Lode Workspace",
+			slug: WORKSPACE_ID,
+			createdAt: new Date("2026-08-01T00:00:00.000Z"),
+		},
+		update: {},
+	});
+	await db.member.createMany({
+		data: userIds.map((id) => ({
+			id: `member-${id}`,
+			organizationId: WORKSPACE_ID,
+			userId: id,
+			role: id === outlookRep ? "admin" : "member",
+			createdAt: new Date("2026-08-01T00:00:00.000Z"),
+		})),
+	});
 
 	await seed();
 });
@@ -217,6 +239,39 @@ beforeEach(async () => {
 afterAll(clean);
 
 describe("purging Gmail data", () => {
+	it("requires an admin before suppressing and purging a domain", async () => {
+		await expect(
+			google.suppressDomain(gmailRep, domain, {
+				reason: "reviewed",
+				purge: true,
+			}),
+		).rejects.toThrow("Only an owner or an admin can suppress a domain.");
+
+		expect(
+			await db.suppressedDomain.findUnique({ where: { domain } }),
+		).toBeNull();
+		expect(await threadState(solo)).not.toBeNull();
+	});
+
+	it("lets an admin suppress and purge a domain", async () => {
+		await expect(
+			google.suppressDomain(outlookRep, domain, {
+				reason: "reviewed",
+				purge: true,
+			}),
+		).resolves.toEqual({ domain, purged: 4 });
+
+		expect(
+			await db.suppressedDomain.findUnique({ where: { domain } }),
+		).not.toBeNull();
+		expect(await db.emailThread.count({ where: { company: { domain } } })).toBe(
+			0,
+		);
+		expect(
+			await db.calendarEvent.count({ where: { iCalUid: `ical-${suffix}` } }),
+		).toBe(0);
+	});
+
 	it("removes only the caller's Gmail messages and counts them", async () => {
 		expect(await google.purgeSyncedData(gmailRep)).toEqual({ purged: 3 });
 	});

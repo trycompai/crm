@@ -8,6 +8,8 @@ const userId = `user-${suffix}`;
 const domain = `${suffix}.example.test`;
 const externalId = `note-${suffix}`;
 const excludedExternalId = `excluded-${suffix}`;
+const raceExternalId = `race-${suffix}`;
+const raceTitle = `Concurrent review ${suffix}`;
 const agent = {
 	syncInbound: async () => ({ configured: 0, queued: 0 }),
 } as unknown as AgentTriggerService;
@@ -90,12 +92,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await db.granolaNote.deleteMany({
-		where: { externalId: { in: [externalId, excludedExternalId] } },
+		where: {
+			externalId: { in: [externalId, excludedExternalId, raceExternalId] },
+		},
 	});
 	await db.granolaNoteExclusion.deleteMany({
 		where: { externalId: { in: [externalId, excludedExternalId] } },
 	});
-	await db.activity.deleteMany({ where: { id: activityId } });
+	await db.activity.deleteMany({
+		where: { OR: [{ id: activityId }, { subject: raceTitle }] },
+	});
 	await db.deal.deleteMany({ where: { id: dealId } });
 	await db.contact.deleteMany({ where: { id: contactId } });
 	await db.company.deleteMany({ where: { id: companyId } });
@@ -122,6 +128,43 @@ describe("Granola review", () => {
 		expect(activity?.companyId).toBe(companyId);
 		expect(activity?.contactId).toBe(contactId);
 		expect(activity?.dealId).toBe(dealId);
+	});
+
+	it("creates one activity when reviewers match the same note concurrently", async () => {
+		const note = await db.granolaNote.create({
+			data: {
+				externalId: raceExternalId,
+				title: raceTitle,
+				attendees: [{ name: "Casey", email: `casey@${domain}` }],
+				folders: [],
+				sourceCreatedAt: new Date(),
+				sourceUpdatedAt: new Date(),
+			},
+			select: { id: true },
+		});
+
+		await Promise.all(
+			Array.from({ length: 8 }, () =>
+				inbound.matchGranola(
+					{ id: note.id, companyId, contactId, dealId },
+					userId,
+				),
+			),
+		);
+
+		const [matched, activities] = await Promise.all([
+			db.granolaNote.findUnique({
+				where: { id: note.id },
+				select: { activityId: true },
+			}),
+			db.activity.findMany({
+				where: { subject: raceTitle, createdById: userId },
+				select: { id: true },
+			}),
+		]);
+
+		expect(activities).toHaveLength(1);
+		expect(matched?.activityId).toBe(activities[0]?.id);
 	});
 
 	it("removes an irrelevant note and suppresses its Granola ID", async () => {

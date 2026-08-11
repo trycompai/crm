@@ -387,36 +387,61 @@ export class InboundService {
 			}
 
 			const occurredAt = note.startedAt ?? note.sourceCreatedAt;
-			const activity = note.activityId
-				? await tx.activity.update({
-						where: { id: note.activityId },
-						data: {
-							companyId: company.id,
-							contactId: contact?.id ?? null,
-							dealId: deal?.id ?? null,
-						},
-						select: { id: true },
-					})
-				: await tx.activity.create({
+			const activityUpdate = {
+				companyId: company.id,
+				contactId: contact?.id ?? null,
+				dealId: deal?.id ?? null,
+			};
+			let activity: { id: string };
+
+			if (note.activityId) {
+				activity = await tx.activity.update({
+					where: { id: note.activityId },
+					data: activityUpdate,
+					select: { id: true },
+				});
+			} else {
+				const claimed = await tx.granolaNote.updateMany({
+					where: { id: note.id, activityId: null },
+					data: activityUpdate,
+				});
+
+				if (claimed.count === 1) {
+					activity = await tx.activity.create({
 						data: {
 							type: "MEETING",
 							subject: note.title,
 							body: note.summary,
 							occurredAt,
-							companyId: company.id,
-							contactId: contact?.id ?? null,
-							dealId: deal?.id ?? null,
+							...activityUpdate,
 							createdById: userId,
 						},
 						select: { id: true },
 					});
+				} else {
+					const current = await tx.granolaNote.findUnique({
+						where: { id: note.id },
+						select: { activityId: true },
+					});
+
+					if (!current?.activityId) {
+						throw new BadRequestException(
+							"That Granola note was matched by another reviewer. Reload and try again.",
+						);
+					}
+
+					activity = await tx.activity.update({
+						where: { id: current.activityId },
+						data: activityUpdate,
+						select: { id: true },
+					});
+				}
+			}
 
 			await tx.granolaNote.update({
 				where: { id: note.id },
 				data: {
-					companyId: company.id,
-					contactId: contact?.id ?? null,
-					dealId: deal?.id ?? null,
+					...activityUpdate,
 					activityId: activity.id,
 				},
 			});

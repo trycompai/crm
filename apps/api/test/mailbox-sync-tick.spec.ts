@@ -44,6 +44,14 @@ class FakeState {
 		return [...this.rows.values()].filter((row) => this.isDue(row, now));
 	}
 
+	async get(userId: string, source: string): Promise<MailboxSync | null> {
+		return (
+			[...this.rows.values()].find(
+				(row) => row.userId === userId && row.source === source,
+			) ?? null
+		);
+	}
+
 	async claim(row: MailboxSync, now: Date): Promise<boolean> {
 		const stored = this.rows.get(row.id);
 		if (!stored) return false;
@@ -58,21 +66,26 @@ class FakeState {
 		return true;
 	}
 
-	async release(id: string): Promise<void> {
-		const stored = this.rows.get(id);
-		if (stored) this.write(stored, { retryAfter: null });
+	async release(target: string | MailboxSync): Promise<void> {
+		const stored = this.rows.get(this.idOf(target));
+		if (stored && this.matches(stored, target)) {
+			this.write(stored, { retryAfter: null });
+		}
 	}
 
-	async settle(id: string): Promise<void> {
-		const stored = this.rows.get(id);
-		if (stored) {
+	async settle(target: string | MailboxSync): Promise<void> {
+		const stored = this.rows.get(this.idOf(target));
+		if (stored && this.matches(stored, target)) {
 			this.write(stored, { retryAfter: null, lastSyncedAt: new Date() });
 		}
 	}
 
-	async markRateLimited(id: string, retryAfterMs: number): Promise<void> {
-		const stored = this.rows.get(id);
-		if (stored) {
+	async markRateLimited(
+		target: string | MailboxSync,
+		retryAfterMs: number,
+	): Promise<void> {
+		const stored = this.rows.get(this.idOf(target));
+		if (stored && this.matches(stored, target)) {
 			this.write(stored, {
 				status: GoogleSyncStatus.IDLE,
 				retryAfter: new Date(Date.now() + retryAfterMs),
@@ -80,13 +93,26 @@ class FakeState {
 		}
 	}
 
-	async markFailed(id: string, reason: string): Promise<void> {
-		const stored = this.rows.get(id);
-		if (stored) {
+	async markFailed(
+		target: string | MailboxSync,
+		reason: string,
+	): Promise<void> {
+		const stored = this.rows.get(this.idOf(target));
+		if (stored && this.matches(stored, target)) {
 			this.write(stored, {
 				status: GoogleSyncStatus.FAILED,
 				lastError: reason,
 				retryAfter: null,
+			});
+		}
+	}
+
+	forceLease(id: string, retryAfter: Date): void {
+		const stored = this.rows.get(id);
+		if (stored) {
+			this.write(stored, {
+				status: GoogleSyncStatus.RUNNING,
+				retryAfter,
 			});
 		}
 	}
@@ -99,6 +125,19 @@ class FakeState {
 
 	private write(row: MailboxSync, patch: Partial<MailboxSync>): void {
 		this.rows.set(row.id, { ...row, ...patch, updatedAt: this.stamp() });
+	}
+
+	private idOf(target: string | MailboxSync): string {
+		return typeof target === "string" ? target : target.id;
+	}
+
+	private matches(row: MailboxSync, target: string | MailboxSync): boolean {
+		if (typeof target === "string") return true;
+
+		return (
+			(row.retryAfter?.getTime() ?? null) ===
+			(target.retryAfter?.getTime() ?? null)
+		);
 	}
 
 	private stamp(): Date {
@@ -240,6 +279,23 @@ describe("runDue always resolves the lease", () => {
 		expect(summary.failed).toBe(1);
 		expect(state.rows.get("a")?.status).toBe(GoogleSyncStatus.FAILED);
 		expect(state.rows.get("a")?.retryAfter).toBeNull();
+	});
+
+	it("does not let a stale skipped run clear a newer lease", async () => {
+		state.add("a", "gmail");
+		const newerLease = new Date(Date.now() + SYNC_LEASE_MS * 2);
+
+		const service = build(state, async (userId, source) => {
+			state.forceLease("a", newerLease);
+			return { source, userId, status: "skipped" };
+		});
+
+		const summary = await service.runDue();
+
+		expect(summary.skipped).toBe(1);
+		expect(state.rows.get("a")?.retryAfter?.getTime()).toBe(
+			newerLease.getTime(),
+		);
 	});
 });
 

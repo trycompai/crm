@@ -22,9 +22,9 @@ import {
 	LocalDateTimeRange,
 	LocalDay,
 } from "@/components/local-date-time";
+import { safeExternalHref } from "@/lib/safe-external-url";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
-import { safeExternalHref } from "@/lib/safe-external-url";
 
 type AgendaItem = RouterOutputs["calendar"]["agenda"]["items"][number];
 

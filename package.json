@@ -25,6 +25,18 @@
 		"turbo": "^2.10.8",
 		"typescript": "5.9.2"
 	},
+	"overrides": {
+		"better-auth": "1.6.27",
+		"dompurify": "3.4.13",
+		"drizzle-orm": "0.45.2",
+		"hono": "4.12.34",
+		"js-yaml": "4.3.1",
+		"lodash": "4.18.1",
+		"mermaid": "11.16.1",
+		"nanoid": "3.3.17",
+		"postcss": "8.5.26",
+		"sharp": "0.35.3"
+	},
 	"engines": {
 		"node": ">=22"
 	},

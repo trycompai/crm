@@ -63,7 +63,7 @@ export class CalendarSyncService {
 		}
 
 		if (token.outcome === "needs-reconnect") {
-			await this.state.markNeedsReconnect(row.id, token.reason);
+			await this.state.markNeedsReconnect(row, token.reason);
 			return {
 				source: "calendar",
 				userId: row.userId,
@@ -72,7 +72,7 @@ export class CalendarSyncService {
 			};
 		}
 
-		await this.state.markRunning(row.id);
+		await this.state.markRunning(row);
 
 		const [internal, suppressedDomains, suppressedEmails] = await Promise.all([
 			this.match.internalIdentity(),
@@ -101,7 +101,7 @@ export class CalendarSyncService {
 			});
 
 			if (result.outcome === "cursor-invalid") {
-				await this.state.clearCursor(row.id, result.reason);
+				await this.state.clearCursor(row, result.reason);
 				return {
 					source: "calendar",
 					userId: row.userId,
@@ -113,7 +113,7 @@ export class CalendarSyncService {
 			}
 
 			if (result.outcome === "unauthorized") {
-				await this.state.markNeedsReconnect(row.id, result.reason);
+				await this.state.markNeedsReconnect(row, result.reason);
 				return {
 					source: "calendar",
 					userId: row.userId,
@@ -123,7 +123,7 @@ export class CalendarSyncService {
 			}
 
 			if (result.outcome === "rate-limited") {
-				await this.state.markRateLimited(row.id, result.retryAfterMs);
+				await this.state.markRateLimited(row, result.retryAfterMs);
 				return {
 					source: "calendar",
 					userId: row.userId,
@@ -133,7 +133,7 @@ export class CalendarSyncService {
 			}
 
 			if (result.outcome === "failed") {
-				await this.state.markFailed(row.id, result.reason);
+				await this.state.markFailed(row, result.reason);
 				return {
 					source: "calendar",
 					userId: row.userId,
@@ -152,7 +152,7 @@ export class CalendarSyncService {
 
 			if (!pageToken) {
 				syncToken = result.data.nextSyncToken ?? syncToken;
-				await this.state.settle(row.id, {
+				await this.state.settle(row, {
 					cursor: syncToken ?? null,
 					status: GoogleSyncStatus.RUNNING,
 				});
@@ -174,7 +174,7 @@ export class CalendarSyncService {
 			}
 		}
 
-		await this.state.settle(row.id, {
+		await this.state.settle(row, {
 			status: GoogleSyncStatus.IDLE,
 		});
 

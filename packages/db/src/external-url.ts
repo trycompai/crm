@@ -15,7 +15,7 @@ export function normalizeExternalHttpUrl(
 	const trimmed = value?.trim();
 	if (!trimmed) return null;
 	if (trimmed.length > MAX_EXTERNAL_URL_LENGTH) return null;
-	if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+	if (hasControlCharacter(trimmed)) return null;
 	if (/^[/?#]/.test(trimmed)) return null;
 
 	let url: URL;
@@ -49,4 +49,12 @@ export function normalizeSocialUrl(
 	}
 
 	return normalized;
+}
+
+function hasControlCharacter(value: string): boolean {
+	for (let index = 0; index < value.length; index += 1) {
+		const code = value.charCodeAt(index);
+		if (code <= 31 || code === 127) return true;
+	}
+	return false;
 }

@@ -5,6 +5,7 @@ import {
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import type { MailboxResult } from "../mailbox/mailbox-api.client";
 import type { MatchContext } from "../mailbox/mailbox-match.service";
 import { MailboxTokenService } from "../mailbox/mailbox-token.service";
 import {
@@ -17,7 +18,6 @@ import {
 	type IncomingMessage,
 	ThreadWriterService,
 } from "../mailbox/thread-writer.service";
-import type { MailboxResult } from "../mailbox/mailbox-api.client";
 import { GmailClient, type GmailMessage } from "./gmail.client";
 import {
 	type GmailHeader,
@@ -67,7 +67,7 @@ export class GmailSyncService {
 		}
 
 		if (token.outcome === "needs-reconnect") {
-			await this.state.markNeedsReconnect(row.id, token.reason);
+			await this.state.markNeedsReconnect(row, token.reason);
 			return {
 				source: "gmail",
 				userId: row.userId,
@@ -76,7 +76,7 @@ export class GmailSyncService {
 			};
 		}
 
-		await this.state.markRunning(row.id);
+		await this.state.markRunning(row);
 
 		const profile = await this.gmail.profile(token.accessToken);
 		if (profile.outcome !== "ok") {
@@ -85,7 +85,7 @@ export class GmailSyncService {
 
 		const mailbox = profile.data.emailAddress?.toLowerCase() ?? null;
 		if (!mailbox) {
-			await this.state.markFailed(row.id, "Gmail returned no mailbox address.");
+			await this.state.markFailed(row, "Gmail returned no mailbox address.");
 			return {
 				source: "gmail",
 				userId: row.userId,
@@ -106,7 +106,7 @@ export class GmailSyncService {
 		historyId: string | null,
 	): Promise<GmailSyncOutcome> {
 		if (!historyId) {
-			await this.state.markFailed(row.id, "Gmail returned no historyId.");
+			await this.state.markFailed(row, "Gmail returned no historyId.");
 			return {
 				source: "gmail",
 				userId: row.userId,
@@ -115,7 +115,7 @@ export class GmailSyncService {
 			};
 		}
 
-		await this.state.settle(row.id, {
+		await this.state.settle(row, {
 			cursor: historyId,
 			status: GoogleSyncStatus.RUNNING,
 		});
@@ -146,7 +146,7 @@ export class GmailSyncService {
 			});
 
 			if (history.outcome === "cursor-invalid") {
-				await this.state.clearCursor(row.id, history.reason);
+				await this.state.clearCursor(row, history.reason);
 
 				return {
 					source: "gmail",
@@ -176,7 +176,7 @@ export class GmailSyncService {
 
 		const { written, remaining } = result;
 
-		await this.state.settle(row.id, {
+		await this.state.settle(row, {
 			cursor: remaining > 0 || hasMore ? startHistoryId : historyId,
 			status: GoogleSyncStatus.RUNNING,
 		});
@@ -306,7 +306,7 @@ export class GmailSyncService {
 		result: { outcome: string; reason: string; retryAfterMs?: number },
 	): Promise<GmailSyncOutcome> {
 		if (result.outcome === "unauthorized") {
-			await this.state.markNeedsReconnect(row.id, result.reason);
+			await this.state.markNeedsReconnect(row, result.reason);
 			return {
 				source: "gmail",
 				userId: row.userId,
@@ -316,7 +316,7 @@ export class GmailSyncService {
 		}
 
 		if (result.outcome === "rate-limited") {
-			await this.state.markRateLimited(row.id, result.retryAfterMs ?? 60_000);
+			await this.state.markRateLimited(row, result.retryAfterMs ?? 60_000);
 			return {
 				source: "gmail",
 				userId: row.userId,
@@ -325,7 +325,7 @@ export class GmailSyncService {
 			};
 		}
 
-		await this.state.markFailed(row.id, result.reason);
+		await this.state.markFailed(row, result.reason);
 		return {
 			source: "gmail",
 			userId: row.userId,
