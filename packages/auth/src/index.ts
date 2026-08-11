@@ -4,6 +4,7 @@ export { isGoogleConfigured, isMicrosoftConfigured } from "./env";
 export {
 	canChangeRole,
 	canManageCurrency,
+	canManageTracking,
 	canRenameWorkspace,
 	DEFAULT_WORKSPACE_NAME,
 	ensureWorkspaceMembership,

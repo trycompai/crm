@@ -46,6 +46,9 @@
 	--severity-low: var(--muted-foreground);
 	--severity-info: oklch(0.71 0.01 286);
 	--severity-unknown: oklch(0.75 0 0);
+	--code-foreground: #2b2b2b;
+	--code-accent: #b0402c;
+	--code-string: var(--primary);
 	--sidebar: #fafafa;
 	--sidebar-foreground: #171717;
 	--sidebar-primary: #006b4f;
@@ -115,6 +118,9 @@
 	--severity-low: var(--muted-foreground);
 	--severity-info: oklch(0.71 0.01 286);
 	--severity-unknown: oklch(0.5 0 0);
+	--code-foreground: #e3e3e3;
+	--code-accent: #e5735b;
+	--code-string: #40be96;
 	--sidebar: #171717;
 	--sidebar-foreground: #f5f5f5;
 	--sidebar-primary: #006b4f;
@@ -182,6 +188,9 @@
 	--color-severity-low: var(--severity-low);
 	--color-severity-info: var(--severity-info);
 	--color-severity-unknown: var(--severity-unknown);
+	--color-code-foreground: var(--code-foreground);
+	--color-code-accent: var(--code-accent);
+	--color-code-string: var(--code-string);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);

@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./agent-tasks": "./src/agent-tasks.ts",
+		"./attribution": "./src/attribution.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",
@@ -19,6 +20,7 @@
 		"./idempotency": "./src/idempotency.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
+		"./tracking": "./src/tracking.ts",
 		"./workspace": "./src/workspace.ts"
 	},
 	"scripts": {

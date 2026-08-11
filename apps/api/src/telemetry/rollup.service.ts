@@ -495,6 +495,33 @@ export class RollupService {
 			}),
 		]);
 
+		const [
+			trackingSite,
+			trackingDomains,
+			trackingViews,
+			trackingForms,
+			trackingFiled,
+			trackingCapped,
+			trackingPaused,
+		] = await Promise.all([
+			this.db.appSetting.count({ where: { trackingSiteId: { not: null } } }),
+			this.db.trackedDomain.count(),
+			this.db.trackedEvent.count({
+				where: { type: "page_view", occurredAt: { gte: since } },
+			}),
+			this.db.formSubmission.count({ where: { createdAt: { gte: since } } }),
+			this.db.formSubmission.count({
+				where: { createdAt: { gte: since }, filedAt: { not: null } },
+			}),
+			this.db.formSubmission.count({
+				where: {
+					createdAt: { gte: since },
+					skipReason: { contains: "contacts in an hour" },
+				},
+			}),
+			this.db.appSetting.count({ where: { trackingPaused: true } }),
+		]);
+
 		const configured = syncs.reduce((sum, row) => sum + row._count._all, 0);
 
 		return {
@@ -527,6 +554,14 @@ export class RollupService {
 				types.map((row) => ({ key: row.type, count: row._count._all })),
 				Object.values(ActivityType),
 			),
+
+			cap_tracking: trackingSite > 0,
+			tracking_domains: bucket(trackingDomains),
+			tracking_page_views: trackingViews,
+			tracking_forms: trackingForms,
+			tracking_contacts_created: trackingFiled,
+			tracking_capped: trackingCapped,
+			tracking_paused: trackingPaused > 0,
 
 			mailbox_sync_configured: configured > 0,
 			mailbox_sync_status: merge(

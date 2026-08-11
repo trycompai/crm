@@ -143,6 +143,7 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  TRACKING
 }
 
 enum AgentConversationKind {
@@ -325,6 +326,8 @@ model Contact {
   calendarEvents  CalendarEvent[]
   eventAttendance CalendarAttendee[]
   fieldValues     FieldValue[]
+  visitors        TrackedVisitor[]   @relation("VisitorContact")
+  submissions     FormSubmission[]   @relation("SubmissionContact")
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -1205,9 +1208,140 @@ model AppSetting {
 
   ratesRefreshedAt DateTime?
 
+  trackingSiteId           String?  @unique
+  trackingCrossDomain      Boolean  @default(true)
+  trackingLimitToDomains   Boolean  @default(true)
+  trackingCookieSubdomains Boolean  @default(false)
+  trackingSecureCookies    Boolean  @default(true)
+  trackingHonourDnt        Boolean  @default(true)
+  trackingCookieDays       Int      @default(395)
+  trackingConfigHash       String?
+  trackingPaused           Boolean  @default(false)
+
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+enum DomainScope {
+  SITE_AND_SUBDOMAINS
+  EXACT_HOST
+}
+
+model TrackedDomain {
+  id    String      @id @default(cuid())
+  host  String      @unique
+  scope DomainScope @default(EXACT_HOST)
+
+  pageViews  Int       @default(0)
+  lastSeenAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("trackedDomain")
+}
+
+model TrackedVisitor {
+  id String @id
+
+  contactId String?
+  contact   Contact? @relation("VisitorContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  firstSource     String?
+  firstMedium     String?
+  firstCampaign   String?
+  firstTerm       String?
+  firstContent    String?
+  firstReferrer   String?
+  firstLanding    String?
+  firstTouchAt    DateTime?
+
+  lastSource   String?
+  lastMedium   String?
+  lastCampaign String?
+  lastTerm     String?
+  lastContent  String?
+  lastReferrer String?
+  lastLanding  String?
+  lastTouchAt  DateTime?
+
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @updatedAt
+
+  @@index([contactId])
+  @@index([firstSource])
+  @@map("trackedVisitor")
+}
+
+model TrackedEvent {
+  id String @id @default(cuid())
+
+  visitorId String
+  type      String
+  host      String
+  path      String
+  referrer  String?
+  label     String?
+
+  source   String?
+  medium   String?
+  campaign String?
+
+  occurredAt DateTime
+
+  @@index([visitorId, occurredAt])
+  @@index([occurredAt])
+  @@index([host, occurredAt])
+  @@index([source, occurredAt])
+  @@map("trackedEvent")
+}
+
+model TrackingCounter {
+  key       String   @id
+  value     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("trackingCounter")
+}
+
+model TrackedPageDaily {
+  day      DateTime
+  host     String
+  path     String
+  views    Int      @default(0)
+  visitors Int      @default(0)
+
+  @@id([day, host, path])
+  @@index([host, day])
+  @@map("trackedPageDaily")
+}
+
+model FormSubmission {
+  id String @id @default(cuid())
+
+  visitorId String?
+  contactId String?
+  contact   Contact? @relation("SubmissionContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  host  String
+  path  String
+  email String?
+
+  fields Json
+
+  firstTouch Json?
+  lastTouch  Json?
+
+  dedupeKey  String    @unique
+  filedAt    DateTime?
+  skipReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([contactId])
+  @@index([createdAt])
+  @@map("formSubmission")
 }
 
 model Install {

@@ -26,6 +26,7 @@ import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInpu
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
+import { trackingFlagInput, cookieLifetimeInput, addDomainInput, removeDomainInput, verifyInput, companyActivityInput, contactActivityInput } from "../tracking/tracking.contracts";
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { AgentsRouter } from "../agent/agents.router";
@@ -41,6 +42,7 @@ import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { SearchRouter } from "../search/search.router";
 import type { SettingsRouter } from "../settings/settings.router";
 import type { SsoRouter } from "../sso/sso.router";
+import type { TrackingRouter } from "../tracking/tracking.router";
 import type { UsersRouter } from "../users/users.router";
 import type { WorkspaceRouter } from "../workspace/workspace.router";
 
@@ -382,6 +384,35 @@ const appRouter = t.router({
     remove: publicProcedure
       .input(deleteSsoProviderInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SsoRouter["remove"]>>)
+    }),
+  tracking: t.router({
+    settings: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["settings"]>>),
+    setFlag: publicProcedure
+      .input(trackingFlagInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["setFlag"]>>),
+    setCookieLifetime: publicProcedure
+      .input(cookieLifetimeInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["setCookieLifetime"]>>),
+    addDomain: publicProcedure
+      .input(addDomainInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["addDomain"]>>),
+    removeDomain: publicProcedure
+      .input(removeDomainInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["removeDomain"]>>),
+    rotateSiteId: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["rotateSiteId"]>>),
+    verify: publicProcedure
+      .input(verifyInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["verify"]>>),
+    sources: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["sources"]>>),
+    companyActivity: publicProcedure
+      .input(companyActivityInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["companyActivity"]>>),
+    contactActivity: publicProcedure
+      .input(contactActivityInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["contactActivity"]>>)
     }),
   users: t.router({
     me: publicProcedure
