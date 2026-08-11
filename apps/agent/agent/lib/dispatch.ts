@@ -6,6 +6,12 @@ import { directTaskKinds, outreachSendsPaused } from "./autonomy";
 import { brandOutcome, runBrand } from "./brand";
 import { markRunning, settle } from "./enrichment";
 import { runGranolaSync } from "./granola-sync";
+import {
+	INBOUND_CANDIDATE_REPLAY_TASK_KIND,
+	type InboundReplayCursor,
+	inboundReplayOutcomeText,
+	runInboundCandidateReplay,
+} from "./inbound-replay";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
 import {
@@ -21,6 +27,26 @@ import {
 	type TaskSubject,
 } from "./tasks";
 import { runWebsiteIntakeSync } from "./website-intake";
+
+const DETERMINISTIC_DIRECT_KINDS = [
+	...DIRECT_KINDS,
+	INBOUND_CANDIDATE_REPLAY_TASK_KIND,
+];
+
+function replayCursor(value: unknown): InboundReplayCursor {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const scopes = value as Record<string, unknown>;
+	return {
+		...(scopes.websiteDone === true ? { websiteDone: true } : {}),
+		...(scopes.emailDone === true ? { emailDone: true } : {}),
+		...(typeof scopes.websiteExternalId === "string"
+			? { websiteExternalId: scopes.websiteExternalId }
+			: {}),
+		...(typeof scopes.emailMessageId === "string"
+			? { emailMessageId: scopes.emailMessageId }
+			: {}),
+	};
+}
 
 export const VISIBLE_BATCH = 60;
 export const VISIBLE_CONCURRENCY = 6;
@@ -55,7 +81,7 @@ export async function runVisibleLane(): Promise<number> {
 	while (handled < VISIBLE_BATCH) {
 		const tasks = await claimDue(
 			Math.min(VISIBLE_CONCURRENCY, VISIBLE_BATCH - handled),
-			{ only: directTaskKinds(DIRECT_KINDS) },
+			{ only: directTaskKinds(DETERMINISTIC_DIRECT_KINDS) },
 			VISIBLE_LEASE_MS,
 		);
 
@@ -146,6 +172,27 @@ export async function runDirect(task: LeasedTask): Promise<void> {
 			return;
 		}
 
+		if (task.kind === INBOUND_CANDIDATE_REPLAY_TASK_KIND) {
+			const result = await runInboundCandidateReplay(
+				undefined,
+				replayCursor(task.scopes),
+			);
+			await completeTask(
+				task.id,
+				task.attempts,
+				inboundReplayOutcomeText(result),
+				undefined,
+				{
+					hasMore: result.hasMore,
+					websiteDone: result.websiteDone,
+					emailDone: result.emailDone,
+					nextWebsiteCursor: result.nextWebsiteCursor,
+					nextEmailCursor: result.nextEmailCursor,
+				},
+			);
+			return;
+		}
+
 		if (task.kind === "email-draft-send" && task.emailDraftId) {
 			const result = await sendApprovedAgentMailDraft(task.emailDraftId);
 			if ("retryable" in result && result.retryable) return;
@@ -190,12 +237,15 @@ export async function runResearchLane(
 	start: (task: LeasedTask) => Promise<{ id: string }>,
 ): Promise<number> {
 	const capacity = directOpenAiEnabled() ? RESEARCH_BATCH : 1;
-	const available = Math.max(0, capacity - (await researchInFlightCount()));
+	const available = Math.max(
+		0,
+		capacity - (await researchInFlightCount(DETERMINISTIC_DIRECT_KINDS)),
+	);
 	if (available === 0) return 0;
 
 	const tasks = await claimDue(
 		available,
-		{ except: DIRECT_KINDS },
+		{ except: DETERMINISTIC_DIRECT_KINDS },
 		RESEARCH_LEASE_MS,
 	);
 	if (tasks.length === 0) return 0;
@@ -311,6 +361,8 @@ function work(kind: string, reason: string): string {
 			return "Read new inbound AgentMail messages into matching CRM records. Do not send email.";
 		case "granola-sync":
 			return "Import Granola meeting notes into matching CRM records and preserve unmatched notes for review.";
+		case INBOUND_CANDIDATE_REPLAY_TASK_KIND:
+			return "Replay persisted website and mailbox envelopes into reviewable inbound candidate evidence. Do not create or modify Contact or Company records, accept identity, send, call providers, or use a model.";
 		case "workspace-profile":
 			return "Write the profile of the company you work for, so that every other session knows who we are. Read our own site and keep it short.";
 		default:

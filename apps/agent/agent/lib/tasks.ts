@@ -19,6 +19,7 @@ export type LeasedTask = {
 	attempts: number;
 	priority: number;
 	dueAt: Date;
+	scopes?: unknown | null;
 };
 
 export type TaskSubject = {
@@ -74,12 +75,14 @@ export async function withTaskLease<T>(
 	});
 }
 
-export async function researchInFlightCount(): Promise<number> {
+export async function researchInFlightCount(
+	directKinds: readonly string[] = DIRECT_TASK_KINDS,
+): Promise<number> {
 	return db.agentTask.count({
 		where: {
 			finishedAt: null,
 			leasedUntil: { gt: new Date() },
-			kind: { notIn: [...DIRECT_TASK_KINDS] },
+			kind: { notIn: [...directKinds] },
 		},
 	});
 }
@@ -117,7 +120,7 @@ export async function claimDue(
 				) AS due
 				WHERE t.id = due.id
 				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
-					t.budget, t.attempts, t.priority, t."dueAt";
+					t.budget, t.attempts, t.priority, t."dueAt", t.scopes;
 			`
 			: await db.$queryRaw<LeasedTask[]>`
 				UPDATE "agentTask" AS t
@@ -139,7 +142,7 @@ export async function claimDue(
 				) AS due
 				WHERE t.id = due.id
 				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
-					t.budget, t.attempts, t.priority, t."dueAt";
+					t.budget, t.attempts, t.priority, t."dueAt", t.scopes;
 			`;
 
 	return claimed.sort(
@@ -175,6 +178,7 @@ export async function completeTask(
 	expectedAttempt: number,
 	outcome: string,
 	sessionId?: string,
+	scopes?: Prisma.InputJsonValue | null,
 ): Promise<TaskSubject | null> {
 	const { count } = await db.agentTask.updateMany({
 		where: {
@@ -190,6 +194,9 @@ export async function completeTask(
 			outcome: outcome.slice(0, 500),
 			state: "SUCCEEDED",
 			...(sessionId ? { sessionId } : {}),
+			...(scopes !== undefined
+				? { scopes: scopes === null ? Prisma.DbNull : scopes }
+				: {}),
 		},
 	});
 
@@ -290,43 +297,74 @@ export async function scheduleTask(input: {
 	dueAt: Date;
 	priority?: number;
 	budget?: number;
+	idempotencyKey?: string;
+	scopes?: Prisma.InputJsonValue | null;
 }): Promise<{ id: string }> {
-	const existing = await db.agentTask.findFirst({
-		where: {
-			kind: input.kind,
-			finishedAt: null,
-			contactId: input.contactId ?? undefined,
-			companyId: input.companyId ?? undefined,
-			prospectId: input.prospectId ?? undefined,
-			dealId: input.dealId ?? undefined,
-			emailDraftId: input.emailDraftId ?? undefined,
-		},
-		select: { id: true },
-	});
+	const existing = input.idempotencyKey
+		? await db.agentTask.findUnique({
+				where: { idempotencyKey: input.idempotencyKey },
+				select: { id: true, finishedAt: true },
+			})
+		: await db.agentTask.findFirst({
+				where: {
+					kind: input.kind,
+					finishedAt: null,
+					contactId: input.contactId ?? undefined,
+					companyId: input.companyId ?? undefined,
+					prospectId: input.prospectId ?? undefined,
+					dealId: input.dealId ?? undefined,
+					emailDraftId: input.emailDraftId ?? undefined,
+				},
+				select: { id: true, finishedAt: true },
+			});
 
 	if (existing) {
-		await db.agentTask.update({
-			where: { id: existing.id },
-			data: { dueAt: input.dueAt, reason: input.reason },
-		});
+		if (!input.idempotencyKey || existing.finishedAt === null) {
+			await db.agentTask.update({
+				where: { id: existing.id },
+				data: { dueAt: input.dueAt, reason: input.reason },
+			});
+		}
 		return existing;
 	}
 
-	return db.agentTask.create({
-		data: {
-			contactId: input.contactId ?? null,
-			companyId: input.companyId ?? null,
-			prospectId: input.prospectId ?? null,
-			dealId: input.dealId ?? null,
-			emailDraftId: input.emailDraftId ?? null,
-			kind: input.kind,
-			reason: input.reason,
-			dueAt: input.dueAt,
-			priority: input.priority ?? 0,
-			budget: input.budget ?? 4,
-		},
-		select: { id: true },
-	});
+	try {
+		return await db.agentTask.create({
+			data: {
+				contactId: input.contactId ?? null,
+				companyId: input.companyId ?? null,
+				prospectId: input.prospectId ?? null,
+				dealId: input.dealId ?? null,
+				emailDraftId: input.emailDraftId ?? null,
+				kind: input.kind,
+				reason: input.reason,
+				dueAt: input.dueAt,
+				priority: input.priority ?? 0,
+				budget: input.budget ?? 4,
+				idempotencyKey: input.idempotencyKey ?? null,
+				...(input.scopes !== undefined
+					? {
+							scopes: input.scopes === null ? Prisma.DbNull : input.scopes,
+						}
+					: {}),
+			},
+			select: { id: true },
+		});
+	} catch (error) {
+		if (
+			!(error instanceof Prisma.PrismaClientKnownRequestError) ||
+			error.code !== "P2002" ||
+			!input.idempotencyKey
+		) {
+			throw error;
+		}
+		const raced = await db.agentTask.findUnique({
+			where: { idempotencyKey: input.idempotencyKey },
+			select: { id: true },
+		});
+		if (!raced) throw error;
+		return raced;
+	}
 }
 
 export async function queueDueProspectRechecks(limit = 50): Promise<number> {
