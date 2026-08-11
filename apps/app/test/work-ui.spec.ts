@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { showWorkNavigation } from "../components/crm/quick-switcher-navigation";
-import { toWorkListInput, workFocusHistory } from "../lib/work-input";
+import {
+	toWorkListInput,
+	workAssigneeOptions,
+	workFocusHistory,
+} from "../lib/work-input";
 
 const appRoot = resolve(import.meta.dir, "..");
 const workTable = readFileSync(
@@ -73,6 +77,48 @@ test("work assignee URL values map to one valid server owner filter", () => {
 	expect(mapped.owner).toBe("all");
 	expect(mapped.ownerId).toBe("user-123");
 	expect(toWorkListInput({ ...base, assignee: "user-123" })).toEqual(mapped);
+});
+
+test("assignee options keep My work visible and filter named owners by count", () => {
+	const options = workAssigneeOptions(
+		{ "user-1": 2, "user-2": 0, unassigned: 0 },
+		[
+			{ id: "user-1", name: "Richard" },
+			{ id: "user-2", name: "Angus" },
+		],
+	);
+
+	expect(options).toEqual([
+		{ value: "me", label: "My work" },
+		{ value: "unassigned", label: "Unassigned" },
+		{ value: "user-1", label: "Richard" },
+	]);
+	expect(
+		workAssigneeOptions(undefined, [{ id: "user-2", name: "Angus" }]),
+	).toEqual([
+		{ value: "me", label: "My work" },
+		{ value: "unassigned", label: "Unassigned" },
+	]);
+});
+
+test("inherited subject-type keys are rejected before the API input", () => {
+	const base = {
+		q: "",
+		sort: "updatedAt",
+		dir: "desc",
+		page: 1,
+		pageSize: 25,
+		state: "all",
+		queue: "all",
+		assignee: "all",
+		due: "all",
+	};
+
+	for (const subjectType of ["constructor", "toString"]) {
+		expect(toWorkListInput({ ...base, subjectType })).not.toHaveProperty(
+			"subjectType",
+		);
+	}
 });
 
 test("focus history pushes on open and replaces on close", () => {

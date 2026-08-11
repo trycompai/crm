@@ -33,7 +33,11 @@ import {
 import { LocalDateTime, LocalRelativeTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
-import { toWorkListInput, workFocusHistory } from "@/lib/work-input";
+import {
+	toWorkListInput,
+	workAssigneeOptions,
+	workFocusHistory,
+} from "@/lib/work-input";
 import { workSearchParams } from "./work-search-params";
 
 type WorkRow = RouterOutputs["work"]["list"]["rows"][number];
@@ -248,14 +252,7 @@ export function WorkTable() {
 			{
 				id: "assignee",
 				label: "Owner",
-				options: [
-					{ value: "me", label: "My work" },
-					{ value: "unassigned", label: "Unassigned" },
-					...(users.data ?? []).map((user) => ({
-						value: user.id,
-						label: user.name,
-					})),
-				].filter((option) => (facetCounts?.owner?.[option.value] ?? 0) > 0),
+				options: workAssigneeOptions(facetCounts?.owner, users.data ?? []),
 			},
 			{
 				id: "due",

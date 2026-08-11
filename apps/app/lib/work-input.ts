@@ -79,6 +79,22 @@ export type WorkSearchValues = {
 	subjectType: string;
 };
 
+export type WorkAssigneeUser = { id: string; name: string };
+export type WorkAssigneeOption = { value: string; label: string };
+
+export function workAssigneeOptions(
+	counts: Record<string, number> | undefined,
+	users: readonly WorkAssigneeUser[],
+): WorkAssigneeOption[] {
+	return [
+		{ value: "me", label: "My work" },
+		{ value: "unassigned", label: "Unassigned" },
+		...users
+			.filter((user) => (counts?.[user.id] ?? 0) > 0)
+			.map((user) => ({ value: user.id, label: user.name })),
+	];
+}
+
 function oneOf<T extends string>(
 	value: string,
 	allowed: readonly T[],
@@ -113,7 +129,7 @@ export function toWorkListInput(values: WorkSearchValues): WorkListInput {
 }
 
 function isSubjectType(value: string): value is SubjectType {
-	return value in SUBJECT_TYPES;
+	return Object.hasOwn(SUBJECT_TYPES, value);
 }
 
 export function workFocusHistory(open: boolean): "push" | "replace" {
