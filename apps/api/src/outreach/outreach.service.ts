@@ -7,6 +7,7 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
+import { normalizeEmail } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 
@@ -15,6 +16,11 @@ const EDITABLE = new Set<EmailDraftStatus>([
 	"PENDING_APPROVAL",
 	"REJECTED",
 ]);
+
+function emailDomain(email: string): string | null {
+	const [, domain] = email.split("@");
+	return domain || null;
+}
 
 @Injectable()
 export class OutreachService {
@@ -25,23 +31,89 @@ export class OutreachService {
 	) {}
 
 	async supplyStatus() {
-		const [prospects, researchOpen, discovery] = await Promise.all([
-			this.db.prospect.groupBy({ by: ["status"], _count: true }),
-			this.db.agentTask.count({
-				where: { kind: "prospect-research", finishedAt: null },
-			}),
-			this.db.agentTask.findFirst({
-				where: { kind: "lead-discovery", finishedAt: null },
-				orderBy: { createdAt: "desc" },
-				select: { id: true, attempts: true, startedAt: true, createdAt: true },
-			}),
+		const sendingPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false" ||
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
+		const [prospects, researchOpen, discovery, readyRoutes, inbox] =
+			await Promise.all([
+				this.db.prospect.groupBy({ by: ["status"], _count: true }),
+				this.db.agentTask.count({
+					where: { kind: "prospect-research", finishedAt: null },
+				}),
+				this.db.agentTask.findFirst({
+					where: { kind: "lead-discovery", finishedAt: null },
+					orderBy: { createdAt: "desc" },
+					select: {
+						id: true,
+						attempts: true,
+						startedAt: true,
+						createdAt: true,
+					},
+				}),
+				this.db.prospect.findMany({
+					where: {
+						status: "PROMOTED",
+						routeStatus: "SEND_READY_REVIEW",
+						emailAllowed: true,
+						companyId: { not: null },
+						contactId: { not: null },
+						routeEmail: { not: null },
+					},
+					select: { routeEmail: true },
+				}),
+				this.db.emailInbox.findFirst({
+					where: { provider: "AGENTMAIL", isEnabled: true },
+					select: { id: true },
+				}),
+			]);
+		const approvedEmails = readyRoutes
+			.map((route) => normalizeEmail(route.routeEmail ?? ""))
+			.filter((email): email is string => email !== null);
+		const routeDomains = [
+			...new Set(
+				approvedEmails
+					.map((email) => emailDomain(email))
+					.filter((domain): domain is string => domain !== null),
+			),
+		];
+		const [suppressedContacts, suppressedDomains] = await Promise.all([
+			approvedEmails.length > 0
+				? this.db.suppressedContact.findMany({
+						where: { email: { in: approvedEmails } },
+						select: { email: true },
+					})
+				: [],
+			routeDomains.length > 0
+				? this.db.suppressedDomain.findMany({
+						where: { domain: { in: routeDomains } },
+						select: { domain: true },
+					})
+				: [],
 		]);
+		const blockedContacts = new Set(
+			suppressedContacts
+				.map((row) => normalizeEmail(row.email))
+				.filter((email): email is string => email !== null),
+		);
+		const blockedDomains = new Set(suppressedDomains.map((row) => row.domain));
+		const blockedRoutes = approvedEmails.filter((email) => {
+			const domain = emailDomain(email);
+			return (
+				blockedContacts.has(email) ||
+				Boolean(domain && blockedDomains.has(domain))
+			);
+		}).length;
+		const approvedRoutes = approvedEmails.length;
+		const agentMailReady = inbox !== null;
+		const sendEligible =
+			!sendingPaused && agentMailReady ? approvedRoutes - blockedRoutes : 0;
 
 		return {
-			sendingPaused:
-				process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !==
-					"false" ||
-				process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false",
+			sendingPaused,
+			agentMailReady,
+			approvedRoutes,
+			blockedRoutes,
+			sendEligible,
 			prospects: Object.fromEntries(
 				prospects.map((row) => [row.status, row._count]),
 			),

@@ -3,7 +3,10 @@
 import Search from "@carbon/icons-react/es/Search";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
-import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	StatusIndicator,
+	type StatusTone,
+} from "@crm/ui/components/status-indicator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
@@ -67,8 +70,17 @@ export function GrowthPulse() {
 		...trpc.outreach.performance.queryOptions(),
 		refetchInterval: 15_000,
 	});
-	const ready = status.data?.prospects.PROMOTED ?? 0;
 	const researching = status.data?.researchOpen ?? 0;
+	const promoted = status.data?.prospects.PROMOTED ?? 0;
+	const approvedRoutes = status.data?.approvedRoutes ?? 0;
+	const sendEligible = status.data?.sendEligible ?? 0;
+	const gate = outreachGate({
+		agentMailReady: status.data?.agentMailReady ?? false,
+		approvedRoutes,
+		blockedRoutes: status.data?.blockedRoutes ?? 0,
+		sendEligible,
+		sendingPaused: status.data?.sendingPaused ?? true,
+	});
 
 	return (
 		<div className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2 lg:grid-cols-5">
@@ -77,8 +89,14 @@ export function GrowthPulse() {
 				<p className="mt-1 font-medium tabular-nums">{researching}</p>
 			</div>
 			<div className="bg-background px-4 py-3">
-				<p className="text-muted-foreground text-xs">Send-ready accounts</p>
-				<p className="mt-1 font-medium tabular-nums">{ready}</p>
+				<div className="flex items-center justify-between gap-2">
+					<p className="text-muted-foreground text-xs">Outreach gate</p>
+					<StatusIndicator tone={gate.tone} label={gate.label} />
+				</div>
+				<p className="mt-1 font-medium tabular-nums">{sendEligible}</p>
+				<p className="text-muted-foreground text-xs">
+					{approvedRoutes} approved routes · {promoted} in CRM
+				</p>
 			</div>
 			{(performance.data ?? []).map((variant) => (
 				<div key={variant.variant} className="bg-background px-4 py-3">
@@ -103,4 +121,21 @@ export function GrowthPulse() {
 			))}
 		</div>
 	);
+}
+
+function outreachGate(input: {
+	agentMailReady: boolean;
+	approvedRoutes: number;
+	blockedRoutes: number;
+	sendEligible: number;
+	sendingPaused: boolean;
+}): { label: string; tone: StatusTone } {
+	if (input.sendingPaused) return { label: "Sends paused", tone: "warning" };
+	if (!input.agentMailReady)
+		return { label: "AgentMail unavailable", tone: "warning" };
+	if (input.sendEligible > 0) return { label: "Send enabled", tone: "success" };
+	if (input.approvedRoutes > 0 && input.blockedRoutes >= input.approvedRoutes) {
+		return { label: "Routes suppressed", tone: "error" };
+	}
+	return { label: "No approved routes", tone: "neutral" };
 }
