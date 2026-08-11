@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.2](https://github.com/trycompai/crm/compare/v1.8.1...v1.8.2) (2026-08-11)
+
+
+### Fixes
+
+* **agent:** fill blank fields on the dispatch tick instead of sign-in ([#117](https://github.com/trycompai/crm/issues/117)) ([9660952](https://github.com/trycompai/crm/commit/96609529f9f7be27441a88267a05e9a6c8f9c23c))
+
 ## [1.8.1](https://github.com/trycompai/crm/compare/v1.8.0...v1.8.1) (2026-08-11)
 
 
