@@ -37,4 +37,18 @@ describe("taskFromToken", () => {
 		expect(taskFromToken(undefined)).toBeNull();
 		expect(taskFromToken("crm:task:")).toBeNull();
 	});
+
+	it("rejects malformed lease attempts", () => {
+		expect(taskLeaseFromToken(`crm:task:${TASK_ID}@0`)).toBeNull();
+		expect(taskLeaseFromToken(`crm:task:${TASK_ID}@nope`)).toBeNull();
+		expect(taskLeaseFromToken(`crm:task:${TASK_ID}@1.5`)).toBeNull();
+		expect(taskLeaseFromToken(`crm:task:${TASK_ID}@`)).toBeNull();
+	});
+
+	it("keeps old tokens readable but not executable", () => {
+		expect(taskLeaseFromToken(`crm:task:${TASK_ID}`)).toEqual({
+			taskId: TASK_ID,
+			expectedAttempt: null,
+		});
+	});
 });

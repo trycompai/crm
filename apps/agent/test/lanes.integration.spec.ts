@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
 import { DIRECT_KINDS, isDirectKind, PRIORITY } from "@crm/db/agent-tasks";
+import { runResearchLane } from "../agent/lib/dispatch";
 import { claimDue } from "../agent/lib/tasks";
 
 const REASON = "lane-test";
@@ -94,6 +95,44 @@ describe("dispatch lanes", () => {
 		const again = await claimDue(10, RESEARCH);
 
 		expect(again.map((t) => t.id)).not.toContain(brand.id);
+	});
+
+	it("requeues research immediately when session start fails", async () => {
+		const task = await queue("identify", PRIORITY.identify);
+
+		await runResearchLane(async () => {
+			throw new Error("start failed");
+		});
+
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, leasedUntil: true, attempts: true },
+			}),
+		).toEqual({ state: "QUEUED", leasedUntil: null, attempts: 1 });
+	});
+
+	it("does not requeue research moved to approval while starting", async () => {
+		const task = await queue("identify", PRIORITY.identify);
+
+		await runResearchLane(async (leased) => {
+			await db.agentTask.update({
+				where: { id: leased.id },
+				data: { state: "WAITING_FOR_APPROVAL", leasedUntil: null },
+			});
+			throw new Error("stale start failure");
+		});
+
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, leasedUntil: true, attempts: true },
+			}),
+		).toEqual({
+			state: "WAITING_FOR_APPROVAL",
+			leasedUntil: null,
+			attempts: 1,
+		});
 	});
 });
 

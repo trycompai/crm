@@ -5,6 +5,7 @@ import {
 	claimDue,
 	completeTask,
 	MAX_ATTEMPTS,
+	noteSession,
 	releaseTaskForRetry,
 	retireExhausted,
 	scheduleTask,
@@ -74,6 +75,27 @@ describe("claimDue", () => {
 			where: { id: task.id },
 			data: { state: "WAITING_FOR_APPROVAL" },
 		});
+
+		expect(await claimDue(10, RESEARCH)).toHaveLength(0);
+	});
+
+	it("does not claim cancelled or unknown work", async () => {
+		const cancelled = await queue();
+		const unknown = await queue();
+		await db.$transaction([
+			db.agentTask.update({
+				where: { id: cancelled.id },
+				data: {
+					state: "CANCELLED",
+					finishedAt: new Date(),
+					outcome: "Cancelled",
+				},
+			}),
+			db.agentTask.update({
+				where: { id: unknown.id },
+				data: { state: "UNKNOWN" },
+			}),
+		]);
 
 		expect(await claimDue(10, RESEARCH)).toHaveLength(0);
 	});
@@ -223,6 +245,36 @@ describe("retireExhausted", () => {
 			}),
 		).toEqual({ state: "WAITING_FOR_APPROVAL", finishedAt: null });
 	});
+
+	it("does not retire cancelled or unknown work", async () => {
+		const cancelled = await queue();
+		const unknown = await queue();
+		await db.$transaction([
+			db.agentTask.update({
+				where: { id: cancelled.id },
+				data: {
+					state: "CANCELLED",
+					attempts: MAX_ATTEMPTS,
+					finishedAt: new Date(),
+					outcome: "Cancelled",
+				},
+			}),
+			db.agentTask.update({
+				where: { id: unknown.id },
+				data: { state: "UNKNOWN", attempts: MAX_ATTEMPTS },
+			}),
+		]);
+
+		expect(await retireExhausted()).toHaveLength(0);
+		const rows = await db.agentTask.findMany({
+			where: { id: { in: [cancelled.id, unknown.id] } },
+			select: { state: true },
+		});
+		expect(rows.map((row) => row.state).sort()).toEqual([
+			"CANCELLED",
+			"UNKNOWN",
+		]);
+	});
 });
 
 describe("completeTask", () => {
@@ -343,6 +395,67 @@ describe("releaseTaskForRetry", () => {
 				select: { state: true, leasedUntil: true },
 			}),
 		).toEqual({ state: "WAITING_FOR_APPROVAL", leasedUntil: null });
+	});
+
+	it("does not let an expired worker retry a later lease", async () => {
+		const task = await queue();
+		const first = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+		const second = (await claimDue(10, RESEARCH))[0];
+
+		expect(
+			await releaseTaskForRetry(task.id, first?.attempts ?? 0, 250),
+		).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, attempts: true },
+			}),
+		).toEqual({ state: "LEASED", attempts: 2 });
+		expect(
+			await releaseTaskForRetry(task.id, second?.attempts ?? 0, 250),
+		).not.toBeNull();
+	});
+});
+
+describe("noteSession", () => {
+	it("does not attach a session after work moves to approval", async () => {
+		const task = await queue();
+		const leased = (await claimDue(10, RESEARCH))[0];
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { state: "WAITING_FOR_APPROVAL", leasedUntil: null },
+		});
+
+		expect(
+			await noteSession(task.id, leased?.attempts ?? 0, "stale-session"),
+		).toBe(false);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { sessionId: true },
+			}),
+		).toEqual({ sessionId: null });
+	});
+
+	it("does not attach an expired worker session to a later lease", async () => {
+		const task = await queue();
+		const first = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+		const second = (await claimDue(10, RESEARCH))[0];
+
+		expect(
+			await noteSession(task.id, first?.attempts ?? 0, "stale-session"),
+		).toBe(false);
+		expect(
+			await noteSession(task.id, second?.attempts ?? 0, "current-session"),
+		).toBe(true);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { attempts: true, sessionId: true },
+			}),
+		).toEqual({ attempts: 2, sessionId: "current-session" });
 	});
 });
 

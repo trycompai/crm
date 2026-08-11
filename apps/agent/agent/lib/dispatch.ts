@@ -192,7 +192,28 @@ export async function runResearchLane(
 				await noteSession(task.id, task.attempts, session.id);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
-				await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
+				if (task.attempts >= MAX_ATTEMPTS) {
+					const completed = await completeTask(
+						task.id,
+						task.attempts,
+						`Failed after ${task.attempts} attempts: ${reason}`,
+					).catch(() => null);
+					if (completed) {
+						await settle(completed, EnrichmentStatus.FAILED, reason).catch(
+							() => {},
+						);
+					}
+					return;
+				}
+				const released = await releaseTaskForRetry(
+					task.id,
+					task.attempts,
+				).catch(() => null);
+				if (released) {
+					await settle(released, EnrichmentStatus.FAILED, reason).catch(
+						() => {},
+					);
+				}
 			}
 		}),
 	);

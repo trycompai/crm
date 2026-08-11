@@ -327,12 +327,19 @@ export default defineChannel({
 
 		const taskId =
 			typeof input.target?.taskId === "string" ? input.target.taskId : null;
+		const taskAttempt =
+			typeof input.target?.taskAttempt === "number" &&
+			Number.isSafeInteger(input.target.taskAttempt) &&
+			input.target.taskAttempt > 0
+				? input.target.taskAttempt
+				: null;
 
 		return send(input.message, {
 			auth: input.auth,
-			continuationToken: taskId
-				? taskToken(taskId)
-				: `crm:adhoc:${crypto.randomUUID()}`,
+			continuationToken:
+				taskId && taskAttempt
+					? taskToken(taskId, taskAttempt)
+					: `crm:adhoc:${crypto.randomUUID()}`,
 		});
 	},
 });

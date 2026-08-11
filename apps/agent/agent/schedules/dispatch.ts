@@ -20,7 +20,7 @@ export default defineSchedule({
 					await drainAll((task) =>
 						receive(crm, {
 							message: brief(task),
-							target: { taskId: task.id },
+							target: { taskId: task.id, taskAttempt: task.attempts },
 							auth: taskAuth(task, appAuth),
 						}),
 					);

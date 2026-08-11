@@ -188,8 +188,8 @@ export async function noteSession(
 	taskId: string,
 	expectedAttempt: number,
 	sessionId: string,
-): Promise<void> {
-	await db.agentTask.updateMany({
+): Promise<boolean> {
+	const { count } = await db.agentTask.updateMany({
 		where: {
 			id: taskId,
 			finishedAt: null,
@@ -198,6 +198,8 @@ export async function noteSession(
 		},
 		data: { sessionId },
 	});
+
+	return count === 1;
 }
 
 export async function releaseTaskForRetry(
