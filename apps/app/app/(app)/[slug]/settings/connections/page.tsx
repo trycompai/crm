@@ -52,7 +52,9 @@ async function ConnectionsSettingsPageContent({
 			? [
 					{
 						name: "Slack",
-						status: `Connected to ${slack.workspace}`,
+						status: slack.workspace
+							? `Connected to ${slack.workspace}`
+							: "Connected",
 						bringsIn: "Workspace members and channels the app has joined",
 						sends: "Messages to approved channels and people",
 						href: `/${slug}/settings/connections/slack`,

@@ -14,7 +14,9 @@ export type {
 } from "./agents";
 export type { AuthTest, Installation, JoinPayload, Reply } from "./slack";
 
-export class InvalidInput extends Error {}
+export class InvalidInput extends Error {
+	override readonly name = "InvalidInput";
+}
 
 export function parse<Schema extends ZodType>(
 	schema: Schema,

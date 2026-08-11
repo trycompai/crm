@@ -48,7 +48,7 @@ export const inputRequestAction = z.object({
 export const inputRequest = z.object({
 	kind: z.enum(["question", "session-limit", "tool-approval"]),
 	requestId: z.string().min(1),
-	prompt: z.string().min(1),
+	prompt: z.string().trim().min(1),
 	action: inputRequestAction,
 	display: z.enum(["confirmation", "select", "text"]).optional(),
 	options: z.array(inputOption).optional(),
