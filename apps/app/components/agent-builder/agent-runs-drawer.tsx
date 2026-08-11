@@ -42,6 +42,12 @@ export function AgentRunsDrawer({
 	runs: Runs;
 }) {
 	const [view, setView] = useState<View>("runs");
+	const [wasOpen, setWasOpen] = useState(open);
+
+	if (wasOpen !== open) {
+		setWasOpen(open);
+		if (open) setView("runs");
+	}
 
 	return (
 		<Sheet onOpenChange={onOpenChange} open={open}>

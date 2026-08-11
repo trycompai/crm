@@ -380,6 +380,9 @@ function DraftAgentActions({
 						queryKey: trpc.agents.activity.pathKey(),
 					}),
 					queryClient.invalidateQueries({
+						queryKey: trpc.agents.files.pathKey(),
+					}),
+					queryClient.invalidateQueries({
 						queryKey: trpc.conversations.builderById.pathKey(),
 					}),
 					queryClient.invalidateQueries({
@@ -537,6 +540,8 @@ function DeleteAgentAction({
 function AgentOverview({ agent }: { agent: AgentDetail }) {
 	const detail = agent as unknown as { capabilities?: Capabilities };
 	const capabilities = detail.capabilities;
+	const deployed = agent.currentVersion !== null;
+	const canEdit = agent.canManage && deployed;
 
 	if (!capabilities) {
 		return (
@@ -549,12 +554,18 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 	return (
 		<SaveBarViewport>
 			<div className="flex flex-col gap-9">
+				{deployed ? null : (
+					<p className="text-muted-foreground text-sm">
+						This is a draft. Deploy it to the team before you change what it can
+						do.
+					</p>
+				)}
 				<AgentCapabilities
 					agentId={agent.id}
-					canManage={agent.canManage}
+					canManage={canEdit}
 					capabilities={capabilities}
 				/>
-				<AgentCode agentId={agent.id} canManage={agent.canManage} />
+				<AgentCode agentId={agent.id} canManage={canEdit} />
 			</div>
 		</SaveBarViewport>
 	);

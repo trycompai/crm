@@ -47,7 +47,8 @@ export function AgentCode({
 	const [active, setActive] = useState<string | null>(null);
 	const [editing, setEditing] = useState(false);
 	const [showDiff, setShowDiff] = useState(false);
-	const [dirty, setDirty] = useState(false);
+	const [changed, setChanged] = useState<string[]>([]);
+	const [saving, setSaving] = useState(false);
 	const draft = useRef(new Map<string, string>());
 	const editorRef = useRef<Editor<undefined> | null>(null);
 
@@ -58,18 +59,43 @@ export function AgentCode({
 
 	const save = useMutation(
 		trpc.agents.saveFile.mutationOptions({
-			onSuccess: async () => {
-				await queryClient.invalidateQueries({
-					queryKey: trpc.agents.files.pathKey(),
-				});
-				draft.current.clear();
-				setDirty(false);
-				setEditing(false);
-				toast.success("Saved.");
-			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+
+	const saveAll = useCallback(async () => {
+		setSaving(true);
+		let failed = false;
+
+		for (const [entry, contents] of [...draft.current]) {
+			const written = await save
+				.mutateAsync({
+					id: agentId,
+					clientRequestId: crypto.randomUUID(),
+					path: entry,
+					content: contents,
+				})
+				.then(
+					() => true,
+					() => false,
+				);
+			if (!written) {
+				failed = true;
+				break;
+			}
+			draft.current.delete(entry);
+		}
+
+		await queryClient.invalidateQueries({
+			queryKey: trpc.agents.files.pathKey(),
+		});
+		setChanged([...draft.current.keys()]);
+		setSaving(false);
+		if (failed) return;
+
+		setEditing(false);
+		toast.success("Saved.");
+	}, [agentId, queryClient, save, trpc]);
 
 	const editorOptions = useMemo<EditorOptions<undefined>>(
 		() => ({
@@ -79,7 +105,9 @@ export function AgentCode({
 			},
 			onChange(next) {
 				draft.current.set(next.name, next.contents);
-				setDirty(true);
+				setChanged((paths) =>
+					paths.includes(next.name) ? paths : [...paths, next.name],
+				);
 			},
 		}),
 		[],
@@ -110,7 +138,7 @@ export function AgentCode({
 
 	const discard = useCallback(() => {
 		draft.current.clear();
-		setDirty(false);
+		setChanged([]);
 		setEditing(false);
 	}, []);
 
@@ -174,7 +202,7 @@ export function AgentCode({
 								type="button"
 							>
 								{entry.path.split("/").pop()}
-								{draft.current.has(entry.path) ? (
+								{changed.includes(entry.path) ? (
 									<span className="ml-1.5 size-1.5 rounded-full bg-warning" />
 								) : null}
 							</button>
@@ -199,33 +227,21 @@ export function AgentCode({
 			</section>
 
 			<SaveBar
-				description={`${draft.current.size} file${draft.current.size === 1 ? "" : "s"} changed. Saving writes a new revision.`}
-				open={dirty}
+				description={`${changed.length} file${changed.length === 1 ? "" : "s"} changed. Saving writes a new revision.`}
+				open={changed.length > 0}
 				title="Unsaved code"
 			>
-				<Button
-					disabled={save.isPending}
-					onClick={discard}
-					size="sm"
-					variant="outline"
-				>
+				<Button disabled={saving} onClick={discard} size="sm" variant="outline">
 					Discard
 				</Button>
 				<Button
-					disabled={save.isPending}
+					disabled={saving}
 					onClick={() => {
-						for (const [entry, contents] of draft.current) {
-							save.mutate({
-								id: agentId,
-								clientRequestId: crypto.randomUUID(),
-								path: entry,
-								content: contents,
-							});
-						}
+						void saveAll();
 					}}
 					size="sm"
 				>
-					{save.isPending ? "Saving…" : "Save"}
+					{saving ? "Saving…" : "Save"}
 				</Button>
 			</SaveBar>
 		</EditProvider>

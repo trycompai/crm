@@ -117,7 +117,22 @@ export function AgentCapabilities({
 	const scopeChanged = resources !== null;
 	const dirty = channelChanged || actionsChanged || scopeChanged;
 
+	const everyActionOff =
+		capabilities.actions.length > 0 &&
+		off.length === capabilities.actions.length;
+	const scopeEmptied =
+		scopeChanged &&
+		shownResources.length === 0 &&
+		capabilities.dataScope?.mode !== "WORKSPACE";
+	const blocked = everyActionOff
+		? "Leave one action on. An agent that does nothing cannot be saved."
+		: scopeEmptied
+			? "Add one record. An empty list opens every record in the workspace."
+			: null;
+
 	const save = () => {
+		if (blocked) return;
+
 		revise.mutate({
 			id: agentId,
 			clientRequestId: crypto.randomUUID(),
@@ -282,15 +297,18 @@ export function AgentCapabilities({
 
 			<SaveBar
 				description={
-					channelChanged
+					blocked ??
+					(channelChanged
 						? `Comp AI joins #${to}. It stays in #${from} until you remove it.`
-						: "The old version stays in the history."
+						: "The old version stays in the history.")
 				}
 				open={dirty}
 				title={
-					channelChanged
-						? `Moving from #${from} to #${to}`
-						: "Changing what this agent can do"
+					blocked
+						? "This change cannot be saved"
+						: channelChanged
+							? `Moving from #${from} to #${to}`
+							: "Changing what this agent can do"
 				}
 			>
 				<Button
@@ -301,7 +319,11 @@ export function AgentCapabilities({
 				>
 					Discard
 				</Button>
-				<Button disabled={revise.isPending} onClick={save} size="sm">
+				<Button
+					disabled={revise.isPending || blocked !== null}
+					onClick={save}
+					size="sm"
+				>
 					{revise.isPending ? "Saving…" : "Save"}
 				</Button>
 			</SaveBar>

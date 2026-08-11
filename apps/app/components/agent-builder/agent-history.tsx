@@ -225,10 +225,18 @@ export function AgentRuns({
 }
 
 function ExpandedRun({ run }: { run: RunRow }) {
-	const events = run.events.filter(
-		(event) => event.type !== "message.appended",
-	);
-	const condensedEvents = run.events.length - events.length;
+	const timeline = [
+		...run.events.map((event) => ({
+			kind: "event" as const,
+			at: event.emittedAt,
+			event,
+		})),
+		...run.actions.map((action) => ({
+			kind: "action" as const,
+			at: action.completedAt ?? action.startedAt ?? action.plannedAt,
+			action,
+		})),
+	].sort((first, second) => Date.parse(first.at) - Date.parse(second.at));
 
 	return (
 		<div className="min-w-0 border-t">
@@ -243,52 +251,47 @@ function ExpandedRun({ run }: { run: RunRow }) {
 			</div>
 
 			<div>
-				{events.map((event) => (
-					<div
-						key={event.id}
-						className="grid min-h-8 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 border-t px-4 py-2 first:border-t-0 sm:flex sm:items-center sm:gap-5 sm:px-5 sm:py-1.5"
-					>
-						<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
-							{formatTime(event.emittedAt)}
-						</span>
-						<span className="min-w-0 flex-1 wrap-break-word text-sm">
-							{eventLabel(event.type, event.data)}
-						</span>
-						<span className="hidden shrink-0 font-mono text-muted-foreground text-xs sm:inline">
-							event
-						</span>
-					</div>
-				))}
-				{run.actions.map((action) => (
-					<div
-						key={action.id}
-						className="grid min-h-12 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 border-t px-4 py-3 sm:flex sm:gap-5 sm:px-5"
-					>
-						<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
-							{formatTime(
-								action.completedAt ?? action.startedAt ?? action.plannedAt,
-							)}
-						</span>
-						<span className="min-w-0 flex-1">
-							<span className="block wrap-break-word text-sm">
-								{action.summary}
+				{timeline.map((entry) =>
+					entry.kind === "event" ? (
+						<div
+							key={`event:${entry.event.id}`}
+							className="grid min-h-8 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 border-t px-4 py-2 first:border-t-0 sm:flex sm:items-center sm:gap-5 sm:px-5 sm:py-1.5"
+						>
+							<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
+								{formatTime(entry.at)}
 							</span>
-							<span className="block wrap-break-word text-muted-foreground text-xs">
-								{action.provider} · {humanStatus(action.status)}
-								{action.targetLabel ? ` · ${action.targetLabel}` : ""}
+							<span className="min-w-0 flex-1 wrap-break-word text-sm">
+								{eventLabel(entry.event.type, entry.event.data)}
 							</span>
-						</span>
-						<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
-							{action.externalId ?? action.id.slice(0, 12)}
-						</span>
-					</div>
-				))}
-				{condensedEvents > 0 ? (
-					<div className="flex min-h-9 items-center border-t px-4 py-2 text-muted-foreground text-xs sm:px-5">
-						{condensedEvents} streaming{" "}
-						{condensedEvents === 1 ? "update" : "updates"} condensed
-					</div>
-				) : null}
+							<span className="hidden shrink-0 font-mono text-muted-foreground text-xs sm:inline">
+								event
+							</span>
+						</div>
+					) : (
+						<div
+							key={`action:${entry.action.id}`}
+							className="grid min-h-12 min-w-0 grid-cols-[68px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 border-t px-4 py-3 first:border-t-0 sm:flex sm:gap-5 sm:px-5"
+						>
+							<span className="shrink-0 font-mono text-muted-foreground text-xs sm:w-[78px]">
+								{formatTime(entry.at)}
+							</span>
+							<span className="min-w-0 flex-1">
+								<span className="block wrap-break-word text-sm">
+									{entry.action.summary}
+								</span>
+								<span className="block wrap-break-word text-muted-foreground text-xs">
+									{entry.action.provider} · {humanStatus(entry.action.status)}
+									{entry.action.targetLabel
+										? ` · ${entry.action.targetLabel}`
+										: ""}
+								</span>
+							</span>
+							<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
+								{entry.action.externalId ?? entry.action.id.slice(0, 12)}
+							</span>
+						</div>
+					),
+				)}
 				{run.eventsTruncated ? (
 					<div className="flex min-h-9 items-center border-t px-4 py-2 text-warning text-xs sm:px-5">
 						Showing the first {run.events.length} of {run.totalEvents} steps.
@@ -387,6 +390,11 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 						</span>
 					</div>
 				))}
+				{visible.length === 0 ? (
+					<p className="px-5 py-12 text-center text-muted-foreground text-sm">
+						No changes match this filter.
+					</p>
+				) : null}
 			</div>
 		</div>
 	);
