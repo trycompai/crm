@@ -65,6 +65,17 @@ describe("claimDue", () => {
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.leasedUntil).not.toBeNull();
 		expect(row?.startedAt).not.toBeNull();
+		expect(row?.state).toBe("LEASED");
+	});
+
+	it("does not claim work waiting for approval", async () => {
+		const task = await queue();
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { state: "WAITING_FOR_APPROVAL" },
+		});
+
+		expect(await claimDue(10, RESEARCH)).toHaveLength(0);
 	});
 
 	it("does not hand the same row to two dispatchers", async () => {
@@ -156,6 +167,7 @@ describe("retireExhausted", () => {
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.finishedAt).not.toBeNull();
 		expect(row?.outcome).toContain("Gave up");
+		expect(row?.state).toBe("FAILED");
 	});
 
 	it("leaves a row that is still leased on its last attempt alone", async () => {
@@ -192,6 +204,25 @@ describe("retireExhausted", () => {
 			}),
 		).toEqual({ finishedAt: null, outcome: null });
 	});
+
+	it("does not retire work waiting for approval", async () => {
+		const task = await queue();
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: {
+				attempts: MAX_ATTEMPTS,
+				state: "WAITING_FOR_APPROVAL",
+			},
+		});
+
+		expect(await retireExhausted()).toHaveLength(0);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, finishedAt: true },
+			}),
+		).toEqual({ state: "WAITING_FOR_APPROVAL", finishedAt: null });
+	});
 });
 
 describe("completeTask", () => {
@@ -207,6 +238,7 @@ describe("completeTask", () => {
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.outcome).toBe("ran");
 		expect(row?.leasedUntil).toBeNull();
+		expect(row?.state).toBe("SUCCEEDED");
 	});
 });
 
@@ -219,6 +251,7 @@ describe("releaseTaskForRetry", () => {
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.leasedUntil).toBeNull();
 		expect(row?.finishedAt).toBeNull();
+		expect(row?.state).toBe("QUEUED");
 		expect(row?.dueAt.getTime()).toBeGreaterThan(Date.now());
 		expect(row?.dueAt.getTime()).toBeLessThanOrEqual(Date.now() + 500);
 	});

@@ -62,10 +62,12 @@ export async function claimDue(
 				UPDATE "agentTask" AS t
 				SET "leasedUntil" = ${until},
 					"startedAt" = COALESCE(t."startedAt", ${now}),
-					"attempts" = t."attempts" + 1
+					"attempts" = t."attempts" + 1,
+					"state" = 'LEASED'
 				FROM (
 					SELECT t2.id FROM "agentTask" AS t2
 					WHERE t2."finishedAt" IS NULL
+						AND t2."state" IN ('QUEUED', 'LEASED')
 						AND t2."dueAt" <= ${now}
 						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
 						AND t2."attempts" < ${MAX_ATTEMPTS}
@@ -82,10 +84,12 @@ export async function claimDue(
 				UPDATE "agentTask" AS t
 				SET "leasedUntil" = ${until},
 					"startedAt" = COALESCE(t."startedAt", ${now}),
-					"attempts" = t."attempts" + 1
+					"attempts" = t."attempts" + 1,
+					"state" = 'LEASED'
 				FROM (
 					SELECT t2.id FROM "agentTask" AS t2
 					WHERE t2."finishedAt" IS NULL
+						AND t2."state" IN ('QUEUED', 'LEASED')
 						AND t2."dueAt" <= ${now}
 						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
 						AND t2."attempts" < ${MAX_ATTEMPTS}
@@ -116,8 +120,10 @@ export async function retireExhausted(
 	return db.$queryRaw<TaskSubject[]>`
 		UPDATE "agentTask" AS t
 		SET "finishedAt" = ${now},
-			"outcome" = ${RETIRED_OUTCOME}
+			"outcome" = ${RETIRED_OUTCOME},
+			"state" = 'FAILED'
 		WHERE t."finishedAt" IS NULL
+			AND t."state" IN ('QUEUED', 'LEASED')
 			AND t."attempts" >= ${MAX_ATTEMPTS}
 			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
 			${excluded}
@@ -136,6 +142,7 @@ export async function completeTask(
 			finishedAt: new Date(),
 			leasedUntil: null,
 			outcome: outcome.slice(0, 500),
+			state: "SUCCEEDED",
 			...(sessionId ? { sessionId } : {}),
 		},
 	});
@@ -190,6 +197,7 @@ export async function releaseTaskForRetry(
 		data: {
 			dueAt: new Date(Date.now() + delayMs),
 			leasedUntil: null,
+			state: "QUEUED",
 		},
 	});
 }
