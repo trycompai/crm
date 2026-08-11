@@ -2,7 +2,11 @@ import { describe, expect, it } from "bun:test";
 import { builderTaskMarkdown } from "../agent/instructions/task";
 import { AGENT_ACTION_EXECUTORS } from "../agent/lib/agent-actions";
 import { recordBuilderDelegation } from "../agent/lib/builder-delegation";
-import { slackDestinationIssues } from "../agent/lib/builder-runtime";
+import {
+	actionIntegrationIssues,
+	type DraftAction,
+	slackDestinationIssues,
+} from "../agent/lib/builder-runtime";
 import {
 	builderCommandType,
 	builderDeliveryMessage,
@@ -712,6 +716,32 @@ describe("agent builder draft input", () => {
 				connections,
 			),
 		).toEqual(["The Slack person must use its exact inspected label."]);
+	});
+
+	it("requires the Slack integration for a Slack post action", () => {
+		const actions: DraftAction[] = [
+			{ type: "run.summary", provider: "crm", summary: "Report the run" },
+			{
+				type: "slack.message.post",
+				provider: "slack",
+				summary: "Direct message Grim",
+				destination: {
+					kind: "user",
+					resolution: "chosen",
+					id: "U123",
+					label: "@grim",
+				},
+			},
+		];
+
+		expect(actionIntegrationIssues(actions, [])).toEqual([
+			"Posting to Slack needs Slack in this agent's integrations.",
+		]);
+		expect(
+			actionIntegrationIssues(actions, [
+				{ kind: "integration", id: "slack:workspace", label: "Slack" },
+			]),
+		).toEqual([]);
 	});
 
 	it("trims trigger metadata and rejects blank text", () => {

@@ -20,6 +20,7 @@ export function isAgentActionType(value: unknown): value is AgentActionType {
 export type AgentActionDependency = {
 	readonly id: string;
 	readonly label: string;
+	readonly resourceId: string;
 	readonly fix: string;
 };
 
@@ -29,6 +30,7 @@ export const AGENT_ACTION_DEPENDENCIES = {
 	[AGENT_ACTION_TYPES.SLACK_MESSAGE_POST]: {
 		id: "slack",
 		label: "Slack",
+		resourceId: "slack:workspace",
 		fix: "Connect Slack in Settings → Connections.",
 	},
 } as const satisfies Record<AgentActionType, AgentActionDependency | null>;

@@ -7,7 +7,7 @@ import {
 } from "@crm/db/crm-events";
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
-import { AGENT_ACTION_TYPES } from "./agent-actions";
+import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
 import { refreshSlackChannels } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -551,6 +551,7 @@ async function validateDraft(
 	if (!actionTypes.has(AGENT_ACTION_TYPES.RUN_SUMMARY)) {
 		issues.push("An agent needs one run summary action.");
 	}
+	issues.push(...actionIntegrationIssues(input.actions, input.resources));
 
 	const missingRecords = await missingResourceIds(input.resources);
 	issues.push(
@@ -685,6 +686,25 @@ async function connectionStatus(userId: string) {
 }
 
 type SlackConnections = Awaited<ReturnType<typeof connectionStatus>>;
+
+export function actionIntegrationIssues(
+	actions: DraftAction[],
+	resources: BuilderResource[],
+): string[] {
+	const integrations = new Set(
+		resources
+			.filter((resource) => resource.kind === "integration")
+			.map((resource) => resource.id),
+	);
+
+	return actions.flatMap((action) => {
+		const dependency = actionDependency(action.type);
+		if (!dependency || integrations.has(dependency.resourceId)) return [];
+		return [
+			`Posting to ${dependency.label} needs ${dependency.label} in this agent's integrations.`,
+		];
+	});
+}
 
 export function slackDestinationIssues(
 	destination: Extract<
