@@ -8,6 +8,9 @@ export const E2E = {
 
 	load: {
 		agentPrefix: "E2E Load Agent",
+		companyPrefix: "Load Co",
+		domainPrefix: "load-",
+		domainSuffix: ".test",
 		defaultCount: 300,
 		drainPassSlack: 5,
 	},

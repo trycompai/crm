@@ -72,6 +72,30 @@ async function sweepLeftovers() {
 	for (const name of await removeAgentsNamed(E2E.load.agentPrefix)) {
 		console.log(`  removed leftover ${name}`);
 	}
+
+	const stale = await db.company.findMany({
+		where: {
+			domain: {
+				startsWith: E2E.load.domainPrefix,
+				endsWith: E2E.load.domainSuffix,
+			},
+			name: { startsWith: E2E.load.companyPrefix },
+		},
+		select: { id: true, name: true },
+	});
+
+	for (const company of stale) {
+		const deals = await db.deal.findMany({
+			where: { companyId: company.id },
+			select: { id: true },
+		});
+		await db.agentTask.deleteMany({
+			where: { dealId: { in: deals.map((deal) => deal.id) } },
+		});
+		await db.deal.deleteMany({ where: { companyId: company.id } });
+		await db.company.delete({ where: { id: company.id } });
+		console.log(`  removed leftover ${company.name}`);
+	}
 }
 
 async function cleanUp(
