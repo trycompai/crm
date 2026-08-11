@@ -31,18 +31,35 @@ function authorised(request: Request): boolean {
 	return timingSafeEqual(candidate, expected);
 }
 
-export function taskToken(taskId: string): string {
-	return `${TASK_MARKER}${taskId}`;
+export function taskToken(taskId: string, expectedAttempt?: number): string {
+	return `${TASK_MARKER}${taskId}${expectedAttempt === undefined ? "" : `@${expectedAttempt}`}`;
 }
 
-export function taskFromToken(token: string | undefined): string | null {
+export function taskLeaseFromToken(
+	token: string | undefined,
+): { taskId: string; expectedAttempt: number | null } | null {
 	if (!token) return null;
 
 	const marker = token.lastIndexOf(TASK_MARKER);
 	if (marker === -1) return null;
 
-	const id = token.slice(marker + TASK_MARKER.length);
-	return id.length > 0 ? id : null;
+	const value = token.slice(marker + TASK_MARKER.length);
+	if (value.length === 0) return null;
+
+	const separator = value.lastIndexOf("@");
+	if (separator === -1) {
+		return { taskId: value, expectedAttempt: null };
+	}
+
+	const taskId = value.slice(0, separator);
+	const attempt = Number(value.slice(separator + 1));
+	if (!taskId || !Number.isSafeInteger(attempt) || attempt < 1) return null;
+
+	return { taskId, expectedAttempt: attempt };
+}
+
+export function taskFromToken(token: string | undefined): string | null {
+	return taskLeaseFromToken(token)?.taskId ?? null;
 }
 
 export default defineChannel({
@@ -57,7 +74,7 @@ export default defineChannel({
 					drainAll((task) =>
 						send(brief(task), {
 							auth: taskAuth(task),
-							continuationToken: taskToken(task.id),
+							continuationToken: taskToken(task.id, task.attempts),
 						}),
 					),
 				),
@@ -131,8 +148,9 @@ export default defineChannel({
 		},
 
 		async "session.waiting"(_data, channel) {
-			const taskId = taskFromToken(channel.continuationToken);
-			if (taskId) {
+			const lease = taskLeaseFromToken(channel.continuationToken);
+			if (lease?.expectedAttempt) {
+				const { taskId, expectedAttempt } = lease;
 				const subject = await taskSubject(taskId);
 				if (!subject) return;
 				if (subject.kind === "lead-discovery") {
@@ -142,10 +160,11 @@ export default defineChannel({
 					if (count > 0) {
 						await completeTask(
 							taskId,
+							expectedAttempt,
 							`Created ${count} fresh candidates and queued full research.`,
 						);
 					} else {
-						await releaseTaskForRetry(taskId);
+						await releaseTaskForRetry(taskId, expectedAttempt);
 					}
 					return;
 				}
@@ -161,10 +180,11 @@ export default defineChannel({
 					if (count === 3) {
 						await completeTask(
 							taskId,
+							expectedAttempt,
 							"Three-step outreach sequence prepared for review.",
 						);
 					} else {
-						await releaseTaskForRetry(taskId);
+						await releaseTaskForRetry(taskId, expectedAttempt);
 					}
 					return;
 				}
@@ -178,10 +198,11 @@ export default defineChannel({
 					if (planned?.agentPlannedAt) {
 						await completeTask(
 							taskId,
+							expectedAttempt,
 							"Customer systems and data onboarding plan recorded.",
 						);
 					} else {
-						await releaseTaskForRetry(taskId);
+						await releaseTaskForRetry(taskId, expectedAttempt);
 					}
 					return;
 				}
@@ -196,19 +217,25 @@ export default defineChannel({
 						prospect?.enrichmentStatus === EnrichmentStatus.COMPLETE &&
 						prospect.lastResearchedAt
 					) {
-						await completeTask(taskId, "Prospect research recorded.");
-					} else {
-						await settle(
-							subject,
-							EnrichmentStatus.FAILED,
-							"The agent finished without recording prospect research.",
+						await completeTask(
+							taskId,
+							expectedAttempt,
+							"Prospect research recorded.",
 						);
-						await releaseTaskForRetry(taskId);
+					} else {
+						const released = await releaseTaskForRetry(taskId, expectedAttempt);
+						if (released) {
+							await settle(
+								released,
+								EnrichmentStatus.FAILED,
+								"The agent finished without recording prospect research.",
+							);
+						}
 					}
 					return;
 				}
 
-				const completed = await completeTask(taskId, "ran");
+				const completed = await completeTask(taskId, expectedAttempt, "ran");
 				if (completed) await settle(completed, EnrichmentStatus.COMPLETE);
 				return;
 			}
@@ -225,17 +252,17 @@ export default defineChannel({
 		},
 
 		async "turn.failed"(data, channel) {
-			const taskId = taskFromToken(channel.continuationToken);
+			const lease = taskLeaseFromToken(channel.continuationToken);
 			const reason =
 				typeof data === "object" && data && "message" in data
 					? String((data as { message: unknown }).message)
 					: "The agent turn failed.";
 
-			if (taskId) {
-				const subject = await taskSubject(taskId);
-				if (subject) {
-					await settle(subject, EnrichmentStatus.FAILED, reason);
-					await releaseTaskForRetry(taskId);
+			if (lease?.expectedAttempt) {
+				const { taskId, expectedAttempt } = lease;
+				const released = await releaseTaskForRetry(taskId, expectedAttempt);
+				if (released) {
+					await settle(released, EnrichmentStatus.FAILED, reason);
 				}
 				return;
 			}

@@ -143,8 +143,8 @@ describe("claimDue", () => {
 
 	it("stops claiming once the work is finished", async () => {
 		const task = await queue();
-		await claimDue(10, RESEARCH);
-		await completeTask(task.id, "ran");
+		const claimed = await claimDue(10, RESEARCH);
+		await completeTask(task.id, claimed[0]?.attempts ?? 0, "ran");
 
 		expect(await claimDue(10, RESEARCH)).toHaveLength(0);
 	});
@@ -229,24 +229,95 @@ describe("completeTask", () => {
 	it("retires a row once, and reports who it was about", async () => {
 		const contact = await someone();
 		const task = await queue({ contactId: contact.id });
-		await claimDue(10, RESEARCH);
+		const claimed = await claimDue(10, RESEARCH);
+		const attempt = claimed[0]?.attempts ?? 0;
 
-		const subject = await completeTask(task.id, "ran");
+		const subject = await completeTask(task.id, attempt, "ran");
 		expect(subject?.contactId).toBe(contact.id);
 
-		expect(await completeTask(task.id, "ran again")).toBeNull();
+		expect(await completeTask(task.id, attempt, "ran again")).toBeNull();
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.outcome).toBe("ran");
 		expect(row?.leasedUntil).toBeNull();
 		expect(row?.state).toBe("SUCCEEDED");
+	});
+
+	it("does not let a stale worker complete work awaiting approval", async () => {
+		const task = await queue();
+		const claimed = await claimDue(10, RESEARCH);
+		const attempt = claimed[0]?.attempts ?? 0;
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { state: "WAITING_FOR_APPROVAL", leasedUntil: null },
+		});
+
+		expect(await completeTask(task.id, attempt, "stale")).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, finishedAt: true, outcome: true },
+			}),
+		).toEqual({
+			state: "WAITING_FOR_APPROVAL",
+			finishedAt: null,
+			outcome: null,
+		});
+	});
+
+	it("does not let a stale worker complete cancelled work", async () => {
+		const task = await queue();
+		const claimed = await claimDue(10, RESEARCH);
+		const attempt = claimed[0]?.attempts ?? 0;
+		const cancelledAt = new Date();
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: {
+				state: "CANCELLED",
+				leasedUntil: null,
+				finishedAt: cancelledAt,
+				outcome: "Cancelled",
+			},
+		});
+
+		expect(await completeTask(task.id, attempt, "stale")).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, finishedAt: true, outcome: true },
+			}),
+		).toEqual({
+			state: "CANCELLED",
+			finishedAt: cancelledAt,
+			outcome: "Cancelled",
+		});
+	});
+
+	it("does not let an expired worker complete a later lease", async () => {
+		const task = await queue();
+		const first = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+		const second = (await claimDue(10, RESEARCH))[0];
+
+		expect(
+			await completeTask(task.id, first?.attempts ?? 0, "stale"),
+		).toBeNull();
+		expect(
+			await completeTask(task.id, second?.attempts ?? 0, "current"),
+		).not.toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { attempts: true, outcome: true },
+			}),
+		).toEqual({ attempts: 2, outcome: "current" });
 	});
 });
 
 describe("releaseTaskForRetry", () => {
 	it("drops the lease and makes a finished turn retryable shortly", async () => {
 		const task = await queue();
-		await claimDue(10, RESEARCH);
-		await releaseTaskForRetry(task.id, 250);
+		const claimed = await claimDue(10, RESEARCH);
+		await releaseTaskForRetry(task.id, claimed[0]?.attempts ?? 0, 250);
 
 		const row = await db.agentTask.findUnique({ where: { id: task.id } });
 		expect(row?.leasedUntil).toBeNull();
@@ -254,6 +325,24 @@ describe("releaseTaskForRetry", () => {
 		expect(row?.state).toBe("QUEUED");
 		expect(row?.dueAt.getTime()).toBeGreaterThan(Date.now());
 		expect(row?.dueAt.getTime()).toBeLessThanOrEqual(Date.now() + 500);
+	});
+
+	it("does not let a stale worker retry work awaiting approval", async () => {
+		const task = await queue();
+		const claimed = await claimDue(10, RESEARCH);
+		const attempt = claimed[0]?.attempts ?? 0;
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { state: "WAITING_FOR_APPROVAL", leasedUntil: null },
+		});
+
+		expect(await releaseTaskForRetry(task.id, attempt, 250)).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, leasedUntil: true },
+			}),
+		).toEqual({ state: "WAITING_FOR_APPROVAL", leasedUntil: null });
 	});
 });
 

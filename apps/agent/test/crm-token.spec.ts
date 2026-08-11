@@ -1,11 +1,22 @@
 import { describe, expect, it } from "bun:test";
-import { taskFromToken, taskToken } from "../agent/channels/crm";
+import {
+	taskFromToken,
+	taskLeaseFromToken,
+	taskToken,
+} from "../agent/channels/crm";
 
 const TASK_ID = "cmsdc0a6j004cz96ddzpcgwqr";
 
 describe("taskFromToken", () => {
 	it("reads back a token this channel minted", () => {
 		expect(taskFromToken(taskToken(TASK_ID))).toBe(TASK_ID);
+	});
+
+	it("binds a token to the claimed attempt", () => {
+		expect(taskLeaseFromToken(taskToken(TASK_ID, 3))).toEqual({
+			taskId: TASK_ID,
+			expectedAttempt: 3,
+		});
 	});
 
 	it("reads the token as the channel context presents it", () => {

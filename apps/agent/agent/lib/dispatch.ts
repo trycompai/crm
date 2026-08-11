@@ -74,7 +74,7 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			const result = await runBrand({ companyId: task.companyId });
 			if (result.retryable) return;
 
-			await completeTask(task.id, brandOutcome(result));
+			await completeTask(task.id, task.attempts, brandOutcome(result));
 			return;
 		}
 
@@ -86,6 +86,7 @@ async function runDirect(task: LeasedTask): Promise<void> {
 
 			await completeTask(
 				task.id,
+				task.attempts,
 				portrait.stored
 					? `Picture stored from ${portrait.source}.`
 					: (portrait.reason ?? "No picture found."),
@@ -97,6 +98,7 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			const result = await runWebsiteIntakeSync();
 			await completeTask(
 				task.id,
+				task.attempts,
 				result.status === "skipped"
 					? (result.reason ?? "Website intake is not configured.")
 					: `Imported ${result.imported} website enquiries; ${result.duplicates} already present; ${result.tests} test records.`,
@@ -108,6 +110,7 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			const result = await runAgentMailSync();
 			await completeTask(
 				task.id,
+				task.attempts,
 				result.status === "skipped"
 					? (result.reason ?? "AgentMail is not configured.")
 					: `Stored ${result.written} AgentMail messages; ${result.duplicates} already present; ${result.ignored} non-inbound.`,
@@ -119,6 +122,7 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			const result = await runGranolaSync();
 			await completeTask(
 				task.id,
+				task.attempts,
 				result.status === "skipped"
 					? (result.reason ?? "Granola is not configured.")
 					: `Imported ${result.imported} Granola notes; updated ${result.updated}; ${result.matched} matched; ${result.unmatched} unmatched.`,
@@ -131,23 +135,38 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			if ("retryable" in result && result.retryable) return;
 			await completeTask(
 				task.id,
+				task.attempts,
 				result.sent ? "Approved email sent." : result.reason,
 			);
 			return;
 		}
 
-		await completeTask(task.id, "The record this names is gone.");
+		await completeTask(
+			task.id,
+			task.attempts,
+			"The record this names is gone.",
+		);
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});
 		if (task.attempts >= MAX_ATTEMPTS) {
-			await completeTask(
+			const completed = await completeTask(
 				task.id,
+				task.attempts,
 				`Failed after ${task.attempts} attempts: ${reason}`,
-			).catch(() => {});
+			).catch(() => null);
+			if (completed) {
+				await settle(completed, EnrichmentStatus.FAILED, reason).catch(
+					() => {},
+				);
+			}
 			return;
 		}
-		await releaseTaskForRetry(task.id).catch(() => {});
+		const released = await releaseTaskForRetry(task.id, task.attempts).catch(
+			() => null,
+		);
+		if (released) {
+			await settle(released, EnrichmentStatus.FAILED, reason).catch(() => {});
+		}
 	}
 }
 
@@ -170,7 +189,7 @@ export async function runResearchLane(
 			try {
 				await markRunning(task);
 				const session = await start(task);
-				await noteSession(task.id, session.id);
+				await noteSession(task.id, task.attempts, session.id);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				await settle(task, EnrichmentStatus.FAILED, reason).catch(() => {});

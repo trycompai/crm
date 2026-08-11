@@ -133,11 +133,17 @@ export async function retireExhausted(
 
 export async function completeTask(
 	taskId: string,
+	expectedAttempt: number,
 	outcome: string,
 	sessionId?: string,
 ): Promise<TaskSubject | null> {
 	const { count } = await db.agentTask.updateMany({
-		where: { id: taskId, finishedAt: null },
+		where: {
+			id: taskId,
+			finishedAt: null,
+			state: "LEASED",
+			attempts: expectedAttempt,
+		},
 		data: {
 			finishedAt: new Date(),
 			leasedUntil: null,
@@ -180,24 +186,51 @@ export async function taskSubject(taskId: string): Promise<TaskSubject | null> {
 
 export async function noteSession(
 	taskId: string,
+	expectedAttempt: number,
 	sessionId: string,
 ): Promise<void> {
 	await db.agentTask.updateMany({
-		where: { id: taskId, finishedAt: null },
+		where: {
+			id: taskId,
+			finishedAt: null,
+			state: "LEASED",
+			attempts: expectedAttempt,
+		},
 		data: { sessionId },
 	});
 }
 
 export async function releaseTaskForRetry(
 	taskId: string,
+	expectedAttempt: number,
 	delayMs = 30_000,
-): Promise<void> {
-	await db.agentTask.updateMany({
-		where: { id: taskId, finishedAt: null },
+): Promise<TaskSubject | null> {
+	const { count } = await db.agentTask.updateMany({
+		where: {
+			id: taskId,
+			finishedAt: null,
+			state: "LEASED",
+			attempts: expectedAttempt,
+		},
 		data: {
 			dueAt: new Date(Date.now() + delayMs),
 			leasedUntil: null,
 			state: "QUEUED",
+		},
+	});
+
+	if (count === 0) return null;
+
+	return db.agentTask.findUnique({
+		where: { id: taskId },
+		select: {
+			id: true,
+			contactId: true,
+			companyId: true,
+			prospectId: true,
+			dealId: true,
+			emailDraftId: true,
+			kind: true,
 		},
 	});
 }
