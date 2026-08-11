@@ -16,8 +16,14 @@ export interface ContactCandidateIdentity {
 	canonicalDomain?: string | null;
 }
 
-function normalized(value: string | null | undefined): string {
+export function canonicalizeInboundText(
+	value: string | null | undefined,
+): string {
 	return value?.normalize("NFKC").trim().toLocaleLowerCase("en-US") ?? "";
+}
+
+function canonicalComponent(value: string): string {
+	return `${Array.from(value).length}:${value}`;
 }
 
 function digest(parts: readonly string[]): string {
@@ -78,10 +84,10 @@ export function normalizeInboundSourceIdentity(
 	identity: InboundSourceIdentity,
 ): InboundSourceIdentity {
 	const normalizedIdentity = {
-		connector: normalized(identity.connector),
-		provider: normalized(identity.provider),
+		connector: canonicalizeInboundText(identity.connector),
+		provider: canonicalizeInboundText(identity.provider),
 		accountId: identity.accountId.trim(),
-		sourceObjectType: normalized(identity.sourceObjectType),
+		sourceObjectType: canonicalizeInboundText(identity.sourceObjectType),
 		sourceObjectId: identity.sourceObjectId.trim(),
 		sourceDigest: identity.sourceDigest.trim().toLowerCase(),
 	};
@@ -121,14 +127,14 @@ export function inboundSourceIdentityKey(
 export function contactCandidateIdentityKey(
 	identity: ContactCandidateIdentity,
 ): string {
-	const email = normalized(identity.canonicalEmail);
+	const email = canonicalizeInboundText(identity.canonicalEmail);
 	if (email) return digest(["email", email]);
 
-	const name = normalized(identity.canonicalName);
-	const domain = normalized(identity.canonicalDomain);
+	const name = canonicalizeInboundText(identity.canonicalName);
+	const domain = canonicalizeInboundText(identity.canonicalDomain);
 	if (name && domain) return digest(["person", name, domain]);
 
-	const businessName = normalized(identity.canonicalBusinessName);
+	const businessName = canonicalizeInboundText(identity.canonicalBusinessName);
 	if (!businessName || !domain) {
 		throw new Error(
 			"A contact candidate requires a canonical email or canonical name and domain",
@@ -136,6 +142,57 @@ export function contactCandidateIdentityKey(
 	}
 
 	return digest(["business", businessName, domain]);
+}
+
+export function previewInboundCanonicalIdentityKey(
+	identity: ContactCandidateIdentity,
+): string {
+	const email = canonicalizeInboundText(identity.canonicalEmail);
+	if (email) return `email|${canonicalComponent(email)}`;
+
+	const name = canonicalizeInboundText(identity.canonicalName);
+	const domain = canonicalizeInboundText(identity.canonicalDomain);
+	if (name && domain) {
+		return `person|${canonicalComponent(name)}|${canonicalComponent(domain)}`;
+	}
+
+	const businessName = canonicalizeInboundText(identity.canonicalBusinessName);
+	if (!businessName || !domain) {
+		throw new Error(
+			"A contact candidate requires a canonical email or canonical name and domain",
+		);
+	}
+
+	return `business|${canonicalComponent(businessName)}|${canonicalComponent(domain)}`;
+}
+
+export function previewInboundObservationIdentityKey(input: {
+	candidateId: string;
+	receiptId: string;
+	sourceDigest: string;
+	observedEmail?: string | null;
+	observedName?: string | null;
+	observedTitle?: string | null;
+	observedCompany?: string | null;
+	observedDomain?: string | null;
+	observedRole?: string | null;
+	evidenceClass: string;
+}): string {
+	return [
+		"observation",
+		input.candidateId,
+		input.receiptId,
+		input.sourceDigest,
+		canonicalizeInboundText(input.observedEmail),
+		canonicalizeInboundText(input.observedName),
+		canonicalizeInboundText(input.observedTitle),
+		canonicalizeInboundText(input.observedCompany),
+		canonicalizeInboundText(input.observedDomain),
+		canonicalizeInboundText(input.observedRole),
+		canonicalizeInboundText(input.evidenceClass),
+	]
+		.map(canonicalComponent)
+		.join("|");
 }
 
 export function contactCandidateObservationKey(input: {
@@ -152,13 +209,13 @@ export function contactCandidateObservationKey(input: {
 	return digest([
 		contactCandidateIdentityKey(input.candidateIdentity),
 		inboundSourceIdentityKey(input.source),
-		normalized(input.observedEmail),
-		normalized(input.observedName),
-		normalized(input.observedTitle),
-		normalized(input.observedCompany),
-		normalized(input.observedDomain),
-		normalized(input.observedRole),
-		normalized(input.evidenceClass),
+		canonicalizeInboundText(input.observedEmail),
+		canonicalizeInboundText(input.observedName),
+		canonicalizeInboundText(input.observedTitle),
+		canonicalizeInboundText(input.observedCompany),
+		canonicalizeInboundText(input.observedDomain),
+		canonicalizeInboundText(input.observedRole),
+		canonicalizeInboundText(input.evidenceClass),
 	]);
 }
 

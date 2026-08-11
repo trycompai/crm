@@ -2,11 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../src/client";
 import {
+	canonicalizeInboundText,
 	contactCandidateIdentityKey,
 	contactCandidateObservationKey,
 	inboundSourceIdentityKey,
 	inboundSourceReceiptVersionKey,
 	normalizeInboundSourceIdentity,
+	previewInboundCanonicalIdentityKey,
+	previewInboundObservationIdentityKey,
 	provenanceValueDigest,
 	sanitizeInboundRedactedMetadata,
 } from "../src/inbound/provenance";
@@ -89,6 +92,21 @@ describe("inbound provenance pure helpers", () => {
 			contactCandidateIdentityKey({ canonicalEmail: " Person@Example.com " }),
 		).toBe(
 			contactCandidateIdentityKey({ canonicalEmail: "person@example.com" }),
+		);
+	});
+
+	it("uses the shared NFKC canonicalization for persisted identity shapes", () => {
+		expect(canonicalizeInboundText(" Ｆｏｏ＠Ｅｘａｍｐｌｅ．ｔｅｓｔ ")).toBe(
+			"foo@example.test",
+		);
+		expect(
+			previewInboundCanonicalIdentityKey({
+				canonicalEmail: "Ｆｏｏ＠Ｅｘａｍｐｌｅ．ｔｅｓｔ",
+			}),
+		).toBe(
+			previewInboundCanonicalIdentityKey({
+				canonicalEmail: "foo@example.test",
+			}),
 		);
 	});
 
@@ -236,6 +254,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 					receiptId: receipt.id,
 					sourceDigest: data.sourceDigest,
 					observationKey,
+					observationIdentityKey: "caller-forged-observation",
 					evidenceClass: "header",
 				},
 			}),
@@ -252,6 +271,18 @@ databaseDescribe("inbound provenance database contracts", () => {
 		expect(
 			observations.filter((result) => result.status === "fulfilled"),
 		).toHaveLength(1);
+		const persistedObservation =
+			await db.contactCandidateObservation.findFirstOrThrow({
+				where: { candidateId: candidate.id },
+			});
+		expect(persistedObservation.observationIdentityKey).toBe(
+			previewInboundObservationIdentityKey({
+				candidateId: candidate.id,
+				receiptId: receipt.id,
+				sourceDigest: data.sourceDigest,
+				evidenceClass: "header",
+			}),
+		);
 		await expectRejected(() =>
 			db.contactCandidateObservation.create({
 				data: {
@@ -465,9 +496,15 @@ databaseDescribe("inbound provenance database contracts", () => {
 			data: {
 				identityKey: retainedHash,
 				canonicalEmail: ` Same-one-${suffix}@Example.test `,
+				canonicalIdentityKey: "caller-forged",
 			},
 		});
 		expect(first.identityKey).toBe(retainedHash);
+		expect(first.canonicalIdentityKey).toBe(
+			previewInboundCanonicalIdentityKey({
+				canonicalEmail: ` Same-one-${suffix}@Example.test `,
+			}),
+		);
 		const distinct = await db.contactCandidate.create({
 			data: {
 				identityKey: retainedHash,
@@ -480,6 +517,26 @@ databaseDescribe("inbound provenance database contracts", () => {
 				data: {
 					identityKey: provenanceValueDigest(`wrong-identity-${suffix}`),
 					canonicalEmail: `same-one-${suffix}@example.test`,
+				},
+			}),
+		);
+		const unicodeCandidate = await db.contactCandidate.create({
+			data: {
+				identityKey: provenanceValueDigest(`unicode-${suffix}`),
+				canonicalEmail: `ｕｎｉｃｏｄｅ-${suffix}@Ｅｘａｍｐｌｅ．ｔｅｓｔ`,
+				canonicalIdentityKey: provenanceValueDigest(`forged-unicode-${suffix}`),
+			},
+		});
+		expect(unicodeCandidate.canonicalIdentityKey).toBe(
+			previewInboundCanonicalIdentityKey({
+				canonicalEmail: `ｕｎｉｃｏｄｅ-${suffix}@Ｅｘａｍｐｌｅ．ｔｅｓｔ`,
+			}),
+		);
+		await expectRejected(() =>
+			db.contactCandidate.create({
+				data: {
+					identityKey: provenanceValueDigest(`unicode-duplicate-${suffix}`),
+					canonicalEmail: `unicode-${suffix}@example.test`,
 				},
 			}),
 		);
@@ -621,6 +678,60 @@ databaseDescribe("inbound provenance database contracts", () => {
 			},
 		});
 		expect(superseded.status).toBe("SUPERSEDED");
+		const proposedField = await db.entityFieldProvenance.create({
+			data: {
+				subjectType: "CONTACT",
+				subjectId: `reviewed-transition-${suffix}`,
+				fieldName: "title",
+				valueDigest: provenanceValueDigest("reviewed-transition"),
+				receiptId: receipt.id,
+				method: "agent",
+			},
+		});
+		await expectRejected(() =>
+			db.entityFieldProvenance.create({
+				data: {
+					subjectType: "CONTACT",
+					subjectId: `prefilled-${suffix}`,
+					fieldName: "title",
+					valueDigest: provenanceValueDigest("prefilled"),
+					receiptId: receipt.id,
+					method: "agent",
+					decidedById: userId,
+					decidedAt: new Date(),
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.entityFieldProvenance.update({
+				where: { id: proposedField.id },
+				data: { status: "APPLIED" },
+			}),
+		);
+		const transitionDecidedAt = new Date();
+		const transitionedField = await db.entityFieldProvenance.update({
+			where: { id: proposedField.id },
+			data: {
+				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: transitionDecidedAt,
+			},
+		});
+		expect(transitionedField.status).toBe("APPLIED");
+		await expectRejected(() =>
+			db.entityFieldProvenance.create({
+				data: {
+					subjectType: "CONTACT",
+					subjectId: `applied-${suffix}`,
+					fieldName: "title",
+					valueDigest: provenanceValueDigest("applied-without-reviewer"),
+					receiptId: receipt.id,
+					method: "agent",
+					status: "APPLIED",
+				},
+			}),
+		);
+		const applicationDecidedAt = new Date();
 
 		const applied = await db.entityFieldProvenance.create({
 			data: {
@@ -631,6 +742,8 @@ databaseDescribe("inbound provenance database contracts", () => {
 				receiptId: receipt.id,
 				method: "agent",
 				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: applicationDecidedAt,
 			},
 		});
 		await expectRejected(() =>
@@ -657,6 +770,10 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.entityFieldProvenance.delete({ where: { id: applied.id } }),
 		);
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityFieldProvenance" SET "status" = 'SUPERSEDED', "decidedById" = ${userId}, "decidedAt" = ${applicationDecidedAt} WHERE "id" = ${applied.id}`,
+		);
 		await db.$executeRaw`UPDATE "entityFieldProvenance" SET "status" = 'SUPERSEDED', "decidedById" = ${userId}, "decidedAt" = CURRENT_TIMESTAMP WHERE "id" = ${applied.id}`;
 		await expectRejected(
 			() =>
@@ -674,6 +791,8 @@ databaseDescribe("inbound provenance database contracts", () => {
 				receiptId: receipt.id,
 				method: "agent",
 				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: new Date(),
 			},
 		});
 		expect(replacementField.status).toBe("APPLIED");
@@ -693,6 +812,63 @@ databaseDescribe("inbound provenance database contracts", () => {
 			},
 		});
 		expect(rejectedLink.status).toBe("REJECTED");
+		const proposedLink = await db.entityLinkProvenance.create({
+			data: {
+				sourceType: "CONTACT",
+				sourceId: `reviewed-link-${suffix}`,
+				relationship: "works_at",
+				targetType: "COMPANY",
+				targetId: `reviewed-company-${suffix}`,
+				receiptId: receipt.id,
+				method: "agent",
+			},
+		});
+		await expectRejected(() =>
+			db.entityLinkProvenance.create({
+				data: {
+					sourceType: "CONTACT",
+					sourceId: `prefilled-link-${suffix}`,
+					relationship: "works_at",
+					targetType: "COMPANY",
+					targetId: `prefilled-company-${suffix}`,
+					receiptId: receipt.id,
+					method: "agent",
+					decidedById: userId,
+					decidedAt: new Date(),
+				},
+			}),
+		);
+		await expectRejected(() =>
+			db.entityLinkProvenance.update({
+				where: { id: proposedLink.id },
+				data: { status: "APPLIED" },
+			}),
+		);
+		const linkTransitionDecidedAt = new Date();
+		const transitionedLink = await db.entityLinkProvenance.update({
+			where: { id: proposedLink.id },
+			data: {
+				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: linkTransitionDecidedAt,
+			},
+		});
+		expect(transitionedLink.status).toBe("APPLIED");
+		await expectRejected(() =>
+			db.entityLinkProvenance.create({
+				data: {
+					sourceType: "CONTACT",
+					sourceId: `applied-link-${suffix}`,
+					relationship: "works_at",
+					targetType: "COMPANY",
+					targetId: `applied-company-${suffix}`,
+					receiptId: receipt.id,
+					method: "agent",
+					status: "APPLIED",
+				},
+			}),
+		);
+		const linkApplicationDecidedAt = new Date();
 
 		const appliedLink = await db.entityLinkProvenance.create({
 			data: {
@@ -704,6 +880,8 @@ databaseDescribe("inbound provenance database contracts", () => {
 				receiptId: receipt.id,
 				method: "agent",
 				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: linkApplicationDecidedAt,
 			},
 		});
 		await expectRejected(() =>
@@ -731,6 +909,10 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await expectRejected(() =>
 			db.entityLinkProvenance.delete({ where: { id: appliedLink.id } }),
 		);
+		await expectRejected(
+			() =>
+				db.$executeRaw`UPDATE "entityLinkProvenance" SET "status" = 'REJECTED', "decidedById" = ${userId}, "decidedAt" = ${linkApplicationDecidedAt} WHERE "id" = ${appliedLink.id}`,
+		);
 		await db.$executeRaw`UPDATE "entityLinkProvenance" SET "status" = 'REJECTED', "decidedById" = ${userId}, "decidedAt" = CURRENT_TIMESTAMP WHERE "id" = ${appliedLink.id}`;
 		await expectRejected(
 			() =>
@@ -749,6 +931,8 @@ databaseDescribe("inbound provenance database contracts", () => {
 				receiptId: receipt.id,
 				method: "agent",
 				status: "APPLIED",
+				decidedById: userId,
+				decidedAt: new Date(),
 			},
 		});
 		expect(replacementLink.status).toBe("APPLIED");
@@ -885,6 +1069,37 @@ databaseDescribe("inbound provenance database contracts", () => {
 		);
 	});
 
+	it("accepts only bounded public HTTPS source locators", async () => {
+		const valid = await db.inboundSourceReceipt.create({
+			data: {
+				...receiptData(`url-valid-${suffix}`, `url-valid-${suffix}`),
+				sourceUrl: "https://evidence.example.test/messages/object-1",
+			},
+		});
+		expect(valid.sourceUrl).toBe(
+			"https://evidence.example.test/messages/object-1",
+		);
+		for (const [index, sourceUrl] of [
+			"http://evidence.example.test/object",
+			"https://user:password@evidence.example.test/object",
+			"https://evidence.example.test/object?token=secret",
+			"https://evidence.example.test/object#fragment",
+			`https://evidence.example.test/${"x".repeat(2050)}`,
+		] as const) {
+			await expectRejected(() =>
+				db.inboundSourceReceipt.create({
+					data: {
+						...receiptData(
+							`url-invalid-${suffix}-${index}`,
+							`url-invalid-${suffix}-${index}`,
+						),
+						sourceUrl,
+					},
+				}),
+			);
+		}
+	});
+
 	it("rejects unsafe receipt metadata and malformed source digests", async () => {
 		await expectRejected(() =>
 			db.inboundSourceReceipt.create({
@@ -949,6 +1164,56 @@ databaseDescribe("inbound provenance database contracts", () => {
 					redactedMetadata: { cursor: "x".repeat(16_500) },
 				},
 			}),
+		);
+	});
+
+	it("guards parity for unavoidable inbound SQL functions and triggers", async () => {
+		const functions = await db.$queryRaw<Array<{ proname: string }>>`
+			SELECT proname
+			FROM pg_proc
+			WHERE proname IN (
+				'validateInboundRedactedMetadata',
+				'canonicalizeInboundText',
+				'encodeInboundCanonicalComponent',
+				'populateContactCandidateCanonicalIdentity',
+				'populateContactCandidateObservationIdentity',
+				'protectAppliedEntityFieldProvenance',
+				'protectAppliedEntityLinkProvenance',
+				'protectInboundSourceReceipt'
+			)
+		`;
+		expect(new Set(functions.map(({ proname }) => proname))).toEqual(
+			new Set([
+				"validateInboundRedactedMetadata",
+				"canonicalizeInboundText",
+				"encodeInboundCanonicalComponent",
+				"populateContactCandidateCanonicalIdentity",
+				"populateContactCandidateObservationIdentity",
+				"protectAppliedEntityFieldProvenance",
+				"protectAppliedEntityLinkProvenance",
+				"protectInboundSourceReceipt",
+			]),
+		);
+		const triggers = await db.$queryRaw<Array<{ tgname: string }>>`
+			SELECT tgname
+			FROM pg_trigger
+			WHERE NOT tgisinternal
+			AND tgname IN (
+				'contactCandidate_canonicalIdentity_populate',
+				'contactCandidateObservation_identity_populate',
+				'entityFieldProvenance_applied_immutable',
+				'entityLinkProvenance_applied_immutable',
+				'inboundSourceReceipt_immutable'
+			)
+		`;
+		expect(new Set(triggers.map(({ tgname }) => tgname))).toEqual(
+			new Set([
+				"contactCandidate_canonicalIdentity_populate",
+				"contactCandidateObservation_identity_populate",
+				"entityFieldProvenance_applied_immutable",
+				"entityLinkProvenance_applied_immutable",
+				"inboundSourceReceipt_immutable",
+			]),
 		);
 	});
 });

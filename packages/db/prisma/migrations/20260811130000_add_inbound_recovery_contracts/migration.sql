@@ -40,6 +40,14 @@ BEGIN
 END;
 $function$;
 
+CREATE FUNCTION "canonicalizeInboundText"(value TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $function$
+SELECT lower(btrim(normalize(coalesce(value, ''), NFKC)));
+$function$;
+
+CREATE FUNCTION "encodeInboundCanonicalComponent"(value TEXT) RETURNS TEXT LANGUAGE SQL IMMUTABLE AS $function$
+SELECT char_length(value)::text || ':' || value;
+$function$;
+
 CREATE TABLE "inboundSourceReceipt" (
     "id" TEXT NOT NULL,
     "connector" TEXT NOT NULL,
@@ -63,12 +71,21 @@ CREATE TABLE "inboundSourceReceipt" (
         AND NULLIF(btrim("sourceObjectId"), '') IS NOT NULL
     ),
     CONSTRAINT "inboundSourceReceipt_sourceDigest_check" CHECK ("sourceDigest" ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT "inboundSourceReceipt_sourceUrl_check" CHECK (
+        "sourceUrl" IS NULL
+        OR (
+            octet_length("sourceUrl") <= 2048
+            AND "sourceUrl" ~ '^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9](:[0-9]{1,5})?(/[^?#[:space:]]*)?$'
+            AND "sourceUrl" !~ '^https://[^/?#]*@'
+        )
+    ),
     CONSTRAINT "inboundSourceReceipt_redactedMetadata_check" CHECK ("validateInboundRedactedMetadata"("redactedMetadata"))
 );
 
 CREATE TABLE "contactCandidate" (
     "id" TEXT NOT NULL,
     "identityKey" TEXT NOT NULL,
+    "canonicalIdentityKey" TEXT NOT NULL DEFAULT '',
     "rawEmail" TEXT,
     "canonicalEmail" TEXT,
     "rawName" TEXT,
@@ -112,6 +129,7 @@ CREATE TABLE "contactCandidateObservation" (
     "receiptId" TEXT NOT NULL,
     "sourceDigest" TEXT NOT NULL,
     "observationKey" TEXT NOT NULL,
+    "observationIdentityKey" TEXT NOT NULL DEFAULT '',
     "observedEmail" TEXT,
     "observedName" TEXT,
     "observedTitle" TEXT,
@@ -144,7 +162,11 @@ CREATE TABLE "entityFieldProvenance" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "entityFieldProvenance_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "entityFieldProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL)),
+    CONSTRAINT "entityFieldProvenance_human_decision_check" CHECK (
+        ("decidedById" IS NULL) = ("decidedAt" IS NULL)
+        AND ("status" <> 'PROPOSED' OR ("decidedById" IS NULL AND "decidedAt" IS NULL))
+        AND ("status" NOT IN ('APPLIED', 'REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL))
+    ),
     CONSTRAINT "entityFieldProvenance_shape_check" CHECK (
         NULLIF(btrim("subjectId"), '') IS NOT NULL
         AND NULLIF(btrim("fieldName"), '') IS NOT NULL
@@ -173,7 +195,11 @@ CREATE TABLE "entityLinkProvenance" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "entityLinkProvenance_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "entityLinkProvenance_human_decision_check" CHECK ("status" NOT IN ('REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL)),
+    CONSTRAINT "entityLinkProvenance_human_decision_check" CHECK (
+        ("decidedById" IS NULL) = ("decidedAt" IS NULL)
+        AND ("status" <> 'PROPOSED' OR ("decidedById" IS NULL AND "decidedAt" IS NULL))
+        AND ("status" NOT IN ('APPLIED', 'REJECTED', 'SUPERSEDED') OR ("decidedById" IS NOT NULL AND "decidedAt" IS NOT NULL))
+    ),
     CONSTRAINT "entityLinkProvenance_shape_check" CHECK (
         NULLIF(btrim("sourceId"), '') IS NOT NULL
         AND NULLIF(btrim("targetId"), '') IS NOT NULL
@@ -203,6 +229,53 @@ CREATE TABLE "recordQuarantine" (
     CONSTRAINT "recordQuarantine_resolved_evidence_check" CHECK ("status" <> 'RESOLVED' OR ("reviewedById" IS NOT NULL AND "reviewedAt" IS NOT NULL AND "resolvedAt" IS NOT NULL))
 );
 
+CREATE FUNCTION "populateContactCandidateCanonicalIdentity"() RETURNS trigger LANGUAGE plpgsql AS $function$
+DECLARE
+    email TEXT := "canonicalizeInboundText"(NEW."canonicalEmail");
+    name TEXT := "canonicalizeInboundText"(NEW."canonicalName");
+    businessName TEXT := "canonicalizeInboundText"(NEW."canonicalBusinessName");
+    domain TEXT := "canonicalizeInboundText"(NEW."canonicalDomain");
+BEGIN
+    IF email <> '' THEN
+        NEW."canonicalIdentityKey" := 'email|' || "encodeInboundCanonicalComponent"(email);
+    ELSIF name <> '' AND domain <> '' THEN
+        NEW."canonicalIdentityKey" := 'person|' || "encodeInboundCanonicalComponent"(name) || '|' || "encodeInboundCanonicalComponent"(domain);
+    ELSIF businessName <> '' AND domain <> '' THEN
+        NEW."canonicalIdentityKey" := 'business|' || "encodeInboundCanonicalComponent"(businessName) || '|' || "encodeInboundCanonicalComponent"(domain);
+    ELSE
+        NEW."canonicalIdentityKey" := '';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER "contactCandidate_canonicalIdentity_populate"
+BEFORE INSERT OR UPDATE ON "contactCandidate"
+FOR EACH ROW EXECUTE FUNCTION "populateContactCandidateCanonicalIdentity"();
+
+CREATE FUNCTION "populateContactCandidateObservationIdentity"() RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    NEW."observationIdentityKey" := concat_ws('|',
+        "encodeInboundCanonicalComponent"('observation'),
+        "encodeInboundCanonicalComponent"(NEW."candidateId"),
+        "encodeInboundCanonicalComponent"(NEW."receiptId"),
+        "encodeInboundCanonicalComponent"(NEW."sourceDigest"),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedEmail")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedName")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedTitle")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedCompany")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedDomain")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."observedRole")),
+        "encodeInboundCanonicalComponent"("canonicalizeInboundText"(NEW."evidenceClass"))
+    );
+    RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER "contactCandidateObservation_identity_populate"
+BEFORE INSERT OR UPDATE ON "contactCandidateObservation"
+FOR EACH ROW EXECUTE FUNCTION "populateContactCandidateObservationIdentity"();
+
 CREATE UNIQUE INDEX "inboundSourceReceipt_source_identity_key" ON "inboundSourceReceipt"("connector", "provider", "accountId", "sourceObjectType", "sourceObjectId", "sourceDigest");
 CREATE UNIQUE INDEX "inboundSourceReceipt_id_sourceDigest_key" ON "inboundSourceReceipt"("id", "sourceDigest");
 CREATE INDEX "inboundSourceReceipt_connector_accountId_capturedAt_idx" ON "inboundSourceReceipt"("connector", "accountId", "capturedAt");
@@ -210,9 +283,7 @@ CREATE INDEX "inboundSourceReceipt_provider_accountId_capturedAt_idx" ON "inboun
 CREATE INDEX "inboundSourceReceipt_sourceDigest_idx" ON "inboundSourceReceipt"("sourceDigest");
 
 CREATE INDEX "contactCandidate_identityKey_idx" ON "contactCandidate"("identityKey");
-CREATE UNIQUE INDEX "contactCandidate_canonicalEmail_identity_key" ON "contactCandidate"((lower(btrim("canonicalEmail")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NOT NULL;
-CREATE UNIQUE INDEX "contactCandidate_canonicalName_domain_identity_key" ON "contactCandidate"((lower(btrim("canonicalName"))), (lower(btrim("canonicalDomain")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NULL AND NULLIF(btrim("canonicalName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL;
-CREATE UNIQUE INDEX "contactCandidate_canonicalBusinessName_domain_identity_key" ON "contactCandidate"((lower(btrim("canonicalBusinessName"))), (lower(btrim("canonicalDomain")))) WHERE NULLIF(btrim("canonicalEmail"), '') IS NULL AND NULLIF(btrim("canonicalName"), '') IS NULL AND NULLIF(btrim("canonicalBusinessName"), '') IS NOT NULL AND NULLIF(btrim("canonicalDomain"), '') IS NOT NULL;
+CREATE UNIQUE INDEX "contactCandidate_canonicalIdentityKey_key" ON "contactCandidate"("canonicalIdentityKey");
 CREATE INDEX "contactCandidate_status_permissionState_updatedAt_idx" ON "contactCandidate"("status", "permissionState", "updatedAt");
 CREATE INDEX "contactCandidate_canonicalEmail_idx" ON "contactCandidate"("canonicalEmail");
 CREATE INDEX "contactCandidate_canonicalDomain_status_idx" ON "contactCandidate"("canonicalDomain", "status");
@@ -221,18 +292,7 @@ CREATE INDEX "contactCandidate_proposedContactId_status_idx" ON "contactCandidat
 CREATE INDEX "contactCandidate_decisionById_decidedAt_idx" ON "contactCandidate"("decisionById", "decidedAt");
 
 CREATE INDEX "contactCandidateObservation_observationKey_idx" ON "contactCandidateObservation"("observationKey");
-CREATE UNIQUE INDEX "contactCandidateObservation_tuple_identity_key" ON "contactCandidateObservation"(
-    "candidateId",
-    "receiptId",
-    "sourceDigest",
-    lower(btrim(coalesce("observedEmail", ''))),
-    lower(btrim(coalesce("observedName", ''))),
-    lower(btrim(coalesce("observedTitle", ''))),
-    lower(btrim(coalesce("observedCompany", ''))),
-    lower(btrim(coalesce("observedDomain", ''))),
-    lower(btrim(coalesce("observedRole", ''))),
-    lower(btrim("evidenceClass"))
-);
+CREATE UNIQUE INDEX "contactCandidateObservation_observationIdentityKey_key" ON "contactCandidateObservation"("observationIdentityKey");
 CREATE INDEX "contactCandidateObservation_candidateId_observedAt_idx" ON "contactCandidateObservation"("candidateId", "observedAt");
 CREATE INDEX "contactCandidateObservation_receiptId_sourceDigest_idx" ON "contactCandidateObservation"("receiptId", "sourceDigest");
 CREATE INDEX "contactCandidateObservation_evidenceClass_observedAt_idx" ON "contactCandidateObservation"("evidenceClass", "observedAt");
@@ -283,8 +343,13 @@ BEGIN
     IF ROW(NEW."subjectType", NEW."subjectId", NEW."fieldName", NEW."valueDigest", NEW."receiptId", NEW."confidence", NEW."method", NEW."observedAt", NEW."freshUntil") IS DISTINCT FROM ROW(OLD."subjectType", OLD."subjectId", OLD."fieldName", OLD."valueDigest", OLD."receiptId", OLD."confidence", OLD."method", OLD."observedAt", OLD."freshUntil") THEN
         RAISE EXCEPTION 'Field provenance claim payload is immutable';
     END IF;
+    IF OLD."status" = 'PROPOSED' AND NEW."status" = 'APPLIED' THEN
+        IF NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+            RAISE EXCEPTION 'Applied field provenance requires a reviewer and decision time';
+        END IF;
+    END IF;
     IF OLD."status" = 'APPLIED' THEN
-        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL OR (NEW."decidedById" IS NOT DISTINCT FROM OLD."decidedById" AND NEW."decidedAt" IS NOT DISTINCT FROM OLD."decidedAt") THEN
             RAISE EXCEPTION 'Applied field provenance requires a reviewed supersession or rejection';
         END IF;
     END IF;
@@ -307,8 +372,13 @@ BEGIN
     IF ROW(NEW."sourceType", NEW."sourceId", NEW."relationship", NEW."targetType", NEW."targetId", NEW."receiptId", NEW."confidence", NEW."method", NEW."observedAt", NEW."freshUntil") IS DISTINCT FROM ROW(OLD."sourceType", OLD."sourceId", OLD."relationship", OLD."targetType", OLD."targetId", OLD."receiptId", OLD."confidence", OLD."method", OLD."observedAt", OLD."freshUntil") THEN
         RAISE EXCEPTION 'Link provenance claim payload is immutable';
     END IF;
+    IF OLD."status" = 'PROPOSED' AND NEW."status" = 'APPLIED' THEN
+        IF NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+            RAISE EXCEPTION 'Applied link provenance requires a reviewer and decision time';
+        END IF;
+    END IF;
     IF OLD."status" = 'APPLIED' THEN
-        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL THEN
+        IF NEW."status" NOT IN ('SUPERSEDED', 'REJECTED') OR NEW."decidedById" IS NULL OR NEW."decidedAt" IS NULL OR (NEW."decidedById" IS NOT DISTINCT FROM OLD."decidedById" AND NEW."decidedAt" IS NOT DISTINCT FROM OLD."decidedAt") THEN
             RAISE EXCEPTION 'Applied link provenance requires a reviewed supersession or rejection';
         END IF;
     END IF;
