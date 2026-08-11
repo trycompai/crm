@@ -73,15 +73,35 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 	const ready = name.trim().length > 0 && job.trim().length > 0;
 
 	const hand = () => {
-		const permissions = PERMISSIONS.filter((entry) =>
-			allowed.includes(entry.id),
-		).map((entry) => entry.label.toLowerCase());
-
 		create.mutate({
 			clientRequestId: crypto.randomUUID(),
 			commandType: "CREATE_AGENT",
-			message: brief({ name, job, channel: channel?.name, permissions }),
-			resources: [],
+			message: brief({
+				name,
+				job,
+				channel: channel?.name,
+				allowed,
+			}),
+			resources: [
+				{
+					kind: "integration" as const,
+					id: "slack:workspace",
+					label: "Slack",
+					detail: "Connected workspace",
+				},
+				...(channel
+					? [
+							{
+								kind: "integration" as const,
+								id: `slack:channel:${channel.id}`,
+								label: `#${channel.name}`,
+								detail: channel.isMember
+									? "Comp AI is a member"
+									: "Comp AI joins when this is created",
+							},
+						]
+					: []),
+			],
 			attachments: [],
 		});
 	};
@@ -203,19 +223,30 @@ function brief({
 	name,
 	job,
 	channel,
-	permissions,
+	allowed,
 }: {
 	name: string;
 	job: string;
 	channel?: string;
-	permissions: string[];
+	allowed: string[];
 }): string {
-	const lines = [`Build an agent called "${name.trim()}".`, job.trim()];
+	const lines = [`Build an agent named "${name.trim()}".`, job.trim()];
 
-	if (channel) lines.push(`It posts to #${channel}.`);
-	if (permissions.length > 0) {
-		lines.push(`In Slack it may only: ${permissions.join(", ")}.`);
+	if (channel) {
+		lines.push(
+			`It posts to the tagged Slack channel #${channel} and nowhere else. Do not ask me where to post.`,
+		);
 	}
+
+	lines.push(
+		[
+			"These Slack permissions are already decided. Use exactly this list and do not ask about it:",
+			...PERMISSIONS.map(
+				(entry) =>
+					`- ${entry.label}: ${allowed.includes(entry.id) ? "allowed" : "not allowed"}`,
+			),
+		].join("\n"),
+	);
 
 	return lines.join("\n\n");
 }

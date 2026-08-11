@@ -58,6 +58,13 @@ list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
   `next.config.ts` republishes it as `NEXT_PUBLIC_API_URL`, so one variable does both
   sides. `BETTER_AUTH_URL` is a legacy fallback.
 - **`APP_URL`** (`:3000`) is also the trusted-origin and `callbackURL` allow-list.
+- **Every OAuth `redirect_uri` is built from `API_URL`, never `APP_URL`.** Better
+  Auth serves `/api/auth/*` at `baseURL`, and `baseURL` is `apiUrl`. A redirect
+  built from `APP_URL` points at the web app, where `/api/auth/callback` does not
+  exist, and the provider rejects it with "redirect_uri did not match". This is
+  invisible until someone sets `APP_URL` to a tunnel or a LAN host, at which
+  point the redirect silently becomes that host. `ssoCallbackBase()` is the
+  pattern; `slackRedirectUri` in `auth.ts` once was not.
 - **`AUTH_COOKIE_DOMAIN`** only for API and app on different subdomains of one parent.
 - **`AGENT_URL`** is the agent's deployment, server-side only, and **must include the
   scheme** — validated at boot, or it throws when a task is queued instead.
