@@ -3,6 +3,7 @@ import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import { CalendarService } from "../src/calendar/calendar.service";
 import { KernelIdempotencyService } from "../src/operating-kernel/kernel-idempotency.service";
 import { OperatingKernelAccessService } from "../src/operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
@@ -28,6 +29,7 @@ const outreach = new OutreachService(
 	new OperatingKernelAccessService(db),
 	new KernelIdempotencyService(),
 );
+const calendar = new CalendarService(db);
 let companyId = "";
 let contactId = "";
 let prospectId = "";
@@ -307,6 +309,27 @@ describe("sequence approval concurrency", () => {
 				},
 			}),
 		).toBe(1);
+		const sequence = (await outreach.sequences()).find(
+			(row) => row.sequenceId === sequenceId,
+		);
+		expect(sequence).toMatchObject({
+			state: "APPROVED",
+			executionDisabled: true,
+			stopReason: null,
+		});
+		expect(sequence?.executionDisabledReason).toContain(
+			"Provider execution remains disabled",
+		);
+		const agendaItem = (await calendar.agenda()).items.find(
+			(item) => item.id === `email:${draftIds[0]}`,
+		);
+		expect(agendaItem).toMatchObject({
+			kind: "OUTREACH",
+			executionDisabled: true,
+		});
+		expect(agendaItem?.executionDisabledReason).toContain(
+			"Provider execution remains disabled",
+		);
 	});
 
 	it("cannot approve a sequence after a concurrent pause has locked the inbox", async () => {

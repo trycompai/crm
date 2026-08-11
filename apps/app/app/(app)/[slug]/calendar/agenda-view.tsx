@@ -168,9 +168,20 @@ function AgendaRow({ item }: { item: AgendaItem }) {
 						.filter(Boolean)
 						.join(" · ") || "Unmatched calendar item"}
 				</p>
+				{item.executionDisabledReason ? (
+					<p className="truncate text-muted-foreground text-xs">
+						{item.executionDisabledReason}
+					</p>
+				) : null}
 			</button>
 			<StatusIndicator
-				tone={item.kind === "OUTREACH" ? "warning" : "neutral"}
+				tone={
+					item.kind === "OUTREACH" && item.executionDisabled
+						? "warning"
+						: item.kind === "OUTREACH"
+							? "info"
+							: "neutral"
+				}
 				label={item.status}
 			/>
 			{item.conferenceUrl ? (

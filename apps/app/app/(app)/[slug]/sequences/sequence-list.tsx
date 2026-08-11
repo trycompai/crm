@@ -116,6 +116,9 @@ function SequenceCard({ sequence }: { sequence: Sequence }) {
 						</Button>
 					) : null}
 				</div>
+				{sequence.executionDisabledReason ? (
+					<CardDescription>{sequence.executionDisabledReason}</CardDescription>
+				) : null}
 			</CardHeader>
 			<CardContent>
 				<div className="divide-y rounded-md border">
@@ -144,9 +147,14 @@ function SequenceCard({ sequence }: { sequence: Sequence }) {
 										"Not scheduled"
 									)}
 								</p>
+								{step.stopReason ? (
+									<p className="text-muted-foreground text-xs">
+										{step.stopReason}
+									</p>
+								) : null}
 							</div>
 							<StatusIndicator
-								tone={step.sendError ? "error" : "neutral"}
+								tone={step.sendError || step.stopReason ? "warning" : "neutral"}
 								label={step.status.toLowerCase().replaceAll("_", " ")}
 							/>
 						</div>
@@ -169,6 +177,8 @@ function sequencePresentation(state: string): {
 			return { label: "Replied · stopped", tone: "success" };
 		case "ACTIVE":
 			return { label: "Active", tone: "info" };
+		case "APPROVED":
+			return { label: "Approved · execution disabled", tone: "warning" };
 		case "SENT":
 			return { label: "Sent", tone: "neutral" };
 		case "STOPPED":

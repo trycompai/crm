@@ -12,6 +12,14 @@ const prospectSheet = readFileSync(
 	resolve(appRoot, "components/crm/record-sheet/prospect-sheet.tsx"),
 	"utf8",
 );
+const sequenceList = readFileSync(
+	resolve(appRoot, "app/(app)/[slug]/sequences/sequence-list.tsx"),
+	"utf8",
+);
+const agendaView = readFileSync(
+	resolve(appRoot, "app/(app)/[slug]/calendar/agenda-view.tsx"),
+	"utf8",
+);
 const dataTable = readFileSync(
 	resolve(appRoot, "../../packages/ui/src/components/data-table.tsx"),
 	"utf8",
@@ -34,6 +42,10 @@ test("prospect table and sheet show readiness from the API read model", () => {
 		"prospect.readiness.actions.canApproveSequence",
 	);
 	expect(prospectSheet).toContain("executionDisabledReason");
+	expect(sequenceList).toContain("sequence.executionDisabledReason");
+	expect(sequenceList).toContain("Approved · execution disabled");
+	expect(agendaView).toContain("item.executionDisabledReason");
+	expect(agendaView).toContain("item.executionDisabled");
 });
 
 test("prospect next action prioritizes governed outreach readiness", () => {

@@ -23,6 +23,11 @@ import {
 import { OperatingKernelAccessService } from "../operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import { buildProspectReadiness } from "../prospects/prospect-readiness";
+import {
+	approvalSnapshotSequenceId,
+	outreachExecutionDisabledReason,
+	outreachStepStopReason,
+} from "./outreach-read-model";
 
 const EDITABLE = new Set<EmailDraftStatus>([
 	"DRAFT",
@@ -1429,6 +1434,9 @@ export class OutreachService {
 	}
 
 	async sequences() {
+		const sendingPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false" ||
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
 		const drafts = await this.db.emailDraft.findMany({
 			where: { sequenceId: { not: null } },
 			orderBy: [{ updatedAt: "desc" }, { sequenceStep: "asc" }],
@@ -1442,7 +1450,19 @@ export class OutreachService {
 				scheduledFor: true,
 				sentAt: true,
 				sendError: true,
+				externalInboxId: true,
+				recipients: true,
+				approvalDigest: true,
 				updatedAt: true,
+				inbox: {
+					select: { isEnabled: true, lastError: true },
+				},
+				events: {
+					where: { eventType: { in: ["BOUNCED", "COMPLAINED", "REJECTED"] } },
+					orderBy: { createdAt: "desc" },
+					take: 1,
+					select: { eventType: true },
+				},
 				prospect: {
 					select: {
 						id: true,
@@ -1471,6 +1491,79 @@ export class OutreachService {
 			rows.push(draft);
 			grouped.set(draft.sequenceId, rows);
 		}
+		const routeEmails = [
+			...new Set(
+				drafts
+					.map((draft) => normalizeEmail(draft.prospect?.routeEmail ?? ""))
+					.filter((email): email is string => email !== null),
+			),
+		];
+		const routeDomains = [
+			...new Set(
+				routeEmails
+					.map((email) => emailDomain(email))
+					.filter((domain): domain is string => domain !== null),
+			),
+		];
+		const prospectIds = [
+			...new Set(
+				drafts
+					.map((draft) => draft.prospect?.id)
+					.filter((id): id is string => Boolean(id)),
+			),
+		];
+		const [suppressedContacts, suppressedDomains, approvals] =
+			await Promise.all([
+				routeEmails.length > 0
+					? this.db.suppressedContact.findMany({
+							where: { email: { in: routeEmails } },
+							select: { email: true },
+						})
+					: [],
+				routeDomains.length > 0
+					? this.db.suppressedDomain.findMany({
+							where: { domain: { in: routeDomains } },
+							select: { domain: true },
+						})
+					: [],
+				prospectIds.length > 0
+					? this.db.approvalRequest.findMany({
+							where: {
+								targetType: "PROSPECT",
+								targetId: { in: prospectIds },
+								action: OUTREACH_SEQUENCE_APPROVAL_ACTION,
+							},
+							orderBy: { updatedAt: "desc" },
+							select: {
+								status: true,
+								expiresAt: true,
+								contentSnapshot: true,
+							},
+						})
+					: [],
+			]);
+		const suppressedEmailSet = new Set(
+			suppressedContacts
+				.map((row) => normalizeEmail(row.email))
+				.filter((email): email is string => email !== null),
+		);
+		const suppressedDomainSet = new Set(
+			suppressedDomains.map((row) => row.domain),
+		);
+		const approvalBySequence = new Map<
+			string,
+			{ status: string; expiresAt: Date }
+		>();
+		for (const approval of approvals) {
+			const sequenceId = approvalSnapshotSequenceId(approval.contentSnapshot);
+			if (sequenceId && !approvalBySequence.has(sequenceId)) {
+				approvalBySequence.set(sequenceId, {
+					status: approval.status,
+					expiresAt: approval.expiresAt,
+				});
+			}
+		}
+		const now = new Date();
 
 		return [...grouped.entries()]
 			.map(([sequenceId, rows]) => {
@@ -1479,23 +1572,65 @@ export class OutreachService {
 				);
 				const statuses = new Set(ordered.map((row) => row.status));
 				const replied = ordered.some((row) => row.thread?.messages.length);
+				const routeEmail = normalizeEmail(
+					ordered[0]?.prospect?.routeEmail ?? "",
+				);
+				const routeDomain = routeEmail ? emailDomain(routeEmail) : null;
+				const routeSuppressed = Boolean(
+					routeEmail &&
+						(suppressedEmailSet.has(routeEmail) ||
+							(routeDomain && suppressedDomainSet.has(routeDomain))),
+				);
+				const approval = approvalBySequence.get(sequenceId) ?? null;
+				const stepReasons = ordered.map((row) =>
+					outreachStepStopReason({
+						status: row.status,
+						sendError: row.sendError,
+						hasInboundReply: Boolean(row.thread?.messages.length),
+						events: row.events,
+					}),
+				);
+				const firstStepReason =
+					stepReasons.find((reason): reason is string => Boolean(reason)) ??
+					null;
+				const executionDisabledReason =
+					firstStepReason ??
+					outreachExecutionDisabledReason({
+						approvalStatus: approval?.status ?? null,
+						approvalExpired: Boolean(approval && approval.expiresAt <= now),
+						sendingPaused,
+						inboxEnabled: ordered.every((row) => row.inbox.isEnabled),
+						inboxError:
+							ordered.find((row) => row.inbox.lastError)?.inbox.lastError ??
+							null,
+						routeSuppressed,
+						hasApprovalDigest: ordered.every((row) => row.approvalDigest),
+					});
+				const executionDisabled = executionDisabledReason !== null;
 				const state = replied
 					? "REPLIED"
-					: statuses.has("SENDING") || statuses.has("APPROVED")
-						? "ACTIVE"
-						: statuses.has("SENT")
-							? "SENT"
-							: statuses.size === 1 && statuses.has("REJECTED")
-								? "STOPPED"
-								: "REVIEW";
+					: firstStepReason || routeSuppressed
+						? "STOPPED"
+						: statuses.has("SENDING")
+							? "ACTIVE"
+							: statuses.has("APPROVED")
+								? "APPROVED"
+								: statuses.has("SENT")
+									? "SENT"
+									: statuses.size === 1 && statuses.has("REJECTED")
+										? "STOPPED"
+										: "REVIEW";
 				return {
 					sequenceId,
 					state,
+					stopReason: firstStepReason,
+					executionDisabled,
+					executionDisabledReason,
 					variant: ordered[0]?.variant ?? null,
 					prospect: ordered[0]?.prospect ?? null,
 					updatedAt:
 						ordered[0]?.updatedAt.toISOString() ?? new Date(0).toISOString(),
-					steps: ordered.map((row) => ({
+					steps: ordered.map((row, index) => ({
 						id: row.id,
 						step: row.sequenceStep,
 						status: row.status,
@@ -1503,6 +1638,7 @@ export class OutreachService {
 						scheduledFor: row.scheduledFor?.toISOString() ?? null,
 						sentAt: row.sentAt?.toISOString() ?? null,
 						sendError: row.sendError,
+						stopReason: stepReasons[index],
 					})),
 				};
 			})
