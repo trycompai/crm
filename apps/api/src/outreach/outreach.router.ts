@@ -14,6 +14,7 @@ import {
 	outreachDraftInput,
 	outreachPermissionInput,
 	outreachProspectInput,
+	outreachProspectMutationInput,
 	outreachSequenceInput,
 	outreachUpdateInput,
 } from "./outreach.contracts";
@@ -34,9 +35,16 @@ export class OutreachRouter {
 		return this.outreach.findMore(input.count, input.countryCodes);
 	}
 
-	@Mutation({ input: outreachProspectInput })
-	async prepare(@Input("prospectId") prospectId: string) {
-		return this.outreach.prepare(prospectId);
+	@Mutation({ input: outreachProspectMutationInput })
+	async prepare(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachProspectMutationInput>,
+	) {
+		return this.outreach.prepare(
+			input.prospectId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Mutation({ input: outreachPermissionInput })
@@ -48,6 +56,7 @@ export class OutreachRouter {
 			input.prospectId,
 			input.allowed,
 			ctx.user.id,
+			input.clientRequestId,
 		);
 	}
 
@@ -57,31 +66,59 @@ export class OutreachRouter {
 	}
 
 	@Mutation({ input: outreachUpdateInput })
-	async update(@Input() input: z.infer<typeof outreachUpdateInput>) {
-		return this.outreach.update(input.draftId, input);
+	async update(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachUpdateInput>,
+	) {
+		return this.outreach.update(input.draftId, input, ctx.user.id);
 	}
 
 	@Mutation({ input: outreachSequenceInput })
 	async approveSequence(
 		@Ctx() ctx: AuthedTrpcContext,
-		@Input("sequenceId") sequenceId: string,
+		@Input() input: z.infer<typeof outreachSequenceInput>,
 	) {
-		return this.outreach.approveSequence(sequenceId, ctx.user.id);
+		return this.outreach.approveSequence(
+			input.sequenceId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Mutation({ input: outreachSequenceInput })
-	async rejectSequence(@Input("sequenceId") sequenceId: string) {
-		return this.outreach.rejectSequence(sequenceId);
+	async rejectSequence(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachSequenceInput>,
+	) {
+		return this.outreach.rejectSequence(
+			input.sequenceId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Mutation({ input: outreachDraftInput })
-	async deleteDraft(@Input("draftId") draftId: string) {
-		return this.outreach.deleteDraft(draftId);
+	async deleteDraft(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachDraftInput>,
+	) {
+		return this.outreach.deleteDraft(
+			input.draftId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Mutation({ input: outreachSequenceInput })
-	async deleteSequence(@Input("sequenceId") sequenceId: string) {
-		return this.outreach.deleteSequence(sequenceId);
+	async deleteSequence(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof outreachSequenceInput>,
+	) {
+		return this.outreach.deleteSequence(
+			input.sequenceId,
+			ctx.user.id,
+			input.clientRequestId,
+		);
 	}
 
 	@Query()

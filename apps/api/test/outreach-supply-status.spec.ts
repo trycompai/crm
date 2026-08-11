@@ -1,6 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import { KernelIdempotencyService } from "../src/operating-kernel/kernel-idempotency.service";
+import { OperatingKernelAccessService } from "../src/operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 import { OutreachService } from "../src/outreach/outreach.service";
 
@@ -18,6 +20,8 @@ const outreach = new OutreachService(
 	db,
 	agent,
 	new OperatingKernelCleanupService(),
+	new OperatingKernelAccessService(db),
+	new KernelIdempotencyService(),
 );
 const originalProviderPaused = process.env.PROVIDER_MUTATIONS_PAUSED;
 const originalOutreachPaused = process.env.OUTREACH_SENDS_PAUSED;

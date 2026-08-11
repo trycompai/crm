@@ -26,7 +26,7 @@ import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldU
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { inboundSyncInput, agentMailEnabledInput, granolaMatchInput, granolaExcludeInput } from "../inbound/inbound.contracts";
 import { setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
-import { leadDiscoveryInput, outreachProspectInput, outreachPermissionInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
+import { leadDiscoveryInput, outreachProspectMutationInput, outreachPermissionInput, outreachProspectInput, outreachUpdateInput, outreachSequenceInput, outreachDraftInput } from "../outreach/outreach.contracts";
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
@@ -420,7 +420,7 @@ const appRouter = t.router({
       .input(leadDiscoveryInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["findMore"]>>),
     prepare: publicProcedure
-      .input(outreachProspectInput)
+      .input(outreachProspectMutationInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<OutreachRouter["prepare"]>>),
     setPermission: publicProcedure
       .input(outreachPermissionInput)

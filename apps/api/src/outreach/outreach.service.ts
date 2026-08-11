@@ -1,21 +1,54 @@
-import { type Db, type EmailDraftStatus, type OutreachVariant } from "@crm/db";
-import { PRIORITY } from "@crm/db/agent-tasks";
+import {
+	type AgentTaskState,
+	type Db,
+	type EmailDraftStatus,
+	type OutreachVariant,
+	type Prisma,
+} from "@crm/db";
+import { approvalContentDigest } from "@crm/db/approval";
 import { outreachApprovalDigest } from "@crm/db/outreach";
 import {
 	BadRequestException,
+	ConflictException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { normalizeEmail } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import {
+	KernelIdempotencyService,
+	kernelRequestHash,
+} from "../operating-kernel/kernel-idempotency.service";
+import { OperatingKernelAccessService } from "../operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
+import { buildProspectReadiness } from "../prospects/prospect-readiness";
 
 const EDITABLE = new Set<EmailDraftStatus>([
 	"DRAFT",
 	"PENDING_APPROVAL",
 	"REJECTED",
 ]);
+const OUTREACH_PROVIDER = "lode-crm";
+const OUTREACH_CHANNEL = "outreach";
+const OUTREACH_POLICY_VERSION = "outreach-sequence-v1";
+const OUTREACH_SEQUENCE_APPROVAL_ACTION = "outreach.sequence.approve";
+const OUTREACH_APPROVAL_TTL_MS = 24 * 60 * 60 * 1_000;
+const SCHEDULE_GRACE_MS = 5 * 60 * 1_000;
+const TERMINAL_TASK_STATES: AgentTaskState[] = [
+	"SUCCEEDED",
+	"FAILED",
+	"UNKNOWN",
+	"CANCELLED",
+];
+
+type OutreachMutationResult = Record<string, unknown> & {
+	receipt: {
+		id: string;
+		status: "SUCCEEDED";
+		operationKey: string;
+	};
+};
 
 function emailDomain(email: string): string | null {
 	const [, domain] = email.split("@");
@@ -28,6 +61,8 @@ export class OutreachService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
 		private readonly cleanup: OperatingKernelCleanupService,
+		private readonly access: OperatingKernelAccessService,
+		private readonly idempotency: KernelIdempotencyService,
 	) {}
 
 	async supplyStatus() {
@@ -133,7 +168,8 @@ export class OutreachService {
 		return this.agent.discoverProspects(count, countryCodes);
 	}
 
-	async prepare(prospectId: string) {
+	async prepare(prospectId: string, userId: string, clientRequestId: string) {
+		await this.access.assertMember(userId);
 		const [prospect, inbox] = await Promise.all([
 			this.db.prospect.findUnique({
 				where: { id: prospectId },
@@ -158,8 +194,28 @@ export class OutreachService {
 			}),
 		]);
 		if (!prospect) throw new NotFoundException("Prospect not found.");
-		if (prospect.emailDrafts.length > 0)
-			return { queued: false, existing: true };
+		if (prospect.emailDrafts.length > 0) {
+			return this.db.$transaction(async (tx) => {
+				const requestHash = kernelRequestHash({
+					actorId: userId,
+					operation: "outreach.prepare",
+					prospectId,
+				});
+				await this.idempotency.lock(tx, clientRequestId);
+				const replay = await this.replayOutreach(tx, {
+					key: clientRequestId,
+					requestHash,
+					operationKey: "outreach.prepare",
+				});
+				if (replay) return replay;
+				return this.recordOutreachReceipt(tx, {
+					key: clientRequestId,
+					requestHash,
+					operationKey: "outreach.prepare",
+					result: { prospectId, queued: false, existing: true },
+				});
+			});
+		}
 		if (!inbox) {
 			throw new BadRequestException("AgentMail is unavailable.");
 		}
@@ -176,11 +232,46 @@ export class OutreachService {
 			);
 		}
 
+		const result = await this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.prepare",
+				prospectId,
+			});
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.prepare",
+			});
+			if (replay) return replay;
+			await this.ensureOutreachWork(tx, {
+				prospectId,
+				userId,
+				subjectLabel: "Review A/B/C outreach sequence",
+				reason:
+					"Prepare and review three evidence-grounded outreach steps before any approved execution.",
+				primaryAction: "Review A/B/C outreach sequence",
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.prepare",
+				result: { prospectId, queued: true, existing: false },
+			});
+		});
+
 		await this.agent.composeOutreach(prospectId);
-		return { queued: true, existing: false };
+		return result;
 	}
 
-	async setPermission(prospectId: string, allowed: boolean, userId: string) {
+	async setPermission(
+		prospectId: string,
+		allowed: boolean,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
 		const prospect = await this.db.prospect.findUnique({
 			where: { id: prospectId },
 			select: {
@@ -199,8 +290,21 @@ export class OutreachService {
 		if (!prospect) throw new NotFoundException("Prospect not found.");
 
 		if (!allowed) {
-			await this.db.$transaction([
-				this.db.prospect.update({
+			return this.db.$transaction(async (tx) => {
+				const requestHash = kernelRequestHash({
+					actorId: userId,
+					operation: "outreach.permission",
+					prospectId,
+					allowed,
+				});
+				await this.idempotency.lock(tx, clientRequestId);
+				const replay = await this.replayOutreach(tx, {
+					key: clientRequestId,
+					requestHash,
+					operationKey: "outreach.permission",
+				});
+				if (replay) return replay;
+				await tx.prospect.update({
 					where: { id: prospectId },
 					data: {
 						emailAllowed: false,
@@ -210,8 +314,8 @@ export class OutreachService {
 							? "DIRECT_ROUTE_REVIEW"
 							: prospect.routeStatus,
 					},
-				}),
-				this.db.emailDraft.updateMany({
+				});
+				const stopped = await tx.emailDraft.updateMany({
 					where: {
 						prospectId,
 						status: {
@@ -222,9 +326,19 @@ export class OutreachService {
 						status: "REJECTED",
 						sendError: "Outreach permission was revoked by a CRM operator.",
 					},
-				}),
-			]);
-			return { prospectId, allowed: false };
+				});
+				await this.invalidateOutreachApprovals(tx, prospectId);
+				await this.cancelDraftTasks(tx, {
+					prospectId,
+					outcome: "OUTREACH_PERMISSION_REVOKED",
+				});
+				return this.recordOutreachReceipt(tx, {
+					key: clientRequestId,
+					requestHash,
+					operationKey: "outreach.permission",
+					result: { prospectId, allowed: false, stopped: stopped.count },
+				});
+			});
 		}
 
 		const email = prospect.routeEmail?.trim().toLowerCase();
@@ -259,20 +373,40 @@ export class OutreachService {
 			);
 		}
 
-		await this.db.prospect.update({
-			where: { id: prospectId },
-			data: {
-				emailAllowed: true,
-				emailAllowedAt: new Date(),
-				emailAllowedById: userId,
-				routeStatus: "SEND_READY_REVIEW",
-			},
+		return this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.permission",
+				prospectId,
+				allowed,
+			});
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.permission",
+			});
+			if (replay) return replay;
+			await tx.prospect.update({
+				where: { id: prospectId },
+				data: {
+					emailAllowed: true,
+					emailAllowedAt: new Date(),
+					emailAllowedById: userId,
+					routeStatus: "SEND_READY_REVIEW",
+				},
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.permission",
+				result: { prospectId, allowed: true },
+			});
 		});
-		return { prospectId, allowed: true };
 	}
 
 	async byProspect(prospectId: string) {
-		const [drafts, queued] = await Promise.all([
+		const [drafts, queued, approvals, work] = await Promise.all([
 			this.db.emailDraft.findMany({
 				where: { prospectId },
 				orderBy: [{ sequenceId: "asc" }, { sequenceStep: "asc" }],
@@ -291,6 +425,7 @@ export class OutreachService {
 					sentAt: true,
 					sendError: true,
 					approvedAt: true,
+					approvalDigest: true,
 					updatedAt: true,
 				},
 			}),
@@ -302,10 +437,68 @@ export class OutreachService {
 				},
 				select: { id: true },
 			}),
+			this.db.approvalRequest.findMany({
+				where: {
+					targetType: "PROSPECT",
+					targetId: prospectId,
+					action: { startsWith: "outreach." },
+				},
+				orderBy: { updatedAt: "desc" },
+				take: 5,
+				select: {
+					id: true,
+					action: true,
+					status: true,
+					contentDigest: true,
+					policyVersion: true,
+					requestedAt: true,
+					decidedAt: true,
+					updatedAt: true,
+					actionReceipts: {
+						orderBy: { createdAt: "desc" },
+						take: 3,
+						select: {
+							id: true,
+							operationKey: true,
+							status: true,
+							completedAt: true,
+							errorCode: true,
+						},
+					},
+				},
+			}),
+			this.db.workItem.findFirst({
+				where: {
+					subjectType: "PROSPECT",
+					subjectId: prospectId,
+					queue: "outreach",
+					state: { notIn: ["DONE", "DISMISSED"] },
+				},
+				orderBy: { updatedAt: "desc" },
+				select: {
+					id: true,
+					state: true,
+					version: true,
+					primaryAction: true,
+					reason: true,
+					updatedAt: true,
+				},
+			}),
 		]);
 
 		return {
 			queued: queued !== null,
+			work: work ? { ...work, updatedAt: work.updatedAt.toISOString() } : null,
+			approvals: approvals.map((approval) => ({
+				...approval,
+				requestedAt: approval.requestedAt.toISOString(),
+				decidedAt: approval.decidedAt?.toISOString() ?? null,
+				updatedAt: approval.updatedAt.toISOString(),
+				actionReceipts: approval.actionReceipts.map((receipt) => ({
+					...receipt,
+					completedAt: receipt.completedAt?.toISOString() ?? null,
+				})),
+			})),
 			drafts: drafts.map((draft) => ({
 				...draft,
 				scheduledFor: draft.scheduledFor?.toISOString() ?? null,
@@ -318,11 +511,32 @@ export class OutreachService {
 
 	async update(
 		draftId: string,
-		data: { subject: string; plainTextBody: string },
+		data: {
+			subject: string;
+			plainTextBody: string;
+			scheduledFor: string;
+			expectedUpdatedAt: string;
+			clientRequestId: string;
+		},
+		userId: string,
 	) {
+		await this.access.assertMember(userId);
+		const scheduledFor = new Date(data.scheduledFor);
+		const expectedUpdatedAt = new Date(data.expectedUpdatedAt);
+		if (
+			Number.isNaN(scheduledFor.getTime()) ||
+			Number.isNaN(expectedUpdatedAt.getTime())
+		) {
+			throw new BadRequestException("Draft schedule version is invalid.");
+		}
 		const draft = await this.db.emailDraft.findUnique({
 			where: { id: draftId },
-			select: { id: true, status: true },
+			select: {
+				id: true,
+				status: true,
+				prospectId: true,
+				sequenceId: true,
+			},
 		});
 		if (!draft) throw new NotFoundException("Draft not found.");
 		if (!EDITABLE.has(draft.status)) {
@@ -331,118 +545,150 @@ export class OutreachService {
 			);
 		}
 
-		return this.db.emailDraft.update({
-			where: { id: draftId },
-			data: {
+		return this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.draft.update",
+				draftId,
 				subject: data.subject,
 				plainTextBody: data.plainTextBody,
-				status: "PENDING_APPROVAL",
-				approvedAt: null,
-				approvedById: null,
-				approvalDigest: null,
-				sendError: null,
-			},
-			select: { id: true, status: true, updatedAt: true },
+				scheduledFor: scheduledFor.toISOString(),
+				expectedUpdatedAt: expectedUpdatedAt.toISOString(),
+			});
+			await this.idempotency.lock(tx, data.clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: data.clientRequestId,
+				requestHash,
+				operationKey: "outreach.draft.update",
+			});
+			if (replay) return replay;
+			const changed = await tx.emailDraft.updateMany({
+				where: {
+					id: draftId,
+					status: { in: [...EDITABLE] },
+					updatedAt: expectedUpdatedAt,
+				},
+				data: {
+					subject: data.subject,
+					plainTextBody: data.plainTextBody,
+					scheduledFor,
+					status: "PENDING_APPROVAL",
+					approvedAt: null,
+					approvedById: null,
+					approvalDigest: null,
+					sendError: null,
+				},
+			});
+			if (changed.count !== 1) {
+				throw new ConflictException(
+					"Draft changed while this edit was being reviewed.",
+				);
+			}
+			const updated = await tx.emailDraft.findUnique({
+				where: { id: draftId },
+				select: { id: true, status: true, updatedAt: true },
+			});
+			if (!updated)
+				throw new ConflictException("Draft disappeared during the update.");
+			if (draft.prospectId) {
+				await this.invalidateOutreachApprovals(tx, draft.prospectId);
+			}
+			return this.recordOutreachReceipt(tx, {
+				key: data.clientRequestId,
+				requestHash,
+				operationKey: "outreach.draft.update",
+				result: {
+					id: updated.id,
+					status: updated.status,
+					updatedAt: updated.updatedAt.toISOString(),
+					sequenceId: draft.sequenceId,
+				},
+			});
 		});
 	}
 
-	async approveSequence(sequenceId: string, userId: string) {
-		const drafts = await this.db.emailDraft.findMany({
-			where: { sequenceId },
-			orderBy: { sequenceStep: "asc" },
+	async approveSequence(
+		sequenceId: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
+		const requestHash = kernelRequestHash({
+			actorId: userId,
+			operation: "outreach.sequence.approve",
+			sequenceId,
 		});
-		if (drafts.length === 0) throw new NotFoundException("Sequence not found.");
-		if (drafts.some((draft) => draft.status !== "PENDING_APPROVAL")) {
-			throw new BadRequestException("This sequence has already started.");
-		}
-		if (
-			drafts.some(
-				(draft) =>
-					!draft.subject.trim() ||
-					!draft.plainTextBody.trim() ||
-					!draft.scheduledFor,
-			)
-		) {
-			throw new BadRequestException(
-				"Every sequence step needs copy and a send time.",
-			);
-		}
-
-		const [firstDraft] = drafts;
-		if (!firstDraft) throw new NotFoundException("Sequence not found.");
-		const prospectId = firstDraft.prospectId;
-		if (
-			!prospectId ||
-			drafts.some((draft) => draft.prospectId !== prospectId)
-		) {
-			throw new BadRequestException("A sequence must belong to one prospect.");
-		}
-		const prospect = await this.db.prospect.findUnique({
-			where: { id: prospectId },
-			select: {
-				status: true,
-				routeStatus: true,
-				emailAllowed: true,
-				routeEmail: true,
-				contactId: true,
-			},
-		});
-		if (
-			prospect?.status !== "PROMOTED" ||
-			prospect.routeStatus !== "SEND_READY_REVIEW" ||
-			!prospect.emailAllowed ||
-			!prospect.routeEmail ||
-			!prospect.contactId
-		) {
-			throw new BadRequestException(
-				"Prospect permission or send readiness changed.",
-			);
-		}
-		const recipient = prospect.routeEmail.toLowerCase();
-		if (
-			drafts.some((draft) => {
-				const recipients = Array.isArray(draft.recipients)
-					? draft.recipients.filter(
-							(value): value is string => typeof value === "string",
-						)
-					: [];
-				return (
-					recipients.length !== 1 || recipients[0]?.toLowerCase() !== recipient
+		const result = await this.db.$transaction(async (tx) => {
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.approve",
+			});
+			if (replay) return replay;
+			const drafts = await tx.emailDraft.findMany({
+				where: { sequenceId },
+				orderBy: { sequenceStep: "asc" },
+			});
+			if (drafts.length === 0)
+				throw new NotFoundException("Sequence not found.");
+			if (drafts.some((draft) => draft.status !== "PENDING_APPROVAL")) {
+				throw new BadRequestException("This sequence has already started.");
+			}
+			if (
+				drafts.some(
+					(draft) =>
+						!draft.subject.trim() ||
+						!draft.plainTextBody.trim() ||
+						!draft.scheduledFor,
+				)
+			) {
+				throw new BadRequestException(
+					"Every sequence step needs copy and a send time.",
 				);
-			})
-		) {
-			throw new BadRequestException(
-				"The draft recipient no longer matches the verified route.",
-			);
-		}
-		const domain = recipient.split("@")[1];
-		const [suppressedContact, suppressedDomain, inbox] = await Promise.all([
-			this.db.suppressedContact.findUnique({ where: { email: recipient } }),
-			domain
-				? this.db.suppressedDomain.findUnique({ where: { domain } })
-				: null,
-			this.db.emailInbox.findFirst({
-				where: {
-					provider: "AGENTMAIL",
-					externalInboxId: firstDraft.externalInboxId,
-					isEnabled: true,
-				},
-				select: { id: true },
-			}),
-		]);
-		if (suppressedContact || suppressedDomain || !inbox) {
-			throw new BadRequestException(
-				"The recipient is suppressed or AgentMail is unavailable.",
-			);
-		}
+			}
+			this.assertSequenceSchedule(drafts, new Date());
 
-		const now = new Date();
-		const delays = [0, 3, 7];
-		await this.db.$transaction(async (tx) => {
+			const [firstDraft] = drafts;
+			if (!firstDraft) throw new NotFoundException("Sequence not found.");
+			const prospectId = firstDraft.prospectId;
+			if (
+				!prospectId ||
+				drafts.some((draft) => draft.prospectId !== prospectId)
+			) {
+				throw new BadRequestException(
+					"A sequence must belong to one prospect.",
+				);
+			}
+			const gate = await this.sequenceApprovalGate(tx, {
+				prospectId,
+				sequenceId,
+				drafts,
+				externalInboxId: firstDraft.externalInboxId,
+			});
+			const recipient = gate.recipient;
+			if (
+				drafts.some((draft) => {
+					const recipients = Array.isArray(draft.recipients)
+						? draft.recipients.filter(
+								(value): value is string => typeof value === "string",
+							)
+						: [];
+					return (
+						recipients.length !== 1 ||
+						recipients[0]?.toLowerCase() !== recipient
+					);
+				})
+			) {
+				throw new BadRequestException(
+					"The draft recipient no longer matches the verified route.",
+				);
+			}
+
 			const [lockedInbox] = await tx.$queryRaw<Array<{ isEnabled: boolean }>>`
 				SELECT "isEnabled"
 				FROM "emailInbox"
-				WHERE id = ${inbox.id}
+				WHERE id = ${gate.inboxId}
 				FOR UPDATE
 			`;
 			if (!lockedInbox?.isEnabled) {
@@ -450,6 +696,8 @@ export class OutreachService {
 					"AgentMail was paused while this sequence was being reviewed.",
 				);
 			}
+
+			const now = new Date();
 			const current = await tx.emailDraft.findMany({
 				where: { sequenceId, status: "PENDING_APPROVAL" },
 				orderBy: { sequenceStep: "asc" },
@@ -459,23 +707,30 @@ export class OutreachService {
 					"This sequence was changed or approved elsewhere.",
 				);
 			}
+
+			const approval = await this.createApprovedSequenceApproval(tx, {
+				prospectId,
+				sequenceId,
+				userId,
+				now,
+				drafts: current,
+				readinessSummary: gate.readiness.summary,
+				clientRequestId,
+			});
 			for (const draft of current) {
-				const delay = delays[(draft.sequenceStep ?? 1) - 1];
-				if (delay === undefined) {
-					throw new BadRequestException("Sequence steps must be 1, 2 and 3.");
+				if (!draft.scheduledFor) {
+					throw new BadRequestException(
+						"Every sequence step needs a proposed send time.",
+					);
 				}
-				const scheduledFor = new Date(
-					now.getTime() + delay * 24 * 60 * 60 * 1_000,
-				);
 				const approved = await tx.emailDraft.updateMany({
 					where: { id: draft.id, status: "PENDING_APPROVAL" },
 					data: {
 						status: "APPROVED",
 						approvedById: userId,
 						approvedAt: now,
-						sendRequestedAt: now,
-						scheduledFor,
-						approvalDigest: outreachApprovalDigest({ ...draft, scheduledFor }),
+						sendRequestedAt: null,
+						approvalDigest: outreachApprovalDigest(draft),
 						sendError: null,
 					},
 				});
@@ -484,61 +739,160 @@ export class OutreachService {
 						"This sequence was changed or approved elsewhere.",
 					);
 				}
-				await tx.agentTask.create({
-					data: {
-						emailDraftId: draft.id,
-						kind: "email-draft-send",
-						reason:
-							"Send an approved outreach sequence step with idempotency and stop rules",
-						priority: PRIORITY.outreachSend,
-						budget: 0,
-						dueAt: scheduledFor,
+			}
+			await this.completeOutreachWork(tx, prospectId, now, {
+				approvalRequestId: approval.id,
+				receiptId: approval.receipt.id,
+				sequenceId,
+				executionDisabled: true,
+			});
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.approve",
+				result: {
+					sequenceId,
+					approved: drafts.length,
+					executionDisabled: true,
+					approval: {
+						id: approval.id,
+						status: "APPROVED",
+						contentDigest: approval.contentDigest,
+						version: approval.version,
 					},
+					approvalReceipt: approval.receipt,
+				},
+			});
+		});
+
+		return result;
+	}
+
+	async rejectSequence(
+		sequenceId: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
+		return this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.sequence.reject",
+				sequenceId,
+			});
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.reject",
+			});
+			if (replay) return replay;
+			const drafts = await tx.emailDraft.findMany({
+				where: {
+					sequenceId,
+					status: { in: ["DRAFT", "PENDING_APPROVAL", "APPROVED"] },
+				},
+				select: { id: true, prospectId: true },
+			});
+			if (drafts.length === 0)
+				throw new NotFoundException("Editable sequence not found.");
+			const result = await tx.emailDraft.updateMany({
+				where: { id: { in: drafts.map((draft) => draft.id) } },
+				data: { status: "REJECTED", sendError: "Rejected by a CRM operator." },
+			});
+			await this.cancelDraftTasks(tx, {
+				draftIds: drafts.map((draft) => draft.id),
+				outcome: "OUTREACH_SEQUENCE_REJECTED",
+			});
+			const prospectIds = [
+				...new Set(
+					drafts
+						.map((draft) => draft.prospectId)
+						.filter((id): id is string => id !== null),
+				),
+			];
+			for (const prospectId of prospectIds) {
+				await this.invalidateOutreachApprovals(tx, prospectId);
+				await this.dismissOutreachWork(tx, prospectId, new Date(), {
+					sequenceId,
+					reason: "Sequence rejected by operator",
 				});
 			}
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.reject",
+				result: { sequenceId, rejected: result.count },
+			});
 		});
-		this.agent.workQueued();
-
-		return { sequenceId, approved: drafts.length };
 	}
 
-	async rejectSequence(sequenceId: string) {
-		const result = await this.db.emailDraft.updateMany({
-			where: {
-				sequenceId,
-				status: { in: ["DRAFT", "PENDING_APPROVAL", "APPROVED"] },
-			},
-			data: { status: "REJECTED", sendError: "Rejected by a CRM operator." },
-		});
-		if (result.count === 0)
-			throw new NotFoundException("Editable sequence not found.");
-		return { sequenceId, rejected: result.count };
-	}
-
-	async deleteDraft(draftId: string) {
-		await this.db.$transaction(async (tx) => {
+	async deleteDraft(draftId: string, userId: string, clientRequestId: string) {
+		await this.access.assertMember(userId);
+		return this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.draft.delete",
+				draftId,
+			});
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.draft.delete",
+			});
+			if (replay) return replay;
 			const draft = await tx.emailDraft.findFirst({
 				where: {
 					id: draftId,
 					status: { in: [...EDITABLE] },
 				},
-				select: { id: true },
+				select: { id: true, prospectId: true, sequenceId: true },
 			});
 			if (!draft)
 				throw new BadRequestException(
 					"Only unsent draft proposals can be deleted.",
 				);
+			if (draft.prospectId) {
+				await this.invalidateOutreachApprovals(tx, draft.prospectId);
+			}
 			await this.cleanup.beforeSubjectDelete(tx, {
 				type: "EMAIL_DRAFT",
 				id: draft.id,
 			});
 			await tx.emailDraft.delete({ where: { id: draft.id } });
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.draft.delete",
+				result: {
+					id: draftId,
+					sequenceId: draft.sequenceId,
+					deleted: true,
+				},
+			});
 		});
-		return { id: draftId };
 	}
 
-	async deleteSequence(sequenceId: string) {
+	async deleteSequence(
+		sequenceId: string,
+		userId: string,
+		clientRequestId: string,
+	) {
+		await this.access.assertMember(userId);
 		return this.db.$transaction(async (tx) => {
+			const requestHash = kernelRequestHash({
+				actorId: userId,
+				operation: "outreach.sequence.delete",
+				sequenceId,
+			});
+			await this.idempotency.lock(tx, clientRequestId);
+			const replay = await this.replayOutreach(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.delete",
+			});
+			if (replay) return replay;
 			const blocked = await tx.emailDraft.count({
 				where: {
 					sequenceId,
@@ -552,12 +906,26 @@ export class OutreachService {
 			}
 			const drafts = await tx.emailDraft.findMany({
 				where: { sequenceId, status: { in: [...EDITABLE] } },
-				select: { id: true },
+				select: { id: true, prospectId: true },
 			});
 			if (drafts.length === 0) {
 				throw new BadRequestException(
 					"Only an unsent sequence can be deleted.",
 				);
+			}
+			const prospectIds = [
+				...new Set(
+					drafts
+						.map((draft) => draft.prospectId)
+						.filter((id): id is string => id !== null),
+				),
+			];
+			for (const prospectId of prospectIds) {
+				await this.invalidateOutreachApprovals(tx, prospectId);
+				await this.dismissOutreachWork(tx, prospectId, new Date(), {
+					sequenceId,
+					reason: "Sequence deleted by operator",
+				});
 			}
 			for (const draft of drafts) {
 				await this.cleanup.beforeSubjectDelete(tx, {
@@ -568,8 +936,462 @@ export class OutreachService {
 			const result = await tx.emailDraft.deleteMany({
 				where: { id: { in: drafts.map((draft) => draft.id) } },
 			});
-			return { sequenceId, deleted: result.count };
+			return this.recordOutreachReceipt(tx, {
+				key: clientRequestId,
+				requestHash,
+				operationKey: "outreach.sequence.delete",
+				result: { sequenceId, deleted: result.count },
+			});
 		});
+	}
+
+	private async replayOutreach(
+		tx: Prisma.TransactionClient,
+		input: {
+			key: string;
+			requestHash: string;
+			operationKey: string;
+		},
+	): Promise<OutreachMutationResult | null> {
+		const receipt = await tx.actionReceipt.findUnique({
+			where: { idempotencyKey: input.key },
+			select: {
+				provider: true,
+				channel: true,
+				requestHash: true,
+				operationKey: true,
+				status: true,
+				result: true,
+			},
+		});
+		if (!receipt) return null;
+		if (
+			receipt.provider !== OUTREACH_PROVIDER ||
+			receipt.channel !== OUTREACH_CHANNEL ||
+			receipt.requestHash !== input.requestHash ||
+			receipt.operationKey !== input.operationKey
+		) {
+			throw new ConflictException(
+				"That client request id has already been used.",
+			);
+		}
+		if (receipt.status !== "SUCCEEDED" || receipt.result === null) {
+			throw new ConflictException("That client request is not replayable.");
+		}
+		return receipt.result as OutreachMutationResult;
+	}
+
+	private async recordOutreachReceipt(
+		tx: Prisma.TransactionClient,
+		input: {
+			key: string;
+			requestHash: string;
+			operationKey: string;
+			result: Record<string, unknown>;
+			approvalRequestId?: string;
+		},
+	): Promise<OutreachMutationResult> {
+		const receipt = await tx.actionReceipt.create({
+			data: {
+				idempotencyKey: input.key,
+				requestHash: input.requestHash,
+				provider: OUTREACH_PROVIDER,
+				channel: OUTREACH_CHANNEL,
+				operationKey: input.operationKey,
+				status: "SUCCEEDED",
+				approvalRequestId: input.approvalRequestId ?? null,
+				completedAt: new Date(),
+				result: input.result as Prisma.InputJsonValue,
+			},
+			select: { id: true },
+		});
+		const result: OutreachMutationResult = {
+			...input.result,
+			receipt: {
+				id: receipt.id,
+				status: "SUCCEEDED",
+				operationKey: input.operationKey,
+			},
+		};
+		await tx.actionReceipt.update({
+			where: { id: receipt.id },
+			data: { result: result as Prisma.InputJsonValue },
+		});
+		return result;
+	}
+
+	private async ensureOutreachWork(
+		tx: Prisma.TransactionClient,
+		input: {
+			prospectId: string;
+			userId: string;
+			subjectLabel: string;
+			reason: string;
+			primaryAction: string;
+		},
+	): Promise<void> {
+		const existing = await tx.workItem.findFirst({
+			where: {
+				subjectType: "PROSPECT",
+				subjectId: input.prospectId,
+				queue: "outreach",
+				state: { notIn: ["DONE", "DISMISSED"] },
+			},
+			select: { id: true },
+		});
+		if (existing) return;
+		await tx.workItem.create({
+			data: {
+				subjectType: "PROSPECT",
+				subjectId: input.prospectId,
+				subjectLabel: input.subjectLabel,
+				ownerId: input.userId,
+				queue: "outreach",
+				urgency: "HIGH",
+				reason: input.reason,
+				primaryAction: input.primaryAction,
+				evidence: {
+					source: "outreach.prepare",
+					prospectId: input.prospectId,
+				},
+			},
+		});
+	}
+
+	private async completeOutreachWork(
+		tx: Prisma.TransactionClient,
+		prospectId: string,
+		now: Date,
+		evidence: Record<string, unknown>,
+	): Promise<void> {
+		await tx.workItem.updateMany({
+			where: {
+				subjectType: "PROSPECT",
+				subjectId: prospectId,
+				queue: "outreach",
+				state: { notIn: ["DONE", "DISMISSED"] },
+			},
+			data: {
+				state: "DONE",
+				completedAt: now,
+				nextReviewAt: null,
+				version: { increment: 1 },
+				evidence: {
+					source: "outreach.sequence.approve",
+					...evidence,
+					completedAt: now.toISOString(),
+				},
+			},
+		});
+	}
+
+	private async dismissOutreachWork(
+		tx: Prisma.TransactionClient,
+		prospectId: string,
+		now: Date,
+		evidence: Record<string, unknown>,
+	): Promise<void> {
+		await tx.workItem.updateMany({
+			where: {
+				subjectType: "PROSPECT",
+				subjectId: prospectId,
+				queue: "outreach",
+				state: { notIn: ["DONE", "DISMISSED"] },
+			},
+			data: {
+				state: "DISMISSED",
+				completedAt: now,
+				nextReviewAt: null,
+				version: { increment: 1 },
+				evidence: {
+					source: "outreach.sequence.stop",
+					...evidence,
+					completedAt: now.toISOString(),
+				},
+			},
+		});
+	}
+
+	private async invalidateOutreachApprovals(
+		tx: Prisma.TransactionClient,
+		prospectId: string,
+	): Promise<void> {
+		await tx.approvalRequest.updateMany({
+			where: {
+				targetType: "PROSPECT",
+				targetId: prospectId,
+				action: { startsWith: "outreach." },
+				status: { in: ["PENDING", "APPROVED"] },
+			},
+			data: {
+				status: "INVALIDATED",
+				invalidationVersion: { increment: 1 },
+				version: { increment: 1 },
+				decidedAt: new Date(),
+			},
+		});
+	}
+
+	private async cancelDraftTasks(
+		tx: Prisma.TransactionClient,
+		input: {
+			draftIds?: string[];
+			prospectId?: string;
+			outcome: string;
+		},
+	): Promise<void> {
+		const draftIds =
+			input.draftIds ??
+			(
+				await tx.emailDraft.findMany({
+					where: { prospectId: input.prospectId },
+					select: { id: true },
+				})
+			).map((draft) => draft.id);
+		if (draftIds.length === 0) return;
+		await tx.agentTask.updateMany({
+			where: {
+				kind: "email-draft-send",
+				state: { notIn: TERMINAL_TASK_STATES },
+				emailDraftId: { in: draftIds },
+			},
+			data: {
+				state: "CANCELLED",
+				finishedAt: new Date(),
+				outcome: input.outcome,
+			},
+		});
+	}
+
+	private async sequenceApprovalGate(
+		tx: Prisma.TransactionClient,
+		input: {
+			prospectId: string;
+			sequenceId: string;
+			drafts: {
+				sequenceId: string | null;
+				sequenceStep: number | null;
+				status: EmailDraftStatus;
+			}[];
+			externalInboxId: string;
+		},
+	) {
+		const prospect = await tx.prospect.findUnique({
+			where: { id: input.prospectId },
+			select: {
+				id: true,
+				status: true,
+				routeStatus: true,
+				enrichmentStatus: true,
+				countryCode: true,
+				website: true,
+				namedPerson: true,
+				role: true,
+				personSourceUrl: true,
+				routeEmail: true,
+				emailAllowed: true,
+				companyId: true,
+				contactId: true,
+				draftSubject: true,
+				draftBody: true,
+				lastResearchedAt: true,
+				nextResearchAt: true,
+				evidence: {
+					select: {
+						receiptId: true,
+						sourceType: true,
+						url: true,
+						signalDate: true,
+						observed: true,
+					},
+				},
+			},
+		});
+		if (!prospect) throw new NotFoundException("Prospect not found.");
+		const recipient = prospect.routeEmail?.trim().toLowerCase() ?? null;
+		const domain = recipient ? emailDomain(recipient) : null;
+		const [queued, suppressedContact, suppressedDomain, inbox] =
+			await Promise.all([
+				tx.agentTask.findFirst({
+					where: {
+						prospectId: input.prospectId,
+						kind: "prospect-research",
+						finishedAt: null,
+					},
+					select: { id: true },
+				}),
+				recipient
+					? tx.suppressedContact.findUnique({ where: { email: recipient } })
+					: null,
+				domain ? tx.suppressedDomain.findUnique({ where: { domain } }) : null,
+				tx.emailInbox.findFirst({
+					where: {
+						provider: "AGENTMAIL",
+						externalInboxId: input.externalInboxId,
+						isEnabled: true,
+					},
+					select: { id: true },
+				}),
+			]);
+		const sendingPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false" ||
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
+		const readiness = buildProspectReadiness(
+			{
+				...prospect,
+				queued: queued !== null,
+				emailDrafts: input.drafts,
+			},
+			{
+				sendingPaused,
+				agentMailReady: inbox !== null,
+				routeSuppressed: Boolean(suppressedContact || suppressedDomain),
+			},
+		);
+		if (!readiness.sendEligible || !recipient || !inbox) {
+			const gaps = readiness.gaps.map((gap) => gap.label).join(", ");
+			throw new BadRequestException(
+				`Sequence approval is blocked by current gates: ${gaps || readiness.summary}.`,
+			);
+		}
+		return { readiness, recipient, inboxId: inbox.id };
+	}
+
+	private assertSequenceSchedule(
+		drafts: Array<{
+			sequenceStep: number | null;
+			scheduledFor: Date | null;
+		}>,
+		now: Date,
+	): void {
+		const ordered = [...drafts].sort(
+			(left, right) => (left.sequenceStep ?? 0) - (right.sequenceStep ?? 0),
+		);
+		if (
+			ordered.length !== 3 ||
+			ordered.some((draft, index) => draft.sequenceStep !== index + 1)
+		) {
+			throw new BadRequestException("Sequence steps must be 1, 2 and 3.");
+		}
+		let previous = 0;
+		for (const draft of ordered) {
+			const scheduledAt = draft.scheduledFor?.getTime();
+			if (!scheduledAt) {
+				throw new BadRequestException(
+					"Every sequence step needs a proposed send time.",
+				);
+			}
+			if (scheduledAt < now.getTime() - SCHEDULE_GRACE_MS) {
+				throw new BadRequestException(
+					"Sequence send proposals cannot be scheduled in the past.",
+				);
+			}
+			if (previous > 0 && scheduledAt <= previous) {
+				throw new BadRequestException(
+					"Sequence send proposals must be in step order.",
+				);
+			}
+			previous = scheduledAt;
+		}
+	}
+
+	private async createApprovedSequenceApproval(
+		tx: Prisma.TransactionClient,
+		input: {
+			prospectId: string;
+			sequenceId: string;
+			userId: string;
+			now: Date;
+			drafts: {
+				id: string;
+				sequenceStep: number | null;
+				variant: OutreachVariant | null;
+				experimentKey: string | null;
+				recipients: Prisma.JsonValue;
+				subject: string;
+				plainTextBody: string;
+				scheduledFor: Date | null;
+			}[];
+			readinessSummary: string;
+			clientRequestId: string;
+		},
+	) {
+		const expiresAt = new Date(input.now.getTime() + OUTREACH_APPROVAL_TTL_MS);
+		const contentSnapshot = {
+			kind: "outreach-sequence",
+			sequenceId: input.sequenceId,
+			prospectId: input.prospectId,
+			readinessSummary: input.readinessSummary,
+			steps: input.drafts.map((draft) => ({
+				id: draft.id,
+				step: draft.sequenceStep,
+				variant: draft.variant,
+				experimentKey: draft.experimentKey,
+				recipients: draft.recipients,
+				subject: draft.subject,
+				plainTextBody: draft.plainTextBody,
+				scheduledFor: draft.scheduledFor?.toISOString() ?? null,
+			})),
+		};
+		const contentDigest = approvalContentDigest({
+			action: OUTREACH_SEQUENCE_APPROVAL_ACTION,
+			contentSnapshot,
+			targetType: "PROSPECT",
+			targetId: input.prospectId,
+			risk: "MEDIUM",
+			policyVersion: OUTREACH_POLICY_VERSION,
+			expiresAt,
+			invalidationVersion: 0,
+		});
+		const approval = await tx.approvalRequest.create({
+			data: {
+				action: OUTREACH_SEQUENCE_APPROVAL_ACTION,
+				contentDigest,
+				contentSnapshot: contentSnapshot as Prisma.InputJsonValue,
+				targetType: "PROSPECT",
+				targetId: input.prospectId,
+				targetLabel: `Outreach sequence ${input.sequenceId}`,
+				risk: "MEDIUM",
+				policyVersion: OUTREACH_POLICY_VERSION,
+				requestorId: input.userId,
+				approverId: input.userId,
+				expiresAt,
+				status: "APPROVED",
+				decidedAt: input.now,
+				version: 1,
+				idempotencyKey: `outreach-approval:${input.sequenceId}:${contentDigest}`,
+			},
+			select: { id: true, contentDigest: true, version: true },
+		});
+		const receipt = await tx.actionReceipt.create({
+			data: {
+				idempotencyKey: `outreach-approval-receipt:${input.clientRequestId}`,
+				requestHash: contentDigest,
+				provider: OUTREACH_PROVIDER,
+				channel: OUTREACH_CHANNEL,
+				operationKey: "outreach.sequence.approval-receipt",
+				status: "SUCCEEDED",
+				approvalRequestId: approval.id,
+				completedAt: input.now,
+				result: {
+					sequenceId: input.sequenceId,
+					approved: input.drafts.length,
+					approvalRequestId: approval.id,
+					contentDigest,
+				},
+			},
+			select: { id: true },
+		});
+		return {
+			id: approval.id,
+			contentDigest: approval.contentDigest,
+			version: approval.version,
+			receipt: {
+				id: receipt.id,
+				status: "SUCCEEDED" as const,
+				operationKey: "outreach.sequence.approval-receipt",
+			},
+		};
 	}
 
 	async performance() {

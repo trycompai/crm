@@ -24,7 +24,7 @@ import { Input } from "@crm/ui/components/input";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	PROSPECT_COUNTRY_LABELS,
@@ -59,6 +59,14 @@ import { useOpenRecord, useRecordSheetView } from "./record-stack";
 type Prospect = RouterOutputs["prospects"]["byId"];
 type ProspectEvidence = Prospect["evidence"][number];
 type OutreachDraft = RouterOutputs["outreach"]["byProspect"]["drafts"][number];
+type OutreachGovernance = Pick<
+	RouterOutputs["outreach"]["byProspect"],
+	"approvals" | "work"
+>;
+type ClientRequestIntent = {
+	fingerprint: string;
+	clientRequestId: string;
+};
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
 	month: "short",
@@ -70,6 +78,40 @@ function formattedDate(value: string | null): string | null {
 	if (!value) return null;
 	const date = new Date(value);
 	return Number.isNaN(date.getTime()) ? null : dateFormat.format(date);
+}
+
+function dateTimeLocal(value: string | null | undefined) {
+	if (!value) return "";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+	return local.toISOString().slice(0, 16);
+}
+
+function isoFromDateTimeLocal(value: string) {
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function useClientRequestIntent() {
+	const intent = useRef<ClientRequestIntent | null>(null);
+	return {
+		build<T extends Record<string, unknown>>(operation: string, input: T) {
+			const fingerprint = JSON.stringify([operation, input]);
+			if (intent.current?.fingerprint === fingerprint) {
+				return { ...input, clientRequestId: intent.current.clientRequestId };
+			}
+			const next = {
+				fingerprint,
+				clientRequestId: crypto.randomUUID(),
+			};
+			intent.current = next;
+			return { ...input, clientRequestId: next.clientRequestId };
+		},
+		clear() {
+			intent.current = null;
+		},
+	};
 }
 
 function Value({ children }: { children: string | null }) {
@@ -596,14 +638,19 @@ function DraftEditor({
 	onSaved: () => Promise<void>;
 }) {
 	const trpc = useTRPC();
+	const intent = useClientRequestIntent();
 	const [subject, setSubject] = useState(draft.subject);
 	const [plainTextBody, setPlainTextBody] = useState(draft.plainTextBody);
+	const [scheduledFor, setScheduledFor] = useState(
+		dateTimeLocal(draft.scheduledFor),
+	);
 	const editable = ["DRAFT", "PENDING_APPROVAL", "REJECTED"].includes(
 		draft.status,
 	);
 	const update = useMutation(
 		trpc.outreach.update.mutationOptions({
 			onSuccess: async () => {
+				intent.clear();
 				await onSaved();
 				toast.success(`Step ${draft.sequenceStep} saved for review.`);
 			},
@@ -642,6 +689,13 @@ function DraftEditor({
 					className="min-h-36"
 					onChange={(event) => setPlainTextBody(event.target.value)}
 				/>
+				<Input
+					aria-label={`Step ${draft.sequenceStep} proposed send time`}
+					type="datetime-local"
+					value={scheduledFor}
+					disabled={!editable}
+					onChange={(event) => setScheduledFor(event.target.value)}
+				/>
 				<div className="flex flex-wrap gap-2">
 					{editable ? (
 						<Button
@@ -651,16 +705,27 @@ function DraftEditor({
 								update.isPending ||
 								!subject.trim() ||
 								!plainTextBody.trim() ||
+								!scheduledFor ||
 								(subject === draft.subject &&
-									plainTextBody === draft.plainTextBody)
+									plainTextBody === draft.plainTextBody &&
+									scheduledFor === dateTimeLocal(draft.scheduledFor))
 							}
-							onClick={() =>
-								update.mutate({
-									draftId: draft.id,
-									subject,
-									plainTextBody,
-								})
-							}
+							onClick={() => {
+								const proposedSchedule = isoFromDateTimeLocal(scheduledFor);
+								if (!proposedSchedule) {
+									toast.error("Choose a valid proposed send time.");
+									return;
+								}
+								update.mutate(
+									intent.build("outreach.draft.update", {
+										draftId: draft.id,
+										subject,
+										plainTextBody,
+										scheduledFor: proposedSchedule,
+										expectedUpdatedAt: draft.updatedAt,
+									}),
+								);
+							}}
 						>
 							<Icon icon={Save} />
 							{update.isPending ? "Saving" : "Save edit"}
@@ -689,10 +754,50 @@ function DraftEditor({
 	);
 }
 
+function GovernanceReceipts({
+	governance,
+}: {
+	governance: OutreachGovernance;
+}) {
+	const latestApproval = governance.approvals[0] ?? null;
+	const latestReceipt = latestApproval?.actionReceipts[0] ?? null;
+	if (!governance.work && !latestApproval) return null;
+	return (
+		<DetailSheetSection title="Governance receipts">
+			<DetailSheetProperties>
+				<DetailSheetProperty label="Work">
+					{governance.work
+						? `${governance.work.state.toLowerCase()} · ${governance.work.primaryAction}`
+						: "No active outreach work"}
+				</DetailSheetProperty>
+				<DetailSheetProperty label="Approval">
+					{latestApproval
+						? `${latestApproval.status.toLowerCase()} · ${latestApproval.contentDigest.slice(0, 12)}`
+						: "No approval request recorded"}
+				</DetailSheetProperty>
+				<DetailSheetProperty label="Receipt">
+					{latestReceipt
+						? `${latestReceipt.status.toLowerCase()} · ${latestReceipt.id}`
+						: "No action receipt recorded"}
+				</DetailSheetProperty>
+				<DetailSheetProperty label="Updated">
+					{formattedDate(
+						latestReceipt?.completedAt ??
+							latestApproval?.updatedAt ??
+							governance.work?.updatedAt ??
+							null,
+					)}
+				</DetailSheetProperty>
+			</DetailSheetProperties>
+		</DetailSheetSection>
+	);
+}
+
 function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const queryClient = useQueryClient();
+	const intent = useClientRequestIntent();
 	const query = useQuery({
 		...trpc.outreach.byProspect.queryOptions({ prospectId: prospect.id }),
 		refetchInterval: (result) =>
@@ -714,6 +819,7 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const permission = useMutation(
 		trpc.outreach.setPermission.mutationOptions({
 			onSuccess: async (result) => {
+				intent.clear();
 				await refresh();
 				toast.success(
 					result.allowed
@@ -727,6 +833,7 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const prepare = useMutation(
 		trpc.outreach.prepare.mutationOptions({
 			onSuccess: async () => {
+				intent.clear();
 				await refresh();
 				toast.success("The agent is preparing three review-only emails.");
 			},
@@ -736,9 +843,10 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const approve = useMutation(
 		trpc.outreach.approveSequence.mutationOptions({
 			onSuccess: async () => {
+				intent.clear();
 				await refresh();
 				toast.success(
-					"Sequence approved. Step one is queued now; follow-ups are scheduled.",
+					"Sequence proposal approved. Provider execution remains disabled.",
 				);
 			},
 			onError: (error) => toast.error(error.message),
@@ -747,6 +855,7 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const reject = useMutation(
 		trpc.outreach.rejectSequence.mutationOptions({
 			onSuccess: async () => {
+				intent.clear();
 				await refresh();
 				toast.success("Sequence stopped.");
 			},
@@ -756,6 +865,7 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	const remove = useMutation(
 		trpc.outreach.deleteSequence.mutationOptions({
 			onSuccess: async () => {
+				intent.clear();
 				await refresh();
 				toast.success("Email proposals deleted.");
 			},
@@ -841,8 +951,10 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 						}
 						onClick={() =>
 							permission.mutate({
-								prospectId: prospect.id,
-								allowed: !prospect.emailAllowed,
+								...intent.build("outreach.permission", {
+									prospectId: prospect.id,
+									allowed: !prospect.emailAllowed,
+								}),
 							})
 						}
 					>
@@ -883,7 +995,13 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 							query.data?.queued ||
 							!prospect.readiness.actions.canPrepareSequence
 						}
-						onClick={() => prepare.mutate({ prospectId: prospect.id })}
+						onClick={() =>
+							prepare.mutate({
+								...intent.build("outreach.prepare", {
+									prospectId: prospect.id,
+								}),
+							})
+						}
 					>
 						{query.data?.queued
 							? "Preparing sequence"
@@ -892,6 +1010,12 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 				</DetailSheetSection>
 			) : (
 				<>
+					<GovernanceReceipts
+						governance={{
+							approvals: query.data?.approvals ?? [],
+							work: query.data?.work ?? null,
+						}}
+					/>
 					<DetailSheetSection
 						title="Sequence controls"
 						action={
@@ -904,8 +1028,9 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 						}
 					>
 						<DetailSheetProse>
-							Approving queues step one now and schedules steps two and three
-							for days 3 and 7. A matched reply stops every future step.
+							Approval records the reviewed sequence proposal and digest.
+							Provider sends and schedules remain disabled until every execution
+							gate is explicitly opened.
 						</DetailSheetProse>
 						{pendingSequence && !canApprove ? (
 							<DetailSheetProse>
@@ -917,16 +1042,30 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 							<Button
 								size="sm"
 								disabled={!canApprove || !sequenceId || approve.isPending}
-								onClick={() => sequenceId && approve.mutate({ sequenceId })}
+								onClick={() =>
+									sequenceId &&
+									approve.mutate({
+										...intent.build("outreach.sequence.approve", {
+											sequenceId,
+										}),
+									})
+								}
 							>
 								<Icon icon={Send} />
-								Approve & start
+								Approve proposal
 							</Button>
 							<Button
 								size="sm"
 								variant="outline"
 								disabled={!canStop || !sequenceId || reject.isPending}
-								onClick={() => sequenceId && reject.mutate({ sequenceId })}
+								onClick={() =>
+									sequenceId &&
+									reject.mutate({
+										...intent.build("outreach.sequence.reject", {
+											sequenceId,
+										}),
+									})
+								}
 							>
 								<Icon icon={StopOutline} />
 								Stop sequence
@@ -957,7 +1096,12 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 										<AlertDialogAction
 											variant="destructive"
 											onClick={() =>
-												sequenceId && remove.mutate({ sequenceId })
+												sequenceId &&
+												remove.mutate({
+													...intent.build("outreach.sequence.delete", {
+														sequenceId,
+													}),
+												})
 											}
 										>
 											Delete proposals

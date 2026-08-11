@@ -4,21 +4,38 @@ export const outreachProspectInput = z.object({
 	prospectId: z.string().cuid(),
 });
 
-export const outreachPermissionInput = outreachProspectInput.extend({
-	allowed: z.boolean(),
+const clientRequestInput = z.object({
+	clientRequestId: z.string().uuid(),
 });
 
-export const outreachDraftInput = z.object({ draftId: z.string().cuid() });
+export const outreachProspectMutationInput =
+	outreachProspectInput.merge(clientRequestInput);
 
-export const outreachSequenceInput = z.object({
-	sequenceId: z.string().uuid(),
-});
+export const outreachPermissionInput = outreachProspectInput
+	.merge(clientRequestInput)
+	.extend({
+		allowed: z.boolean(),
+	});
 
-export const outreachUpdateInput = z.object({
-	draftId: z.string().cuid(),
-	subject: z.string().trim().min(1).max(240),
-	plainTextBody: z.string().trim().min(1).max(12_000),
-});
+export const outreachDraftInput = z
+	.object({ draftId: z.string().cuid() })
+	.merge(clientRequestInput);
+
+export const outreachSequenceInput = z
+	.object({
+		sequenceId: z.string().uuid(),
+	})
+	.merge(clientRequestInput);
+
+export const outreachUpdateInput = z
+	.object({
+		draftId: z.string().cuid(),
+		subject: z.string().trim().min(1).max(240),
+		plainTextBody: z.string().trim().min(1).max(12_000),
+		scheduledFor: z.string().datetime(),
+		expectedUpdatedAt: z.string().datetime(),
+	})
+	.merge(clientRequestInput);
 
 export const leadDiscoveryInput = z.object({
 	count: z.number().int().min(5).max(100).default(25),

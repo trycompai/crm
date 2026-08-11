@@ -4,10 +4,12 @@ import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { ConflictException } from "@nestjs/common";
 import { ApprovalExecutionService } from "../src/operating-kernel/approval-execution.service";
+import { KernelIdempotencyService } from "../src/operating-kernel/kernel-idempotency.service";
 import {
 	subjectTypeInput,
 	subjectTypeValues,
 } from "../src/operating-kernel/operating-kernel.contracts";
+import { OperatingKernelAccessService } from "../src/operating-kernel/operating-kernel-access.service";
 import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
 import { SubjectResolverService } from "../src/operating-kernel/subject-resolver.service";
 import { OutreachService } from "../src/outreach/outreach.service";
@@ -53,6 +55,8 @@ const outreach = new OutreachService(
 	db,
 	{} as never,
 	new OperatingKernelCleanupService(),
+	new OperatingKernelAccessService(db),
+	new KernelIdempotencyService(),
 );
 
 beforeAll(async () => {
@@ -481,7 +485,7 @@ describe("operating kernel repair", () => {
 	});
 
 	it("cleans email-draft tasks and work before deleting an unsent draft", async () => {
-		await outreach.deleteDraft(draftId);
+		await outreach.deleteDraft(draftId, ownerId, crypto.randomUUID());
 		expect(
 			await db.agentTask.findUnique({
 				where: { id: emailDraftTaskId },
