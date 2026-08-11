@@ -17,7 +17,7 @@ import {
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import { slackConnectGuard } from "./slack-connect";
-import { storeSlackUserGrant } from "./slack-grant";
+import { rememberSlackInstall, replaceSlackConnection } from "./slack-grant";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import { queueSlackInventorySync } from "./slack-sync";
 import {
@@ -156,7 +156,7 @@ export const auth = betterAuth({
 											message: `Slack authorization failed (${reason}).`,
 										});
 									}
-									await storeSlackUserGrant(raw);
+									rememberSlackInstall(raw);
 
 									return {
 										accessToken,
@@ -231,10 +231,10 @@ export const auth = betterAuth({
 	databaseHooks: {
 		account: {
 			create: {
-				after: pruneOtherSlackAccounts,
+				after: replaceSlackAccount,
 			},
 			update: {
-				after: pruneOtherSlackAccounts,
+				after: replaceSlackAccount,
 			},
 		},
 
@@ -289,14 +289,13 @@ export type Auth = typeof auth;
 export type Session = typeof auth.$Infer.Session;
 export type SessionUser = Session["user"];
 
-async function pruneOtherSlackAccounts(account: {
+async function replaceSlackAccount(account: {
 	id: string;
+	accountId: string;
 	providerId: string;
 }): Promise<void> {
 	if (account.providerId !== SLACK_PROVIDER_ID) return;
-	await db.account.deleteMany({
-		where: { providerId: SLACK_PROVIDER_ID, id: { not: account.id } },
-	});
+	await replaceSlackConnection(account);
 	await queueSlackInventorySync();
 }
 

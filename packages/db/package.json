@@ -20,6 +20,7 @@
 		"./idempotency": "./src/idempotency.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
+		"./slack-inventory": "./src/slack-inventory.ts",
 		"./workspace": "./src/workspace.ts"
 	},
 	"scripts": {

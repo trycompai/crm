@@ -44,7 +44,6 @@ export {
 	signsInWithMicrosoft,
 } from "./scopes";
 export { onSignedIn, type SignedInHandler } from "./signed-in";
-export { clearSlackUserGrant, storeSlackUserGrant } from "./slack-grant";
 export {
 	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,

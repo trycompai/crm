@@ -42,7 +42,7 @@ export const SLACK_SCOPES: readonly SlackScope[] = [
 		scope: "groups:history",
 		group: "read",
 		grant: "Read messages in private channels it has been added to",
-		sensitive: true,
+		sensitive: false,
 	},
 	{
 		scope: "chat:write",
