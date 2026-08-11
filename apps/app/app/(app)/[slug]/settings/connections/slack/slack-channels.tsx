@@ -2,6 +2,7 @@
 
 import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Locked from "@carbon/icons-react/es/Locked";
+import Search from "@carbon/icons-react/es/Search";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -17,6 +18,11 @@ import {
 } from "@crm/ui/components/async-action";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@crm/ui/components/input-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,6 +42,7 @@ const INVITE_COMMAND = "/invite @Comp AI";
 export function SlackChannels() {
 	const trpc = useTRPC();
 	const [asking, setAsking] = useState<Channel | null>(null);
+	const [query, setQuery] = useState("");
 	const channels = useQuery(trpc.slack.channels.queryOptions());
 	const join = useMutation(
 		trpc.slack.joinChannel.mutationOptions({
@@ -44,10 +51,10 @@ export function SlackChannels() {
 				setAsking(null);
 				toast.success(
 					result.alreadyJoined
-						? "Comp AI is already in that channel."
+						? "Comp AI is already in there."
 						: result.queued
-							? "Comp AI is joining that channel."
-							: "Ask a member to invite Comp AI.",
+							? "Comp AI is joining."
+							: "Ask someone inside to invite Comp AI.",
 				);
 			},
 			onError: (error) => toast.error(error.message),
@@ -59,6 +66,10 @@ export function SlackChannels() {
 
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;
+	const needle = query.trim().toLowerCase();
+	const shown = needle
+		? rows.filter((channel) => channel.name.toLowerCase().includes(needle))
+		: rows;
 
 	if (rows.length === 0) return null;
 
@@ -67,13 +78,28 @@ export function SlackChannels() {
 			<div>
 				<h2 className="font-medium text-sm">Channels Comp AI can reach</h2>
 				<p className="text-muted-foreground text-xs">
-					An agent posts only where its automation says. This is the list it can
-					choose from.
+					Agents pick from this list.
 				</p>
 			</div>
 
+			<InputGroup>
+				<InputGroupAddon>
+					<Icon icon={Search} motion="none" className="size-4" />
+				</InputGroupAddon>
+				<InputGroupInput
+					onChange={(event) => setQuery(event.target.value)}
+					placeholder={`Search ${rows.length} channels`}
+					value={query}
+				/>
+			</InputGroup>
+
 			<div className="flex flex-col divide-y rounded-lg border">
-				{rows.map((channel) => (
+				{shown.length === 0 ? (
+					<p className="px-4 py-4 text-muted-foreground text-sm">
+						No channel matches “{query}”.
+					</p>
+				) : null}
+				{shown.map((channel) => (
 					<ChannelRow
 						channel={channel}
 						canInviteItself={canInviteItself}
@@ -162,13 +188,13 @@ function describe(channel: Channel, canInviteItself: boolean): string {
 	const people =
 		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
 
-	if (channel.isMember) return `Comp AI is a member${people}`;
-	if (!channel.isPrivate) return `Comp AI can join this channel${people}`;
-	if (canInviteItself) return `Private. Comp AI joins on your behalf${people}`;
+	if (channel.isMember) return `Comp AI is in${people}`;
+	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
+	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
 	if (channel.inviteRequestedAt) {
-		return `Private. Waiting for a member to invite Comp AI${people}`;
+		return `Private. Waiting on an invite${people}`;
 	}
-	return `Private. A member has to invite Comp AI${people}`;
+	return `Private. Someone inside has to invite Comp AI${people}`;
 }
 
 function AskDialog({
@@ -197,8 +223,8 @@ function AskDialog({
 					</AlertDialogTitle>
 					<AlertDialogDescription>
 						{canInviteItself
-							? `#${channel.name} is private. Comp AI is added on your behalf, the same as if you typed the invite yourself. Everyone in the channel sees that it joined. It reads nothing until you switch a permission on.`
-							: `The CRM cannot add itself to a private channel without the workspace grant. Someone already in #${channel.name} has to run this command there.`}
+							? `It is a private channel, so Comp AI joins as you. Same as typing the invite yourself. Everyone in the channel sees it join. It reads nothing until you turn a permission on.`
+							: `We cannot add Comp AI to a private channel yet. Someone already in #${channel.name} has to run this.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 

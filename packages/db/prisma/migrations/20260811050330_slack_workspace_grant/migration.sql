@@ -1,7 +1,9 @@
-ALTER TABLE "slackChannel" ADD COLUMN "isPrivate" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "slackChannel" ADD COLUMN "isMember" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "slackChannel" ADD COLUMN "inviteRequestedAt" TIMESTAMP(3);
+-- AlterTable
+ALTER TABLE "slackChannel" ADD COLUMN     "inviteRequestedAt" TIMESTAMP(3),
+ADD COLUMN     "isMember" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "isPrivate" BOOLEAN NOT NULL DEFAULT false;
 
+-- CreateTable
 CREATE TABLE "slackWorkspaceGrant" (
     "id" TEXT NOT NULL,
     "teamId" TEXT NOT NULL,
@@ -14,4 +16,5 @@ CREATE TABLE "slackWorkspaceGrant" (
     CONSTRAINT "slackWorkspaceGrant_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateIndex
 CREATE UNIQUE INDEX "slackWorkspaceGrant_teamId_key" ON "slackWorkspaceGrant"("teamId");

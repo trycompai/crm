@@ -5,7 +5,6 @@ import {
 	SLACK_USER_GRANT,
 	type SlackScope,
 	slackScopeDrift,
-	summariseSlackScopes,
 } from "@crm/auth";
 import {
 	Alert,
@@ -25,6 +24,7 @@ import { ConnectionPage } from "../connection-page";
 import { SlackChannels } from "./slack-channels";
 import { SlackConnectButton } from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
+import { SlackScopeGroups } from "./slack-scope-groups";
 
 const PRIVATE_CHANNEL_SCOPES = [
 	"groups:read",
@@ -91,7 +91,7 @@ async function SlackConnectionPageContent({
 					time.
 				</p>
 			</header>
-			<ScopeGroups
+			<SlackScopeGroups
 				title="What you are handing over"
 				scopes={[...SLACK_REQUESTED_SCOPES]}
 			/>
@@ -180,12 +180,12 @@ function ConnectedSlack({
 					/>
 				</div>
 				<p className="text-muted-foreground text-sm">
-					This workspace granted the permissions below. Deployed agents can post
-					only to the destination approved in their automation.
+					Here is what Slack gave us. Agents only post where their automation
+					says.
 				</p>
 			</header>
 			<MissingGrant missing={missing} slug={slug} />
-			<ScopeGroups
+			<SlackScopeGroups
 				title="What this workspace granted"
 				scopes={status.scopes}
 				withheld={missing}
@@ -196,10 +196,12 @@ function ConnectedSlack({
 					<div>
 						<h2 className="font-medium text-sm">Agents that use Slack</h2>
 						<p className="text-muted-foreground text-xs">
-							Built in chat, not here. Open one to change what it sends or
-							where.
+							Built in chat, not here. Open one to change it.
 						</p>
 					</div>
+					<Button asChild size="sm">
+						<Link href={`/${slug}/chat`}>New agent</Link>
+					</Button>
 				</div>
 				<div className="flex flex-col divide-y rounded-lg border">
 					{agents.length === 0 ? (
@@ -258,75 +260,6 @@ function ConnectedSlack({
 	);
 }
 
-function ScopeGroups({
-	title,
-	scopes,
-	withheld = [],
-}: {
-	title: string;
-	scopes: string[];
-	withheld?: SlackScope[];
-}) {
-	const groups = summariseSlackScopes(scopes);
-
-	return (
-		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<div>
-				<h2 className="font-medium text-sm">{title}</h2>
-				<p className="text-muted-foreground text-xs">
-					A broad permission reaches the whole workspace, not one channel.
-				</p>
-			</div>
-
-			<div className="flex flex-col divide-y rounded-lg border px-4">
-				{groups.map((group) => (
-					<ScopeRow
-						detail={`${group.broad} broad of ${group.total}`}
-						key={group.id}
-						label={group.label}
-						summary={group.summary}
-					/>
-				))}
-				{withheld.map((entry) => (
-					<ScopeRow
-						detail="Not granted"
-						key={entry.scope}
-						label={entry.grant}
-						muted
-						summary="This capability is off until the workspace grants it."
-					/>
-				))}
-			</div>
-		</section>
-	);
-}
-
-function ScopeRow({
-	detail,
-	label,
-	muted = false,
-	summary,
-}: {
-	detail: string;
-	label: string;
-	muted?: boolean;
-	summary: string;
-}) {
-	return (
-		<div className="flex items-start gap-3 py-3.5">
-			<div className="min-w-0 flex-1">
-				<p
-					className={`font-medium text-sm ${muted ? "text-muted-foreground" : ""}`}
-				>
-					{label}
-				</p>
-				<p className="text-muted-foreground text-xs">{summary}</p>
-			</div>
-			<span className="shrink-0 text-muted-foreground text-xs">{detail}</span>
-		</div>
-	);
-}
-
 function MissingGrant({
 	slug,
 	missing,
@@ -347,13 +280,10 @@ function MissingGrant({
 				<AlertTitle>
 					{privateChannels
 						? "Comp AI cannot reach private channels"
-						: `Slack withheld ${missing.length} permission${missing.length === 1 ? "" : "s"}`}
+						: `Slack held back ${missing.length} permission${missing.length === 1 ? "" : "s"}`}
 				</AlertTitle>
 				<AlertDescription>
-					<span>
-						Reconnecting asks for them again. Nothing you already approved is
-						lost.
-					</span>
+					<span>Reconnect to ask again. You lose nothing.</span>
 					<ul className="mt-2 flex flex-col gap-1.5">
 						{missing.map((entry) => (
 							<li className="flex items-start gap-2" key={entry.scope}>
