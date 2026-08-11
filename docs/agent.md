@@ -93,7 +93,9 @@ task row; exists because the API may not call Context.
 
 Sign-in sweep covers records never looked up (10 credits/company);
 `ImageMirrorService` in the same sweep re-hosts off-site pictures (free);
-`backfill:images` fixes enriched records missing only pictures (free).
+`backfill:images` fixes enriched records missing only pictures (free);
+`backfill:facts` applies the suggestions that predate the empty-field rule below
+(free, `--dry` to read it first).
 
 - **The image sweep keeps "every picture is ours" true**, not true-since-Tuesday.
   25 rows/table/sweep.
@@ -117,7 +119,17 @@ wrong in the direction that looks useful.
 - **`lib/facts.ts` is the only write path to a contact's fields.** Applies at
   `VERIFIED`, proposes below it, and enforces three things a prompt cannot: never
   overwrite a human, never re-offer a dismissal, never write without a primary source.
-- **Bands are behaviour.** `PROBABLE` means *a rep decides* — a correct outcome.
+- **A band decides only when there is something to lose.** An empty field is filled by
+  whatever cleared the floor for keeping, whatever the band — approving a sourced guess
+  into a blank is a click that can only say yes, and a rep with four hundred contacts
+  reads none of them. `fillsBlank` is the whole rule: no human value in the way and
+  nothing already found. **`PROBABLE` still means *a rep decides* when the field is
+  already filled**, which is the case where a wrong answer costs something.
+- **Applying settles the field's other suggestions.** They were all offers to fill the
+  same blank, and the sheet shows one at a time — so left alone, accepting one reveals
+  the next, forever. The same rule holds when a rep accepts one (`decideFact`).
+- **The same value is never offered twice.** A second `PROPOSED` row with a value
+  already waiting is refused at the write path, not deduplicated on read.
 - **A new fact field goes in `FIELDS` (`lib/facts.ts`) *and* `FACT_COLUMNS`**
   (`apps/api/src/contacts/contacts.service.ts`).
 

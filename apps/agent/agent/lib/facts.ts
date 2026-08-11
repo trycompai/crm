@@ -20,6 +20,27 @@ export type FactField = keyof typeof FIELDS;
 
 export const FACT_FIELDS = Object.keys(FIELDS) as FactField[];
 
+export type FactSubject = {
+	email: string | null;
+	firstName: string;
+	lastName: string | null;
+} & Record<string, unknown>;
+
+export function columnFor(field: FactField): string | null {
+	return FIELDS[field].column;
+}
+
+export function fillsBlank(input: {
+	field: FactField;
+	contact: FactSubject;
+	hasAgentFact: boolean;
+}): boolean {
+	const column = FIELDS[input.field].column;
+	if (humanOwns({ ...input, column })) return false;
+
+	return isEmpty({ ...input, column });
+}
+
 export type RecordFactInput = {
 	contactId: string;
 	field: FactField;
@@ -121,6 +142,21 @@ export async function recordFact(
 		};
 	}
 
+	if (
+		existing.some(
+			(fact) =>
+				fact.status === FactStatus.PROPOSED && sameValue(fact.value, trimmed),
+		)
+	) {
+		return {
+			...base,
+			stored: false,
+			applied: false,
+			reason:
+				"This exact value is already in front of a rep, waiting on them. Offering it twice only makes them read it twice.",
+		};
+	}
+
 	const column = FIELDS[field].column;
 
 	if (
@@ -134,13 +170,20 @@ export async function recordFact(
 		};
 	}
 
-	const applies = scored.band === FactBand.VERIFIED;
+	const applies =
+		scored.band === FactBand.VERIFIED ||
+		isEmpty({ field, column, contact, hasAgentFact: Boolean(currentApplied) });
+
 	const sessionId = currentFocus().sessionId;
 
 	await db.$transaction(async (tx) => {
-		if (applies && currentApplied) {
-			await tx.contactFact.update({
-				where: { id: currentApplied.id },
+		if (applies) {
+			await tx.contactFact.updateMany({
+				where: {
+					contactId,
+					field,
+					status: { in: [FactStatus.APPLIED, FactStatus.PROPOSED] },
+				},
 				data: { status: FactStatus.SUPERSEDED, supersededAt: new Date() },
 			});
 		}
@@ -186,7 +229,7 @@ export async function recordFact(
 		applied: applies,
 		reason: applies
 			? undefined
-			: "Kept as a proposal for a rep to accept or dismiss. This is a normal outcome, not a failure — do not try to raise the score.",
+			: "The record already carries a value here, and only VERIFIED evidence may replace one, so this is kept as a proposal for a rep to accept or dismiss. This is a normal outcome, not a failure — do not try to raise the score.",
 	};
 }
 
@@ -282,6 +325,24 @@ function humanOwns({
 	if (!column || hasAgentFact) return false;
 
 	return Boolean(contact[column]);
+}
+
+function isEmpty({
+	field,
+	column,
+	contact,
+	hasAgentFact,
+}: {
+	field: FactField;
+	column: string | null;
+	contact: Record<string, unknown>;
+	hasAgentFact: boolean;
+}): boolean {
+	if (hasAgentFact) return false;
+	if (field === "name") return true;
+	if (!column) return true;
+
+	return !contact[column];
 }
 
 function sameValue(a: string, b: string): boolean {

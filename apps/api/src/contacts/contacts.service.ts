@@ -623,7 +623,8 @@ export class ContactsService {
 					where: {
 						contactId: fact.contactId,
 						field: fact.field,
-						status: FactStatus.APPLIED,
+						id: { not: fact.id },
+						status: { in: [FactStatus.APPLIED, FactStatus.PROPOSED] },
 					},
 					data: { status: FactStatus.SUPERSEDED, supersededAt: new Date() },
 				});
