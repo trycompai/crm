@@ -7,6 +7,12 @@ import {
 	type SlackScope,
 	slackScopeDrift,
 } from "@crm/auth";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@crm/ui/components/alert";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
@@ -18,6 +24,8 @@ import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { ConnectionPage } from "../connection-page";
 import { SlackConnectButton } from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
+
+const PRIVATE_CHANNEL_SCOPES = ["groups:read", "groups:history"];
 
 const never = [
 	"Send anything at all until you build an automation and switch it on",
@@ -148,6 +156,7 @@ function ConnectedSlack({
 	};
 }) {
 	const agents = status.agents;
+	const drift = slackScopeDrift(status.scopes);
 	return (
 		<ConnectionPage>
 			<header className="flex flex-col gap-2 px-(--spacing-block-inline)">
@@ -166,11 +175,12 @@ function ConnectedSlack({
 					only to the destination approved in their automation.
 				</p>
 			</header>
+			<MissingGrant missing={drift.missing} slug={slug} />
 			<ScopeList
 				title="What this workspace granted"
 				scopes={describeSlackScopes(status.scopes)}
+				withheld={drift.missing}
 			/>
-			<ScopeDrift scopes={status.scopes} />
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
 				<div className="flex items-end justify-between gap-4">
 					<div>
@@ -238,17 +248,54 @@ function ConnectedSlack({
 	);
 }
 
-function ScopeList({ title, scopes }: { title: string; scopes: SlackScope[] }) {
-	const broad = scopes.filter((entry) => entry.sensitive);
+const SCOPE_KEY = [
+	{
+		icon: Checkmark,
+		tone: "text-success",
+		label: "Granted, one channel at a time",
+	},
+	{
+		icon: Warning,
+		tone: "text-warning",
+		label: "Granted, reaches the whole workspace",
+	},
+	{
+		icon: Close,
+		tone: "text-muted-foreground",
+		label: "Withheld, capability off",
+	},
+];
+
+function ScopeKey() {
+	return (
+		<div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md bg-muted px-3 py-2.5">
+			{SCOPE_KEY.map((entry) => (
+				<div className="flex items-center gap-2" key={entry.label}>
+					<Icon
+						icon={entry.icon}
+						motion="none"
+						className={`size-4 shrink-0 ${entry.tone}`}
+					/>
+					<span className="text-xs">{entry.label}</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function ScopeList({
+	title,
+	scopes,
+	withheld = [],
+}: {
+	title: string;
+	scopes: SlackScope[];
+	withheld?: SlackScope[];
+}) {
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<div>
-				<h2 className="font-medium text-sm">{title}</h2>
-				<p className="text-muted-foreground text-xs">
-					{broad.length} of these {scopes.length} reach further than one
-					channel. Slack decides the final list, not the CRM.
-				</p>
-			</div>
+			<h2 className="font-medium text-sm">{title}</h2>
+			<ScopeKey />
 			<div className="flex flex-col gap-2">
 				{scopes.map((entry) => (
 					<div className="flex items-start gap-3 text-sm" key={entry.scope}>
@@ -260,45 +307,73 @@ function ScopeList({ title, scopes }: { title: string; scopes: SlackScope[] }) {
 						<span>{entry.grant}</span>
 					</div>
 				))}
+				{withheld.map((entry) => (
+					<div
+						className="flex items-start gap-3 text-muted-foreground text-sm"
+						key={entry.scope}
+					>
+						<Icon
+							icon={Close}
+							motion="none"
+							className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+						/>
+						<span>{entry.grant}</span>
+					</div>
+				))}
 			</div>
 		</section>
 	);
 }
 
-function ScopeDrift({ scopes }: { scopes: string[] }) {
-	const { extra, missing } = slackScopeDrift(scopes);
-	if (extra.length === 0 && missing.length === 0) return null;
+function MissingGrant({
+	slug,
+	missing,
+}: {
+	slug: string;
+	missing: SlackScope[];
+}) {
+	if (missing.length === 0) return null;
+
+	const privateChannels = missing.some((entry) =>
+		PRIVATE_CHANNEL_SCOPES.includes(entry.scope),
+	);
 
 	return (
-		<section className="flex flex-col gap-2 px-(--spacing-block-inline)">
-			<h2 className="font-medium text-sm">
-				Slack did not grant exactly what the CRM asked for
-			</h2>
-			{extra.length > 0 ? (
-				<p className="text-muted-foreground text-sm">
-					Your Slack app adds {extra.length} permission
-					{extra.length === 1 ? "" : "s"} the CRM never requested. Remove them
-					in the Slack app settings and reconnect if you do not want them.
-				</p>
-			) : null}
-			{missing.length > 0 ? (
-				<div className="flex flex-col gap-2">
-					<p className="text-muted-foreground text-sm">
-						These were withheld, so the matching capability is off:
-					</p>
-					{missing.map((entry) => (
-						<div className="flex items-start gap-3 text-sm" key={entry.scope}>
-							<Icon
-								icon={Close}
-								motion="none"
-								className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-							/>
-							<span>{entry.grant}</span>
-						</div>
-					))}
-				</div>
-			) : null}
-		</section>
+		<div className="px-(--spacing-block-inline)">
+			<Alert>
+				<Icon icon={Warning} className="text-warning" />
+				<AlertTitle>
+					{privateChannels
+						? "Comp AI cannot reach private channels"
+						: `Slack withheld ${missing.length} permission${missing.length === 1 ? "" : "s"}`}
+				</AlertTitle>
+				<AlertDescription>
+					<span>
+						Reconnecting asks for them again. Nothing you already approved is
+						lost.
+					</span>
+					<ul className="mt-2 flex flex-col gap-1.5">
+						{missing.map((entry) => (
+							<li className="flex items-start gap-2" key={entry.scope}>
+								<Icon
+									icon={Close}
+									motion="none"
+									className="mt-0.5 size-3.5 shrink-0"
+								/>
+								<span>{entry.grant}</span>
+							</li>
+						))}
+					</ul>
+				</AlertDescription>
+				<AlertAction>
+					<Button asChild size="xs" variant="contrast">
+						<Link href={`/${slug}/settings/connections/slack?reconnect=1`}>
+							Reconnect
+						</Link>
+					</Button>
+				</AlertAction>
+			</Alert>
+		</div>
 	);
 }
 
