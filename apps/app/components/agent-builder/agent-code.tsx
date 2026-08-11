@@ -2,9 +2,13 @@
 
 import { Button } from "@crm/ui/components/button";
 import { SaveBar } from "@crm/ui/components/save-bar";
-import type { FileContents, FileOptions } from "@pierre/diffs";
+import {
+	type FileContents,
+	type FileOptions,
+	parseDiffFromFile,
+} from "@pierre/diffs";
 import { Editor, type EditorOptions } from "@pierre/diffs/edit";
-import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
+import { EditProvider, File, FileDiff, Virtualizer } from "@pierre/diffs/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +18,12 @@ const FILE_OPTIONS: FileOptions<undefined> = {
 	theme: { dark: "pierre-dark-soft", light: "pierre-light-soft" },
 	stickyHeader: true,
 };
+
+const DIFF_OPTIONS = {
+	theme: { dark: "pierre-dark-soft", light: "pierre-light-soft" },
+	diffStyle: "unified",
+	stickyHeader: true,
+} as const;
 
 const VIRTUALIZER_STYLE = {
 	maxHeight: "32rem",
@@ -36,6 +46,7 @@ export function AgentCode({
 
 	const [active, setActive] = useState<string | null>(null);
 	const [editing, setEditing] = useState(false);
+	const [showDiff, setShowDiff] = useState(false);
 	const [dirty, setDirty] = useState(false);
 	const draft = useRef(new Map<string, string>());
 	const editorRef = useRef<Editor<undefined> | null>(null);
@@ -84,6 +95,19 @@ export function AgentCode({
 		};
 	}, [file]);
 
+	const diff = useMemo(() => {
+		if (!file?.previousContent || !surface) return null;
+
+		return parseDiffFromFile(
+			{
+				name: file.path,
+				contents: file.previousContent,
+				cacheKey: `${file.path}:${file.revision - 1}`,
+			},
+			surface,
+		);
+	}, [file, surface]);
+
 	const discard = useCallback(() => {
 		draft.current.clear();
 		setDirty(false);
@@ -111,15 +135,29 @@ export function AgentCode({
 						</p>
 					</div>
 
-					{canManage ? (
-						<Button
-							onClick={() => setEditing((value) => !value)}
-							size="sm"
-							variant="outline"
-						>
-							{editing ? "Done" : "Edit"}
-						</Button>
-					) : null}
+					<div className="flex items-center gap-2">
+						{file?.previousContent ? (
+							<Button
+								onClick={() => setShowDiff((value) => !value)}
+								size="sm"
+								variant="outline"
+							>
+								{showDiff ? "Hide changes" : "Changes"}
+							</Button>
+						) : null}
+						{canManage ? (
+							<Button
+								onClick={() => {
+									setShowDiff(false);
+									setEditing((value) => !value);
+								}}
+								size="sm"
+								variant="outline"
+							>
+								{editing ? "Done" : "Edit"}
+							</Button>
+						) : null}
+					</div>
 				</div>
 
 				<div className="overflow-hidden rounded-lg border">
@@ -145,12 +183,16 @@ export function AgentCode({
 
 					{surface ? (
 						<Virtualizer style={VIRTUALIZER_STYLE}>
-							<File
-								edit={editing}
-								editorOptions={editorOptions}
-								file={surface}
-								options={FILE_OPTIONS}
-							/>
+							{showDiff && diff ? (
+								<FileDiff fileDiff={diff} options={DIFF_OPTIONS} />
+							) : (
+								<File
+									edit={editing}
+									editorOptions={editorOptions}
+									file={surface}
+									options={FILE_OPTIONS}
+								/>
+							)}
 						</Virtualizer>
 					) : null}
 				</div>

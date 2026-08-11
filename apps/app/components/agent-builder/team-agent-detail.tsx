@@ -25,6 +25,7 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
+import { SaveBarViewport } from "@crm/ui/components/save-bar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -546,14 +547,16 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-9">
-			<AgentCapabilities
-				agentId={agent.id}
-				canManage={agent.canManage}
-				capabilities={capabilities}
-			/>
-			<AgentCode agentId={agent.id} canManage={agent.canManage} />
-		</div>
+		<SaveBarViewport>
+			<div className="flex flex-col gap-9">
+				<AgentCapabilities
+					agentId={agent.id}
+					canManage={agent.canManage}
+					capabilities={capabilities}
+				/>
+				<AgentCode agentId={agent.id} canManage={agent.canManage} />
+			</div>
+		</SaveBarViewport>
 	);
 }
 

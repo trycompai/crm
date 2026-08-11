@@ -17,6 +17,8 @@ import type {
 	AgentUpdateInput,
 } from "./agents.contracts";
 
+const INSTRUCTIONS_PATH = "agent/instructions.md";
+
 @Injectable()
 export class AgentDefinitionsService {
 	constructor(
@@ -227,49 +229,90 @@ export class AgentDefinitionsService {
 					type: "agent.file.saved",
 					requestId: input.clientRequestId,
 				},
-				select: { id: true },
+				select: { versionId: true },
 			});
-			if (replay) return { saved: false };
+			if (replay) return { saved: false, versionId: replay.versionId };
 
 			if (!agent.currentVersionId) {
 				throw new BadRequestException("This agent has no deployed version.");
 			}
 
-			const current = await tx.agentBuilderArtifact.findFirst({
+			const current = await tx.agentVersion.findFirstOrThrow({
+				where: { id: agent.currentVersionId },
+				select: {
+					number: true,
+					status: true,
+					instructions: true,
+					manifest: true,
+					modelId: true,
+					modelContextWindowTokens: true,
+					sandboxPolicy: true,
+					validation: true,
+					sourceConversationId: true,
+					deployedAt: true,
+					approvedAt: true,
+				},
+			});
+
+			const file = await tx.agentBuilderArtifact.findFirst({
 				where: { versionId: agent.currentVersionId, path: input.path },
 				orderBy: { revision: "desc" },
 			});
-			if (!current) {
-				throw new NotFoundException(`No file at ${input.path}.`);
+			if (!file) throw new NotFoundException(`No file at ${input.path}.`);
+			if (file.content === input.content) {
+				return { saved: false, versionId: agent.currentVersionId };
 			}
-			if (current.content === input.content) return { saved: false };
 
-			await tx.agentBuilderArtifact.create({
+			const version = await tx.agentVersion.create({
 				data: {
-					versionId: agent.currentVersionId,
-					path: input.path,
-					language: current.language,
-					content: input.content,
-					previousContent: current.content,
-					revision: current.revision + 1,
-					status: "READY",
+					agentId: input.id,
+					number: current.number + 1,
+					status: current.status,
+					instructions:
+						input.path === INSTRUCTIONS_PATH
+							? input.content
+							: current.instructions,
+					manifest: current.manifest as Prisma.InputJsonValue,
+					modelId: current.modelId,
+					modelContextWindowTokens: current.modelContextWindowTokens,
+					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
+					validation: current.validation as Prisma.InputJsonValue,
+					sourceConversationId: current.sourceConversationId,
+					approvedAt: current.approvedAt,
+					deployedAt: current.deployedAt,
+					createdById: userId,
 				},
+				select: { id: true },
+			});
+
+			await carryArtifactsForward(tx, agent.currentVersionId, version.id);
+
+			await tx.agentBuilderArtifact.updateMany({
+				where: { versionId: version.id, path: input.path },
+				data: { previousContent: file.content, content: input.content },
+			});
+
+			await tx.agentDefinition.update({
+				where: { id: input.id },
+				data: { currentVersionId: version.id },
 			});
 
 			await tx.agentAuditEvent.create({
 				data: {
 					agentId: input.id,
-					versionId: agent.currentVersionId,
+					versionId: version.id,
 					actorUserId: userId,
 					actorType: "USER",
 					actorId: userId,
 					type: "agent.file.saved",
 					summary: `Edited ${input.path}`,
+					before: { path: input.path, bytes: file.content.length },
+					after: { path: input.path, bytes: input.content.length },
 					requestId: input.clientRequestId,
 				},
 			});
 
-			return { saved: true };
+			return { saved: true, versionId: version.id };
 		});
 	}
 
