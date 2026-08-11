@@ -6,7 +6,10 @@ import {
 	type DataTableColumn,
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
-import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	StatusIndicator,
+	type StatusTone,
+} from "@crm/ui/components/status-indicator";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -32,6 +35,20 @@ import { ProspectsBulkActions } from "./prospects-bulk-actions";
 import { prospectsSearchParams } from "./prospects-search-params";
 
 type ProspectRow = RouterOutputs["prospects"]["list"]["rows"][number];
+
+function readinessTone(state: string): StatusTone {
+	switch (state) {
+		case "send_eligible":
+			return "success";
+		case "execution_disabled":
+			return "info";
+		case "permission_needed":
+		case "sequence_needed":
+			return "warning";
+		default:
+			return "neutral";
+	}
+}
 
 function ProspectActionCell({ row }: { row: ProspectRow }) {
 	const openRecord = useOpenRecord();
@@ -158,6 +175,22 @@ const COLUMNS: DataTableColumn<ProspectRow>[] = [
 		cell: (row) => (
 			<span className="tabular-nums">
 				{row.evidenceCount} · {row.jobPostingCount} jobs
+			</span>
+		),
+	},
+	{
+		id: "readiness",
+		header: "Readiness",
+		width: "w-[18%]",
+		cell: (row) => (
+			<span className="flex min-w-0 flex-col gap-1">
+				<StatusIndicator
+					tone={readinessTone(row.readiness.state)}
+					label={`${row.readiness.passed}/${row.readiness.total} gates`}
+				/>
+				<span className="truncate text-muted-foreground text-xs">
+					{row.readiness.gaps[0]?.label ?? row.readiness.summary}
+				</span>
 			</span>
 		),
 	},

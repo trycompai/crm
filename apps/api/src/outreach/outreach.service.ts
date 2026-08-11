@@ -134,26 +134,35 @@ export class OutreachService {
 	}
 
 	async prepare(prospectId: string) {
-		const prospect = await this.db.prospect.findUnique({
-			where: { id: prospectId },
-			select: {
-				id: true,
-				status: true,
-				routeStatus: true,
-				emailAllowed: true,
-				companyId: true,
-				contactId: true,
-				routeEmail: true,
-				emailDrafts: {
-					where: { status: { not: "REJECTED" } },
-					select: { id: true },
-					take: 1,
+		const [prospect, inbox] = await Promise.all([
+			this.db.prospect.findUnique({
+				where: { id: prospectId },
+				select: {
+					id: true,
+					status: true,
+					routeStatus: true,
+					emailAllowed: true,
+					companyId: true,
+					contactId: true,
+					routeEmail: true,
+					emailDrafts: {
+						where: { status: { not: "REJECTED" } },
+						select: { id: true },
+						take: 1,
+					},
 				},
-			},
-		});
+			}),
+			this.db.emailInbox.findFirst({
+				where: { provider: "AGENTMAIL", isEnabled: true },
+				select: { id: true },
+			}),
+		]);
 		if (!prospect) throw new NotFoundException("Prospect not found.");
 		if (prospect.emailDrafts.length > 0)
 			return { queued: false, existing: true };
+		if (!inbox) {
+			throw new BadRequestException("AgentMail is unavailable.");
+		}
 		if (
 			prospect.status !== "PROMOTED" ||
 			prospect.routeStatus !== "SEND_READY_REVIEW" ||

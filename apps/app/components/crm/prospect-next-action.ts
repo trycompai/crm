@@ -26,6 +26,15 @@ export function prospectNextAction(prospect: {
 	jobPostingCount: number;
 	namedPerson: string | null;
 	queued: boolean;
+	readiness?: {
+		state: string;
+		summary: string;
+		actions: {
+			canApproveRoute: boolean;
+			canPrepareSequence: boolean;
+			canApproveSequence: boolean;
+		};
+	};
 	role: string | null;
 	routeStatus: string;
 	status: string;
@@ -54,6 +63,35 @@ export function prospectNextAction(prospect: {
 			label: "Review CRM handoff",
 			description:
 				"This prospect is marked as promoted but has no linked account. Review the evidence and repair the handoff before sales uses it.",
+		};
+	}
+
+	if (prospect.readiness?.actions.canApproveRoute) {
+		return {
+			kind: "review-draft",
+			label: "Approve route",
+			description:
+				"The current evidence supports a named public work route. Review it before granting outreach permission.",
+		};
+	}
+
+	if (prospect.readiness?.actions.canPrepareSequence) {
+		return {
+			kind: "review-draft",
+			label: "Prepare sequence",
+			description:
+				"The route is approved. Prepare three review-only A/B/C steps before any sequence can be approved.",
+		};
+	}
+
+	if (
+		prospect.readiness?.actions.canApproveSequence ||
+		prospect.readiness?.state === "execution_disabled"
+	) {
+		return {
+			kind: "review-draft",
+			label: "Review sequence",
+			description: prospect.readiness.summary,
 		};
 	}
 

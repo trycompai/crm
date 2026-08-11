@@ -36,6 +36,8 @@ import { cn } from "@crm/ui/lib/utils";
 import { parseAsArrayOf, parseAsString, useQueryState } from "nuqs";
 import {
 	Fragment,
+	type KeyboardEvent,
+	type MouseEvent,
 	type ReactNode,
 	useDeferredValue,
 	useId,
@@ -122,6 +124,17 @@ const ALIGN_CLASS = {
 function columnLabel<TRow>(column: DataTableColumn<TRow>): string {
 	if (column.label) return column.label;
 	return typeof column.header === "string" ? column.header : column.id;
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+	return (
+		target instanceof Element &&
+		Boolean(
+			target.closest(
+				"a,button,input,select,textarea,[role='button'],[role='link'],[data-row-action]",
+			),
+		)
+	);
 }
 
 function SortIndicator({
@@ -556,11 +569,30 @@ export function DataTable<TRow, TSub = unknown>({
 								onRowClick?.(row);
 							}
 						};
+						const handleRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
+							if (isInteractiveTarget(event.target)) return;
+							handleClick();
+						};
+						const handleRowKeyDown = (
+							event: KeyboardEvent<HTMLTableRowElement>,
+						) => {
+							if (event.key !== "Enter" && event.key !== " ") return;
+							if (isInteractiveTarget(event.target)) return;
+							event.preventDefault();
+							handleClick();
+						};
 						return (
 							<Fragment key={id}>
 								<TableRow
 									data-state={isSelected ? "selected" : undefined}
-									onClick={clickable ? handleClick : undefined}
+									tabIndex={clickable ? 0 : undefined}
+									aria-label={
+										clickable && selection?.rowLabel
+											? `${canExpand ? "Toggle" : "Open"} ${selection.rowLabel(row)}`
+											: undefined
+									}
+									onClick={clickable ? handleRowClick : undefined}
+									onKeyDown={clickable ? handleRowKeyDown : undefined}
 									onMouseEnter={onRowHover ? () => onRowHover(row) : undefined}
 									onFocus={onRowHover ? () => onRowHover(row) : undefined}
 									className={
@@ -623,9 +655,28 @@ export function DataTable<TRow, TSub = unknown>({
 										return (
 											<TableRow
 												key={expandable.getSubRowId(sub, row)}
+												tabIndex={subClickable ? 0 : undefined}
 												onClick={
 													subClickable
-														? () => expandable.onSubRowClick?.(sub, row)
+														? (event) => {
+																if (isInteractiveTarget(event.target)) return;
+																expandable.onSubRowClick?.(sub, row);
+															}
+														: undefined
+												}
+												onKeyDown={
+													subClickable
+														? (event) => {
+																if (
+																	event.key !== "Enter" &&
+																	event.key !== " "
+																) {
+																	return;
+																}
+																if (isInteractiveTarget(event.target)) return;
+																event.preventDefault();
+																expandable.onSubRowClick?.(sub, row);
+															}
 														: undefined
 												}
 												className={cn(

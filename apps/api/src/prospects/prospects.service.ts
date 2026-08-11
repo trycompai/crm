@@ -17,6 +17,11 @@ import {
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
+import {
+	buildProspectReadiness,
+	type ProspectReadiness,
+	type ProspectReadinessContext,
+} from "./prospect-readiness";
 import type { ProspectListInput } from "./prospects.contracts";
 
 const SORTABLE: Record<
@@ -51,6 +56,7 @@ export type ProspectRow = {
 	hasDraft: boolean;
 	dealCount: number;
 	queued: boolean;
+	readiness: ProspectReadiness;
 	lastResearchedAt: string | null;
 	nextResearchAt: string | null;
 	updatedAt: string;
@@ -67,6 +73,7 @@ export class ProspectsService {
 	async list(input: ProspectListInput): Promise<ListResult<ProspectRow>> {
 		const where = this.buildWhere(input);
 		const { skip, take } = paginate(input);
+		const now = new Date();
 		const [rows, total, facetCounts] = await Promise.all([
 			this.db.prospect.findMany({
 				where,
@@ -86,6 +93,9 @@ export class ProspectsService {
 					enrichmentStatus: true,
 					namedPerson: true,
 					role: true,
+					personSourceUrl: true,
+					routeEmail: true,
+					emailAllowed: true,
 					companyId: true,
 					contactId: true,
 					draftSubject: true,
@@ -95,15 +105,22 @@ export class ProspectsService {
 					updatedAt: true,
 					_count: { select: { evidence: true } },
 					evidence: {
-						where: {
-							sourceType: "OFFICIAL_JOB_POSTING",
-							signalDate: {
-								gte: new Date(Date.now() - 120 * 24 * 60 * 60 * 1_000),
-								lte: new Date(),
-							},
-							receiptId: { not: null },
+						select: {
+							receiptId: true,
+							sourceType: true,
+							url: true,
+							signalDate: true,
+							observed: true,
 						},
-						select: { id: true, url: true },
+					},
+					emailDrafts: {
+						where: { sequenceId: { not: null } },
+						orderBy: [{ sequenceId: "asc" }, { sequenceStep: "asc" }],
+						select: {
+							sequenceId: true,
+							sequenceStep: true,
+							status: true,
+						},
 					},
 					company: {
 						select: { _count: { select: { deals: true } } },
@@ -114,35 +131,74 @@ export class ProspectsService {
 			this.facetCounts(input),
 		]);
 
-		const queued = await this.queue.queuedProspects(rows.map((row) => row.id));
+		const [queued, readinessContext] = await Promise.all([
+			this.queue.queuedProspects(rows.map((row) => row.id)),
+			this.readinessContext(rows.map((row) => row.routeEmail)),
+		]);
 
 		return {
-			rows: rows.map((row) => ({
-				id: row.id,
-				companyName: row.companyName,
-				countryCode: row.countryCode,
-				region: row.region,
-				location: row.location,
-				website: row.website,
-				fitScore: row.fitScore,
-				status: row.status,
-				routeStatus: row.routeStatus,
-				enrichmentStatus: row.enrichmentStatus,
-				namedPerson: row.namedPerson,
-				role: row.role,
-				companyId: row.companyId,
-				contactId: row.contactId,
-				evidenceCount: row._count.evidence,
-				jobPostingCount: row.evidence.filter(
-					(item) => domainOf(item.url) === domainOf(row.website),
-				).length,
-				hasDraft: Boolean(row.draftSubject && row.draftBody),
-				dealCount: row.company?._count.deals ?? 0,
-				queued: queued.has(row.id),
-				lastResearchedAt: row.lastResearchedAt?.toISOString() ?? null,
-				nextResearchAt: row.nextResearchAt?.toISOString() ?? null,
-				updatedAt: row.updatedAt.toISOString(),
-			})),
+			rows: rows.map((row) => {
+				const rowQueued = queued.has(row.id);
+				const context = {
+					...readinessContext,
+					now,
+					routeSuppressed: routeSuppressed(
+						row.routeEmail,
+						readinessContext.suppressedEmails,
+						readinessContext.suppressedDomains,
+					),
+				};
+				const readiness = buildProspectReadiness(
+					{
+						id: row.id,
+						status: row.status,
+						routeStatus: row.routeStatus,
+						enrichmentStatus: row.enrichmentStatus,
+						countryCode: row.countryCode,
+						website: row.website,
+						namedPerson: row.namedPerson,
+						role: row.role,
+						personSourceUrl: row.personSourceUrl,
+						routeEmail: row.routeEmail,
+						emailAllowed: row.emailAllowed,
+						companyId: row.companyId,
+						contactId: row.contactId,
+						draftSubject: row.draftSubject,
+						draftBody: row.draftBody,
+						lastResearchedAt: row.lastResearchedAt,
+						nextResearchAt: row.nextResearchAt,
+						queued: rowQueued,
+						evidence: row.evidence,
+						emailDrafts: row.emailDrafts,
+					},
+					context,
+				);
+				return {
+					id: row.id,
+					companyName: row.companyName,
+					countryCode: row.countryCode,
+					region: row.region,
+					location: row.location,
+					website: row.website,
+					fitScore: row.fitScore,
+					status: row.status,
+					routeStatus: row.routeStatus,
+					enrichmentStatus: row.enrichmentStatus,
+					namedPerson: row.namedPerson,
+					role: row.role,
+					companyId: row.companyId,
+					contactId: row.contactId,
+					evidenceCount: row._count.evidence,
+					jobPostingCount: currentJobCount(row.evidence, row.website, now),
+					hasDraft: Boolean(row.draftSubject && row.draftBody),
+					dealCount: row.company?._count.deals ?? 0,
+					queued: rowQueued,
+					readiness,
+					lastResearchedAt: row.lastResearchedAt?.toISOString() ?? null,
+					nextResearchAt: row.nextResearchAt?.toISOString() ?? null,
+					updatedAt: row.updatedAt.toISOString(),
+				};
+			}),
 			total,
 			facetCounts,
 		};
@@ -186,14 +242,61 @@ export class ProspectsService {
 						linkedinUrl: true,
 					},
 				},
+				emailDrafts: {
+					where: { sequenceId: { not: null } },
+					orderBy: [{ sequenceId: "asc" }, { sequenceStep: "asc" }],
+					select: {
+						sequenceId: true,
+						sequenceStep: true,
+						status: true,
+					},
+				},
 			},
 		});
 
 		if (!prospect) throw new NotFoundException(`No prospect with id ${id}.`);
+		const [queued, readinessContext] = await Promise.all([
+			this.queue.isQueued({ prospectId: id }),
+			this.readinessContext([prospect.routeEmail]),
+		]);
+		const readiness = buildProspectReadiness(
+			{
+				id: prospect.id,
+				status: prospect.status,
+				routeStatus: prospect.routeStatus,
+				enrichmentStatus: prospect.enrichmentStatus,
+				countryCode: prospect.countryCode,
+				website: prospect.website,
+				namedPerson: prospect.namedPerson,
+				role: prospect.role,
+				personSourceUrl: prospect.personSourceUrl,
+				routeEmail: prospect.routeEmail,
+				emailAllowed: prospect.emailAllowed,
+				companyId: prospect.companyId,
+				contactId: prospect.contactId,
+				draftSubject: prospect.draftSubject,
+				draftBody: prospect.draftBody,
+				lastResearchedAt: prospect.lastResearchedAt,
+				nextResearchAt: prospect.nextResearchAt,
+				queued,
+				evidence: prospect.evidence,
+				emailDrafts: prospect.emailDrafts,
+			},
+			{
+				...readinessContext,
+				routeSuppressed: routeSuppressed(
+					prospect.routeEmail,
+					readinessContext.suppressedEmails,
+					readinessContext.suppressedDomains,
+				),
+			},
+		);
+		const { emailDrafts: _emailDrafts, ...serializedProspect } = prospect;
 
 		return {
-			...prospect,
-			queued: await this.queue.isQueued({ prospectId: id }),
+			...serializedProspect,
+			queued,
+			readiness,
 			createdAt: prospect.createdAt.toISOString(),
 			updatedAt: prospect.updatedAt.toISOString(),
 			enrichedAt: prospect.enrichedAt?.toISOString() ?? null,
@@ -385,7 +488,62 @@ export class ProspectsService {
 			contact: { named, missing },
 		};
 	}
+
+	private async readinessContext(routeEmails: (string | null)[]) {
+		const sendingPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false" ||
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
+		const emails = [
+			...new Set(
+				routeEmails
+					.map((email) => normalizeEmailValue(email))
+					.filter((email): email is string => email !== null),
+			),
+		];
+		const domains = [
+			...new Set(
+				emails
+					.map((email) => emailDomain(email))
+					.filter((domain): domain is string => domain !== null),
+			),
+		];
+		const [inbox, suppressedContacts, suppressedDomains] = await Promise.all([
+			this.db.emailInbox.findFirst({
+				where: { provider: "AGENTMAIL", isEnabled: true },
+				select: { id: true },
+			}),
+			emails.length > 0
+				? this.db.suppressedContact.findMany({
+						where: { email: { in: emails } },
+						select: { email: true },
+					})
+				: [],
+			domains.length > 0
+				? this.db.suppressedDomain.findMany({
+						where: { domain: { in: domains } },
+						select: { domain: true },
+					})
+				: [],
+		]);
+
+		return {
+			sendingPaused,
+			agentMailReady: inbox !== null,
+			routeSuppressed: false,
+			suppressedEmails: new Set(
+				suppressedContacts
+					.map((row) => normalizeEmailValue(row.email))
+					.filter((email): email is string => email !== null),
+			),
+			suppressedDomains: new Set(suppressedDomains.map((row) => row.domain)),
+		};
+	}
 }
+
+type PageReadinessContext = ProspectReadinessContext & {
+	suppressedEmails: Set<string>;
+	suppressedDomains: Set<string>;
+};
 
 function domainOf(value: string | null): string | null {
 	if (!value) return null;
@@ -396,4 +554,52 @@ function domainOf(value: string | null): string | null {
 	} catch {
 		return null;
 	}
+}
+
+function currentJobCount(
+	evidence: {
+		receiptId: string | null;
+		sourceType: string;
+		url: string;
+		signalDate: Date | null;
+		observed: string | null;
+	}[],
+	website: string | null,
+	now: Date,
+): number {
+	const boundary = now.getTime() - 120 * 24 * 60 * 60 * 1_000;
+	return evidence.filter(
+		(item) =>
+			item.receiptId &&
+			item.observed?.trim() &&
+			item.sourceType === "OFFICIAL_JOB_POSTING" &&
+			item.signalDate !== null &&
+			item.signalDate.getTime() >= boundary &&
+			item.signalDate.getTime() <= now.getTime() &&
+			domainOf(item.url) === domainOf(website),
+	).length;
+}
+
+function normalizeEmailValue(value: string | null): string | null {
+	const email = value?.trim().toLowerCase();
+	return email?.includes("@") ? email : null;
+}
+
+function emailDomain(email: string): string | null {
+	const [, domain] = email.split("@");
+	return domain || null;
+}
+
+function routeSuppressed(
+	routeEmail: string | null,
+	suppressedEmails: PageReadinessContext["suppressedEmails"],
+	suppressedDomains: PageReadinessContext["suppressedDomains"],
+): boolean {
+	const email = normalizeEmailValue(routeEmail);
+	if (!email) return false;
+	const domain = emailDomain(email);
+	return (
+		suppressedEmails.has(email) ||
+		Boolean(domain && suppressedDomains.has(domain))
+	);
 }

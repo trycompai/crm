@@ -255,11 +255,22 @@ function ProspectOverview({ prospect }: { prospect: Prospect }) {
 	);
 }
 
-function Gate({ label, passed }: { label: string; passed: boolean }) {
+function Gate({
+	label,
+	passed,
+	detail,
+}: {
+	label: string;
+	passed: boolean;
+	detail?: string;
+}) {
 	return (
-		<div className="flex min-w-0 items-center justify-between gap-4 py-1">
-			<span className="min-w-0 text-muted-foreground text-xs/5">{label}</span>
-			<div className="shrink-0">
+		<div className="flex min-w-0 items-start justify-between gap-4 py-1">
+			<span className="flex min-w-0 flex-col">
+				<span className="min-w-0 text-muted-foreground text-xs/5">{label}</span>
+				{detail ? <span className="min-w-0 text-xs/5">{detail}</span> : null}
+			</span>
+			<div className="shrink-0 pt-0.5">
 				<StatusIndicator
 					tone={passed ? "success" : "warning"}
 					label={passed ? "Passed" : "Missing"}
@@ -351,16 +362,7 @@ function ProspectActionView({
 	onNavigate: (tab: string) => void;
 }) {
 	const action = actionFor(prospect);
-	const named = Boolean(
-		prospect.namedPerson && prospect.role && prospect.personSourceUrl,
-	);
-	const route = ["DIRECT_ROUTE_REVIEW", "SEND_READY_REVIEW"].includes(
-		prospect.routeStatus,
-	);
-	const draft = Boolean(prospect.draftSubject && prospect.draftBody);
-	const receiptedEvidence = prospect.evidence.filter(
-		(evidence) => evidence.receipt !== null,
-	);
+	const draft = prospect.readiness.actions.canReviewDraft;
 	const dealCount = prospect.company?._count.deals ?? 0;
 	const actionTone =
 		action.kind === "start-deal" || action.kind === "manage-deals"
@@ -407,23 +409,16 @@ function ProspectActionView({
 
 			<DetailSheetSection title="Sales readiness">
 				<DetailSheetProperties columns={1}>
-					<Gate
-						label="Evidence fetched"
-						passed={receiptedEvidence.length >= 2}
-					/>
-					<Gate
-						label="Current public demand"
-						passed={Boolean(currentJob(prospect))}
-					/>
-					<Gate label="Named decision-maker" passed={named} />
-					<Gate label="Public work route" passed={route} />
-					<Gate label="Reviewable draft" passed={draft} />
-					<Gate
-						label="Sales account created"
-						passed={Boolean(prospect.companyId && prospect.contactId)}
-					/>
-					<Gate label="Active deal" passed={dealCount > 0} />
+					{prospect.readiness.gates.map((gate) => (
+						<Gate
+							key={gate.key}
+							label={gate.label}
+							passed={gate.passed}
+							detail={gate.detail}
+						/>
+					))}
 				</DetailSheetProperties>
+				<DetailSheetProse>{prospect.readiness.summary}</DetailSheetProse>
 			</DetailSheetSection>
 
 			<DetailSheetSection title="Deal handoff">
@@ -787,9 +782,11 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 	);
 	const drafts = query.data?.drafts ?? [];
 	const sequenceId = drafts[0]?.sequenceId ?? null;
-	const canApprove =
+	const pendingSequence =
 		drafts.length === 3 &&
 		drafts.every((draft) => draft.status === "PENDING_APPROVAL");
+	const canApprove =
+		pendingSequence && prospect.readiness.actions.canApproveSequence;
 	const canStop = drafts.some((draft) =>
 		["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(draft.status),
 	);
@@ -829,6 +826,10 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 						? "A CRM operator approved this exact named public work route. Revoking it stops all unsent steps."
 						: "Sending is locked. Permission can only be granted when retained public evidence contains the named person, current role and exact work email."}
 				</DetailSheetProse>
+				{prospect.emailAllowed ||
+				prospect.readiness.actions.canApproveRoute ? null : (
+					<DetailSheetProse>{prospect.readiness.summary}</DetailSheetProse>
+				)}
 				<div>
 					<Button
 						size="sm"
@@ -836,7 +837,7 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 						disabled={
 							permission.isPending ||
 							(!prospect.emailAllowed &&
-								(prospect.status !== "PROMOTED" || !prospect.routeEmail))
+								!prospect.readiness.actions.canApproveRoute)
 						}
 						onClick={() =>
 							permission.mutate({
@@ -872,10 +873,15 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 							? "The agent is grounding three outreach steps in this prospect's evidence. Nothing will send automatically."
 							: "Create three evidence-grounded steps with a fixed test variant. Every step remains editable and needs human approval."}
 					</DetailSheetProse>
+					{prospect.readiness.actions.canPrepareSequence ? null : (
+						<DetailSheetProse>{prospect.readiness.summary}</DetailSheetProse>
+					)}
 					<Button
 						size="sm"
 						disabled={
-							prepare.isPending || query.data?.queued || !prospect.emailAllowed
+							prepare.isPending ||
+							query.data?.queued ||
+							!prospect.readiness.actions.canPrepareSequence
 						}
 						onClick={() => prepare.mutate({ prospectId: prospect.id })}
 					>
@@ -890,8 +896,10 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 						title="Sequence controls"
 						action={
 							<StatusIndicator
-								tone={canApprove ? "warning" : "neutral"}
-								label={canApprove ? "Human review required" : "Sequence active"}
+								tone={pendingSequence ? "warning" : "neutral"}
+								label={
+									pendingSequence ? "Human review required" : "Sequence active"
+								}
 							/>
 						}
 					>
@@ -899,6 +907,12 @@ function ProspectDraft({ prospect }: { prospect: Prospect }) {
 							Approving queues step one now and schedules steps two and three
 							for days 3 and 7. A matched reply stops every future step.
 						</DetailSheetProse>
+						{pendingSequence && !canApprove ? (
+							<DetailSheetProse>
+								{prospect.readiness.actions.executionDisabledReason ??
+									prospect.readiness.summary}
+							</DetailSheetProse>
+						) : null}
 						<div className="flex flex-wrap gap-2">
 							<Button
 								size="sm"
