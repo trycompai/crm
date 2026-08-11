@@ -61,8 +61,6 @@ export function AgentCapabilities({
 	const channels = useQuery({
 		...trpc.slack.channels.queryOptions(),
 		enabled: capabilities.channel !== null,
-		refetchInterval: (query) =>
-			query.state.data?.rows.some((row) => row.pending) ? 2000 : false,
 	});
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;

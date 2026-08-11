@@ -7,7 +7,6 @@ import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
-import { runSlackChannelCreate } from "./slack-create-task";
 import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
 import {
@@ -106,11 +105,6 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 
 		if (task.kind === "slack-people-match") {
 			await completeTask(task.id, await runSlackPeopleMatch());
-			return;
-		}
-
-		if (task.kind === "slack-channel-create") {
-			await completeTask(task.id, await runSlackChannelCreate(task.payload));
 			return;
 		}
 

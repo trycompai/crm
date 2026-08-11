@@ -12,7 +12,6 @@ export type PickerChannel = {
 	isPrivate: boolean;
 	isMember: boolean;
 	inviteRequestedAt: string | null;
-	pending: boolean;
 };
 
 export function ChannelPicker({
@@ -45,9 +44,7 @@ export function ChannelPicker({
 				return (
 					<button
 						className={`flex h-14 shrink-0 items-center gap-3 px-4 text-left ${selected ? "bg-muted" : "hover:bg-muted/50"}`}
-						disabled={
-							pending || channel.pending || (blocked && !canInviteItself)
-						}
+						disabled={pending || (blocked && !canInviteItself)}
 						key={channel.id}
 						onClick={() => onSelect(channel)}
 						type="button"
@@ -72,9 +69,7 @@ export function ChannelPicker({
 						</span>
 
 						<span className="flex w-20 shrink-0 items-center justify-end">
-							{channel.pending ? (
-								<span className="text-muted-foreground text-xs">Creating…</span>
-							) : selected ? (
+							{selected ? (
 								<Icon
 									className="size-4 text-success"
 									icon={Checkmark}
@@ -105,7 +100,6 @@ function describe(channel: PickerChannel, canInviteItself: boolean): string {
 	const people =
 		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
 
-	if (channel.pending) return "Slack is making this channel now";
 	if (channel.isMember) return `Comp AI is in${people}`;
 	if (!channel.isPrivate) return `Comp AI joins when you save${people}`;
 	if (canInviteItself) return `Private. Comp AI joins as you${people}`;

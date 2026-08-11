@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+import { schemas } from "@crm/validation";
 import { defineChannel, GET, POST } from "eve/channels";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
@@ -27,6 +28,7 @@ import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
 import { finishRun } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
+import { createSlackChannel } from "../lib/slack-membership";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
@@ -148,6 +150,32 @@ export default defineChannel({
 			return Response.json(
 				await cancel({ continuationToken: runToken(runId) }),
 			);
+		}),
+
+		POST("/internal/crm/slack/create-channel", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = schemas.slack.createPayload.safeParse(
+				await request.json().catch(() => null),
+			);
+
+			if (!parsed.success) {
+				return Response.json(
+					{ error: "That channel name is not usable." },
+					{ status: 400 },
+				);
+			}
+
+			const outcome = await createSlackChannel(
+				parsed.data.channelName,
+				parsed.data.isPrivate,
+			);
+
+			return "error" in outcome
+				? Response.json({ error: outcome.error }, { status: 422 })
+				: Response.json({ channel: outcome });
 		}),
 
 		POST("/internal/crm/verify-key", async (request) => {
