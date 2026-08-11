@@ -28,6 +28,7 @@ import {
 	type PickerChannel,
 } from "@/components/slack/channel-picker";
 import { useTRPC } from "@/lib/trpc/client";
+import { SLACK_CONNECTION } from "./slack-config";
 
 const INVITE_COMMAND = "/invite @Comp AI";
 
@@ -35,7 +36,16 @@ export function SlackChannels() {
 	const trpc = useTRPC();
 	const [asking, setAsking] = useState<PickerChannel | null>(null);
 	const [query, setQuery] = useState("");
-	const channels = useQuery(trpc.slack.channels.queryOptions());
+	const sync = useQuery({
+		...trpc.slack.matches.queryOptions(),
+		refetchInterval: (result) =>
+			result.state.data?.syncing ? SLACK_CONNECTION.sync.pollMs : false,
+	});
+	const syncing = sync.data?.syncing ?? false;
+	const channels = useQuery({
+		...trpc.slack.channels.queryOptions(),
+		refetchInterval: syncing ? SLACK_CONNECTION.sync.pollMs : false,
+	});
 	const join = useMutation(
 		trpc.slack.joinChannel.mutationOptions({
 			onSuccess: async (result) => {
@@ -59,13 +69,13 @@ export function SlackChannels() {
 		trpc.slack.refreshPeople.mutationOptions({
 			onSuccess: async () => {
 				toast.success("Reading the channel list from Slack.");
-				await channels.refetch();
+				await sync.refetch();
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
-	const refreshing = refresh.isPending || channels.isFetching;
+	const refreshing = refresh.isPending || syncing || channels.isFetching;
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;
 	const needle = query.trim().toLowerCase();
@@ -148,6 +158,18 @@ function AskDialog({
 }) {
 	if (!channel) return null;
 
+	async function copyThenConfirm() {
+		try {
+			await navigator.clipboard.writeText(INVITE_COMMAND);
+		} catch {
+			toast.error("Copying failed. Copy the command above by hand.");
+			return;
+		}
+
+		toast.success("Command copied.");
+		onConfirm();
+	}
+
 	return (
 		<AlertDialog open onOpenChange={(open) => !open && onCancel()}>
 			<AlertDialogContent>
@@ -176,15 +198,7 @@ function AskDialog({
 					</AlertDialogCancel>
 					<Button
 						disabled={status === "pending"}
-						onClick={
-							canInviteItself
-								? onConfirm
-								: () => {
-										void navigator.clipboard.writeText(INVITE_COMMAND);
-										toast.success("Command copied.");
-										onConfirm();
-									}
-						}
+						onClick={canInviteItself ? onConfirm : () => void copyThenConfirm()}
 					>
 						<AsyncButtonContent pendingLabel="Adding…" status={status}>
 							{canInviteItself ? "Add Comp AI" : "Copy and mark as asked"}

@@ -79,6 +79,12 @@ export const capabilityAction = z.object({
 	destination: capabilityDestination.optional(),
 });
 
+export const CAPABILITY_RESOURCE_IDS = {
+	gmail: "google:gmail",
+	calendar: "google:calendar",
+	slack: "slack:workspace",
+} as const;
+
 export const capabilityResource = z.object({
 	id: z.string().trim().min(1).max(160),
 	kind: z.enum(["company", "contact", "deal", "integration"]),

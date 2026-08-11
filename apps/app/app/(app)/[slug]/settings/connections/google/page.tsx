@@ -1,40 +1,21 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
 import { GoogleConnection } from "../google-connection";
+import {
+	type ConnectionQuery,
+	OAuthConnectionPage,
+} from "../oauth-connection-page";
 
 export const metadata: Metadata = { title: "Google Workspace" };
 
-type GoogleConnectionPageProps = {
+export default function GoogleConnectionPage(props: {
 	params: Promise<{ slug: string }>;
-	searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
-
-export default function GoogleConnectionPage(props: GoogleConnectionPageProps) {
+	searchParams: Promise<ConnectionQuery>;
+}) {
 	return (
-		<Suspense fallback={<ConnectionPageLoading />}>
-			<GoogleConnectionPageContent {...props} />
-		</Suspense>
+		<OAuthConnectionPage
+			{...props}
+			connection={GoogleConnection}
+			provider="google"
+		/>
 	);
-}
-
-async function GoogleConnectionPageContent({
-	params,
-	searchParams,
-}: GoogleConnectionPageProps) {
-	const [{ slug }, query] = await Promise.all([params, searchParams]);
-	return (
-		<ConnectionPage>
-			<GoogleConnection
-				slug={slug}
-				connectError={
-					first(query.provider) === "google" ? first(query.error) : undefined
-				}
-			/>
-		</ConnectionPage>
-	);
-}
-
-function first(value: string | string[] | undefined) {
-	return Array.isArray(value) ? value[0] : value;
 }

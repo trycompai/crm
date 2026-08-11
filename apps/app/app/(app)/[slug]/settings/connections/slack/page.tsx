@@ -23,6 +23,7 @@ import { NewAgentDialog } from "@/components/agent-builder/new-agent-dialog";
 import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
+import { type ConnectionQuery, connectErrorOf } from "../oauth-connection-page";
 import { SlackChannels } from "./slack-channels";
 import {
 	SlackConnectButton,
@@ -51,7 +52,7 @@ const suggestions = [
 
 type SlackConnectionPageProps = {
 	params: Promise<{ slug: string }>;
-	searchParams: Promise<Record<string, string | string[] | undefined>>;
+	searchParams: Promise<ConnectionQuery>;
 };
 
 export default function SlackConnectionPage(props: SlackConnectionPageProps) {
@@ -105,9 +106,7 @@ async function SlackConnectionPageContent({
 				<SlackConnectButton
 					slug={slug}
 					configured={status.configured}
-					connectError={
-						first(query.provider) === "slack" ? first(query.error) : undefined
-					}
+					connectError={connectErrorOf(query, "slack")}
 				/>
 				<p className="text-muted-foreground text-xs">
 					You approve the workspace in Slack. You can disconnect it here at any
@@ -158,10 +157,6 @@ function groupScopes(scopes: string[]) {
 	})).filter((group) => group.scopes.length > 0);
 }
 
-function first(value: string | string[] | undefined) {
-	return Array.isArray(value) ? value[0] : value;
-}
-
 function ConnectedSlack({
 	slug,
 	status,
@@ -193,11 +188,11 @@ function ConnectedSlack({
 					<SlackLogo className="size-6" />
 					<h1 className="font-medium text-xl">Slack</h1>
 					<span className="ml-auto text-muted-foreground text-sm">
-						{status.workspace}
+						{status.workspace ?? "Connected"}
 					</span>
 					<SlackDisconnectButton
 						canManage={status.canManage}
-						workspace={status.workspace ?? "this Slack workspace"}
+						workspace={status.workspace}
 					/>
 				</div>
 				<p className="text-muted-foreground text-sm">

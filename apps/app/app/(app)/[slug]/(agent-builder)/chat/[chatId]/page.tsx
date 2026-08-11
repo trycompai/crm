@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { notFound, unstable_rethrow } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AgentBuilderChat } from "@/components/agent-builder/agent-builder-chat";
 import { AgentBuilderChatFallback } from "@/components/agent-builder/agent-builder-route-fallback";
 import { isSharedChatToken } from "@/lib/chat-route";
 import { getServerTrpcClient } from "@/lib/trpc/server";
+import { nullIfMissing } from "../../missing-record";
 
 export const metadata: Metadata = { title: "Agent chat" };
 
@@ -31,17 +32,14 @@ async function PrefetchedAgentChat({
 	if (isSharedChatToken(chatId)) {
 		const shared = await client.conversations.shared
 			.query({ token: chatId })
-			.catch(() => null);
+			.catch(nullIfMissing);
 
 		return <AgentBuilderChat conversationId={chatId} initialData={shared} />;
 	}
 
 	const conversation = await client.conversations.builderById
 		.query({ id: chatId })
-		.catch((error: unknown) => {
-			unstable_rethrow(error);
-			return null;
-		});
+		.catch(nullIfMissing);
 
 	if (!conversation) notFound();
 

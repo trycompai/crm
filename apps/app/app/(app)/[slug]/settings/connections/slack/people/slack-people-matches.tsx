@@ -7,6 +7,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
+import { SLACK_CONNECTION } from "../slack-config";
 
 type MatchRow = {
 	crmUserId: string;
@@ -31,7 +32,8 @@ export function SlackPeopleMatches({
 	const matches = useQuery({
 		...trpc.slack.matches.queryOptions(),
 		initialData: initialMatches,
-		refetchInterval: (query) => (query.state.data?.syncing ? 3_000 : false),
+		refetchInterval: (query) =>
+			query.state.data?.syncing ? SLACK_CONNECTION.sync.pollMs : false,
 	});
 	const refresh = useMutation(
 		trpc.slack.refreshPeople.mutationOptions({
@@ -82,7 +84,7 @@ export function SlackPeopleMatches({
 								</div>
 							) : (
 								<p className="px-2.5 py-2 text-muted-foreground text-xs">
-									No exact email match yet
+									No exact email match
 								</p>
 							)}
 						</div>
@@ -91,7 +93,8 @@ export function SlackPeopleMatches({
 			</div>
 			<p className="text-muted-foreground text-xs leading-relaxed">
 				Refresh after a Slack email changes. The CRM matches exact email
-				addresses only; an agent asks you to choose when a name is ambiguous.
+				addresses only. Someone with no exact match stays unmatched, and an
+				agent stops instead of guessing at a similar name.
 			</p>
 			<div className="flex justify-end">
 				<Button asChild>

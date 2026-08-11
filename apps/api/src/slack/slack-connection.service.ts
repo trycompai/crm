@@ -4,6 +4,7 @@ import {
 	WORKSPACE_ID,
 } from "@crm/auth";
 import type { Db } from "@crm/db";
+import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
 	ForbiddenException,
@@ -20,6 +21,8 @@ import type {
 import { SlackChannelsService } from "./slack-channels.service";
 
 const PEOPLE_SYNC_ACTIVE_MS = 30_000;
+const SLACK_WORKSPACE_RESOURCE_ID =
+	schemas.agents.CAPABILITY_RESOURCE_IDS.slack;
 
 @Injectable()
 export class SlackConnectionService {
@@ -43,16 +46,16 @@ export class SlackConnectionService {
 					status: { in: ["LIVE", "PAUSED"] },
 					deletedAt: null,
 					currentVersionId: { not: null },
+					currentVersion: {
+						manifest: {
+							path: ["dataScope", "resources"],
+							array_contains: [{ id: SLACK_WORKSPACE_RESOURCE_ID }],
+						},
+					},
 				},
 				orderBy: { updatedAt: "desc" },
 				take: 30,
-				select: {
-					id: true,
-					name: true,
-					description: true,
-					status: true,
-					currentVersion: { select: { manifest: true } },
-				},
+				select: { id: true, name: true, description: true, status: true },
 			}),
 			this.db.slackMemberMatch.findMany({
 				where: {
@@ -61,12 +64,11 @@ export class SlackConnectionService {
 				select: { slackUserId: true, updatedAt: true },
 			}),
 			this.db.member.count({ where: { organizationId: WORKSPACE_ID } }),
-			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
+			this.db.slackWorkspaceGrant.findFirst({
+				select: { id: true, teamName: true },
+			}),
 		]);
 
-		const linkedAgents = agents
-			.filter((agent) => usesSlack(agent.currentVersion?.manifest))
-			.map(({ currentVersion: _, ...agent }) => agent);
 		const matched = matches.filter((match) => match.slackUserId).length;
 		const reviewed = matches.length;
 		const inventoryFresh =
@@ -82,7 +84,7 @@ export class SlackConnectionService {
 		return {
 			configured: isSlackConfigured(),
 			connected: Boolean(account),
-			workspace: account ? "Slack workspace" : null,
+			workspace: account ? (grant?.teamName ?? null) : null,
 			lastConnectedAt: account?.updatedAt.toISOString() ?? null,
 			scopes: (account?.scope ?? "")
 				.split(",")
@@ -90,7 +92,7 @@ export class SlackConnectionService {
 				.filter(Boolean),
 			canInviteItself: Boolean(grant),
 			canManage: canManageConnections(role),
-			agents: linkedAgents,
+			agents,
 			people: { matched, reviewed },
 		};
 	}
@@ -242,24 +244,4 @@ export class SlackConnectionService {
 
 		return { disconnected: true };
 	}
-}
-
-function usesSlack(manifest: unknown): boolean {
-	if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-		return false;
-	}
-	const dataScope = Reflect.get(manifest, "dataScope");
-	if (!dataScope || typeof dataScope !== "object" || Array.isArray(dataScope)) {
-		return false;
-	}
-	const resources = Reflect.get(dataScope, "resources");
-	return (
-		Array.isArray(resources) &&
-		resources.some(
-			(resource) =>
-				resource &&
-				typeof resource === "object" &&
-				Reflect.get(resource, "id") === "slack:workspace",
-		)
-	);
 }

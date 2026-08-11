@@ -26,7 +26,7 @@ export function SlackDisconnectButton({
 	workspace,
 }: {
 	canManage: boolean;
-	workspace: string;
+	workspace: string | null;
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -66,7 +66,9 @@ export function SlackDisconnectButton({
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Disconnect {workspace}?</AlertDialogTitle>
+						<AlertDialogTitle>
+							Disconnect {workspace ?? "Slack"}?
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							Agents stop sending to Slack immediately, and the cached channel
 							list is cleared so a new app re-reads it. Who is matched to which

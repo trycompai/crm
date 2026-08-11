@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { notFound, unstable_rethrow } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { TeamAgentDetail } from "@/components/agent-builder/team-agent-detail";
 import { PageShellFallback } from "@/components/page-shell";
 import { getServerTrpcClient } from "@/lib/trpc/server";
+import { nullIfMissing } from "../../missing-record";
 
 export const metadata: Metadata = { title: "Team agent" };
 
@@ -30,12 +31,13 @@ async function PrefetchedTeamAgent({
 	const client = getServerTrpcClient();
 
 	const [agent, runs, activity] = await Promise.all([
-		client.agents.byId.query({ id: agentId }).catch((error: unknown) => {
-			unstable_rethrow(error);
-			return null;
-		}),
-		client.agents.history.query({ id: agentId, limit: 50 }).catch(() => null),
-		client.agents.activity.query({ id: agentId, limit: 100 }).catch(() => null),
+		client.agents.byId.query({ id: agentId }).catch(nullIfMissing),
+		client.agents.history
+			.query({ id: agentId, limit: 50 })
+			.catch(nullIfMissing),
+		client.agents.activity
+			.query({ id: agentId, limit: 100 })
+			.catch(nullIfMissing),
 	]);
 
 	if (!agent || !runs || !activity) notFound();
