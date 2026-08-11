@@ -21,6 +21,11 @@ import { ResearchKeyService } from "./research-key.service";
 		DispatchHeartbeatService,
 		ResearchKeyService,
 	],
-	exports: [AgentTriggerService, AgentQueueService, ResearchKeyService],
+	exports: [
+		AgentAccessService,
+		AgentTriggerService,
+		AgentQueueService,
+		ResearchKeyService,
+	],
 })
 export class AgentModule {}

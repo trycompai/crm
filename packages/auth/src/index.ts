@@ -7,6 +7,7 @@ export {
 } from "./env";
 export {
 	canChangeRole,
+	canManageConnections,
 	canManageCurrency,
 	canRenameWorkspace,
 	DEFAULT_WORKSPACE_NAME,

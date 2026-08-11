@@ -29,6 +29,10 @@ export function canManageCurrency(role: WorkspaceRole | null): boolean {
 	return isWorkspaceAdmin(role);
 }
 
+export function canManageConnections(role: WorkspaceRole | null): boolean {
+	return isWorkspaceAdmin(role);
+}
+
 export async function ensureWorkspaceMembership(
 	userId: string,
 ): Promise<string | undefined> {

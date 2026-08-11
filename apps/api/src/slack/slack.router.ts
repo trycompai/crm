@@ -1,6 +1,14 @@
 import { Inject } from "@nestjs/common";
-import { Input, Mutation, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import {
+	Ctx,
+	Input,
+	Mutation,
+	Query,
+	Router,
+	UseMiddlewares,
+} from "nestjs-trpc";
 import type { z } from "zod";
+import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	slackCreateChannelInput,
@@ -17,37 +25,43 @@ export class SlackRouter {
 	) {}
 
 	@Query()
-	status() {
-		return this.connection.status();
+	status(@Ctx() ctx: AuthedTrpcContext) {
+		return this.connection.status(ctx.user.id);
 	}
 
 	@Query()
-	matches() {
-		return this.connection.matches();
+	matches(@Ctx() ctx: AuthedTrpcContext) {
+		return this.connection.matches(ctx.user.id);
 	}
 
 	@Query()
-	channels() {
-		return this.connection.channels();
+	channels(@Ctx() ctx: AuthedTrpcContext) {
+		return this.connection.channels(ctx.user.id);
 	}
 
 	@Mutation({ input: slackJoinChannelInput })
-	joinChannel(@Input() input: z.infer<typeof slackJoinChannelInput>) {
-		return this.connection.joinChannel(input);
+	joinChannel(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof slackJoinChannelInput>,
+	) {
+		return this.connection.joinChannel(input, ctx.user.id);
 	}
 
 	@Mutation()
-	refreshPeople() {
-		return this.connection.refreshPeople();
+	refreshPeople(@Ctx() ctx: AuthedTrpcContext) {
+		return this.connection.refreshPeople(ctx.user.id);
 	}
 
 	@Mutation({ input: slackCreateChannelInput })
-	createChannel(@Input() input: z.infer<typeof slackCreateChannelInput>) {
-		return this.connection.createChannel(input);
+	createChannel(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof slackCreateChannelInput>,
+	) {
+		return this.connection.createChannel(input, ctx.user.id);
 	}
 
 	@Mutation()
-	disconnect() {
-		return this.connection.disconnect();
+	disconnect(@Ctx() ctx: AuthedTrpcContext) {
+		return this.connection.disconnect(ctx.user.id);
 	}
 }

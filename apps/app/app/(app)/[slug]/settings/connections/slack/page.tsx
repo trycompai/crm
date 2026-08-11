@@ -177,6 +177,7 @@ function ConnectedSlack({
 		}>;
 		scopes: string[];
 		canInviteItself: boolean;
+		canManage: boolean;
 		people: { matched: number; reviewed: number };
 	};
 }) {
@@ -195,12 +196,14 @@ function ConnectedSlack({
 						{status.workspace}
 					</span>
 					<SlackDisconnectButton
+						canManage={status.canManage}
 						workspace={status.workspace ?? "this Slack workspace"}
 					/>
 				</div>
 				<p className="text-muted-foreground text-sm">
-					Here is what Slack gave us. Agents only post where their automation
-					says.
+					{status.canManage
+						? "Here is what Slack gave us. Agents only post where their automation says."
+						: "Here is what Slack gave us. Only an owner or an admin can disconnect it."}
 				</p>
 			</header>
 			<MissingGrant missing={missing} slug={slug} />

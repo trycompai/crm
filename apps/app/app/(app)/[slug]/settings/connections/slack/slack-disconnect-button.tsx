@@ -21,7 +21,13 @@ import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
-export function SlackDisconnectButton({ workspace }: { workspace: string }) {
+export function SlackDisconnectButton({
+	canManage,
+	workspace,
+}: {
+	canManage: boolean;
+	workspace: string;
+}) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const router = useRouter();
@@ -47,7 +53,7 @@ export function SlackDisconnectButton({ workspace }: { workspace: string }) {
 				variant="outline"
 				size="sm"
 				onClick={() => setConfirming(true)}
-				disabled={disconnectAction.pending}
+				disabled={!canManage || disconnectAction.pending}
 			>
 				Disconnect
 			</Button>

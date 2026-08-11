@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import type { WorkspaceRole } from "@crm/auth";
 import type { Db } from "@crm/db";
+import type { AgentAccessService } from "../src/agent/agent-access.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import type { SlackChannelsService } from "../src/slack/slack-channels.service";
 import { SlackConnectionService } from "../src/slack/slack-connection.service";
+
+const userId = "crm-1";
 
 function serviceFor(input: {
 	accountUpdatedAt?: Date;
@@ -21,18 +26,49 @@ function serviceFor(input: {
 	memberCount?: number;
 	agents?: unknown[];
 	syncingCreatedAt?: Date;
+	grant?: boolean;
+	role?: WorkspaceRole;
 }) {
 	const requested: Array<{ reason: string; required: boolean | undefined }> =
 		[];
+	const deleted: string[] = [];
+	const tx = {
+		account: {
+			deleteMany: async () => {
+				deleted.push("account");
+				return { count: input.accountUpdatedAt ? 1 : 0 };
+			},
+		},
+		slackChannel: {
+			deleteMany: async () => {
+				deleted.push("slackChannel");
+				return { count: 0 };
+			},
+		},
+		slackWorkspaceGrant: {
+			deleteMany: async () => {
+				deleted.push("slackWorkspaceGrant");
+				return { count: 0 };
+			},
+		},
+	};
 	const db = {
+		$transaction: async <T>(run: (client: typeof tx) => Promise<T>) => run(tx),
 		account: {
 			findFirst: async () =>
 				input.accountUpdatedAt
-					? { accountId: "slack-user", updatedAt: input.accountUpdatedAt }
+					? {
+							id: "account-1",
+							accountId: "slack-user",
+							updatedAt: input.accountUpdatedAt,
+						}
 					: null,
 		},
 		agentDefinition: { findMany: async () => input.agents ?? [] },
 		slackMemberMatch: { findMany: async () => input.matches ?? [] },
+		slackWorkspaceGrant: {
+			findFirst: async () => (input.grant ? { id: "grant-1" } : null),
+		},
 		member: {
 			count: async () => input.memberCount ?? 0,
 			findMany: async () => input.members ?? [],
@@ -47,8 +83,16 @@ function serviceFor(input: {
 			requested.push({ reason, required });
 		},
 	} as AgentTriggerService;
+	const channels = {} as SlackChannelsService;
+	const access = {
+		assertMember: async () => input.role ?? "member",
+	} as unknown as AgentAccessService;
 
-	return { service: new SlackConnectionService(db, agent), requested };
+	return {
+		service: new SlackConnectionService(db, agent, channels, access),
+		requested,
+		deleted,
+	};
 }
 
 describe("Slack connection", () => {
@@ -65,7 +109,7 @@ describe("Slack connection", () => {
 			],
 		});
 
-		const status = await service.status();
+		const status = await service.status(userId);
 
 		expect(status.connected).toBe(true);
 		expect(status.people).toEqual({ matched: 1, reviewed: 1 });
@@ -89,7 +133,7 @@ describe("Slack connection", () => {
 			],
 		});
 
-		const status = await service.status();
+		const status = await service.status(userId);
 
 		expect(status.people).toEqual({ matched: 1, reviewed: 2 });
 		expect(requested).toEqual([]);
@@ -114,7 +158,7 @@ describe("Slack connection", () => {
 			syncingCreatedAt: new Date(),
 		});
 
-		expect(await service.matches()).toEqual({
+		expect(await service.matches(userId)).toEqual({
 			rows: [
 				{
 					crmUserId: "crm-1",
@@ -129,5 +173,36 @@ describe("Slack connection", () => {
 			],
 			syncing: true,
 		});
+	});
+
+	it("refuses to disconnect the workspace for a member", async () => {
+		const { service, deleted } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			role: "member",
+		});
+
+		await expect(service.disconnect(userId)).rejects.toThrow(
+			"Only an owner or an admin can disconnect Slack.",
+		);
+		expect(deleted).toEqual([]);
+	});
+
+	it("tells a member that they cannot disconnect", async () => {
+		const { service } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			role: "member",
+		});
+
+		expect((await service.status(userId)).canManage).toBe(false);
+	});
+
+	it("disconnects the workspace for an admin", async () => {
+		const { service, deleted } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			role: "admin",
+		});
+
+		expect(await service.disconnect(userId)).toEqual({ disconnected: true });
+		expect(deleted).toEqual(["account", "slackChannel", "slackWorkspaceGrant"]);
 	});
 });

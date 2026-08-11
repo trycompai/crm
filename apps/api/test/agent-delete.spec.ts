@@ -4,6 +4,7 @@ import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { AgentAccessService } from "../src/agent/agent-access.service";
 import { AgentDefinitionsService } from "../src/agent/agent-definitions.service";
+import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 
 const suffix = crypto.randomUUID();
 const userId = `agent-delete-user-${suffix}`;
@@ -11,7 +12,11 @@ const memberId = `agent-delete-member-${suffix}`;
 const idempotencyPrefix = `agent-delete-${suffix}`;
 
 const access = new AgentAccessService(db);
-const agents = new AgentDefinitionsService(db, access);
+const agents = new AgentDefinitionsService(
+	db,
+	access,
+	new AgentTriggerService(db),
+);
 
 let agentId: string;
 let versionId: string;

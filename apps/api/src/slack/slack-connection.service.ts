@@ -1,10 +1,16 @@
-import { isSlackConfigured, WORKSPACE_ID } from "@crm/auth";
+import {
+	canManageConnections,
+	isSlackConfigured,
+	WORKSPACE_ID,
+} from "@crm/auth";
 import type { Db } from "@crm/db";
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
+import { AgentAccessService } from "../agent/agent-access.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
 import type {
@@ -21,9 +27,11 @@ export class SlackConnectionService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
 		private readonly slackChannels: SlackChannelsService,
+		private readonly access: AgentAccessService,
 	) {}
 
-	async status() {
+	async status(userId: string) {
+		const role = await this.access.assertMember(userId);
 		const [account, agents, matches, memberCount, grant] = await Promise.all([
 			this.db.account.findFirst({
 				where: { providerId: "slack", accessToken: { not: null } },
@@ -81,12 +89,14 @@ export class SlackConnectionService {
 				.map((scope) => scope.trim())
 				.filter(Boolean),
 			canInviteItself: Boolean(grant),
+			canManage: canManageConnections(role),
 			agents: linkedAgents,
 			people: { matched, reviewed },
 		};
 	}
 
-	async matches() {
+	async matches(userId: string) {
+		await this.access.assertMember(userId);
 		const [members, syncing] = await Promise.all([
 			this.db.member.findMany({
 				where: { organizationId: WORKSPACE_ID },
@@ -129,7 +139,8 @@ export class SlackConnectionService {
 		};
 	}
 
-	async refreshPeople() {
+	async refreshPeople(userId: string) {
+		await this.access.assertMember(userId);
 		const account = await this.db.account.findFirst({
 			where: { providerId: "slack", accessToken: { not: null } },
 			orderBy: { updatedAt: "desc" },
@@ -145,7 +156,8 @@ export class SlackConnectionService {
 		return { requested: true };
 	}
 
-	async channels() {
+	async channels(userId: string) {
+		await this.access.assertMember(userId);
 		const [rows, grant] = await Promise.all([
 			this.db.slackChannel.findMany({
 				where: { available: true },
@@ -171,7 +183,8 @@ export class SlackConnectionService {
 		};
 	}
 
-	async joinChannel(input: SlackJoinChannelInput) {
+	async joinChannel(input: SlackJoinChannelInput, userId: string) {
+		await this.access.assertMember(userId);
 		const channel = await this.db.slackChannel.findUnique({
 			where: { id: input.channelId },
 			select: { id: true, name: true, isMember: true, isPrivate: true },
@@ -194,7 +207,8 @@ export class SlackConnectionService {
 		return { queued: true, alreadyJoined: false };
 	}
 
-	async createChannel(input: SlackCreateChannelInput) {
+	async createChannel(input: SlackCreateChannelInput, userId: string) {
+		await this.access.assertMember(userId);
 		const existing = await this.db.slackChannel.findFirst({
 			where: { name: input.name },
 			select: { id: true },
@@ -206,7 +220,15 @@ export class SlackConnectionService {
 		return this.slackChannels.create(input.name, input.isPrivate);
 	}
 
-	async disconnect() {
+	async disconnect(userId: string) {
+		const role = await this.access.assertMember(userId);
+
+		if (!canManageConnections(role)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can disconnect Slack.",
+			);
+		}
+
 		const removed = await this.db.$transaction(async (tx) => {
 			const accounts = await tx.account.deleteMany({
 				where: { providerId: "slack" },

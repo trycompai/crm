@@ -27,6 +27,19 @@ building a second authoring surface.
 If you find yourself adding a toggle, a trigger builder, or an "Edit automation"
 form to a settings page, stop — that work belongs in the builder.
 
+## Removing a connection is an owner or admin decision
+
+A connection is shared. One person disconnecting Slack stops every agent that
+posts to it and clears the cached channel list for everybody, so
+`SlackConnectionService.disconnect` asks `canManageConnections` (`@crm/auth`)
+after `AgentAccessService.assertMember`, and `slack.status` returns `canManage`
+so the button is disabled for the same people the service refuses. Being signed
+in is not authorisation: `AuthMiddleware` only proves a session exists.
+
+Everything additive — joining a channel, creating one, refreshing people — stays
+open to any workspace member, because the agent builder needs it and Slack can
+undo it.
+
 ## Direction is the organising idea
 
 Every connection declares what it **brings in** and what it **sends**. Use those
