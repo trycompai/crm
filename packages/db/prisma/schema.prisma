@@ -314,6 +314,7 @@ enum AgentTaskState {
   WAITING_FOR_APPROVAL
   SUCCEEDED
   FAILED
+  UNKNOWN
   CANCELLED
 }
 
@@ -922,20 +923,21 @@ model AgentTask {
   attempts Int            @default(0)
   state    AgentTaskState @default(QUEUED)
 
-  operationKey      String?
-  idempotencyKey    String?          @unique
-  budgetTokens      Int?
-  budgetUsd         Decimal?         @db.Decimal(12, 6)
-  costUsd           Decimal?         @db.Decimal(12, 6)
-  modelId           String?
-  inputTokens       Int?
-  outputTokens      Int?
-  modelUsage        Json?
-  channel           String?
-  provider          String?
-  scopes            Json?
-  approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentTasks", fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  operationKey          String?
+  idempotencyKey        String?          @unique
+  budgetTokens          Int?
+  budgetUsd             Decimal?         @db.Decimal(12, 6)
+  costUsd               Decimal?         @db.Decimal(12, 6)
+  modelId               String?
+  inputTokens           Int?
+  outputTokens          Int?
+  modelUsage            Json?
+  channel               String?
+  provider              String?
+  scopes                Json?
+  approvalRequestId     String?
+  approvalContentDigest String?
+  approvalRequest       ApprovalRequest? @relation("ApprovalRequestAgentTasks", fields: [approvalRequestId, approvalContentDigest], references: [id, contentDigest], onDelete: Restrict, map: "agentTask_approval_scope_fkey")
 
   dueAt       DateTime
   leasedUntil DateTime?
@@ -954,7 +956,7 @@ model AgentTask {
   @@index([emailDraftId])
   @@index([subjectType, subjectId])
   @@index([operationKey])
-  @@index([approvalRequestId])
+  @@index([approvalRequestId, approvalContentDigest], map: "agentTask_approval_scope_idx")
   @@index([channel, provider])
   @@map("agentTask")
 }
@@ -1275,8 +1277,9 @@ model AgentRun {
   provider     String?
   scopes       Json?
 
-  approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentRuns", fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  approvalRequestId     String?
+  approvalContentDigest String?
+  approvalRequest       ApprovalRequest? @relation("ApprovalRequestAgentRuns", fields: [approvalRequestId, approvalContentDigest], references: [id, contentDigest], onDelete: Restrict, map: "agentRun_approval_scope_fkey")
 
   errorCode    String?
   errorMessage String?
@@ -1297,7 +1300,7 @@ model AgentRun {
   @@index([triggerId, createdAt])
   @@index([subjectType, subjectId])
   @@index([operationKey])
-  @@index([approvalRequestId])
+  @@index([approvalRequestId, approvalContentDigest], map: "agentRun_approval_scope_idx")
   @@index([channel, provider])
   @@map("agentRun")
 }
@@ -1356,7 +1359,7 @@ model AgentAction {
   scopes       Json?
 
   approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentActions", fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentActions", fields: [approvalRequestId, requestHash], references: [id, contentDigest], onDelete: Restrict, map: "agentAction_approval_scope_fkey")
 
   errorCode    String?
   errorMessage String?
@@ -1374,7 +1377,7 @@ model AgentAction {
   @@index([status, plannedAt])
   @@index([subjectType, subjectId])
   @@index([operationKey])
-  @@index([approvalRequestId])
+  @@index([approvalRequestId, requestHash], map: "agentAction_approval_scope_idx")
   @@index([channel, provider])
   @@map("agentAction")
 }
@@ -2486,7 +2489,6 @@ model WorkItem {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@unique([id, version])
   @@index([state, urgency, dueAt])
   @@index([state, nextReviewAt])
   @@index([ownerId, state, dueAt])
@@ -2541,13 +2543,13 @@ model ApprovalRequest {
 }
 
 model PolicyGrant {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   actorType String
   actorId   String
   channel   String
-  accountId String?
+  accountId String
   operation String
-  limits    Json?
+  limits    Json
 
   expiresAt DateTime
   revokedAt DateTime?
@@ -2582,8 +2584,8 @@ model ActionReceipt {
   agentAction         AgentAction?       @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
   approvalRequestId   String?
   approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId, requestHash], references: [id, contentDigest], onDelete: Restrict)
-  providerOperationId String?            @unique
-  providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId], references: [id], onDelete: Restrict)
+  providerOperationId String?
+  providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId, providerAccountId, provider], references: [id, providerAccountId, provider], onDelete: Restrict, map: "actionReceipt_provider_operation_scope_fkey")
   publication         Publication?
   supportReplyDraft   SupportReplyDraft?
 
@@ -2593,7 +2595,8 @@ model ActionReceipt {
 
   @@unique([providerAccountId, externalId])
   @@unique([provider, externalId], map: "actionReceipt_unbound_provider_externalId_key", where: { providerAccountId: null })
-  @@unique([id, approvalRequestId, requestHash])
+  @@unique([providerOperationId, providerAccountId, provider], map: "actionReceipt_provider_operation_scope_key")
+  @@unique([id, approvalRequestId, requestHash, provider, channel], map: "actionReceipt_receipt_scope_key")
   @@index([requestHash])
   @@index([operationKey])
   @@index([status, createdAt])
@@ -2873,7 +2876,7 @@ model Publication {
   approvalRequestId  String?
   approvalRequest    ApprovalRequest?  @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
   actionReceiptId    String?           @unique
-  actionReceipt      ActionReceipt?    @relation(fields: [actionReceiptId, approvalRequestId, contentDigest], references: [id, approvalRequestId, requestHash], onDelete: Restrict)
+  actionReceipt      ActionReceipt?    @relation(fields: [actionReceiptId, approvalRequestId, contentDigest, provider, channel], references: [id, approvalRequestId, requestHash, provider, channel], onDelete: Restrict, map: "publication_receipt_scope_fkey")
   scheduledAt        DateTime?
   publishedAt        DateTime?
   receipt            Json?
@@ -2884,7 +2887,7 @@ model Publication {
 
   @@unique([connectorBindingId, externalId])
   @@unique([provider, externalId], map: "publication_unbound_provider_externalId_key", where: { connectorBindingId: null })
-  @@unique([actionReceiptId, approvalRequestId, contentDigest])
+  @@unique([actionReceiptId, approvalRequestId, contentDigest, provider, channel], map: "publication_receipt_scope_key")
   @@index([status, scheduledAt])
   @@index([approvalRequestId, status, scheduledAt])
   @@index([connectorBindingId, status, scheduledAt])
@@ -2936,7 +2939,7 @@ model SupportCase {
   matchEvidence      Json?
   matchedAt          DateTime?
   matchedById        String?
-  matchedBy          User?                     @relation("SupportCaseMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
+  matchedBy          User?                     @relation("SupportCaseMatchedBy", fields: [matchedById], references: [id], onDelete: Restrict)
   ownerId            String?
   owner              User?                     @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   slaPolicyId        String?
@@ -3057,7 +3060,7 @@ model SupportReplyDraft {
   caseId            String
   case              SupportCase             @relation(fields: [caseId], references: [id], onDelete: Restrict)
   channel           String
-  provider          String?
+  provider          String
   recipients        Json
   subject           String?
   body              String
@@ -3067,13 +3070,13 @@ model SupportReplyDraft {
   approvalRequest   ApprovalRequest?        @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
   idempotencyKey    String                  @unique
   actionReceiptId   String?                 @unique
-  actionReceipt     ActionReceipt?          @relation(fields: [actionReceiptId, approvalRequestId, contentDigest], references: [id, approvalRequestId, requestHash], onDelete: Restrict)
+  actionReceipt     ActionReceipt?          @relation(fields: [actionReceiptId, approvalRequestId, contentDigest, provider, channel], references: [id, approvalRequestId, requestHash, provider, channel], onDelete: Restrict, map: "supportReplyDraft_receipt_scope_fkey")
   sentAt            DateTime?
   errorMessage      String?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
-  @@unique([actionReceiptId, approvalRequestId, contentDigest])
+  @@unique([actionReceiptId, approvalRequestId, contentDigest, provider, channel], map: "supportReplyDraft_receipt_scope_key")
   @@index([caseId, status, createdAt])
   @@index([approvalRequestId, status, createdAt])
   @@index([status, createdAt])
@@ -3380,7 +3383,7 @@ model PlanStep {
   providerOperations ProviderOperation[]
 
   @@unique([planId, position])
-  @@unique([id, instanceId])
+  @@unique([id, instanceId, provider], map: "planStep_provider_scope_key")
   @@index([planId, status, position])
   @@index([resourceType, resourceId])
   @@map("planStep")
@@ -3420,10 +3423,10 @@ model ProviderOperation {
   customerAccount   CustomerAccount         @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   instanceId        String?
   instance          CustomerInstance?       @relation(fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
-  providerAccountId String?
-  providerAccount   ProviderAccount?        @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
+  providerAccountId String
+  providerAccount   ProviderAccount         @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
   planStepId        String?
-  planStep          PlanStep?               @relation(fields: [planStepId, instanceId], references: [id, instanceId], onDelete: Restrict)
+  planStep          PlanStep?               @relation(fields: [planStepId, instanceId, provider], references: [id, instanceId, provider], onDelete: Restrict, map: "providerOperation_plan_step_scope_fkey")
   controlCommandId  String?
   controlCommand    ControlCommand?         @relation(fields: [controlCommandId, instanceId], references: [id, instanceId], onDelete: Restrict)
   provider          String
@@ -3445,7 +3448,7 @@ model ProviderOperation {
   receipt ActionReceipt? @relation("ProviderOperationReceipt")
 
   @@unique([providerAccountId, externalId])
-  @@unique([provider, externalId], map: "providerOperation_unbound_provider_externalId_key", where: { providerAccountId: null })
+  @@unique([id, providerAccountId, provider], map: "providerOperation_receipt_scope_key")
   @@index([customerAccountId, status, createdAt])
   @@index([instanceId, status, createdAt])
   @@index([providerAccountId, status, createdAt])

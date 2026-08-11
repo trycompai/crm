@@ -4,7 +4,7 @@ CREATE TYPE "WorkItemUrgency" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'URGENT');
 
 CREATE TYPE "WorkItemState" AS ENUM ('OPEN', 'IN_PROGRESS', 'WAITING', 'BLOCKED', 'DONE', 'DISMISSED');
 
-CREATE TYPE "AgentTaskState" AS ENUM ('QUEUED', 'LEASED', 'WAITING_FOR_APPROVAL', 'SUCCEEDED', 'FAILED', 'CANCELLED');
+CREATE TYPE "AgentTaskState" AS ENUM ('QUEUED', 'LEASED', 'WAITING_FOR_APPROVAL', 'SUCCEEDED', 'FAILED', 'UNKNOWN', 'CANCELLED');
 
 CREATE TYPE "ApprovalRequestRisk" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
 
@@ -86,6 +86,8 @@ ALTER TYPE "AgentRunStatus" ADD VALUE 'INDETERMINATE' BEFORE 'CANCELLED';
 
 ALTER TYPE "AgentActionStatus" ADD VALUE 'INDETERMINATE' BEFORE 'CANCELLED';
 
+SET lock_timeout = '5s';
+
 ALTER TABLE "agentTask"
 ADD COLUMN "subjectType" "SubjectType",
 ADD COLUMN "subjectId" TEXT,
@@ -103,12 +105,27 @@ ADD COLUMN "modelUsage" JSONB,
 ADD COLUMN "channel" TEXT,
 ADD COLUMN "provider" TEXT,
 ADD COLUMN "scopes" JSONB,
-ADD COLUMN "approvalRequestId" TEXT;
+ADD COLUMN "approvalRequestId" TEXT,
+ADD COLUMN "approvalContentDigest" TEXT;
 
 UPDATE "agentTask"
 SET "state" = CASE
     WHEN "finishedAt" IS NOT NULL AND ("outcome" LIKE 'Gave up after%' OR "outcome" LIKE 'Failed after%') THEN 'FAILED'::"AgentTaskState"
-    WHEN "finishedAt" IS NOT NULL THEN 'SUCCEEDED'::"AgentTaskState"
+    WHEN "finishedAt" IS NOT NULL AND (
+        "outcome" = 'ran'
+        OR "outcome" = 'Prospect research recorded.'
+        OR "outcome" = 'Approved email sent.'
+        OR "outcome" = 'Three-step outreach sequence prepared for review.'
+        OR "outcome" = 'Customer systems and data onboarding plan recorded.'
+        OR "outcome" = 'Everything Context.dev returned was already on the record.'
+        OR "outcome" LIKE 'Created % fresh candidates and queued full research.'
+        OR "outcome" LIKE 'Imported % website enquiries;%'
+        OR "outcome" LIKE 'Stored % AgentMail messages;%'
+        OR "outcome" LIKE 'Imported % Granola notes;%'
+        OR "outcome" LIKE 'Picture stored from %.'
+        OR "outcome" LIKE 'Filled %'
+    ) THEN 'SUCCEEDED'::"AgentTaskState"
+    WHEN "finishedAt" IS NOT NULL THEN 'UNKNOWN'::"AgentTaskState"
     WHEN "leasedUntil" IS NOT NULL AND "leasedUntil" > CURRENT_TIMESTAMP THEN 'LEASED'::"AgentTaskState"
     ELSE 'QUEUED'::"AgentTaskState"
 END;
@@ -128,7 +145,8 @@ ADD COLUMN "modelUsage" JSONB,
 ADD COLUMN "channel" TEXT,
 ADD COLUMN "provider" TEXT,
 ADD COLUMN "scopes" JSONB,
-ADD COLUMN "approvalRequestId" TEXT;
+ADD COLUMN "approvalRequestId" TEXT,
+ADD COLUMN "approvalContentDigest" TEXT;
 
 ALTER TABLE "agentAction"
 ADD COLUMN "subjectType" "SubjectType",
@@ -145,6 +163,20 @@ ADD COLUMN "modelUsage" JSONB,
 ADD COLUMN "channel" TEXT,
 ADD COLUMN "scopes" JSONB,
 ADD COLUMN "approvalRequestId" TEXT;
+
+ALTER TABLE "agentTask"
+ADD CONSTRAINT "agentTask_subject_pair_check" CHECK (num_nonnulls("subjectType", "subjectId") IN (0, 2)),
+ADD CONSTRAINT "agentTask_approval_pair_check" CHECK (num_nonnulls("approvalRequestId", "approvalContentDigest") IN (0, 2));
+
+ALTER TABLE "agentRun"
+ADD CONSTRAINT "agentRun_subject_pair_check" CHECK (num_nonnulls("subjectType", "subjectId") IN (0, 2)),
+ADD CONSTRAINT "agentRun_approval_pair_check" CHECK (num_nonnulls("approvalRequestId", "approvalContentDigest") IN (0, 2));
+
+ALTER TABLE "agentAction"
+ADD CONSTRAINT "agentAction_subject_pair_check" CHECK (num_nonnulls("subjectType", "subjectId") IN (0, 2)),
+ADD CONSTRAINT "agentAction_approval_digest_check" CHECK ("approvalRequestId" IS NULL OR "requestHash" IS NOT NULL);
+
+RESET lock_timeout;
 
 CREATE TABLE "workItem" (
     "id" TEXT NOT NULL,
@@ -201,9 +233,9 @@ CREATE TABLE "policyGrant" (
     "actorType" TEXT NOT NULL,
     "actorId" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
-    "accountId" TEXT,
+    "accountId" TEXT NOT NULL,
     "operation" TEXT NOT NULL,
-    "limits" JSONB,
+    "limits" JSONB NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "revokedAt" TIMESTAMP(3),
     "grantKey" TEXT NOT NULL,
@@ -233,6 +265,8 @@ CREATE TABLE "actionReceipt" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "completedAt" TIMESTAMP(3),
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "actionReceipt_provider_operation_scope_check" CHECK ("providerOperationId" IS NULL OR "providerAccountId" IS NOT NULL),
+    CONSTRAINT "actionReceipt_terminal_completed_check" CHECK ("status" = 'PENDING' OR "completedAt" IS NOT NULL),
     CONSTRAINT "actionReceipt_pkey" PRIMARY KEY ("id")
 );
 
@@ -466,7 +500,8 @@ CREATE TABLE "supportCase" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "supportCase_connector_identity_check" CHECK ("connectorBindingId" IS NULL OR "provider" IS NOT NULL),
-    CONSTRAINT "supportCase_match_evidence_check" CHECK ("matchState" <> 'MATCHED' OR ("matchMethod" IS NOT NULL AND "matchedAt" IS NOT NULL)),
+    CONSTRAINT "supportCase_subject_pair_check" CHECK (num_nonnulls("subjectType", "subjectId") IN (0, 2)),
+    CONSTRAINT "supportCase_match_evidence_check" CHECK ("matchState" <> 'MATCHED' OR ("matchMethod" IS NOT NULL AND "matchedAt" IS NOT NULL AND "matchedById" IS NOT NULL AND ("customerAccountId" IS NOT NULL OR ("subjectType" IS NOT NULL AND "subjectId" IS NOT NULL)))),
     CONSTRAINT "supportCase_pkey" PRIMARY KEY ("id")
 );
 
@@ -536,7 +571,7 @@ CREATE TABLE "supportReplyDraft" (
     "id" TEXT NOT NULL,
     "caseId" TEXT NOT NULL,
     "channel" TEXT NOT NULL,
-    "provider" TEXT,
+    "provider" TEXT NOT NULL,
     "recipients" JSONB NOT NULL,
     "subject" TEXT,
     "body" TEXT NOT NULL,
@@ -767,7 +802,7 @@ CREATE TABLE "providerOperation" (
     "id" TEXT NOT NULL,
     "customerAccountId" TEXT NOT NULL,
     "instanceId" TEXT,
-    "providerAccountId" TEXT,
+    "providerAccountId" TEXT NOT NULL,
     "planStepId" TEXT,
     "controlCommandId" TEXT,
     "provider" TEXT NOT NULL,
@@ -786,7 +821,6 @@ CREATE TABLE "providerOperation" (
     "completedAt" TIMESTAMP(3),
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "providerOperation_reference_scope_check" CHECK (("planStepId" IS NULL AND "controlCommandId" IS NULL) OR ("instanceId" IS NOT NULL AND "customerAccountId" IS NOT NULL AND "provider" IS NOT NULL)),
-    CONSTRAINT "providerOperation_provider_scope_check" CHECK ("providerAccountId" IS NULL OR ("customerAccountId" IS NOT NULL AND "provider" IS NOT NULL)),
     CONSTRAINT "providerOperation_single_origin_check" CHECK (num_nonnulls("planStepId", "controlCommandId") <= 1),
     CONSTRAINT "providerOperation_pkey" PRIMARY KEY ("id")
 );
@@ -847,17 +881,16 @@ CREATE TABLE "costLineItem" (
 );
 
 CREATE UNIQUE INDEX "agentTask_idempotencyKey_key" ON "agentTask"("idempotencyKey");
-CREATE UNIQUE INDEX "workItem_id_version_key" ON "workItem"("id", "version");
 CREATE UNIQUE INDEX "approvalRequest_idempotencyKey_key" ON "approvalRequest"("idempotencyKey");
 CREATE UNIQUE INDEX "approvalRequest_action_contentDigest_targetType_targetId_po_key" ON "approvalRequest"("action", "contentDigest", "targetType", "targetId", "policyVersion", "invalidationVersion");
 CREATE UNIQUE INDEX "approvalRequest_id_contentDigest_key" ON "approvalRequest"("id", "contentDigest");
 CREATE UNIQUE INDEX "approvalRequest_id_version_key" ON "approvalRequest"("id", "version");
 CREATE UNIQUE INDEX "policyGrant_grantKey_key" ON "policyGrant"("grantKey");
 CREATE UNIQUE INDEX "actionReceipt_idempotencyKey_key" ON "actionReceipt"("idempotencyKey");
-CREATE UNIQUE INDEX "actionReceipt_providerOperationId_key" ON "actionReceipt"("providerOperationId");
 CREATE UNIQUE INDEX "actionReceipt_providerAccountId_externalId_key" ON "actionReceipt"("providerAccountId", "externalId");
 CREATE UNIQUE INDEX "actionReceipt_unbound_provider_externalId_key" ON "actionReceipt"("provider", "externalId") WHERE ("providerAccountId" IS NULL);
-CREATE UNIQUE INDEX "actionReceipt_id_approvalRequestId_requestHash_key" ON "actionReceipt"("id", "approvalRequestId", "requestHash");
+CREATE UNIQUE INDEX "actionReceipt_provider_operation_scope_key" ON "actionReceipt"("providerOperationId", "providerAccountId", "provider");
+CREATE UNIQUE INDEX "actionReceipt_receipt_scope_key" ON "actionReceipt"("id", "approvalRequestId", "requestHash", "provider", "channel");
 CREATE UNIQUE INDEX "connectorBinding_provider_accountId_key" ON "connectorBinding"("provider", "accountId");
 CREATE UNIQUE INDEX "connectorBinding_id_provider_key" ON "connectorBinding"("id", "provider");
 CREATE UNIQUE INDEX "connectorHealth_bindingId_key" ON "connectorHealth"("bindingId");
@@ -872,7 +905,7 @@ CREATE UNIQUE INDEX "publication_idempotencyKey_key" ON "publication"("idempoten
 CREATE UNIQUE INDEX "publication_actionReceiptId_key" ON "publication"("actionReceiptId");
 CREATE UNIQUE INDEX "publication_connectorBindingId_externalId_key" ON "publication"("connectorBindingId", "externalId");
 CREATE UNIQUE INDEX "publication_unbound_provider_externalId_key" ON "publication"("provider", "externalId") WHERE ("connectorBindingId" IS NULL);
-CREATE UNIQUE INDEX "publication_actionReceiptId_approvalRequestId_contentDigest_key" ON "publication"("actionReceiptId", "approvalRequestId", "contentDigest");
+CREATE UNIQUE INDEX "publication_receipt_scope_key" ON "publication"("actionReceiptId", "approvalRequestId", "contentDigest", "provider", "channel");
 CREATE UNIQUE INDEX "marketingSourceReceipt_source_externalId_key" ON "marketingSourceReceipt"("source", "externalId");
 CREATE UNIQUE INDEX "supportCase_dedupeKey_key" ON "supportCase"("dedupeKey");
 CREATE UNIQUE INDEX "supportCase_connectorBindingId_externalId_key" ON "supportCase"("connectorBindingId", "externalId");
@@ -883,7 +916,7 @@ CREATE UNIQUE INDEX "supportSlaPolicy_policyKey_key" ON "supportSlaPolicy"("poli
 CREATE UNIQUE INDEX "supportTriageProposal_idempotencyKey_key" ON "supportTriageProposal"("idempotencyKey");
 CREATE UNIQUE INDEX "supportReplyDraft_idempotencyKey_key" ON "supportReplyDraft"("idempotencyKey");
 CREATE UNIQUE INDEX "supportReplyDraft_actionReceiptId_key" ON "supportReplyDraft"("actionReceiptId");
-CREATE UNIQUE INDEX "supportReplyDraft_actionReceiptId_approvalRequestId_content_key" ON "supportReplyDraft"("actionReceiptId", "approvalRequestId", "contentDigest");
+CREATE UNIQUE INDEX "supportReplyDraft_receipt_scope_key" ON "supportReplyDraft"("actionReceiptId", "approvalRequestId", "contentDigest", "provider", "channel");
 CREATE UNIQUE INDEX "supportKnowledgeDocument_source_externalId_key" ON "supportKnowledgeDocument"("source", "externalId");
 CREATE UNIQUE INDEX "supportProductHandoff_caseId_externalKey_key" ON "supportProductHandoff"("caseId", "externalKey");
 CREATE UNIQUE INDEX "customerAccount_externalKey_key" ON "customerAccount"("externalKey");
@@ -907,12 +940,12 @@ CREATE UNIQUE INDEX "plan_idempotencyKey_key" ON "plan"("idempotencyKey");
 CREATE UNIQUE INDEX "plan_id_instanceId_key" ON "plan"("id", "instanceId");
 CREATE UNIQUE INDEX "planStep_idempotencyKey_key" ON "planStep"("idempotencyKey");
 CREATE UNIQUE INDEX "planStep_planId_position_key" ON "planStep"("planId", "position");
-CREATE UNIQUE INDEX "planStep_id_instanceId_key" ON "planStep"("id", "instanceId");
+CREATE UNIQUE INDEX "planStep_provider_scope_key" ON "planStep"("id", "instanceId", "provider");
 CREATE UNIQUE INDEX "controlCommand_idempotencyKey_key" ON "controlCommand"("idempotencyKey");
 CREATE UNIQUE INDEX "controlCommand_id_instanceId_key" ON "controlCommand"("id", "instanceId");
 CREATE UNIQUE INDEX "providerOperation_idempotencyKey_key" ON "providerOperation"("idempotencyKey");
 CREATE UNIQUE INDEX "providerOperation_providerAccountId_externalId_key" ON "providerOperation"("providerAccountId", "externalId");
-CREATE UNIQUE INDEX "providerOperation_unbound_provider_externalId_key" ON "providerOperation"("provider", "externalId") WHERE ("providerAccountId" IS NULL);
+CREATE UNIQUE INDEX "providerOperation_receipt_scope_key" ON "providerOperation"("id", "providerAccountId", "provider");
 CREATE UNIQUE INDEX "incident_instanceId_fingerprint_key" ON "incident"("instanceId", "fingerprint");
 CREATE UNIQUE INDEX "usageSample_customerAccountId_metric_observedAt_key" ON "usageSample"("customerAccountId", "metric", "observedAt");
 CREATE UNIQUE INDEX "costLineItem_providerAccountId_externalId_key" ON "costLineItem"("providerAccountId", "externalId");
@@ -920,15 +953,15 @@ CREATE UNIQUE INDEX "costLineItem_unbound_provider_externalId_key" ON "costLineI
 
 CREATE INDEX "agentTask_subjectType_subjectId_idx" ON "agentTask"("subjectType", "subjectId");
 CREATE INDEX "agentTask_operationKey_idx" ON "agentTask"("operationKey");
-CREATE INDEX "agentTask_approvalRequestId_idx" ON "agentTask"("approvalRequestId");
+CREATE INDEX "agentTask_approval_scope_idx" ON "agentTask"("approvalRequestId", "approvalContentDigest");
 CREATE INDEX "agentTask_channel_provider_idx" ON "agentTask"("channel", "provider");
 CREATE INDEX "agentRun_subjectType_subjectId_idx" ON "agentRun"("subjectType", "subjectId");
 CREATE INDEX "agentRun_operationKey_idx" ON "agentRun"("operationKey");
-CREATE INDEX "agentRun_approvalRequestId_idx" ON "agentRun"("approvalRequestId");
+CREATE INDEX "agentRun_approval_scope_idx" ON "agentRun"("approvalRequestId", "approvalContentDigest");
 CREATE INDEX "agentRun_channel_provider_idx" ON "agentRun"("channel", "provider");
 CREATE INDEX "agentAction_subjectType_subjectId_idx" ON "agentAction"("subjectType", "subjectId");
 CREATE INDEX "agentAction_operationKey_idx" ON "agentAction"("operationKey");
-CREATE INDEX "agentAction_approvalRequestId_idx" ON "agentAction"("approvalRequestId");
+CREATE INDEX "agentAction_approval_scope_idx" ON "agentAction"("approvalRequestId", "requestHash");
 CREATE INDEX "agentAction_channel_provider_idx" ON "agentAction"("channel", "provider");
 CREATE INDEX "workItem_state_urgency_dueAt_idx" ON "workItem"("state", "urgency", "dueAt");
 CREATE INDEX "workItem_state_nextReviewAt_idx" ON "workItem"("state", "nextReviewAt");
@@ -1043,13 +1076,13 @@ CREATE INDEX "costLineItem_provider_category_periodStart_idx" ON "costLineItem"(
 ALTER TABLE "workItem" ADD CONSTRAINT "workItem_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "approvalRequest" ADD CONSTRAINT "approvalRequest_requestorId_fkey" FOREIGN KEY ("requestorId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "approvalRequest" ADD CONSTRAINT "approvalRequest_approverId_fkey" FOREIGN KEY ("approverId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "agentTask" ADD CONSTRAINT "agentTask_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "agentRun" ADD CONSTRAINT "agentRun_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "agentAction" ADD CONSTRAINT "agentAction_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "agentTask" ADD CONSTRAINT "agentTask_approval_scope_fkey" FOREIGN KEY ("approvalRequestId", "approvalContentDigest") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "agentRun" ADD CONSTRAINT "agentRun_approval_scope_fkey" FOREIGN KEY ("approvalRequestId", "approvalContentDigest") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "agentAction" ADD CONSTRAINT "agentAction_approval_scope_fkey" FOREIGN KEY ("approvalRequestId", "requestHash") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_providerAccountId_provider_fkey" FOREIGN KEY ("providerAccountId", "provider") REFERENCES "providerAccount"("id", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_agentActionId_fkey" FOREIGN KEY ("agentActionId") REFERENCES "agentAction"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_approvalRequestId_requestHash_fkey" FOREIGN KEY ("approvalRequestId", "requestHash") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_providerOperationId_fkey" FOREIGN KEY ("providerOperationId") REFERENCES "providerOperation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_provider_operation_scope_fkey" FOREIGN KEY ("providerOperationId", "providerAccountId", "provider") REFERENCES "providerOperation"("id", "providerAccountId", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "connectorBinding" ADD CONSTRAINT "connectorBinding_secretReferenceId_provider_accountId_fkey" FOREIGN KEY ("secretReferenceId", "provider", "accountId") REFERENCES "secretReference"("id", "provider", "externalAccountId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "connectorHealth" ADD CONSTRAINT "connectorHealth_bindingId_fkey" FOREIGN KEY ("bindingId") REFERENCES "connectorBinding"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "campaign" ADD CONSTRAINT "campaign_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1070,12 +1103,12 @@ ALTER TABLE "publication" ADD CONSTRAINT "publication_contentItemId_fkey" FOREIG
 ALTER TABLE "publication" ADD CONSTRAINT "publication_contentVariantId_fkey" FOREIGN KEY ("contentVariantId") REFERENCES "contentVariant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "publication" ADD CONSTRAINT "publication_connectorBindingId_provider_fkey" FOREIGN KEY ("connectorBindingId", "provider") REFERENCES "connectorBinding"("id", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "publication" ADD CONSTRAINT "publication_approvalRequestId_contentDigest_fkey" FOREIGN KEY ("approvalRequestId", "contentDigest") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "publication" ADD CONSTRAINT "publication_actionReceiptId_approvalRequestId_contentDiges_fkey" FOREIGN KEY ("actionReceiptId", "approvalRequestId", "contentDigest") REFERENCES "actionReceipt"("id", "approvalRequestId", "requestHash") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "publication" ADD CONSTRAINT "publication_receipt_scope_fkey" FOREIGN KEY ("actionReceiptId", "approvalRequestId", "contentDigest", "provider", "channel") REFERENCES "actionReceipt"("id", "approvalRequestId", "requestHash", "provider", "channel") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "marketingSourceReceipt" ADD CONSTRAINT "marketingSourceReceipt_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "marketingSourceReceipt" ADD CONSTRAINT "marketingSourceReceipt_contentItemId_fkey" FOREIGN KEY ("contentItemId") REFERENCES "contentItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_connectorBindingId_provider_fkey" FOREIGN KEY ("connectorBindingId", "provider") REFERENCES "connectorBinding"("id", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_matchedById_fkey" FOREIGN KEY ("matchedById") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_matchedById_fkey" FOREIGN KEY ("matchedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_slaPolicyId_fkey" FOREIGN KEY ("slaPolicyId") REFERENCES "supportSlaPolicy"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCaseSource" ADD CONSTRAINT "supportCaseSource_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -1085,7 +1118,7 @@ ALTER TABLE "supportSlaPolicy" ADD CONSTRAINT "supportSlaPolicy_customerAccountI
 ALTER TABLE "supportTriageProposal" ADD CONSTRAINT "supportTriageProposal_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_approvalRequestId_contentDigest_fkey" FOREIGN KEY ("approvalRequestId", "contentDigest") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_actionReceiptId_approvalRequestId_conten_fkey" FOREIGN KEY ("actionReceiptId", "approvalRequestId", "contentDigest") REFERENCES "actionReceipt"("id", "approvalRequestId", "requestHash") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_receipt_scope_fkey" FOREIGN KEY ("actionReceiptId", "approvalRequestId", "contentDigest", "provider", "channel") REFERENCES "actionReceipt"("id", "approvalRequestId", "requestHash", "provider", "channel") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "supportEscalation" ADD CONSTRAINT "supportEscalation_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "supportProductHandoff" ADD CONSTRAINT "supportProductHandoff_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "customerAccount" ADD CONSTRAINT "customerAccount_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "company"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1111,7 +1144,7 @@ ALTER TABLE "controlCommand" ADD CONSTRAINT "controlCommand_approvalRequestId_co
 ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_instanceId_customerAccountId_fkey" FOREIGN KEY ("instanceId", "customerAccountId") REFERENCES "customerInstance"("id", "accountId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_providerAccountId_customerAccountId_prov_fkey" FOREIGN KEY ("providerAccountId", "customerAccountId", "provider") REFERENCES "providerAccount"("id", "customerAccountId", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_planStepId_instanceId_fkey" FOREIGN KEY ("planStepId", "instanceId") REFERENCES "planStep"("id", "instanceId") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_plan_step_scope_fkey" FOREIGN KEY ("planStepId", "instanceId", "provider") REFERENCES "planStep"("id", "instanceId", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "providerOperation" ADD CONSTRAINT "providerOperation_controlCommandId_instanceId_fkey" FOREIGN KEY ("controlCommandId", "instanceId") REFERENCES "controlCommand"("id", "instanceId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "incident" ADD CONSTRAINT "incident_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "customerInstance"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "usageSample" ADD CONSTRAINT "usageSample_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
