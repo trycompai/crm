@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { approvalContentDigest } from "@crm/db/approval";
-import { approvalDigestMatches } from "../src/approval/approval.service";
+import {
+	approvalDigestMatches,
+	approvalIntegrityMatches,
+} from "../src/approval/approval.service";
 import { workCapabilities } from "../src/work/work-capabilities";
 
 describe("approval and Work pure policy projections", () => {
@@ -24,6 +27,19 @@ describe("approval and Work pure policy projections", () => {
 				invalidationVersion: 1,
 			}),
 		).toBe(false);
+		const priorVersion = 3;
+		const historicalDigest = approvalContentDigest({
+			...approval,
+			invalidationVersion: priorVersion,
+		});
+		expect(
+			approvalIntegrityMatches({
+				...approval,
+				contentDigest: historicalDigest,
+				invalidationVersion: priorVersion + 1,
+				status: "INVALIDATED",
+			}),
+		).toBe(true);
 	});
 
 	it("projects the four Work authority personas without UI inference", () => {

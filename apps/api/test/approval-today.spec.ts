@@ -50,7 +50,6 @@ function validApproval(input: {
 	risk?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 	targetId?: string;
 	expiresAt?: Date;
-	status?: "PENDING" | "APPROVED";
 	invalidationVersion?: number;
 }) {
 	const contentSnapshot = { body: `Private approval body ${input.id}` };
@@ -84,7 +83,7 @@ function validApproval(input: {
 			policyVersion: "today-v1",
 			expiresAt,
 			invalidationVersion,
-			status: input.status,
+			status: "PENDING",
 			idempotencyKey,
 		},
 	});
@@ -105,6 +104,8 @@ async function createWork(input: {
 			queue: "today",
 			urgency: "HIGH",
 			dueAt: new Date(Date.now() + 60_000),
+			nextReviewAt:
+				input.state === "WAITING" ? new Date(Date.now() + 60_000) : undefined,
 			reason: `Work reason ${input.id}`,
 			state: input.state ?? "OPEN",
 			primaryAction: `Work action ${input.id}`,
@@ -231,7 +232,7 @@ describe("approval API", () => {
 			data: { contentDigest: `corrupt-${approval.contentDigest}` },
 		});
 		const list = await approvals.list(
-			approvalListInput.parse({ q: id, pageSize: 10 }),
+			approvalListInput.parse({ page: 1, pageSize: 100 }),
 			adminId,
 		);
 		const row = list.rows.find((item) => item.id === id);
@@ -261,12 +262,14 @@ describe("approval API", () => {
 	it("approves with actor-bound replay and rejects an authorized collision", async () => {
 		const id = `today-approve-${suffix}`;
 		const approval = await validApproval({ id });
+		const clientRequestId = crypto.randomUUID();
+		approvalRequestKeys.push(clientRequestId);
 		const input = {
 			id,
 			expectedVersion: 0,
 			contentDigest: approval.contentDigest,
 			invalidationVersion: 0,
-			clientRequestId: crypto.randomUUID(),
+			clientRequestId,
 		};
 		const first = await approvals.approve(input, memberId);
 		expect(first.approval.status).toBe("APPROVED");
@@ -284,6 +287,33 @@ describe("approval API", () => {
 			channel: "operating-kernel",
 			status: "SUCCEEDED",
 		});
+		await db.approvalRequest.update({
+			where: { id },
+			data: { contentSnapshot: { body: "Tampered after approval" } },
+		});
+		await expect(approvals.approve(input, memberId)).rejects.toThrow(
+			"digest is invalid",
+		);
+
+		const rejectedId = `today-reject-replay-${suffix}`;
+		const rejected = await validApproval({ id: rejectedId });
+		const rejectRequestId = crypto.randomUUID();
+		approvalRequestKeys.push(rejectRequestId);
+		const rejectInput = {
+			id: rejectedId,
+			expectedVersion: 0,
+			contentDigest: rejected.contentDigest,
+			invalidationVersion: 0,
+			clientRequestId: rejectRequestId,
+		};
+		await approvals.reject(rejectInput, memberId);
+		await db.approvalRequest.update({
+			where: { id: rejectedId },
+			data: { contentSnapshot: { body: "Tampered after rejection" } },
+		});
+		await expect(approvals.reject(rejectInput, memberId)).rejects.toThrow(
+			"digest is invalid",
+		);
 	});
 
 	it("persists expiry before conflict", async () => {
@@ -317,25 +347,55 @@ describe("approval API", () => {
 
 	it("increments invalidation and replays only the exact post-state", async () => {
 		const id = `today-invalidate-${suffix}`;
-		const approval = await validApproval({ id, status: "APPROVED" });
+		const approval = await validApproval({ id });
+		const approveRequestId = crypto.randomUUID();
+		approvalRequestKeys.push(approveRequestId);
+		const approved = await approvals.approve(
+			{
+				id,
+				expectedVersion: 0,
+				contentDigest: approval.contentDigest,
+				invalidationVersion: 0,
+				clientRequestId: approveRequestId,
+			},
+			memberId,
+		);
+		expect(approved.approval.status).toBe("APPROVED");
+		const invalidateRequestId = crypto.randomUUID();
+		approvalRequestKeys.push(invalidateRequestId);
 		const input = {
 			id,
-			expectedVersion: 0,
+			expectedVersion: 1,
 			contentDigest: approval.contentDigest,
 			invalidationVersion: 0,
-			clientRequestId: crypto.randomUUID(),
+			clientRequestId: invalidateRequestId,
 		};
 		const first = await approvals.invalidate(input, adminId);
 		expect(first.approval.invalidationVersion).toBe(1);
-		expect(first.approval.version).toBe(1);
+		expect(first.approval.version).toBe(2);
+		expect(first.approval.contentDigest).toBe(approval.contentDigest);
+		expect(first.approval.integrityValid).toBe(true);
 		expect(await approvals.invalidate(input, adminId)).toEqual(first);
+		const listed = await approvals.list(
+			approvalListInput.parse({ page: 1, pageSize: 100 }),
+			adminId,
+		);
+		expect(listed.rows.find((row) => row.id === id)?.integrityValid).toBe(true);
+		expect((await approvals.detail(id, adminId)).integrityValid).toBe(true);
+		await db.approvalRequest.update({
+			where: { id },
+			data: { contentSnapshot: { body: "Tampered after invalidation" } },
+		});
+		await expect(approvals.invalidate(input, adminId)).rejects.toThrow(
+			"digest is invalid",
+		);
 		const stored = await db.approvalRequest.findUnique({
 			where: { id },
 			select: { status: true, version: true, invalidationVersion: true },
 		});
 		expect(stored).toEqual({
 			status: "INVALIDATED",
-			version: 1,
+			version: 2,
 			invalidationVersion: 1,
 		});
 
@@ -357,7 +417,7 @@ describe("approval API", () => {
 			execution.consumeApproved({
 				approvalRequestId: id,
 				contentDigest: approval.contentDigest,
-				expectedVersion: 0,
+				expectedVersion: 1,
 				invalidationVersion: 0,
 				actionReceiptId: receiptId,
 			}),

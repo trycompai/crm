@@ -104,19 +104,26 @@ function userSummary(user: ApprovalRecord["requestor"]): OwnerSummary | null {
 	return user;
 }
 
-export function approvalDigestMatches(
-	approval: Pick<
-		ApprovalRecord,
-		| "action"
-		| "contentSnapshot"
-		| "targetType"
-		| "targetId"
-		| "risk"
-		| "policyVersion"
-		| "expiresAt"
-		| "invalidationVersion"
-		| "contentDigest"
-	>,
+export function approvalDigestMatches(approval: ApprovalDigestRecord): boolean {
+	return approvalDigestMatchesVersion(approval, approval.invalidationVersion);
+}
+
+type ApprovalDigestRecord = Pick<
+	ApprovalRecord,
+	| "action"
+	| "contentSnapshot"
+	| "targetType"
+	| "targetId"
+	| "risk"
+	| "policyVersion"
+	| "expiresAt"
+	| "invalidationVersion"
+	| "contentDigest"
+>;
+
+function approvalDigestMatchesVersion(
+	approval: ApprovalDigestRecord,
+	invalidationVersion: number,
 ): boolean {
 	return (
 		approvalContentDigest({
@@ -127,8 +134,19 @@ export function approvalDigestMatches(
 			risk: approval.risk,
 			policyVersion: approval.policyVersion,
 			expiresAt: approval.expiresAt,
-			invalidationVersion: approval.invalidationVersion,
+			invalidationVersion,
 		}) === approval.contentDigest
+	);
+}
+
+export function approvalIntegrityMatches(
+	approval: ApprovalDigestRecord & Pick<ApprovalRecord, "status">,
+): boolean {
+	return (
+		approvalDigestMatches(approval) ||
+		(approval.status === "INVALIDATED" &&
+			approval.invalidationVersion > 0 &&
+			approvalDigestMatchesVersion(approval, approval.invalidationVersion - 1))
 	);
 }
 
@@ -257,7 +275,7 @@ export class ApprovalService {
 					},
 					member,
 					false,
-					approvalDigestMatches(row),
+					approvalIntegrityMatches(row),
 				),
 			),
 			total,
@@ -278,7 +296,7 @@ export class ApprovalService {
 		});
 		if (!approval)
 			throw new NotFoundException(`No approval request with id ${id}.`);
-		const integrityValid = approvalDigestMatches(approval);
+		const integrityValid = approvalIntegrityMatches(approval);
 		if (
 			!member.isAdmin &&
 			!memberCanReviewApproval(approval.risk, approval.action)
@@ -331,6 +349,7 @@ export class ApprovalService {
 				requestHash,
 			);
 			if (replay) {
+				this.assertHistoricalDigest(approval, input);
 				this.assertReplayState(operation, approval, input);
 				return replay;
 			}
@@ -416,7 +435,7 @@ export class ApprovalService {
 					target,
 					member,
 					false,
-					approvalDigestMatches(current),
+					approvalIntegrityMatches(current),
 				),
 				receipt: { id: "", status: "SUCCEEDED" },
 			};
@@ -447,6 +466,15 @@ export class ApprovalService {
 
 	private assertDigest(approval: ApprovalRecord): void {
 		if (!approvalDigestMatches(approval)) {
+			throw new ConflictException("Approval content digest is invalid.");
+		}
+	}
+
+	private assertHistoricalDigest(
+		approval: ApprovalRecord,
+		input: ApprovalMutationInput,
+	): void {
+		if (!approvalDigestMatchesVersion(approval, input.invalidationVersion)) {
 			throw new ConflictException("Approval content digest is invalid.");
 		}
 	}
