@@ -15,10 +15,12 @@ import {
 	Param,
 	Post,
 	Req,
+	Res,
 	ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
+import type { Response } from "express";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
@@ -59,9 +61,12 @@ export class TrackingController {
 	@HttpCode(204)
 	async collect(
 		@Req() request: IncomingMessage,
+		@Res({ passthrough: true }) response: Response,
 		@Headers("origin") origin?: string,
 		@Headers("user-agent") userAgent?: string,
 	): Promise<void> {
+		response.setHeader("cross-origin-resource-policy", "cross-origin");
+
 		const raw = await read(request, MAX_BODY_BYTES);
 		if (!raw) return;
 
