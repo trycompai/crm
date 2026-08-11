@@ -218,7 +218,7 @@ export class ConversationsService {
 				},
 			}),
 			this.db.account.findFirst({
-				where: { userId, providerId: "slack" },
+				where: { providerId: "slack", accessToken: { not: null } },
 				select: { id: true },
 			}),
 		]);

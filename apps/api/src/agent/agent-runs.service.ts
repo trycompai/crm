@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
+import { AGENT_DISPATCH } from "./agent-dispatch.config";
 import { AgentTriggerService } from "./agent-trigger.service";
 import type {
 	AgentCancelRunInput,
@@ -25,10 +26,6 @@ const CANCELLABLE_STATUSES: readonly AgentRunStatus[] = [
 ];
 
 const RUN_EVENT_LIMIT = 200;
-
-const CANCELLED_BY_USER = "CANCELLED_BY_USER";
-
-const CANCELLED_MESSAGE = "A workspace member stopped this run.";
 
 @Injectable()
 export class AgentRunsService {
@@ -260,6 +257,7 @@ export class AgentRunsService {
 				select: {
 					agentId: true,
 					status: true,
+					versionId: true,
 					triggerId: true,
 					triggerType: true,
 					input: true,
@@ -300,7 +298,7 @@ export class AgentRunsService {
 			const created = await tx.agentRun.create({
 				data: {
 					agentId: input.id,
-					versionId: agent.currentVersionId,
+					versionId: previous.versionId,
 					initiatedById: userId,
 					triggerId: previous.triggerId,
 					triggerType: previous.triggerType,
@@ -315,7 +313,7 @@ export class AgentRunsService {
 			await tx.agentAuditEvent.create({
 				data: {
 					agentId: input.id,
-					versionId: agent.currentVersionId,
+					versionId: previous.versionId,
 					actorUserId: userId,
 					actorType: "USER",
 					actorId: userId,
@@ -373,8 +371,8 @@ export class AgentRunsService {
 				where: { id: run.id },
 				data: {
 					status: "CANCELLED",
-					errorCode: CANCELLED_BY_USER,
-					errorMessage: CANCELLED_MESSAGE,
+					errorCode: AGENT_DISPATCH.cancel.errorCode,
+					errorMessage: AGENT_DISPATCH.cancel.message,
 					finishedAt,
 					nextEventSequence: sequence,
 				},
@@ -384,8 +382,8 @@ export class AgentRunsService {
 				where: { runId: run.id, status: { in: ["PLANNED", "RUNNING"] } },
 				data: {
 					status: "CANCELLED",
-					errorCode: CANCELLED_BY_USER,
-					errorMessage: CANCELLED_MESSAGE,
+					errorCode: AGENT_DISPATCH.cancel.errorCode,
+					errorMessage: AGENT_DISPATCH.cancel.message,
 					completedAt: finishedAt,
 				},
 			});

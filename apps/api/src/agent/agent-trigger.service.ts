@@ -4,9 +4,8 @@ import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { AGENT_DISPATCH } from "./agent-dispatch.config";
 import { bridge } from "./bridge";
-
-const POKE_TIMEOUT_MS = 2_000;
 
 export type CrmEventInput = {
 	[Type in CrmEventType]: {
@@ -23,6 +22,7 @@ export type CrmEventInput = {
 @Injectable()
 export class AgentTriggerService {
 	private readonly logger = new Logger(AgentTriggerService.name);
+	private readonly cancellationsDelivered = new Set<string>();
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
@@ -110,7 +110,7 @@ export class AgentTriggerService {
 				reason: `Add Comp AI to #${channelName}`,
 				priority: PRIORITY.slackJoin,
 				budget: 1,
-				subject: channelId,
+				subject: { path: ["channelId"], value: channelId },
 				payload: {
 					type: "slack.channel.join",
 					channelId,
@@ -218,7 +218,46 @@ export class AgentTriggerService {
 	}
 
 	deployedAgentRunCancelled(runId: string): void {
-		this.pokeRoute("/internal/crm/cancel-run", { runId });
+		void this.deliverCancellation(runId);
+	}
+
+	async redeliverCancellations(): Promise<void> {
+		try {
+			const since = new Date(
+				Date.now() - AGENT_DISPATCH.cancel.redeliverWithinMs,
+			);
+			const runs = await this.db.agentRun.findMany({
+				where: {
+					status: "CANCELLED",
+					errorCode: AGENT_DISPATCH.cancel.errorCode,
+					startedAt: { not: null },
+					finishedAt: { gte: since },
+				},
+				orderBy: { finishedAt: "desc" },
+				take: AGENT_DISPATCH.cancel.redeliverBatch,
+				select: { id: true },
+			});
+
+			const outstanding = new Set(runs.map((run) => run.id));
+			for (const runId of this.cancellationsDelivered) {
+				if (!outstanding.has(runId)) this.cancellationsDelivered.delete(runId);
+			}
+
+			for (const run of runs) {
+				if (this.cancellationsDelivered.has(run.id)) continue;
+				await this.deliverCancellation(run.id);
+			}
+		} catch (error) {
+			this.logger.error(
+				{ message: "Could not redeliver run cancellations" },
+				error instanceof Error ? error.stack : String(error),
+			);
+		}
+	}
+
+	private async deliverCancellation(runId: string): Promise<void> {
+		const delivered = await this.post("/internal/crm/cancel-run", { runId });
+		if (delivered) this.cancellationsDelivered.add(runId);
 	}
 
 	async backfill(input: {
@@ -293,7 +332,7 @@ export class AgentTriggerService {
 			priority: number;
 			budget: number;
 			payload?: Prisma.InputJsonValue;
-			subject?: string;
+			subject?: { path: string[]; value: string };
 		},
 		required = false,
 		client?: Prisma.TransactionClient,
@@ -302,7 +341,7 @@ export class AgentTriggerService {
 			const write = async (tx: Prisma.TransactionClient) => {
 				await lockIdempotencyKey(
 					tx,
-					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.subject ?? ""}`,
+					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.subject?.value ?? ""}`,
 				);
 				const pending = await tx.agentTask.findFirst({
 					where: {
@@ -310,7 +349,14 @@ export class AgentTriggerService {
 						finishedAt: null,
 						...(task.contactId ? { contactId: task.contactId } : {}),
 						...(task.companyId ? { companyId: task.companyId } : {}),
-						...(task.subject ? { reason: task.reason } : {}),
+						...(task.subject
+							? {
+									payload: {
+										path: task.subject.path,
+										equals: task.subject.value,
+									},
+								}
+							: {}),
 					},
 					select: { id: true },
 				});
@@ -388,41 +434,46 @@ export class AgentTriggerService {
 		this.poke();
 		this.deployedAgentRunQueued();
 		this.builderConversationQueued();
+		void this.redeliverCancellations();
 	}
 
 	private poke(): void {
 		this.pokeRoute("/internal/crm/dispatch");
 	}
 
-	private pokeRoute(path: string, body?: Record<string, string>): void {
-		const agent = bridge();
-		if (!agent) return;
+	private pokeRoute(path: string): void {
+		void this.post(path);
+	}
 
-		const missed = (error: unknown) => {
-			this.logger.debug({
-				message: "Agent poke did not land; the cron will pick this up",
-				reason: error instanceof Error ? error.message : String(error),
-			});
-		};
+	private async post(
+		path: string,
+		body?: Record<string, string>,
+	): Promise<boolean> {
+		const agent = bridge();
+		if (!agent) return false;
 
 		try {
-			void fetch(agent.url(path), {
+			const response = await fetch(agent.url(path), {
 				method: "POST",
 				headers: {
 					authorization: `Bearer ${agent.secret}`,
 					...(body ? { "content-type": "application/json" } : {}),
 				},
 				...(body ? { body: JSON.stringify(body) } : {}),
-				signal: AbortSignal.timeout(POKE_TIMEOUT_MS),
-			})
-				.then((response) => {
-					if (!response.ok) {
-						throw new Error(`Agent poke returned ${response.status}.`);
-					}
-				})
-				.catch(missed);
+				signal: AbortSignal.timeout(AGENT_DISPATCH.poke.timeoutMs),
+			});
+
+			if (!response.ok) {
+				throw new Error(`Agent poke returned ${response.status}.`);
+			}
+
+			return true;
 		} catch (error) {
-			missed(error);
+			this.logger.debug({
+				message: "Agent poke did not land; the cron will pick this up",
+				reason: error instanceof Error ? error.message : String(error),
+			});
+			return false;
 		}
 	}
 }

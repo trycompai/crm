@@ -5,8 +5,11 @@ import {
 	ServiceUnavailableException,
 } from "@nestjs/common";
 import { bridge } from "../agent/bridge";
+import { slackCreateChannelReply } from "./slack.contracts";
 
 const CREATE_TIMEOUT_MS = 20_000;
+
+const SERVER_ERROR_STATUS = 500;
 
 @Injectable()
 export class SlackChannelsService {
@@ -47,17 +50,40 @@ export class SlackChannelsService {
 			);
 		}
 
-		const body = (await response.json().catch(() => null)) as {
-			channel?: { id: string; name: string };
-			error?: string;
-		} | null;
-
-		if (!response.ok || !body?.channel) {
-			throw new BadRequestException(
-				body?.error ?? "Slack refused to create that channel.",
+		if (response.status >= SERVER_ERROR_STATUS) {
+			this.logger.error({
+				message: "The agent failed while creating a channel",
+				name,
+				status: response.status,
+			});
+			throw new ServiceUnavailableException(
+				"The agent failed, so the channel was not created.",
 			);
 		}
 
-		return { channel: body.channel };
+		const reply = slackCreateChannelReply.safeParse(
+			await response.json().catch(() => null),
+		);
+
+		if (!reply.success) {
+			this.logger.error({
+				message: "The agent returned an unreadable channel reply",
+				name,
+				status: response.status,
+			});
+			throw new ServiceUnavailableException(
+				"The agent answered with something unreadable, so the channel was not created.",
+			);
+		}
+
+		if ("error" in reply.data) {
+			throw new BadRequestException(reply.data.error);
+		}
+
+		if (!response.ok) {
+			throw new BadRequestException("Slack refused to create that channel.");
+		}
+
+		return { channel: reply.data.channel };
 	}
 }

@@ -4,7 +4,7 @@ import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { AgentAccessService } from "../src/agent/agent-access.service";
 import { AgentRunsService } from "../src/agent/agent-runs.service";
-import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 
 const suffix = crypto.randomUUID();
 const userId = `agent-run-user-${suffix}`;
@@ -314,6 +314,65 @@ describe("manual agent runs", () => {
 		expect(error?.message).toBe("You are not a member of this workspace.");
 	});
 
+	it("retries a failed run against the version that run executed", async () => {
+		const first = await service.runNow(
+			{ id: agentId, clientRequestId: crypto.randomUUID() },
+			userId,
+		);
+		await db.agentRun.update({
+			where: { id: first.id },
+			data: {
+				status: "FAILED",
+				errorCode: "TEST_FAILURE",
+				errorMessage: "Broke before the retry.",
+				finishedAt: new Date(),
+			},
+		});
+		const redeployed = await db.agentVersion.create({
+			data: {
+				agentId,
+				number: 2,
+				status: "DEPLOYED",
+				instructions: "Run differently.",
+				manifest: {},
+				modelId: "test/model",
+				sandboxPolicy: {},
+				createdById: userId,
+			},
+			select: { id: true },
+		});
+		await db.agentDefinition.update({
+			where: { id: agentId },
+			data: { currentVersionId: redeployed.id },
+		});
+
+		const clientRequestId = crypto.randomUUID();
+		try {
+			const retried = await service.retryRun(
+				{ id: agentId, runId: first.id, clientRequestId },
+				userId,
+			);
+
+			expect(
+				await db.agentRun.findUniqueOrThrow({
+					where: { id: retried.id },
+					select: { versionId: true },
+				}),
+			).toEqual({ versionId });
+			expect(
+				await db.agentAuditEvent.findFirstOrThrow({
+					where: { agentId, type: "run.requested", requestId: clientRequestId },
+					select: { versionId: true },
+				}),
+			).toEqual({ versionId });
+		} finally {
+			await db.agentDefinition.update({
+				where: { id: agentId },
+				data: { currentVersionId: versionId },
+			});
+		}
+	});
+
 	it("allows only one agent to claim a globally reused request id", async () => {
 		const otherAgent = await db.agentDefinition.create({
 			data: { name: "Other live agent", status: "LIVE", createdById: userId },
@@ -506,5 +565,46 @@ describe("cancelling a run", () => {
 		await service.cancelRun({ id: agentId, runId }, userId);
 		const settled = await service.list(agentId, 50, userId);
 		expect(settled.find((run) => run.id === runId)?.canCancel).toBe(false);
+	});
+
+	it("asks the agent again until the cancellation lands", async () => {
+		const runId = await queuedRun();
+		await db.agentRun.update({
+			where: { id: runId },
+			data: { status: "RUNNING", startedAt: new Date() },
+		});
+		await service.cancelRun({ id: agentId, runId }, userId);
+
+		const trigger = new AgentTriggerService(db);
+		const asked: string[] = [];
+		const asksForRun = () => asked.filter((id) => id === runId).length;
+		let status = 502;
+		const realFetch = globalThis.fetch;
+		const realSecret = process.env.AGENT_BRIDGE_SECRET;
+		process.env.AGENT_BRIDGE_SECRET = "run-cancel-test";
+		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body)) as { runId: string };
+			asked.push(body.runId);
+			return new Response(null, { status });
+		}) as typeof fetch;
+
+		try {
+			await trigger.redeliverCancellations();
+			expect(asksForRun()).toBe(1);
+
+			status = 202;
+			await trigger.redeliverCancellations();
+			expect(asksForRun()).toBe(2);
+
+			await trigger.redeliverCancellations();
+			expect(asksForRun()).toBe(2);
+		} finally {
+			globalThis.fetch = realFetch;
+			if (realSecret === undefined) {
+				delete process.env.AGENT_BRIDGE_SECRET;
+			} else {
+				process.env.AGENT_BRIDGE_SECRET = realSecret;
+			}
+		}
 	});
 });

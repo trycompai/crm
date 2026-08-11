@@ -4,9 +4,8 @@ import {
 	type OnApplicationBootstrap,
 	type OnApplicationShutdown,
 } from "@nestjs/common";
+import { AGENT_DISPATCH } from "./agent-dispatch.config";
 import { AgentTriggerService } from "./agent-trigger.service";
-
-const HEARTBEAT_MS = 60_000;
 
 @Injectable()
 export class DispatchHeartbeatService
@@ -27,7 +26,10 @@ export class DispatchHeartbeatService
 		}
 
 		this.trigger.drainQueues();
-		this.timer = setInterval(() => this.trigger.drainQueues(), HEARTBEAT_MS);
+		this.timer = setInterval(
+			() => this.trigger.drainQueues(),
+			AGENT_DISPATCH.heartbeat.everyMs,
+		);
 		this.timer.unref?.();
 	}
 

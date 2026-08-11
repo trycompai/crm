@@ -15,6 +15,7 @@ const stamp = new ActivityStampService(db);
 const conversion = new ConversionService(db);
 const fields = new FieldsService(db, service);
 const deals = new DealsService(db, service, stamp, conversion, fields);
+const channelId = `event-channel-${suffix}`;
 const ownerId = `event-owner-${suffix}`;
 const domain = `event-${suffix}.example.test`;
 let persistedCompanyId = "";
@@ -48,6 +49,12 @@ afterAll(async () => {
 				{ dealId: { in: [dealId, persistedDealId].filter(Boolean) } },
 				{ contactId },
 			],
+		},
+	});
+	await db.agentTask.deleteMany({
+		where: {
+			kind: "slack-channel-join",
+			payload: { path: ["channelId"], equals: channelId },
 		},
 	});
 	if (persistedDealId) {
@@ -121,7 +128,6 @@ describe("CRM agent events", () => {
 
 		const tasks = await db.agentTask.findMany({
 			where: { dealId, kind: "agent-event" },
-			orderBy: { createdAt: "asc" },
 			select: {
 				dealId: true,
 				reason: true,
@@ -130,30 +136,44 @@ describe("CRM agent events", () => {
 			},
 		});
 
-		expect(tasks).toEqual([
-			{
-				dealId,
-				reason: "deal.created",
-				payload: {
-					type: "deal.created",
-					record: { kind: "deal", id: dealId },
-					occurredAt: createdAt.toISOString(),
-					data: { companyId, stage: "DEMO_BOOKED" },
-				},
-				finishedAt: null,
+		expect(tasks).toHaveLength(2);
+		expect(tasks.find((task) => task.reason === "deal.created")).toEqual({
+			dealId,
+			reason: "deal.created",
+			payload: {
+				type: "deal.created",
+				record: { kind: "deal", id: dealId },
+				occurredAt: createdAt.toISOString(),
+				data: { companyId, stage: "DEMO_BOOKED" },
 			},
-			{
-				dealId,
-				reason: "deal.closed",
-				payload: {
-					type: "deal.closed",
-					record: { kind: "deal", id: dealId },
-					occurredAt: closedAt.toISOString(),
-					data: { companyId, from: "NEGOTIATION", to: "CLOSED_WON" },
-				},
-				finishedAt: null,
+			finishedAt: null,
+		});
+		expect(tasks.find((task) => task.reason === "deal.closed")).toEqual({
+			dealId,
+			reason: "deal.closed",
+			payload: {
+				type: "deal.closed",
+				record: { kind: "deal", id: dealId },
+				occurredAt: closedAt.toISOString(),
+				data: { companyId, from: "NEGOTIATION", to: "CLOSED_WON" },
 			},
-		]);
+			finishedAt: null,
+		});
+	});
+
+	it("queues one Slack join for a channel that is renamed", async () => {
+		await service.slackChannelJoinRequested(channelId, "deal-room");
+		await service.slackChannelJoinRequested(channelId, "deal-room-renamed");
+
+		expect(
+			await db.agentTask.findMany({
+				where: {
+					kind: "slack-channel-join",
+					payload: { path: ["channelId"], equals: channelId },
+				},
+				select: { reason: true },
+			}),
+		).toEqual([{ reason: "Add Comp AI to #deal-room" }]);
 	});
 
 	it("rolls back the record when its event cannot commit", async () => {
