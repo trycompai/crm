@@ -1,4 +1,4 @@
-import { type Db, type Prisma } from "@crm/db";
+import { ActionReceiptStatus, type Db, type Prisma } from "@crm/db";
 import {
 	BadRequestException,
 	ConflictException,
@@ -35,6 +35,10 @@ const OWNER_SELECT = {
 	image: true,
 } satisfies Prisma.UserSelect;
 
+const WORK_PROVIDER = "lode-crm";
+const WORK_CHANNEL = "work";
+const WORK_RECEIPT_STATUS = ActionReceiptStatus.SUCCEEDED;
+
 const WORK_SELECT = {
 	id: true,
 	subjectType: true,
@@ -59,7 +63,7 @@ const WORK_SELECT = {
 
 type WorkRecord = Prisma.WorkItemGetPayload<{ select: typeof WORK_SELECT }>;
 
-type WorkMutationResult = {
+type WorkMutationFields = {
 	id: string;
 	state: string;
 	version: number;
@@ -67,6 +71,15 @@ type WorkMutationResult = {
 	startedAt: string | null;
 	completedAt: string | null;
 	nextReviewAt: string | null;
+};
+
+type WorkMutationResult = WorkMutationFields & {
+	receipt: {
+		id: string;
+		status: "SUCCEEDED";
+		operationKey: string;
+		completedAt: string;
+	};
 };
 
 type WorkOperation =
@@ -82,7 +95,7 @@ function ownerSummary(owner: WorkRecord["owner"]): OwnerSummary | null {
 	return owner;
 }
 
-function serializeMutation(work: WorkRecord): WorkMutationResult {
+function serializeMutation(work: WorkRecord): WorkMutationFields {
 	return {
 		id: work.id,
 		state: work.state,
@@ -344,6 +357,105 @@ export class WorkService {
 		return where;
 	}
 
+	private async replay(
+		client: Prisma.TransactionClient,
+		input: {
+			key: string;
+			requestHash: string;
+			operationKey: string;
+		},
+	): Promise<WorkMutationResult | null> {
+		const receipt = await client.actionReceipt.findUnique({
+			where: { idempotencyKey: input.key },
+			select: {
+				id: true,
+				provider: true,
+				channel: true,
+				requestHash: true,
+				operationKey: true,
+				status: true,
+				completedAt: true,
+				result: true,
+			},
+		});
+
+		if (!receipt) return null;
+		if (
+			receipt.provider !== WORK_PROVIDER ||
+			receipt.channel !== WORK_CHANNEL ||
+			receipt.requestHash !== input.requestHash ||
+			receipt.operationKey !== input.operationKey
+		) {
+			throw new ConflictException(
+				"That client request id has already been used.",
+			);
+		}
+		if (
+			receipt.status !== WORK_RECEIPT_STATUS ||
+			receipt.completedAt === null ||
+			receipt.result === null
+		) {
+			throw new ConflictException("That client request is not replayable.");
+		}
+
+		return receipt.result as WorkMutationResult;
+	}
+
+	private async recordReceipt(
+		client: Prisma.TransactionClient,
+		input: {
+			key: string;
+			requestHash: string;
+			operationKey: string;
+			result: WorkMutationFields;
+		},
+	): Promise<WorkMutationResult> {
+		const resultWithoutReceipt = {
+			id: input.result.id,
+			state: input.result.state,
+			version: input.result.version,
+			ownerId: input.result.ownerId,
+			startedAt: input.result.startedAt,
+			completedAt: input.result.completedAt,
+			nextReviewAt: input.result.nextReviewAt,
+		};
+		await this.idempotency.record(client, {
+			key: input.key,
+			requestHash: input.requestHash,
+			operation: input.operationKey,
+			result: resultWithoutReceipt,
+		});
+		const receipt = await client.actionReceipt.findUnique({
+			where: { idempotencyKey: input.key },
+			select: { id: true, completedAt: true },
+		});
+		if (!receipt?.completedAt) {
+			throw new ConflictException("Work receipt was not recorded.");
+		}
+
+		const output: WorkMutationResult = {
+			...input.result,
+			receipt: {
+				id: receipt.id,
+				status: WORK_RECEIPT_STATUS,
+				operationKey: input.operationKey,
+				completedAt: receipt.completedAt.toISOString(),
+			},
+		};
+		await client.actionReceipt.update({
+			where: { id: receipt.id },
+			data: {
+				provider: WORK_PROVIDER,
+				channel: WORK_CHANNEL,
+				operationKey: input.operationKey,
+				status: WORK_RECEIPT_STATUS,
+				completedAt: receipt.completedAt,
+				result: output as Prisma.InputJsonValue,
+			},
+		});
+		return output;
+	}
+
 	private async mutate(
 		operation: WorkOperation,
 		input:
@@ -379,11 +491,11 @@ export class WorkService {
 			) {
 				await this.access.assertCanActOnWork(userId, work.ownerId, tx);
 			}
-			const replay = await this.idempotency.replay<WorkMutationResult>(
-				tx,
-				input.clientRequestId,
+			const replay = await this.replay(tx, {
+				key: input.clientRequestId,
 				requestHash,
-			);
+				operationKey: `work.${operation}`,
+			});
 			if (replay) return replay;
 
 			if (work.version !== input.expectedVersion) {
@@ -446,13 +558,12 @@ export class WorkService {
 					"Work item disappeared during the request.",
 				);
 			const output = serializeMutation(result);
-			await this.idempotency.record(tx, {
+			return this.recordReceipt(tx, {
 				key: input.clientRequestId,
 				requestHash,
-				operation,
+				operationKey: `work.${operation}`,
 				result: output,
 			});
-			return output;
 		});
 	}
 

@@ -40,6 +40,22 @@ function requestId(): string {
 	return id;
 }
 
+async function receiptFor(idempotencyKey: string) {
+	return db.actionReceipt.findUnique({
+		where: { idempotencyKey },
+		select: {
+			id: true,
+			provider: true,
+			channel: true,
+			operationKey: true,
+			requestHash: true,
+			status: true,
+			completedAt: true,
+			result: true,
+		},
+	});
+}
+
 async function createWork(input: {
 	id: string;
 	ownerId?: string | null;
@@ -256,7 +272,41 @@ describe("operating kernel Work", () => {
 			ownerId: memberId,
 			version: 1,
 		});
+		expect(claimed.receipt).toMatchObject({
+			status: "SUCCEEDED",
+			operationKey: "work.claim",
+			completedAt: expect.any(String),
+		});
 		expect(await service.claim(claimInput, memberId)).toEqual(claimed);
+		const claimReceipt = await receiptFor(claimInput.clientRequestId);
+		expect(claimReceipt).toMatchObject({
+			provider: "lode-crm",
+			channel: "work",
+			operationKey: "work.claim",
+			status: "SUCCEEDED",
+			completedAt: expect.any(Date),
+		});
+		expect(claimReceipt?.id).toBe(claimed.receipt.id);
+		expect(claimReceipt?.result).toEqual(claimed);
+		expect(
+			Object.keys(
+				(claimReceipt?.result ?? {}) as Record<string, unknown>,
+			).sort(),
+		).toEqual([
+			"completedAt",
+			"id",
+			"nextReviewAt",
+			"ownerId",
+			"receipt",
+			"startedAt",
+			"state",
+			"version",
+		]);
+		expect(
+			await db.actionReceipt.count({
+				where: { idempotencyKey: claimInput.clientRequestId },
+			}),
+		).toBe(1);
 
 		const startInput = {
 			id,
@@ -266,6 +316,7 @@ describe("operating kernel Work", () => {
 		const started = await service.start(startInput, memberId);
 		expect(started.state).toBe("IN_PROGRESS");
 		expect(started.startedAt).toBeString();
+		expect(started.receipt.operationKey).toBe("work.start");
 
 		const nextReviewAt = new Date(Date.now() + 60_000).toISOString();
 		const waiting = await service.wait(
@@ -279,6 +330,7 @@ describe("operating kernel Work", () => {
 			memberId,
 		);
 		expect(waiting).toMatchObject({ state: "WAITING", nextReviewAt });
+		expect(waiting.receipt.operationKey).toBe("work.wait");
 		expect(await service.start(startInput, memberId)).toEqual(started);
 
 		const blocked = await service.block(
@@ -291,6 +343,7 @@ describe("operating kernel Work", () => {
 			memberId,
 		);
 		expect(blocked).toMatchObject({ state: "BLOCKED", nextReviewAt: null });
+		expect(blocked.receipt.operationKey).toBe("work.block");
 
 		const completed = await service.complete(
 			{ id, expectedVersion: 4, clientRequestId: requestId() },
@@ -300,17 +353,37 @@ describe("operating kernel Work", () => {
 			state: "DONE",
 			completedAt: expect.any(String),
 		});
+		expect(completed.receipt.operationKey).toBe("work.complete");
+
+		const dismissedId = `kernel-dismiss-${suffix}`;
+		await createWork({ id: dismissedId, ownerId: memberId });
+		const dismissed = await service.dismiss(
+			{
+				id: dismissedId,
+				expectedVersion: 0,
+				clientRequestId: requestId(),
+				reason: "No longer needed",
+			},
+			memberId,
+		);
+		expect(dismissed).toMatchObject({
+			state: "DISMISSED",
+			completedAt: expect.any(String),
+		});
+		expect(dismissed.receipt.operationKey).toBe("work.dismiss");
+		const failedRequestId = requestId();
 		await expect(
 			service.dismiss(
 				{
 					id,
 					expectedVersion: 5,
-					clientRequestId: requestId(),
+					clientRequestId: failedRequestId,
 					reason: "Too late",
 				},
 				memberId,
 			),
 		).rejects.toThrow("Terminal work cannot transition");
+		expect(await receiptFor(failedRequestId)).toBeNull();
 	});
 
 	it("binds replay receipts to the authenticated actor", async () => {
@@ -327,6 +400,9 @@ describe("operating kernel Work", () => {
 		await expect(service.assign(input, secondAdminId)).rejects.toThrow(
 			"client request id has already been used",
 		);
+		await expect(
+			service.assign({ ...input, assigneeId: memberId }, adminId),
+		).rejects.toThrow("client request id has already been used");
 	});
 
 	it("enforces role and owner authority", async () => {
@@ -359,18 +435,21 @@ describe("operating kernel Work", () => {
 			ownerId,
 		);
 		expect(assigned.ownerId).toBe(memberId);
+		expect(assigned.receipt.operationKey).toBe("work.assign");
 	});
 
 	it("allows exactly one concurrent claim and rejects stale versions", async () => {
 		const id = `kernel-race-${suffix}`;
 		await createWork({ id });
+		const firstRequestId = requestId();
+		const secondRequestId = requestId();
 		const results = await Promise.allSettled([
 			service.claim(
-				{ id, expectedVersion: 0, clientRequestId: requestId() },
+				{ id, expectedVersion: 0, clientRequestId: firstRequestId },
 				memberId,
 			),
 			service.claim(
-				{ id, expectedVersion: 0, clientRequestId: requestId() },
+				{ id, expectedVersion: 0, clientRequestId: secondRequestId },
 				secondMemberId,
 			),
 		]);
@@ -386,12 +465,19 @@ describe("operating kernel Work", () => {
 		});
 		expect([memberId, secondMemberId]).toContain(row?.ownerId as string);
 		expect(row?.version).toBe(1);
+		expect(
+			await db.actionReceipt.count({
+				where: { idempotencyKey: { in: [firstRequestId, secondRequestId] } },
+			}),
+		).toBe(1);
+		const staleRequestId = requestId();
 		await expect(
 			service.start(
-				{ id, expectedVersion: 0, clientRequestId: requestId() },
+				{ id, expectedVersion: 0, clientRequestId: staleRequestId },
 				memberId,
 			),
 		).rejects.toThrow("version is stale");
+		expect(await receiptFor(staleRequestId)).toBeNull();
 	});
 
 	it("cleans linked kernel records without erasing their history", async () => {
