@@ -19,6 +19,13 @@ export type CrmEventInput = {
 	};
 }[CrmEventType];
 
+export type AgentTaskQueue = {
+	slackChannelJoinRequested: (
+		channelId: string,
+		channelName: string,
+	) => Promise<void>;
+};
+
 @Injectable()
 export class AgentTriggerService {
 	private readonly logger = new Logger(AgentTriggerService.name);
@@ -102,9 +109,42 @@ export class AgentTriggerService {
 	async slackChannelJoinRequested(
 		channelId: string,
 		channelName: string,
-		client?: Prisma.TransactionClient,
 	): Promise<void> {
-		await this.enqueue(
+		await this.queueSlackChannelJoin(channelId, channelName);
+	}
+
+	async withTasks<Result>(
+		work: (
+			tx: Prisma.TransactionClient,
+			queue: AgentTaskQueue,
+		) => Promise<Result>,
+	): Promise<Result> {
+		let queued = false;
+
+		const result = await this.db.$transaction((tx) =>
+			work(tx, {
+				slackChannelJoinRequested: async (channelId, channelName) => {
+					const created = await this.queueSlackChannelJoin(
+						channelId,
+						channelName,
+						tx,
+					);
+					queued = queued || created;
+				},
+			}),
+		);
+
+		if (queued) this.poke();
+
+		return result;
+	}
+
+	private queueSlackChannelJoin(
+		channelId: string,
+		channelName: string,
+		client?: Prisma.TransactionClient,
+	): Promise<boolean> {
+		return this.enqueue(
 			{
 				kind: "slack-channel-join",
 				reason: `Add Comp AI to #${channelName}`,
@@ -336,7 +376,7 @@ export class AgentTriggerService {
 		},
 		required = false,
 		client?: Prisma.TransactionClient,
-	): Promise<void> {
+	): Promise<boolean> {
 		try {
 			const write = async (tx: Prisma.TransactionClient) => {
 				await lockIdempotencyKey(
@@ -380,7 +420,7 @@ export class AgentTriggerService {
 			const created = client
 				? await write(client)
 				: await this.db.$transaction(write);
-			if (!created) return;
+			if (!created) return false;
 
 			this.logger.log({
 				message: "Agent task queued",
@@ -389,13 +429,16 @@ export class AgentTriggerService {
 				companyId: task.companyId,
 			});
 
-			this.poke();
+			if (!client) this.poke();
+
+			return true;
 		} catch (error) {
 			this.logger.error(
 				{ message: "Could not queue agent task", kind: task.kind },
 				error instanceof Error ? error.stack : String(error),
 			);
 			if (required) throw error;
+			return false;
 		}
 	}
 

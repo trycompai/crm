@@ -1,4 +1,4 @@
-import { db } from "@crm/db";
+import { type Db, db } from "@crm/db";
 import { WORKSPACE_ID, workspaceSlug } from "@crm/db/workspace";
 
 export { WORKSPACE_ID };
@@ -110,10 +110,13 @@ export function toWorkspaceRole(value: string): WorkspaceRole {
 	return isWorkspaceRole(value) ? value : "member";
 }
 
+export type WorkspaceMemberReader = Pick<Db, "member">;
+
 export async function workspaceRoleOf(
 	userId: string,
+	client: WorkspaceMemberReader = db,
 ): Promise<WorkspaceRole | null> {
-	const member = await db.member.findUnique({
+	const member = await client.member.findUnique({
 		where: { organizationId_userId: { organizationId: WORKSPACE_ID, userId } },
 		select: { role: true },
 	});

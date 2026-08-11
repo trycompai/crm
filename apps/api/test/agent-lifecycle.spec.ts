@@ -514,6 +514,66 @@ describe("agent lifecycle", () => {
 		});
 	});
 
+	it("moves triggers onto the version a file save creates", async () => {
+		const { agentId, versionId } = await deployedAgent(capableManifest);
+		await db.agentBuilderArtifact.create({
+			data: {
+				versionId,
+				path: "agent/instructions.md",
+				language: "markdown",
+				content: "Watch renewals.",
+				revision: 1,
+				status: "READY",
+			},
+		});
+		const trigger = await db.agentTrigger.create({
+			data: {
+				agentId,
+				versionId,
+				type: "SCHEDULE",
+				name: "Every morning",
+				config: { intervalMinutes: 1440 },
+				createdById: userId,
+				enabled: true,
+				nextRunAt: new Date("2036-08-12T06:00:00.000Z"),
+			},
+			select: { id: true },
+		});
+
+		const saved = await agents.saveFile(
+			{
+				id: agentId,
+				clientRequestId: crypto.randomUUID(),
+				path: "agent/instructions.md",
+				content: "Watch renewals every morning.",
+			},
+			userId,
+		);
+		const savedId = saved.versionId;
+		if (!savedId) throw new Error("Missing saved version");
+
+		const [definition, moved, audit] = await Promise.all([
+			db.agentDefinition.findUniqueOrThrow({
+				where: { id: agentId },
+				select: { currentVersionId: true },
+			}),
+			db.agentTrigger.findUniqueOrThrow({
+				where: { id: trigger.id },
+				select: { versionId: true, enabled: true },
+			}),
+			db.agentAuditEvent.findFirstOrThrow({
+				where: { agentId, type: "agent.file.saved" },
+				select: { after: true },
+			}),
+		]);
+
+		expect(saved.saved).toBe(true);
+		expect(savedId).not.toBe(versionId);
+		expect(definition.currentVersionId).toBe(savedId);
+		expect(moved).toEqual({ versionId: savedId, enabled: true });
+		expect(audit.after).toMatchObject({ triggers: 1 });
+	});
+
 	it("numbers a revision above every existing version", async () => {
 		const { agentId } = await deployedAgent(capableManifest);
 		await db.agentVersion.create({

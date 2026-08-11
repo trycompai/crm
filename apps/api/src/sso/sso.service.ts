@@ -154,7 +154,7 @@ export class SsoService {
 
 	async settings(userId: string): Promise<SsoSettings> {
 		return {
-			canConfigure: canConfigureSso(await workspaceRoleOf(userId)),
+			canConfigure: canConfigureSso(await workspaceRoleOf(userId, this.db)),
 			callbackBase: ssoCallbackBase(),
 		};
 	}
@@ -290,7 +290,7 @@ export class SsoService {
 	}
 
 	private async requireConfigurer(userId: string): Promise<void> {
-		if (!canConfigureSso(await workspaceRoleOf(userId))) {
+		if (!canConfigureSso(await workspaceRoleOf(userId, this.db))) {
 			throw new ForbiddenException(
 				"Only an owner or an admin can change how people sign in.",
 			);

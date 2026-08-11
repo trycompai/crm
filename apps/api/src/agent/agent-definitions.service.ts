@@ -297,6 +297,11 @@ export class AgentDefinitionsService {
 				data: { currentVersionId: version.id },
 			});
 
+			const repointed = await tx.agentTrigger.updateMany({
+				where: { agentId: input.id, versionId: agent.currentVersionId },
+				data: { versionId: version.id },
+			});
+
 			await tx.agentAuditEvent.create({
 				data: {
 					agentId: input.id,
@@ -307,7 +312,11 @@ export class AgentDefinitionsService {
 					type: "agent.file.saved",
 					summary: `Edited ${input.path}`,
 					before: { path: input.path, bytes: file.content.length },
-					after: { path: input.path, bytes: input.content.length },
+					after: {
+						path: input.path,
+						bytes: input.content.length,
+						triggers: repointed.count,
+					},
 					requestId: input.clientRequestId,
 				},
 			});
@@ -317,7 +326,7 @@ export class AgentDefinitionsService {
 	}
 
 	async revise(input: AgentReviseInput, userId: string) {
-		const versionId = await this.db.$transaction(async (tx) => {
+		const versionId = await this.trigger.withTasks(async (tx, queue) => {
 			await this.access.assertCanManageInTransaction(tx, input.id, userId);
 			const agent = await this.lockAgent(tx, input.id);
 
@@ -444,11 +453,7 @@ export class AgentDefinitionsService {
 			});
 
 			if (channel && channel.id !== before?.destination?.id) {
-				await this.trigger.slackChannelJoinRequested(
-					channel.id,
-					channel.name,
-					tx,
-				);
+				await queue.slackChannelJoinRequested(channel.id, channel.name);
 			}
 
 			await tx.agentAuditEvent.create({
