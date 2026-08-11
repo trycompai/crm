@@ -2,7 +2,7 @@ CREATE TYPE "SubjectType" AS ENUM ('WORKSPACE', 'USER', 'COMPANY', 'CONTACT', 'P
 
 CREATE TYPE "WorkItemUrgency" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'URGENT');
 
-CREATE TYPE "WorkItemState" AS ENUM ('OPEN', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'DISMISSED');
+CREATE TYPE "WorkItemState" AS ENUM ('OPEN', 'IN_PROGRESS', 'WAITING', 'BLOCKED', 'DONE', 'DISMISSED');
 
 CREATE TYPE "AgentTaskState" AS ENUM ('QUEUED', 'LEASED', 'SUCCEEDED', 'FAILED', 'CANCELLED');
 
@@ -10,7 +10,7 @@ CREATE TYPE "ApprovalRequestRisk" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
 
 CREATE TYPE "ApprovalRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'EXPIRED', 'INVALIDATED', 'EXECUTED', 'CANCELLED');
 
-CREATE TYPE "ActionReceiptStatus" AS ENUM ('PENDING', 'SUCCEEDED', 'FAILED');
+CREATE TYPE "ActionReceiptStatus" AS ENUM ('PENDING', 'SUCCEEDED', 'FAILED', 'INDETERMINATE');
 
 CREATE TYPE "ConnectorBindingStatus" AS ENUM ('ACTIVE', 'PAUSED', 'REVOKED', 'ERROR');
 
@@ -32,7 +32,7 @@ CREATE TYPE "PublicationStatus" AS ENUM ('PLANNED', 'SCHEDULED', 'PUBLISHED', 'F
 
 CREATE TYPE "AttributionModel" AS ENUM ('FIRST_TOUCH', 'LAST_TOUCH', 'LINEAR', 'MANUAL');
 
-CREATE TYPE "SupportCaseStatus" AS ENUM ('OPEN', 'PENDING', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'CLOSED');
+CREATE TYPE "SupportCaseStatus" AS ENUM ('NEW', 'OPEN', 'PENDING_CUSTOMER', 'PENDING_INTERNAL', 'RESOLVED', 'CLOSED');
 
 CREATE TYPE "SupportCasePriority" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'URGENT');
 
@@ -46,6 +46,8 @@ CREATE TYPE "SupportReplyDraftStatus" AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'APP
 
 CREATE TYPE "SupportKnowledgeDocumentStatus" AS ENUM ('DRAFT', 'ACTIVE', 'ARCHIVED');
 
+CREATE TYPE "SupportKnowledgeAudience" AS ENUM ('INTERNAL', 'CUSTOMER_SAFE');
+
 CREATE TYPE "SupportEscalationSeverity" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
 
 CREATE TYPE "SupportEscalationStatus" AS ENUM ('OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'CANCELLED');
@@ -54,7 +56,7 @@ CREATE TYPE "SupportProductHandoffStatus" AS ENUM ('PROPOSED', 'ACCEPTED', 'IN_P
 
 CREATE TYPE "CustomerAccountStatus" AS ENUM ('PROSPECT', 'ACTIVE', 'SUSPENDED', 'CLOSED');
 
-CREATE TYPE "CustomerInstanceStatus" AS ENUM ('PROVISIONING', 'ACTIVE', 'PAUSED', 'DECOMMISSIONED', 'FAILED');
+CREATE TYPE "CustomerInstanceStatus" AS ENUM ('DISCOVERED', 'UNMANAGED', 'PROVISIONING', 'ACTIVE', 'PAUSED', 'DECOMMISSIONED', 'FAILED');
 
 CREATE TYPE "ProviderAccountStatus" AS ENUM ('PENDING', 'ACTIVE', 'PAUSED', 'REVOKED', 'ERROR');
 
@@ -72,11 +74,15 @@ CREATE TYPE "PlanStepStatus" AS ENUM ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED
 
 CREATE TYPE "ControlCommandStatus" AS ENUM ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED');
 
-CREATE TYPE "ProviderOperationStatus" AS ENUM ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING', 'CANCELLED');
+CREATE TYPE "ProviderOperationStatus" AS ENUM ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'INDETERMINATE', 'RETRYING', 'CANCELLED');
 
 CREATE TYPE "IncidentStatus" AS ENUM ('OPEN', 'ACKNOWLEDGED', 'MITIGATING', 'RESOLVED', 'CLOSED');
 
 CREATE TYPE "IncidentSeverity" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
+
+ALTER TYPE "AgentRunStatus" ADD VALUE 'INDETERMINATE' BEFORE 'CANCELLED';
+
+ALTER TYPE "AgentActionStatus" ADD VALUE 'INDETERMINATE' BEFORE 'CANCELLED';
 
 ALTER TABLE "agentTask"
 ADD COLUMN "subjectType" "SubjectType",
@@ -198,6 +204,7 @@ CREATE TABLE "actionReceipt" (
     "errorCode" TEXT,
     "errorMessage" TEXT,
     "status" "ActionReceiptStatus" NOT NULL DEFAULT 'PENDING',
+    "providerAccountId" TEXT,
     "agentActionId" TEXT,
     "approvalRequestId" TEXT,
     "providerOperationId" TEXT,
@@ -230,6 +237,11 @@ CREATE TABLE "connectorHealth" (
     "pausedAt" TIMESTAMP(3),
     "pauseReason" TEXT,
     "lastError" TEXT,
+    "errorCode" TEXT,
+    "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+    "lastAttemptAt" TIMESTAMP(3),
+    "lastSuccessAt" TIMESTAMP(3),
+    "nextRetryAt" TIMESTAMP(3),
     "testState" "ConnectorTestState" NOT NULL DEFAULT 'NOT_TESTED',
     "testedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -374,7 +386,10 @@ CREATE TABLE "publication" (
     "channel" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
     "externalId" TEXT,
+    "idempotencyKey" TEXT NOT NULL,
     "status" "PublicationStatus" NOT NULL DEFAULT 'PLANNED',
+    "approvalRequestId" TEXT,
+    "actionReceiptId" TEXT,
     "scheduledAt" TIMESTAMP(3),
     "publishedAt" TIMESTAMP(3),
     "receipt" JSONB,
@@ -400,6 +415,8 @@ CREATE TABLE "marketingSourceReceipt" (
 
 CREATE TABLE "supportCase" (
     "id" TEXT NOT NULL,
+    "customerAccountId" TEXT,
+    "dedupeKey" TEXT NOT NULL,
     "subjectType" "SubjectType",
     "subjectId" TEXT,
     "provider" TEXT,
@@ -408,7 +425,7 @@ CREATE TABLE "supportCase" (
     "queue" TEXT,
     "title" TEXT NOT NULL,
     "description" TEXT,
-    "status" "SupportCaseStatus" NOT NULL DEFAULT 'OPEN',
+    "status" "SupportCaseStatus" NOT NULL DEFAULT 'NEW',
     "priority" "SupportCasePriority" NOT NULL DEFAULT 'NORMAL',
     "ownerId" TEXT,
     "slaPolicyId" TEXT,
@@ -449,8 +466,13 @@ CREATE TABLE "supportCaseEvent" (
 
 CREATE TABLE "supportSlaPolicy" (
     "id" TEXT NOT NULL,
+    "customerAccountId" TEXT,
+    "policyKey" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "channel" TEXT,
+    "priority" "SupportCasePriority" NOT NULL DEFAULT 'NORMAL',
+    "timezone" TEXT NOT NULL DEFAULT 'UTC',
+    "businessHours" JSONB,
     "status" "SupportSlaPolicyStatus" NOT NULL DEFAULT 'ACTIVE',
     "firstResponseMinutes" INTEGER NOT NULL,
     "resolutionMinutes" INTEGER NOT NULL,
@@ -487,7 +509,8 @@ CREATE TABLE "supportReplyDraft" (
     "body" TEXT NOT NULL,
     "status" "SupportReplyDraftStatus" NOT NULL DEFAULT 'DRAFT',
     "approvalRequestId" TEXT,
-    "idempotencyKey" TEXT,
+    "idempotencyKey" TEXT NOT NULL,
+    "actionReceiptId" TEXT,
     "sentAt" TIMESTAMP(3),
     "errorMessage" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -505,6 +528,7 @@ CREATE TABLE "supportKnowledgeDocument" (
     "checksum" TEXT,
     "version" INTEGER NOT NULL DEFAULT 1,
     "status" "SupportKnowledgeDocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "audience" "SupportKnowledgeAudience" NOT NULL DEFAULT 'INTERNAL',
     "metadata" JSONB,
     "publishedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -542,6 +566,8 @@ CREATE TABLE "supportProductHandoff" (
 
 CREATE TABLE "customerAccount" (
     "id" TEXT NOT NULL,
+    "companyId" TEXT,
+    "customerOnboardingId" TEXT,
     "name" TEXT NOT NULL,
     "externalKey" TEXT,
     "status" "CustomerAccountStatus" NOT NULL DEFAULT 'PROSPECT',
@@ -606,7 +632,7 @@ CREATE TABLE "secretReference" (
     "reference" TEXT NOT NULL,
     "version" TEXT,
     "status" "SecretReferenceStatus" NOT NULL DEFAULT 'ACTIVE',
-    "metadata" JSONB,
+    "capabilityMetadata" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "secretReference_pkey" PRIMARY KEY ("id")
@@ -640,6 +666,8 @@ CREATE TABLE "plan" (
     "id" TEXT NOT NULL,
     "instanceId" TEXT NOT NULL,
     "desiredRevisionId" TEXT,
+    "observedStateId" TEXT NOT NULL,
+    "preconditionDigest" TEXT NOT NULL,
     "status" "PlanStatus" NOT NULL DEFAULT 'DRAFT',
     "idempotencyKey" TEXT NOT NULL,
     "summary" TEXT,
@@ -775,7 +803,8 @@ CREATE UNIQUE INDEX "approvalRequest_action_contentDigest_targetType_targetId_po
 CREATE UNIQUE INDEX "policyGrant_grantKey_key" ON "policyGrant"("grantKey");
 CREATE UNIQUE INDEX "actionReceipt_idempotencyKey_key" ON "actionReceipt"("idempotencyKey");
 CREATE UNIQUE INDEX "actionReceipt_providerOperationId_key" ON "actionReceipt"("providerOperationId");
-CREATE UNIQUE INDEX "actionReceipt_provider_externalId_key" ON "actionReceipt"("provider", "externalId");
+CREATE UNIQUE INDEX "actionReceipt_providerAccountId_externalId_key" ON "actionReceipt"("providerAccountId", "externalId");
+CREATE UNIQUE INDEX "actionReceipt_unbound_provider_externalId_key" ON "actionReceipt"("provider", "externalId") WHERE ("providerAccountId" IS NULL);
 CREATE UNIQUE INDEX "connectorBinding_provider_accountId_key" ON "connectorBinding"("provider", "accountId");
 CREATE UNIQUE INDEX "connectorHealth_bindingId_key" ON "connectorHealth"("bindingId");
 CREATE UNIQUE INDEX "contentVariant_contentItemId_key_key" ON "contentVariant"("contentItemId", "key");
@@ -786,19 +815,25 @@ CREATE UNIQUE INDEX "marketingTouchpoint_idempotencyKey_key" ON "marketingTouchp
 CREATE UNIQUE INDEX "marketingTouchpoint_channel_externalId_key" ON "marketingTouchpoint"("channel", "externalId");
 CREATE UNIQUE INDEX "attributionCredit_idempotencyKey_key" ON "attributionCredit"("idempotencyKey");
 CREATE UNIQUE INDEX "publication_provider_externalId_key" ON "publication"("provider", "externalId");
+CREATE UNIQUE INDEX "publication_idempotencyKey_key" ON "publication"("idempotencyKey");
+CREATE UNIQUE INDEX "publication_actionReceiptId_key" ON "publication"("actionReceiptId");
 CREATE UNIQUE INDEX "marketingSourceReceipt_source_externalId_key" ON "marketingSourceReceipt"("source", "externalId");
 CREATE UNIQUE INDEX "supportCase_provider_externalId_key" ON "supportCase"("provider", "externalId");
+CREATE UNIQUE INDEX "supportCase_dedupeKey_key" ON "supportCase"("dedupeKey");
 CREATE UNIQUE INDEX "supportCaseSource_source_externalId_key" ON "supportCaseSource"("source", "externalId");
-CREATE UNIQUE INDEX "supportSlaPolicy_name_channel_key" ON "supportSlaPolicy"("name", "channel");
+CREATE UNIQUE INDEX "supportSlaPolicy_policyKey_key" ON "supportSlaPolicy"("policyKey");
 CREATE UNIQUE INDEX "supportTriageProposal_idempotencyKey_key" ON "supportTriageProposal"("idempotencyKey");
 CREATE UNIQUE INDEX "supportReplyDraft_idempotencyKey_key" ON "supportReplyDraft"("idempotencyKey");
+CREATE UNIQUE INDEX "supportReplyDraft_actionReceiptId_key" ON "supportReplyDraft"("actionReceiptId");
 CREATE UNIQUE INDEX "supportKnowledgeDocument_source_externalId_key" ON "supportKnowledgeDocument"("source", "externalId");
 CREATE UNIQUE INDEX "supportProductHandoff_caseId_externalKey_key" ON "supportProductHandoff"("caseId", "externalKey");
 CREATE UNIQUE INDEX "customerAccount_externalKey_key" ON "customerAccount"("externalKey");
+CREATE UNIQUE INDEX "customerAccount_companyId_key" ON "customerAccount"("companyId");
+CREATE UNIQUE INDEX "customerAccount_customerOnboardingId_key" ON "customerAccount"("customerOnboardingId");
 CREATE UNIQUE INDEX "customerInstance_accountId_key_key" ON "customerInstance"("accountId", "key");
 CREATE UNIQUE INDEX "providerAccount_customerAccountId_provider_externalAccountI_key" ON "providerAccount"("customerAccountId", "provider", "externalAccountId");
 CREATE UNIQUE INDEX "providerResource_providerAccountId_resourceType_externalId_key" ON "providerResource"("providerAccountId", "resourceType", "externalId");
-CREATE UNIQUE INDEX "secretReference_provider_reference_version_key" ON "secretReference"("provider", "reference", "version");
+CREATE UNIQUE INDEX "secretReference_provider_reference_key" ON "secretReference"("provider", "reference");
 CREATE UNIQUE INDEX "desiredStateRevision_instanceId_revision_key" ON "desiredStateRevision"("instanceId", "revision");
 CREATE UNIQUE INDEX "desiredStateRevision_instanceId_digest_key" ON "desiredStateRevision"("instanceId", "digest");
 CREATE UNIQUE INDEX "plan_idempotencyKey_key" ON "plan"("idempotencyKey");
@@ -806,7 +841,8 @@ CREATE UNIQUE INDEX "planStep_idempotencyKey_key" ON "planStep"("idempotencyKey"
 CREATE UNIQUE INDEX "planStep_planId_position_key" ON "planStep"("planId", "position");
 CREATE UNIQUE INDEX "controlCommand_idempotencyKey_key" ON "controlCommand"("idempotencyKey");
 CREATE UNIQUE INDEX "providerOperation_idempotencyKey_key" ON "providerOperation"("idempotencyKey");
-CREATE UNIQUE INDEX "providerOperation_provider_externalId_key" ON "providerOperation"("provider", "externalId");
+CREATE UNIQUE INDEX "providerOperation_providerAccountId_externalId_key" ON "providerOperation"("providerAccountId", "externalId");
+CREATE UNIQUE INDEX "providerOperation_unbound_provider_externalId_key" ON "providerOperation"("provider", "externalId") WHERE ("providerAccountId" IS NULL);
 CREATE UNIQUE INDEX "incident_fingerprint_key" ON "incident"("fingerprint");
 CREATE UNIQUE INDEX "usageSample_customerAccountId_metric_observedAt_key" ON "usageSample"("customerAccountId", "metric", "observedAt");
 CREATE UNIQUE INDEX "costLineItem_provider_externalId_key" ON "costLineItem"("provider", "externalId");
@@ -838,9 +874,11 @@ CREATE INDEX "actionReceipt_requestHash_idx" ON "actionReceipt"("requestHash");
 CREATE INDEX "actionReceipt_operationKey_idx" ON "actionReceipt"("operationKey");
 CREATE INDEX "actionReceipt_status_createdAt_idx" ON "actionReceipt"("status", "createdAt");
 CREATE INDEX "actionReceipt_agentActionId_createdAt_idx" ON "actionReceipt"("agentActionId", "createdAt");
+CREATE INDEX "actionReceipt_providerAccountId_createdAt_idx" ON "actionReceipt"("providerAccountId", "createdAt");
 CREATE INDEX "connectorBinding_status_updatedAt_idx" ON "connectorBinding"("status", "updatedAt");
 CREATE INDEX "connectorHealth_provider_accountId_idx" ON "connectorHealth"("provider", "accountId");
 CREATE INDEX "connectorHealth_paused_freshnessAt_idx" ON "connectorHealth"("paused", "freshnessAt");
+CREATE INDEX "connectorHealth_paused_nextRetryAt_idx" ON "connectorHealth"("paused", "nextRetryAt");
 CREATE INDEX "connectorHealth_testState_freshnessAt_idx" ON "connectorHealth"("testState", "freshnessAt");
 CREATE INDEX "campaign_status_startsAt_idx" ON "campaign"("status", "startsAt");
 CREATE INDEX "campaign_ownerId_status_idx" ON "campaign"("ownerId", "status");
@@ -862,6 +900,7 @@ CREATE INDEX "attributionCredit_campaignId_model_createdAt_idx" ON "attributionC
 CREATE INDEX "attributionCredit_subjectType_subjectId_model_idx" ON "attributionCredit"("subjectType", "subjectId", "model");
 CREATE INDEX "attributionCredit_touchpointId_idx" ON "attributionCredit"("touchpointId");
 CREATE INDEX "publication_status_scheduledAt_idx" ON "publication"("status", "scheduledAt");
+CREATE INDEX "publication_approvalRequestId_status_scheduledAt_idx" ON "publication"("approvalRequestId", "status", "scheduledAt");
 CREATE INDEX "publication_campaignId_publishedAt_idx" ON "publication"("campaignId", "publishedAt");
 CREATE INDEX "publication_contentVariantId_idx" ON "publication"("contentVariantId");
 CREATE INDEX "marketingSourceReceipt_campaignId_capturedAt_idx" ON "marketingSourceReceipt"("campaignId", "capturedAt");
@@ -871,15 +910,18 @@ CREATE INDEX "supportCase_status_priority_dueAt_idx" ON "supportCase"("status", 
 CREATE INDEX "supportCase_ownerId_status_dueAt_idx" ON "supportCase"("ownerId", "status", "dueAt");
 CREATE INDEX "supportCase_queue_status_updatedAt_idx" ON "supportCase"("queue", "status", "updatedAt");
 CREATE INDEX "supportCase_subjectType_subjectId_idx" ON "supportCase"("subjectType", "subjectId");
+CREATE INDEX "supportCase_customerAccountId_status_priority_updatedAt_idx" ON "supportCase"("customerAccountId", "status", "priority", "updatedAt");
 CREATE INDEX "supportCase_slaPolicyId_status_idx" ON "supportCase"("slaPolicyId", "status");
 CREATE INDEX "supportCaseSource_caseId_receivedAt_idx" ON "supportCaseSource"("caseId", "receivedAt");
 CREATE INDEX "supportCaseSource_contentHash_idx" ON "supportCaseSource"("contentHash");
 CREATE INDEX "supportCaseEvent_caseId_occurredAt_idx" ON "supportCaseEvent"("caseId", "occurredAt");
 CREATE INDEX "supportCaseEvent_eventType_occurredAt_idx" ON "supportCaseEvent"("eventType", "occurredAt");
-CREATE INDEX "supportSlaPolicy_status_channel_idx" ON "supportSlaPolicy"("status", "channel");
+CREATE INDEX "supportSlaPolicy_customerAccountId_status_priority_channel_idx" ON "supportSlaPolicy"("customerAccountId", "status", "priority", "channel");
+CREATE INDEX "supportSlaPolicy_status_priority_channel_idx" ON "supportSlaPolicy"("status", "priority", "channel");
 CREATE INDEX "supportTriageProposal_caseId_status_createdAt_idx" ON "supportTriageProposal"("caseId", "status", "createdAt");
 CREATE INDEX "supportTriageProposal_status_createdAt_idx" ON "supportTriageProposal"("status", "createdAt");
 CREATE INDEX "supportReplyDraft_caseId_status_createdAt_idx" ON "supportReplyDraft"("caseId", "status", "createdAt");
+CREATE INDEX "supportReplyDraft_approvalRequestId_status_createdAt_idx" ON "supportReplyDraft"("approvalRequestId", "status", "createdAt");
 CREATE INDEX "supportReplyDraft_status_createdAt_idx" ON "supportReplyDraft"("status", "createdAt");
 CREATE INDEX "supportKnowledgeDocument_status_updatedAt_idx" ON "supportKnowledgeDocument"("status", "updatedAt");
 CREATE INDEX "supportKnowledgeDocument_checksum_idx" ON "supportKnowledgeDocument"("checksum");
@@ -902,6 +944,7 @@ CREATE INDEX "observedState_instanceId_observedAt_idx" ON "observedState"("insta
 CREATE INDEX "observedState_instanceId_status_observedAt_idx" ON "observedState"("instanceId", "status", "observedAt");
 CREATE INDEX "plan_instanceId_status_createdAt_idx" ON "plan"("instanceId", "status", "createdAt");
 CREATE INDEX "plan_desiredRevisionId_idx" ON "plan"("desiredRevisionId");
+CREATE INDEX "plan_observedStateId_idx" ON "plan"("observedStateId");
 CREATE INDEX "planStep_planId_status_position_idx" ON "planStep"("planId", "status", "position");
 CREATE INDEX "planStep_resourceType_resourceId_idx" ON "planStep"("resourceType", "resourceId");
 CREATE INDEX "controlCommand_instanceId_status_createdAt_idx" ON "controlCommand"("instanceId", "status", "createdAt");
@@ -925,6 +968,7 @@ ALTER TABLE "approvalRequest" ADD CONSTRAINT "approvalRequest_approverId_fkey" F
 ALTER TABLE "agentTask" ADD CONSTRAINT "agentTask_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "agentRun" ADD CONSTRAINT "agentRun_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "agentAction" ADD CONSTRAINT "agentAction_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_providerAccountId_fkey" FOREIGN KEY ("providerAccountId") REFERENCES "providerAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_agentActionId_fkey" FOREIGN KEY ("agentActionId") REFERENCES "agentAction"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_providerOperationId_fkey" FOREIGN KEY ("providerOperationId") REFERENCES "providerOperation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -946,17 +990,24 @@ ALTER TABLE "attributionCredit" ADD CONSTRAINT "attributionCredit_touchpointId_f
 ALTER TABLE "publication" ADD CONSTRAINT "publication_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "publication" ADD CONSTRAINT "publication_contentItemId_fkey" FOREIGN KEY ("contentItemId") REFERENCES "contentItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "publication" ADD CONSTRAINT "publication_contentVariantId_fkey" FOREIGN KEY ("contentVariantId") REFERENCES "contentVariant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "publication" ADD CONSTRAINT "publication_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "publication" ADD CONSTRAINT "publication_actionReceiptId_fkey" FOREIGN KEY ("actionReceiptId") REFERENCES "actionReceipt"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "marketingSourceReceipt" ADD CONSTRAINT "marketingSourceReceipt_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "campaign"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "marketingSourceReceipt" ADD CONSTRAINT "marketingSourceReceipt_contentItemId_fkey" FOREIGN KEY ("contentItemId") REFERENCES "contentItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCase" ADD CONSTRAINT "supportCase_slaPolicyId_fkey" FOREIGN KEY ("slaPolicyId") REFERENCES "supportSlaPolicy"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportCaseSource" ADD CONSTRAINT "supportCaseSource_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "supportCaseEvent" ADD CONSTRAINT "supportCaseEvent_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "supportSlaPolicy" ADD CONSTRAINT "supportSlaPolicy_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportTriageProposal" ADD CONSTRAINT "supportTriageProposal_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "supportReplyDraft" ADD CONSTRAINT "supportReplyDraft_actionReceiptId_fkey" FOREIGN KEY ("actionReceiptId") REFERENCES "actionReceipt"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "supportEscalation" ADD CONSTRAINT "supportEscalation_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "supportProductHandoff" ADD CONSTRAINT "supportProductHandoff_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "supportCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "customerAccount" ADD CONSTRAINT "customerAccount_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "company"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "customerAccount" ADD CONSTRAINT "customerAccount_customerOnboardingId_fkey" FOREIGN KEY ("customerOnboardingId") REFERENCES "customerOnboarding"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "customerAccount" ADD CONSTRAINT "customerAccount_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "customerInstance" ADD CONSTRAINT "customerInstance_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "customerAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "providerAccount" ADD CONSTRAINT "providerAccount_customerAccountId_fkey" FOREIGN KEY ("customerAccountId") REFERENCES "customerAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -969,6 +1020,7 @@ ALTER TABLE "desiredStateRevision" ADD CONSTRAINT "desiredStateRevision_instance
 ALTER TABLE "observedState" ADD CONSTRAINT "observedState_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "customerInstance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "plan" ADD CONSTRAINT "plan_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "customerInstance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "plan" ADD CONSTRAINT "plan_desiredRevisionId_fkey" FOREIGN KEY ("desiredRevisionId") REFERENCES "desiredStateRevision"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "plan" ADD CONSTRAINT "plan_observedStateId_fkey" FOREIGN KEY ("observedStateId") REFERENCES "observedState"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "planStep" ADD CONSTRAINT "planStep_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plan"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "controlCommand" ADD CONSTRAINT "controlCommand_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "customerInstance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "controlCommand" ADD CONSTRAINT "controlCommand_approvalRequestId_fkey" FOREIGN KEY ("approvalRequestId") REFERENCES "approvalRequest"("id") ON DELETE SET NULL ON UPDATE CASCADE;

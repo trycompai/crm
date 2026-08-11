@@ -232,6 +232,7 @@ enum AgentRunStatus {
   WAITING_FOR_APPROVAL
   SUCCEEDED
   FAILED
+  INDETERMINATE
   CANCELLED
 }
 
@@ -240,6 +241,7 @@ enum AgentActionStatus {
   RUNNING
   SUCCEEDED
   FAILED
+  INDETERMINATE
   CANCELLED
 }
 
@@ -299,6 +301,7 @@ enum WorkItemUrgency {
 enum WorkItemState {
   OPEN
   IN_PROGRESS
+  WAITING
   BLOCKED
   DONE
   DISMISSED
@@ -333,6 +336,7 @@ enum ActionReceiptStatus {
   PENDING
   SUCCEEDED
   FAILED
+  INDETERMINATE
 }
 
 enum ConnectorBindingStatus {
@@ -409,9 +413,10 @@ enum AttributionModel {
 }
 
 enum SupportCaseStatus {
+  NEW
   OPEN
-  PENDING
-  WAITING_ON_CUSTOMER
+  PENDING_CUSTOMER
+  PENDING_INTERNAL
   RESOLVED
   CLOSED
 }
@@ -459,6 +464,11 @@ enum SupportKnowledgeDocumentStatus {
   ARCHIVED
 }
 
+enum SupportKnowledgeAudience {
+  INTERNAL
+  CUSTOMER_SAFE
+}
+
 enum SupportEscalationSeverity {
   LOW
   MEDIUM
@@ -489,6 +499,8 @@ enum CustomerAccountStatus {
 }
 
 enum CustomerInstanceStatus {
+  DISCOVERED
+  UNMANAGED
   PROVISIONING
   ACTIVE
   PAUSED
@@ -565,6 +577,7 @@ enum ProviderOperationStatus {
   RUNNING
   SUCCEEDED
   FAILED
+  INDETERMINATE
   RETRYING
   CANCELLED
 }
@@ -639,6 +652,7 @@ model Company {
   fieldValues        FieldValue[]
   prospects          Prospect[]
   onboardings        CustomerOnboarding[]
+  customerAccount    CustomerAccount?
   approvalQueues     ApprovalQueue[]      @relation("ApprovalQueueCompany")
   discoveryLearnings DiscoveryLearning[]  @relation("DiscoveryLearningCompany")
   createdAt          DateTime             @default(now())
@@ -1841,23 +1855,24 @@ model EmailDraft {
 }
 
 model CustomerOnboarding {
-  id             String                   @id @default(cuid())
-  dealId         String                   @unique
-  deal           Deal                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  companyId      String
-  company        Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  ownerId        String
-  owner          User                     @relation("OnboardingOwner", fields: [ownerId], references: [id])
-  status         CustomerOnboardingStatus @default(DISCOVERY)
-  objective      String?
-  systemsSummary String?
-  dataSummary    String?
-  brainPlan      String?
-  agentPlannedAt DateTime?
-  targetLiveAt   DateTime?
-  items          OnboardingItem[]
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id              String                   @id @default(cuid())
+  dealId          String                   @unique
+  deal            Deal                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerId         String
+  owner           User                     @relation("OnboardingOwner", fields: [ownerId], references: [id])
+  status          CustomerOnboardingStatus @default(DISCOVERY)
+  objective       String?
+  systemsSummary  String?
+  dataSummary     String?
+  brainPlan       String?
+  agentPlannedAt  DateTime?
+  targetLiveAt    DateTime?
+  items           OnboardingItem[]
+  customerAccount CustomerAccount?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 
   @@index([companyId, status])
   @@index([ownerId, status])
@@ -2494,6 +2509,7 @@ model ApprovalRequest {
   agentRuns          AgentRun[]          @relation("ApprovalRequestAgentRuns")
   agentActions       AgentAction[]       @relation("ApprovalRequestAgentActions")
   actionReceipts     ActionReceipt[]     @relation("ApprovalRequestActionReceipts")
+  publications       Publication[]
   supportReplyDrafts SupportReplyDraft[]
   controlCommands    ControlCommand[]
 
@@ -2541,22 +2557,28 @@ model ActionReceipt {
   errorMessage     String?
   status           ActionReceiptStatus @default(PENDING)
 
+  providerAccountId   String?
+  providerAccount     ProviderAccount?   @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
   agentActionId       String?
   agentAction         AgentAction?       @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
   approvalRequestId   String?
   approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId], references: [id], onDelete: SetNull)
   providerOperationId String?            @unique
   providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId], references: [id], onDelete: SetNull)
+  publication         Publication?
+  supportReplyDraft   SupportReplyDraft?
 
   createdAt   DateTime  @default(now())
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt
 
-  @@unique([provider, externalId])
+  @@unique([providerAccountId, externalId])
+  @@unique([provider, externalId], map: "actionReceipt_unbound_provider_externalId_key", where: { providerAccountId: null })
   @@index([requestHash])
   @@index([operationKey])
   @@index([status, createdAt])
   @@index([agentActionId, createdAt])
+  @@index([providerAccountId, createdAt])
   @@map("actionReceipt")
 }
 
@@ -2579,25 +2601,31 @@ model ConnectorBinding {
 }
 
 model ConnectorHealth {
-  id          String             @id @default(cuid())
-  bindingId   String             @unique
-  binding     ConnectorBinding   @relation(fields: [bindingId], references: [id], onDelete: Cascade)
-  provider    String
-  accountId   String
-  cursor      String?
-  freshnessAt DateTime?
-  paused      Boolean            @default(false)
-  pausedAt    DateTime?
-  pauseReason String?
-  lastError   String?
-  testState   ConnectorTestState @default(NOT_TESTED)
-  testedAt    DateTime?
+  id                  String             @id @default(cuid())
+  bindingId           String             @unique
+  binding             ConnectorBinding   @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  provider            String
+  accountId           String
+  cursor              String?
+  freshnessAt         DateTime?
+  paused              Boolean            @default(false)
+  pausedAt            DateTime?
+  pauseReason         String?
+  lastError           String?
+  errorCode           String?
+  consecutiveFailures Int                @default(0)
+  lastAttemptAt       DateTime?
+  lastSuccessAt       DateTime?
+  nextRetryAt         DateTime?
+  testState           ConnectorTestState @default(NOT_TESTED)
+  testedAt            DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([provider, accountId])
   @@index([paused, freshnessAt])
+  @@index([paused, nextRetryAt])
   @@index([testState, freshnessAt])
   @@map("connectorHealth")
 }
@@ -2806,27 +2834,33 @@ model AttributionCredit {
 }
 
 model Publication {
-  id               String            @id @default(cuid())
-  campaignId       String?
-  campaign         Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contentItemId    String?
-  contentItem      ContentItem?      @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
-  contentVariantId String?
-  contentVariant   ContentVariant?   @relation(fields: [contentVariantId], references: [id], onDelete: SetNull)
-  channel          String
-  provider         String
-  externalId       String?
-  status           PublicationStatus @default(PLANNED)
-  scheduledAt      DateTime?
-  publishedAt      DateTime?
-  receipt          Json?
-  errorMessage     String?
+  id                String            @id @default(cuid())
+  campaignId        String?
+  campaign          Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentItemId     String?
+  contentItem       ContentItem?      @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  contentVariantId  String?
+  contentVariant    ContentVariant?   @relation(fields: [contentVariantId], references: [id], onDelete: SetNull)
+  channel           String
+  provider          String
+  externalId        String?
+  idempotencyKey    String            @unique
+  status            PublicationStatus @default(PLANNED)
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest?  @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  actionReceiptId   String?           @unique
+  actionReceipt     ActionReceipt?    @relation(fields: [actionReceiptId], references: [id], onDelete: SetNull)
+  scheduledAt       DateTime?
+  publishedAt       DateTime?
+  receipt           Json?
+  errorMessage      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([provider, externalId])
   @@index([status, scheduledAt])
+  @@index([approvalRequestId, status, scheduledAt])
   @@index([campaignId, publishedAt])
   @@index([contentVariantId])
   @@map("publication")
@@ -2854,25 +2888,28 @@ model MarketingSourceReceipt {
 }
 
 model SupportCase {
-  id              String              @id @default(cuid())
-  subjectType     SubjectType?
-  subjectId       String?
-  provider        String?
-  externalId      String?
-  channel         String
-  queue           String?
-  title           String
-  description     String?
-  status          SupportCaseStatus   @default(OPEN)
-  priority        SupportCasePriority @default(NORMAL)
-  ownerId         String?
-  owner           User?               @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  slaPolicyId     String?
-  slaPolicy       SupportSlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
-  openedAt        DateTime            @default(now())
-  firstResponseAt DateTime?
-  dueAt           DateTime?
-  resolvedAt      DateTime?
+  id                String              @id @default(cuid())
+  customerAccountId String?
+  customerAccount   CustomerAccount?    @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  dedupeKey         String              @unique
+  subjectType       SubjectType?
+  subjectId         String?
+  provider          String?
+  externalId        String?
+  channel           String
+  queue             String?
+  title             String
+  description       String?
+  status            SupportCaseStatus   @default(NEW)
+  priority          SupportCasePriority @default(NORMAL)
+  ownerId           String?
+  owner             User?               @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  slaPolicyId       String?
+  slaPolicy         SupportSlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  openedAt          DateTime            @default(now())
+  firstResponseAt   DateTime?
+  dueAt             DateTime?
+  resolvedAt        DateTime?
 
   sources         SupportCaseSource[]
   events          SupportCaseEvent[]
@@ -2889,6 +2926,7 @@ model SupportCase {
   @@index([ownerId, status, dueAt])
   @@index([queue, status, updatedAt])
   @@index([subjectType, subjectId])
+  @@index([customerAccountId, status, priority, updatedAt])
   @@index([slaPolicyId, status])
   @@map("supportCase")
 }
@@ -2930,8 +2968,14 @@ model SupportCaseEvent {
 
 model SupportSlaPolicy {
   id                   String                 @id @default(cuid())
+  customerAccountId    String?
+  customerAccount      CustomerAccount?       @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  policyKey            String                 @unique
   name                 String
   channel              String?
+  priority             SupportCasePriority    @default(NORMAL)
+  timezone             String                 @default("UTC")
+  businessHours        Json?
   status               SupportSlaPolicyStatus @default(ACTIVE)
   firstResponseMinutes Int
   resolutionMinutes    Int
@@ -2940,8 +2984,8 @@ model SupportSlaPolicy {
 
   cases SupportCase[]
 
-  @@unique([name, channel])
-  @@index([status, channel])
+  @@index([customerAccountId, status, priority, channel])
+  @@index([status, priority, channel])
   @@map("supportSlaPolicy")
 }
 
@@ -2979,13 +3023,16 @@ model SupportReplyDraft {
   status            SupportReplyDraftStatus @default(DRAFT)
   approvalRequestId String?
   approvalRequest   ApprovalRequest?        @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
-  idempotencyKey    String?                 @unique
+  idempotencyKey    String                  @unique
+  actionReceiptId   String?                 @unique
+  actionReceipt     ActionReceipt?          @relation(fields: [actionReceiptId], references: [id], onDelete: SetNull)
   sentAt            DateTime?
   errorMessage      String?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
   @@index([caseId, status, createdAt])
+  @@index([approvalRequestId, status, createdAt])
   @@index([status, createdAt])
   @@map("supportReplyDraft")
 }
@@ -3000,6 +3047,7 @@ model SupportKnowledgeDocument {
   checksum    String?
   version     Int                            @default(1)
   status      SupportKnowledgeDocumentStatus @default(DRAFT)
+  audience    SupportKnowledgeAudience       @default(INTERNAL)
   metadata    Json?
   publishedAt DateTime?
   createdAt   DateTime                       @default(now())
@@ -3049,19 +3097,25 @@ model SupportProductHandoff {
 }
 
 model CustomerAccount {
-  id          String                @id @default(cuid())
-  name        String
-  externalKey String?               @unique
-  status      CustomerAccountStatus @default(PROSPECT)
-  ownerId     String?
-  owner       User?                 @relation("CustomerAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  metadata    Json?
+  id                   String                @id @default(cuid())
+  companyId            String?               @unique
+  company              Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  customerOnboardingId String?               @unique
+  customerOnboarding   CustomerOnboarding?   @relation(fields: [customerOnboardingId], references: [id], onDelete: SetNull)
+  name                 String
+  externalKey          String?               @unique
+  status               CustomerAccountStatus @default(PROSPECT)
+  ownerId              String?
+  owner                User?                 @relation("CustomerAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  metadata             Json?
 
   instances        CustomerInstance[]
   providerAccounts ProviderAccount[]
   secretReferences SecretReference[]
   usageSamples     UsageSample[]
   costLineItems    CostLineItem[]
+  supportCases     SupportCase[]
+  slaPolicies      SupportSlaPolicy[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3118,10 +3172,11 @@ model ProviderAccount {
   status            ProviderAccountStatus @default(PENDING)
   metadata          Json?
 
-  resources     ProviderResource[]
-  operations    ProviderOperation[]
-  usageSamples  UsageSample[]
-  costLineItems CostLineItem[]
+  resources      ProviderResource[]
+  operations     ProviderOperation[]
+  usageSamples   UsageSample[]
+  costLineItems  CostLineItem[]
+  actionReceipts ActionReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3155,14 +3210,14 @@ model ProviderResource {
 }
 
 model SecretReference {
-  id                String                @id @default(cuid())
-  customerAccountId String?
-  customerAccount   CustomerAccount?      @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
-  provider          String
-  reference         String
-  version           String?
-  status            SecretReferenceStatus @default(ACTIVE)
-  metadata          Json?
+  id                 String                @id @default(cuid())
+  customerAccountId  String?
+  customerAccount    CustomerAccount?      @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  provider           String
+  reference          String
+  version            String?
+  status             SecretReferenceStatus @default(ACTIVE)
+  capabilityMetadata Json?
 
   connectorBindings ConnectorBinding[] @relation("ConnectorSecretReference")
   providerAccounts  ProviderAccount[]  @relation("ProviderAccountSecretReference")
@@ -3170,7 +3225,7 @@ model SecretReference {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([provider, reference, version])
+  @@unique([provider, reference])
   @@index([customerAccountId, status])
   @@index([provider, status])
   @@map("secretReference")
@@ -3206,30 +3261,36 @@ model ObservedState {
   observedAt DateTime
   createdAt  DateTime            @default(now())
 
+  plans Plan[]
+
   @@index([instanceId, observedAt])
   @@index([instanceId, status, observedAt])
   @@map("observedState")
 }
 
 model Plan {
-  id                String                @id @default(cuid())
-  instanceId        String
-  instance          CustomerInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  desiredRevisionId String?
-  desiredRevision   DesiredStateRevision? @relation("DesiredRevisionPlans", fields: [desiredRevisionId], references: [id], onDelete: SetNull)
-  status            PlanStatus            @default(DRAFT)
-  idempotencyKey    String                @unique
-  summary           String?
-  errorMessage      String?
-  createdAt         DateTime              @default(now())
-  startedAt         DateTime?
-  completedAt       DateTime?
-  updatedAt         DateTime              @updatedAt
+  id                 String                @id @default(cuid())
+  instanceId         String
+  instance           CustomerInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  desiredRevisionId  String?
+  desiredRevision    DesiredStateRevision? @relation("DesiredRevisionPlans", fields: [desiredRevisionId], references: [id], onDelete: SetNull)
+  observedStateId    String
+  observedState      ObservedState         @relation(fields: [observedStateId], references: [id], onDelete: Restrict)
+  preconditionDigest String
+  status             PlanStatus            @default(DRAFT)
+  idempotencyKey     String                @unique
+  summary            String?
+  errorMessage       String?
+  createdAt          DateTime              @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  updatedAt          DateTime              @updatedAt
 
   steps PlanStep[]
 
   @@index([instanceId, status, createdAt])
   @@index([desiredRevisionId])
+  @@index([observedStateId])
   @@map("plan")
 }
 
@@ -3315,7 +3376,8 @@ model ProviderOperation {
 
   receipt ActionReceipt? @relation("ProviderOperationReceipt")
 
-  @@unique([provider, externalId])
+  @@unique([providerAccountId, externalId])
+  @@unique([provider, externalId], map: "providerOperation_unbound_provider_externalId_key", where: { providerAccountId: null })
   @@index([instanceId, status, createdAt])
   @@index([providerAccountId, status, createdAt])
   @@index([planStepId])
