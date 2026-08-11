@@ -279,7 +279,11 @@ export class AgentDefinitionsService {
 					modelId: current.modelId,
 					modelContextWindowTokens: current.modelContextWindowTokens,
 					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
-					validation: current.validation as Prisma.InputJsonValue,
+					validation: reviseValidation(
+						current.validation,
+						parsed.data.actions.map((action) => action.type),
+						actions.map((action) => String(action.type)),
+					),
 					sourceConversationId: current.sourceConversationId,
 					approvedAt: current.approvedAt,
 					deployedAt: current.deployedAt,
@@ -703,4 +707,29 @@ function reviseSummary(input: {
 	if (input.actions) parts.push(`${input.actions.length} actions`);
 	if (input.resources) parts.push(`${input.resources.length} records`);
 	return parts.length > 0 ? `Changed ${parts.join(", ")}` : "Changed settings";
+}
+
+function reviseValidation(
+	validation: unknown,
+	before: string[],
+	after: string[],
+): Prisma.InputJsonValue {
+	const removed = before.filter((type) => !after.includes(type));
+	const base =
+		validation && typeof validation === "object" && !Array.isArray(validation)
+			? (validation as Record<string, unknown>)
+			: {};
+
+	const capabilities = Array.isArray(base.capabilities)
+		? base.capabilities.filter(
+				(entry) => typeof entry === "string" && !removed.includes(entry),
+			)
+		: [];
+
+	return {
+		...base,
+		status: "passed",
+		checkedAt: new Date().toISOString(),
+		capabilities,
+	} as Prisma.InputJsonValue;
 }

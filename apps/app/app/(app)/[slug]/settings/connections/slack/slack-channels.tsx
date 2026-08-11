@@ -1,7 +1,4 @@
 "use client";
-
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Locked from "@carbon/icons-react/es/Locked";
 import Search from "@carbon/icons-react/es/Search";
 import {
 	AlertDialog,
@@ -26,22 +23,17 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+	ChannelPicker,
+	type PickerChannel,
+} from "@/components/slack/channel-picker";
 import { useTRPC } from "@/lib/trpc/client";
-
-type Channel = {
-	id: string;
-	name: string;
-	memberCount: number | null;
-	isPrivate: boolean;
-	isMember: boolean;
-	inviteRequestedAt: string | null;
-};
 
 const INVITE_COMMAND = "/invite @Comp AI";
 
 export function SlackChannels() {
 	const trpc = useTRPC();
-	const [asking, setAsking] = useState<Channel | null>(null);
+	const [asking, setAsking] = useState<PickerChannel | null>(null);
 	const [query, setQuery] = useState("");
 	const channels = useQuery(trpc.slack.channels.queryOptions());
 	const join = useMutation(
@@ -113,30 +105,22 @@ export function SlackChannels() {
 				</InputGroup>
 			) : null}
 
-			<div className="flex flex-col divide-y rounded-lg border">
-				{rows.length === 0 ? (
+			<ChannelPicker
+				canInviteItself={canInviteItself}
+				channels={shown}
+				empty={
 					<p className="px-4 py-4 text-muted-foreground text-sm">
-						{channels.isPending
-							? "Reading the channel list from Slack…"
-							: "No channels yet. Comp AI reads the list from Slack after it connects."}
+						{rows.length === 0
+							? channels.isPending
+								? "Reading the channel list from Slack…"
+								: "No channels yet. Comp AI reads the list from Slack after it connects."
+							: `No channel matches “${query}”.`}
 					</p>
-				) : null}
-				{rows.length > 0 && shown.length === 0 ? (
-					<p className="px-4 py-4 text-muted-foreground text-sm">
-						No channel matches “{query}”.
-					</p>
-				) : null}
-				{shown.map((channel) => (
-					<ChannelRow
-						channel={channel}
-						canInviteItself={canInviteItself}
-						key={channel.id}
-						onAsk={() => setAsking(channel)}
-						onJoin={() => void joinAction.run(channel.id)}
-						pending={joinAction.pending}
-					/>
-				))}
-			</div>
+				}
+				onAdd={(channel) => void joinAction.run(channel.id)}
+				onRequest={(channel) => setAsking(channel)}
+				pending={joinAction.pending}
+			/>
 
 			<AskDialog
 				canInviteItself={canInviteItself}
@@ -149,81 +133,6 @@ export function SlackChannels() {
 	);
 }
 
-function ChannelRow({
-	channel,
-	canInviteItself,
-	onAsk,
-	onJoin,
-	pending,
-}: {
-	channel: Channel;
-	canInviteItself: boolean;
-	onAsk: () => void;
-	onJoin: () => void;
-	pending: boolean;
-}) {
-	return (
-		<div
-			className={`flex h-14 shrink-0 items-center gap-3 px-4 ${channel.isMember ? "bg-muted" : ""}`}
-		>
-			<span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
-				{channel.isPrivate ? (
-					<Icon icon={Locked} motion="none" className="size-3.5" />
-				) : (
-					"#"
-				)}
-			</span>
-
-			<div className="min-w-0 flex-1">
-				<p
-					className={`font-medium text-sm ${channel.isMember ? "" : "text-muted-foreground"}`}
-				>
-					{channel.name}
-				</p>
-				<p className="text-muted-foreground text-xs">
-					{describe(channel, canInviteItself)}
-				</p>
-			</div>
-
-			<span className="flex w-20 shrink-0 items-center justify-end">
-				{channel.isMember ? (
-					<Icon
-						icon={Checkmark}
-						motion="none"
-						className="size-4 text-success"
-					/>
-				) : (
-					<Button
-						disabled={pending}
-						onClick={channel.isPrivate && !canInviteItself ? onAsk : onJoin}
-						size="xs"
-						variant="outline"
-					>
-						{channel.isPrivate && !canInviteItself
-							? channel.inviteRequestedAt
-								? "Ask again"
-								: "Request"
-							: "Add"}
-					</Button>
-				)}
-			</span>
-		</div>
-	);
-}
-
-function describe(channel: Channel, canInviteItself: boolean): string {
-	const people =
-		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
-
-	if (channel.isMember) return `Comp AI is in${people}`;
-	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
-	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
-	if (channel.inviteRequestedAt) {
-		return `Private. Waiting on an invite${people}`;
-	}
-	return `Private. Someone inside has to invite Comp AI${people}`;
-}
-
 function AskDialog({
 	canInviteItself,
 	channel,
@@ -232,7 +141,7 @@ function AskDialog({
 	status,
 }: {
 	canInviteItself: boolean;
-	channel: Channel | null;
+	channel: PickerChannel | null;
 	onCancel: () => void;
 	onConfirm: () => void;
 	status: "idle" | "pending" | "success" | "error";

@@ -17,38 +17,33 @@ export type PickerChannel = {
 export function ChannelPicker({
 	canInviteItself,
 	channels,
+	empty,
+	onAdd,
 	onRequest,
 	onSelect,
 	pending = false,
-	value,
+	value = null,
 }: {
 	canInviteItself: boolean;
 	channels: PickerChannel[];
+	empty?: React.ReactNode;
+	onAdd?: (channel: PickerChannel) => void;
 	onRequest?: (channel: PickerChannel) => void;
-	onSelect: (channel: PickerChannel) => void;
+	onSelect?: (channel: PickerChannel) => void;
 	pending?: boolean;
-	value: string | null;
+	value?: string | null;
 }) {
 	return (
 		<div className="flex flex-col divide-y overflow-hidden rounded-lg border">
-			{channels.length === 0 ? (
-				<p className="px-4 py-4 text-muted-foreground text-sm">
-					No channels yet. Comp AI reads the list from Slack after it connects.
-				</p>
-			) : null}
+			{channels.length === 0 ? empty : null}
 
 			{channels.map((channel) => {
-				const selected = channel.id === value;
+				const selected = value !== null && channel.id === value;
 				const blocked = channel.isPrivate && !channel.isMember;
+				const needsHuman = blocked && !canInviteItself;
 
-				return (
-					<button
-						className={`flex h-14 shrink-0 items-center gap-3 px-4 text-left ${selected ? "bg-muted" : "hover:bg-muted/50"}`}
-						disabled={pending || (blocked && !canInviteItself)}
-						key={channel.id}
-						onClick={() => onSelect(channel)}
-						type="button"
-					>
+				const row = (
+					<>
 						<span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
 							{channel.isPrivate ? (
 								<Icon className="size-3.5" icon={Locked} motion="none" />
@@ -57,7 +52,7 @@ export function ChannelPicker({
 							)}
 						</span>
 
-						<span className="flex min-w-0 flex-1 flex-col gap-px">
+						<span className="flex min-w-0 flex-1 flex-col gap-px text-left">
 							<span
 								className={`font-medium text-sm ${selected || channel.isMember ? "" : "text-muted-foreground"}`}
 							>
@@ -69,13 +64,13 @@ export function ChannelPicker({
 						</span>
 
 						<span className="flex w-20 shrink-0 items-center justify-end">
-							{selected ? (
+							{selected || (value === null && channel.isMember) ? (
 								<Icon
 									className="size-4 text-success"
 									icon={Checkmark}
 									motion="none"
 								/>
-							) : blocked && !canInviteItself && onRequest ? (
+							) : needsHuman && onRequest ? (
 								<Button
 									disabled={pending}
 									onClick={(event) => {
@@ -87,9 +82,41 @@ export function ChannelPicker({
 								>
 									{channel.inviteRequestedAt ? "Ask again" : "Request"}
 								</Button>
+							) : !channel.isMember && onAdd ? (
+								<Button
+									disabled={pending}
+									onClick={(event) => {
+										event.stopPropagation();
+										onAdd(channel);
+									}}
+									size="xs"
+									variant="outline"
+								>
+									Add
+								</Button>
 							) : null}
 						</span>
+					</>
+				);
+
+				const shell = `flex h-14 shrink-0 items-center gap-3 px-4 ${
+					selected ? "bg-muted" : onSelect ? "hover:bg-muted/50" : ""
+				}`;
+
+				return onSelect ? (
+					<button
+						className={`${shell} text-left`}
+						disabled={pending || (needsHuman && !onRequest)}
+						key={channel.id}
+						onClick={() => onSelect(channel)}
+						type="button"
+					>
+						{row}
 					</button>
+				) : (
+					<div className={shell} key={channel.id}>
+						{row}
+					</div>
 				);
 			})}
 		</div>
@@ -101,9 +128,8 @@ function describe(channel: PickerChannel, canInviteItself: boolean): string {
 		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
 
 	if (channel.isMember) return `Comp AI is in${people}`;
-	if (!channel.isPrivate) return `Comp AI joins when you save${people}`;
+	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
 	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
-	if (channel.inviteRequestedAt)
-		return `Private. Waiting on an invite${people}`;
+	if (channel.inviteRequestedAt) return `Private. Waiting on an invite${people}`;
 	return `Private. Someone inside has to invite Comp AI${people}`;
 }
