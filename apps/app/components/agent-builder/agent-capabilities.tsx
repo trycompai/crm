@@ -1,10 +1,18 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Locked from "@carbon/icons-react/es/Locked";
 import Warning from "@carbon/icons-react/es/Warning";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
+import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import { Switch } from "@crm/ui/components/switch";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+	ChannelPicker,
+	type PickerChannel,
+} from "@/components/slack/channel-picker";
+import { useTRPC } from "@/lib/trpc/client";
 
 export type Capabilities = {
 	readable: boolean;
@@ -18,11 +26,55 @@ export type Capabilities = {
 	} | null;
 };
 
+const ACTION_LABELS: Record<string, string> = {
+	"slack.message.post": "Post a message",
+	"crm.activity.create": "Write a note or task on the record",
+	"run.summary": "Write a summary of the run",
+};
+
 export function AgentCapabilities({
+	agentId,
+	canManage,
 	capabilities,
 }: {
+	agentId: string;
+	canManage: boolean;
 	capabilities: Capabilities;
 }) {
+	const trpc = useTRPC();
+	const queryClient = useQueryClient();
+	const [picked, setPicked] = useState<PickerChannel | null>(null);
+
+	const channels = useQuery({
+		...trpc.slack.channels.queryOptions(),
+		enabled: capabilities.channel !== null,
+	});
+	const rows = channels.data?.rows ?? [];
+	const canInviteItself = channels.data?.canInviteItself ?? false;
+
+	const setChannel = useMutation(
+		trpc.agents.setChannel.mutationOptions({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries({
+					queryKey: trpc.agents.byId.pathKey(),
+				});
+				setPicked(null);
+				toast.success("Saved. The agent moves to the new channel.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const join = useMutation(
+		trpc.slack.joinChannel.mutationOptions({
+			onSuccess: async () => {
+				await channels.refetch();
+				toast.success("Asked someone to invite Comp AI.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
 	if (!capabilities.readable) {
 		return (
 			<Alert variant="warning">
@@ -35,154 +87,149 @@ export function AgentCapabilities({
 		);
 	}
 
+	const current = capabilities.channel;
+	const from = current?.label.replace(/^#/, "") ?? null;
+	const to = picked?.name ?? null;
+	const dirty = to !== null && to !== from;
+
 	return (
 		<div className="flex flex-col gap-9">
-			<LivesIn channel={capabilities.channel} />
-			<CanDo actions={capabilities.actions} />
-			<CanSee dataScope={capabilities.dataScope} />
-		</div>
-	);
-}
+			{current ? (
+				<Section
+					action={
+						canManage ? (
+							<Button size="sm" variant="outline">
+								Create a channel
+							</Button>
+						) : null
+					}
+					summary="One channel. Comp AI joins it when you save."
+					title="Lives in"
+				>
+					<ChannelPicker
+						canInviteItself={canInviteItself}
+						channels={rows}
+						onRequest={(channel) => join.mutate({ channelId: channel.id })}
+						onSelect={(channel) => canManage && setPicked(channel)}
+						pending={setChannel.isPending}
+						value={picked?.id ?? current.id}
+					/>
+				</Section>
+			) : null}
 
-function LivesIn({ channel }: { channel: Capabilities["channel"] }) {
-	return (
-		<Section
-			summary="One place. Change it and the agent moves."
-			title="Lives in"
-		>
-			<div className="flex flex-col divide-y rounded-lg border">
-				{channel ? (
-					<div className="flex h-14 shrink-0 items-center gap-3 bg-muted px-4">
-						<span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
-							{channel.kind === "user" ? (
-								<Icon className="size-3.5" icon={Locked} motion="none" />
-							) : (
-								"#"
-							)}
-						</span>
-						<div className="min-w-0 flex-1">
-							<p className="font-medium text-sm">
-								{channel.label.replace(/^#/, "")}
-							</p>
-							<p className="text-muted-foreground text-xs">
-								{channel.kind === "user"
-									? "A direct message to one person"
-									: "Every message goes here"}
-							</p>
-						</div>
-						<span className="flex w-20 shrink-0 items-center justify-end">
-							<Icon
-								className="size-4 text-success"
-								icon={Checkmark}
-								motion="none"
-							/>
-						</span>
-					</div>
-				) : (
-					<p className="px-4 py-4 text-muted-foreground text-sm">
-						This agent does not post to Slack.
-					</p>
-				)}
-			</div>
-		</Section>
-	);
-}
-
-function CanDo({ actions }: { actions: Capabilities["actions"] }) {
-	return (
-		<Section
-			summary="If it is not here, it cannot do it."
-			title="What it can do there"
-		>
-			{actions.length === 0 ? (
-				<p className="text-muted-foreground text-sm">
-					Nothing outside the CRM.
-				</p>
-			) : (
+			<Section
+				summary="If it is off here, it cannot do it."
+				title="What it can do there"
+			>
 				<div className="flex flex-col">
-					{actions.map((action) => (
+					{capabilities.actions.map((action) => (
 						<div
-							className="flex items-center gap-3 border-b py-3 last:border-b-0"
+							className="flex h-13 items-center gap-3 border-b last:border-b-0"
 							key={action.type}
 						>
 							<div className="min-w-0 flex-1">
-								<p className="text-sm">{actionLabel(action.type)}</p>
+								<p className="text-sm">
+									{ACTION_LABELS[action.type] ?? action.type}
+								</p>
 								<p className="text-muted-foreground text-xs">
 									{action.summary || action.provider}
 								</p>
 							</div>
-							<span className="flex w-9 shrink-0 items-center justify-end">
-								<Icon
-									className="size-4 text-success"
-									icon={Checkmark}
-									motion="none"
-								/>
-							</span>
+							<Switch checked disabled />
 						</div>
 					))}
-				</div>
-			)}
-		</Section>
-	);
-}
-
-function CanSee({ dataScope }: { dataScope: Capabilities["dataScope"] }) {
-	const resources = dataScope?.resources ?? [];
-
-	return (
-		<Section
-			summary={dataScope?.summary || "What it reads to do its job."}
-			title="What it can see"
-		>
-			{dataScope?.mode === "WORKSPACE" && resources.length === 0 ? (
-				<p className="text-sm">Every record in the workspace.</p>
-			) : (
-				<div className="flex flex-wrap gap-2">
-					{resources.map((resource) => (
-						<span
-							className="flex h-7 items-center rounded-md border px-2.5 text-sm"
-							key={`${resource.kind}:${resource.id}`}
-						>
-							{resource.label}
-						</span>
-					))}
-					{resources.length === 0 ? (
+					{capabilities.actions.length === 0 ? (
 						<p className="text-muted-foreground text-sm">
-							Nothing is picked yet.
+							Nothing outside the CRM.
 						</p>
 					) : null}
 				</div>
-			)}
-		</Section>
+			</Section>
+
+			<Section
+				summary={
+					capabilities.dataScope?.summary || "What it reads to do its job."
+				}
+				title="What it can see"
+			>
+				<div className="flex flex-wrap gap-2">
+					{capabilities.dataScope?.mode === "WORKSPACE" &&
+					(capabilities.dataScope?.resources.length ?? 0) === 0 ? (
+						<span className="flex h-7 items-center rounded-md border px-2.5 text-sm">
+							Every record in the workspace
+						</span>
+					) : (
+						capabilities.dataScope?.resources.map((resource) => (
+							<span
+								className="flex h-7 items-center rounded-md border px-2.5 text-sm"
+								key={`${resource.kind}:${resource.id}`}
+							>
+								{resource.label}
+							</span>
+						))
+					)}
+				</div>
+			</Section>
+
+			{dirty && current ? (
+				<div className="flex items-center gap-4 border-t pt-5">
+					<div className="min-w-0 flex-1">
+						<p className="font-medium text-sm">
+							Moving from #{from} to #{to}
+						</p>
+						<p className="text-muted-foreground text-sm">
+							Saving makes a new version and adds Comp AI to #{to}. It stays in
+							#{from} until you remove it.
+						</p>
+					</div>
+					<Button
+						disabled={setChannel.isPending}
+						onClick={() => setPicked(null)}
+						variant="outline"
+					>
+						Discard
+					</Button>
+					<Button
+						disabled={setChannel.isPending}
+						onClick={() =>
+							picked &&
+							setChannel.mutate({
+								id: agentId,
+								clientRequestId: crypto.randomUUID(),
+								channelId: picked.id,
+								channelName: picked.name,
+							})
+						}
+					>
+						{setChannel.isPending ? "Saving…" : "Save and hand to the builder"}
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 }
 
 function Section({
+	action,
 	children,
 	summary,
 	title,
 }: {
+	action?: React.ReactNode;
 	children: React.ReactNode;
 	summary: string;
 	title: string;
 }) {
 	return (
 		<section className="flex flex-col gap-3.5">
-			<div>
-				<h2 className="font-semibold text-lg tracking-tight">{title}</h2>
-				<p className="text-muted-foreground text-sm">{summary}</p>
+			<div className="flex items-end justify-between gap-4">
+				<div>
+					<h2 className="font-semibold text-lg tracking-tight">{title}</h2>
+					<p className="text-muted-foreground text-sm">{summary}</p>
+				</div>
+				{action}
 			</div>
 			{children}
 		</section>
 	);
-}
-
-const ACTION_LABELS: Record<string, string> = {
-	"slack.message.post": "Post a message",
-	"crm.activity.create": "Write a note or task on the record",
-	"run.summary": "Write a summary of the run",
-};
-
-function actionLabel(type: string): string {
-	return ACTION_LABELS[type] ?? type;
 }

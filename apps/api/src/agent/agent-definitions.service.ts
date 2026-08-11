@@ -8,14 +8,20 @@ import {
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
+import { AgentTriggerService } from "./agent-trigger.service";
 import { TEAM_AGENT_STATUSES } from "./agent-visibility";
-import type { AgentDeployInput, AgentUpdateInput } from "./agents.contracts";
+import type {
+	AgentDeployInput,
+	AgentSetChannelInput,
+	AgentUpdateInput,
+} from "./agents.contracts";
 
 @Injectable()
 export class AgentDefinitionsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly access: AgentAccessService,
+		private readonly trigger: AgentTriggerService,
 	) {}
 
 	async list(userId: string) {
@@ -176,6 +182,126 @@ export class AgentDefinitionsService {
 		});
 
 		return updated;
+	}
+
+	async setChannel(input: AgentSetChannelInput, userId: string) {
+		const outcome = await this.db.$transaction(async (tx) => {
+			await this.access.assertCanManageInTransaction(tx, input.id, userId);
+			const agent = await this.lockAgent(tx, input.id);
+
+			const replay = await tx.agentAuditEvent.findFirst({
+				where: {
+					agentId: input.id,
+					type: "agent.channel.changed",
+					requestId: input.clientRequestId,
+				},
+				select: { versionId: true },
+			});
+			if (replay) return { versionId: replay.versionId, queued: false };
+
+			if (!agent.currentVersionId) {
+				throw new BadRequestException("This agent has no deployed version.");
+			}
+
+			const current = await tx.agentVersion.findFirstOrThrow({
+				where: { id: agent.currentVersionId },
+				select: {
+					number: true,
+					status: true,
+					instructions: true,
+					manifest: true,
+					modelId: true,
+					modelContextWindowTokens: true,
+					sandboxPolicy: true,
+					validation: true,
+					sourceConversationId: true,
+					deployedAt: true,
+					approvedAt: true,
+				},
+			});
+
+			const parsed = schemas.agents.capabilities.safeParse(current.manifest);
+			if (!parsed.success) {
+				throw new BadRequestException(
+					"This version's manifest cannot be read, so its channel cannot be changed.",
+				);
+			}
+
+			const before = parsed.data.actions.find(
+				(action) => action.destination !== undefined,
+			);
+			if (!before) {
+				throw new BadRequestException("This agent does not post to Slack.");
+			}
+			if (before.destination?.id === input.channelId) {
+				return { versionId: agent.currentVersionId, queued: false };
+			}
+
+			const manifest = current.manifest as Record<string, unknown>;
+			const actions = (manifest.actions as Array<Record<string, unknown>>).map(
+				(action) =>
+					action.destination
+						? {
+								...action,
+								destination: {
+									...(action.destination as Record<string, unknown>),
+									id: input.channelId,
+									label: `#${input.channelName}`,
+								},
+							}
+						: action,
+			);
+
+			const version = await tx.agentVersion.create({
+				data: {
+					agentId: input.id,
+					number: current.number + 1,
+					status: current.status,
+					instructions: current.instructions,
+					manifest: { ...manifest, actions } as Prisma.InputJsonValue,
+					modelId: current.modelId,
+					modelContextWindowTokens: current.modelContextWindowTokens,
+					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
+					validation: current.validation as Prisma.InputJsonValue,
+					sourceConversationId: current.sourceConversationId,
+					approvedAt: current.approvedAt,
+					deployedAt: current.deployedAt,
+					createdById: userId,
+				},
+				select: { id: true },
+			});
+
+			await tx.agentDefinition.update({
+				where: { id: input.id },
+				data: { currentVersionId: version.id },
+			});
+
+			await tx.agentAuditEvent.create({
+				data: {
+					agentId: input.id,
+					versionId: version.id,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "agent.channel.changed",
+					summary: `Moved to #${input.channelName}`,
+					before: { channel: before.destination?.label ?? null },
+					after: { channel: `#${input.channelName}` },
+					requestId: input.clientRequestId,
+				},
+			});
+
+			return { versionId: version.id, queued: true };
+		});
+
+		if (outcome.queued) {
+			await this.trigger.slackChannelJoinRequested(
+				input.channelId,
+				input.channelName,
+			);
+		}
+
+		return outcome;
 	}
 
 	async deploy(input: AgentDeployInput, userId: string) {
@@ -463,9 +589,10 @@ export class AgentDefinitionsService {
 				status: AgentDefinitionStatus;
 				name: string;
 				description: string | null;
+				currentVersionId: string | null;
 			}>
 		>`
-			SELECT id, status, name, description
+			SELECT id, status, name, description, "currentVersionId"
 			FROM "agentDefinition"
 			WHERE id = ${id}
 			FOR UPDATE

@@ -38,3 +38,11 @@ export const agentDeployInput = agentIdInput.extend({
 });
 
 export type AgentDeployInput = z.infer<typeof agentDeployInput>;
+
+export const agentSetChannelInput = agentIdInput.extend({
+	clientRequestId: z.uuid(),
+	channelId: z.string().trim().min(1).max(64),
+	channelName: z.string().trim().min(1).max(120),
+});
+
+export type AgentSetChannelInput = z.infer<typeof agentSetChannelInput>;

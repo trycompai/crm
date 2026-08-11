@@ -637,7 +637,13 @@ function AgentOverview({ agent }: { agent: AgentDetail }) {
 		);
 	}
 
-	return <AgentCapabilities capabilities={capabilities} />;
+	return (
+		<AgentCapabilities
+			agentId={agent.id}
+			canManage={agent.canManage}
+			capabilities={capabilities}
+		/>
+	);
 }
 
 function _DetailRow({ label, value }: { label: string; value: ReactNode }) {
