@@ -237,7 +237,7 @@ export function TeamAgentDetail({
 		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
 
 	return (
-		<PageShell className="min-h-0">
+		<PageShell className="min-h-0" contained>
 			<PageShellHeader className="[&>div]:grid-cols-1 sm:[&>div]:grid-cols-[minmax(0,1fr)_auto]">
 				<PageShellHeading>
 					<PageShellTitle className="wrap-break-word">
@@ -337,7 +337,7 @@ export function TeamAgentDetail({
 				<div
 					role="tablist"
 					aria-label="Agent details"
-					className="sticky top-0 z-10 flex h-9 min-w-0 items-end gap-5 overflow-x-auto border-b bg-background sm:gap-6"
+					className="flex h-9 min-w-0 shrink-0 items-end gap-5 overflow-x-auto border-b bg-background sm:gap-6"
 				>
 					<TabButton
 						tab="overview"
@@ -368,47 +368,49 @@ export function TeamAgentDetail({
 					</TabButton>
 				</div>
 
-				{tab === "overview" ? (
-					<div
-						role="tabpanel"
-						id="agent-overview-panel"
-						aria-labelledby="agent-overview-tab"
-					>
-						<AgentOverview agent={data} />
-					</div>
-				) : null}
-				{tab === "runs" ? (
-					<div
-						role="tabpanel"
-						id="agent-runs-panel"
-						aria-labelledby="agent-runs-tab"
-					>
-						<AgentRuns
-							runs={runs.data ?? []}
-							onCancel={(runId) => cancelRun.mutate({ id: agentId, runId })}
-							cancelling={cancelRun.isPending}
-							onRetry={(runId) =>
-								retryRun.mutate({
-									id: agentId,
-									runId,
-									clientRequestId: crypto.randomUUID(),
-								})
-							}
-							retryingRunId={
-								retryRun.isPending ? retryRun.variables?.runId : undefined
-							}
-						/>
-					</div>
-				) : null}
-				{tab === "activity" ? (
-					<div
-						role="tabpanel"
-						id="agent-activity-panel"
-						aria-labelledby="agent-activity-tab"
-					>
-						<AgentActivity activity={activity.data ?? []} />
-					</div>
-				) : null}
+				<div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
+					{tab === "overview" ? (
+						<div
+							role="tabpanel"
+							id="agent-overview-panel"
+							aria-labelledby="agent-overview-tab"
+						>
+							<AgentOverview agent={data} />
+						</div>
+					) : null}
+					{tab === "runs" ? (
+						<div
+							role="tabpanel"
+							id="agent-runs-panel"
+							aria-labelledby="agent-runs-tab"
+						>
+							<AgentRuns
+								runs={runs.data ?? []}
+								onCancel={(runId) => cancelRun.mutate({ id: agentId, runId })}
+								cancelling={cancelRun.isPending}
+								onRetry={(runId) =>
+									retryRun.mutate({
+										id: agentId,
+										runId,
+										clientRequestId: crypto.randomUUID(),
+									})
+								}
+								retryingRunId={
+									retryRun.isPending ? retryRun.variables?.runId : undefined
+								}
+							/>
+						</div>
+					) : null}
+					{tab === "activity" ? (
+						<div
+							role="tabpanel"
+							id="agent-activity-panel"
+							aria-labelledby="agent-activity-tab"
+						>
+							<AgentActivity activity={activity.data ?? []} />
+						</div>
+					) : null}
+				</div>
 			</PageShellContent>
 		</PageShell>
 	);
