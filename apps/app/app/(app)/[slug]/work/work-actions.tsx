@@ -94,7 +94,7 @@ export function WorkActions({
 	const [status, setStatus] = useState<{
 		kind: "success" | "error";
 		message: string;
-		requestReference?: string;
+		receiptId?: string;
 		retryable?: boolean;
 	} | null>(null);
 
@@ -135,17 +135,14 @@ export function WorkActions({
 		]);
 	};
 
-	const onSuccess = async (
-		result: WorkMutationResult,
-		variables: { clientRequestId: string },
-	) => {
+	const onSuccess = async (result: WorkMutationResult) => {
 		lastIntentRef.current = null;
 		setLastIntent(null);
 		closeDialog(result.ownerId);
 		setStatus({
 			kind: "success",
 			message: "Work updated.",
-			requestReference: variables.clientRequestId,
+			receiptId: result.receipt.id,
 		});
 		await invalidate();
 	};
@@ -399,8 +396,7 @@ export function WorkActions({
 					aria-atomic="true"
 					className="basis-full text-muted-foreground text-xs"
 				>
-					{status.message} Request reference{" "}
-					{status.requestReference?.slice(0, 8)}.
+					{status.message} Receipt {status.receiptId}.
 				</div>
 			) : null}
 			{status?.kind === "error" && dialogAction === null ? (

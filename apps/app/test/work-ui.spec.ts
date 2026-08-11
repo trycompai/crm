@@ -364,6 +364,9 @@ test("terminal status remains rendered when capabilities become empty", () => {
 
 test("successful mutation owner resets dialog state from the result", () => {
 	expect(workActions).toContain("closeDialog(result.ownerId)");
+	expect(workActions).toContain("receiptId: result.receipt.id");
+	expect(workActions).toContain("Receipt {status.receiptId}");
+	expect(workActions).not.toContain("Request reference");
 	expect(resetWorkDialogState("owner-from-result").assigneeId).toBe(
 		"owner-from-result",
 	);
