@@ -1,5 +1,6 @@
 import type { Db, Prisma } from "@crm/db";
 import type { AgentDefinitionStatus } from "@crm/db/enums";
+import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
 	Injectable,
@@ -140,6 +141,9 @@ export class AgentDefinitionsService {
 				lastRunAt: trigger.lastRunAt?.toISOString() ?? null,
 			})),
 			runCount: agent._count.runs,
+			capabilities: readCapabilities(
+				agent.currentVersion?.manifest ?? versions[0]?.manifest,
+			),
 		};
 	}
 
@@ -498,5 +502,35 @@ function versionMetadata(manifest: unknown): {
 	return {
 		...(name ? { name } : {}),
 		...(description !== undefined ? { description } : {}),
+	};
+}
+
+function readCapabilities(manifest: unknown) {
+	const parsed = schemas.agents.capabilities.safeParse(manifest);
+
+	if (!parsed.success) {
+		return {
+			readable: false as const,
+			problem: parsed.error.issues
+				.map(
+					(issue) => `${issue.path.join(".") || "manifest"} ${issue.message}`,
+				)
+				.join("; "),
+			actions: [],
+			dataScope: null,
+			channel: null,
+		};
+	}
+
+	const slack = parsed.data.actions.find(
+		(action) => action.destination !== undefined,
+	);
+
+	return {
+		readable: true as const,
+		problem: null,
+		actions: parsed.data.actions,
+		dataScope: parsed.data.dataScope,
+		channel: slack?.destination ?? null,
 	};
 }

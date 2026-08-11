@@ -50,7 +50,7 @@ import { runFailureReason } from "@/lib/agent-run-failure";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
-import { AgentScopeBadges } from "./agent-scope-badges";
+import { AgentCapabilities, type Capabilities } from "./agent-capabilities";
 
 type AgentTab = "overview" | "runs" | "activity";
 type AgentDetail = RouterOutputs["agents"]["byId"];
@@ -626,81 +626,21 @@ function TabButton({
 }
 
 function AgentOverview({ agent }: { agent: AgentDetail }) {
-	const agentVersions = agent as unknown as {
-		currentVersion: unknown;
-		reviewVersion: unknown;
-	};
-	const version = recordOf(
-		agentVersions.currentVersion ?? agentVersions.reviewVersion,
-	);
-	const manifest = recordOf(version.manifest);
-	const sandbox = recordOf(version.sandboxPolicy);
-	const manifestTriggers = Array.isArray(manifest.triggers)
-		? manifest.triggers.map(recordOf)
-		: [];
-	const manifestTriggerSummary = manifestTriggers
-		.map((trigger) => textOf(trigger.summary, textOf(trigger.name, "")))
-		.filter(Boolean)
-		.join(" · ");
-	const actions = Array.isArray(manifest.actions)
-		? manifest.actions.map(recordOf)
-		: [];
-	const actionSummaries = actions
-		.map((action) =>
-			textOf(action.summary, textOf(action.type, "Configured action")),
-		)
-		.filter(Boolean);
-	const access = Array.isArray(manifest.access)
-		? manifest.access.filter(
-				(item): item is string =>
-					typeof item === "string" && Boolean(item.trim()),
-			)
-		: [];
+	const detail = agent as unknown as { capabilities?: Capabilities };
+	const capabilities = detail.capabilities;
 
-	return (
-		<div className="overflow-hidden rounded-lg border bg-card">
-			<DetailRow label="Status" value={agent.status} />
-			<DetailRow label="Model" value={textOf(version.modelId, "—")} />
-			<DetailRow
-				label="Execution"
-				value={textOf(
-					sandbox.summary,
-					"Isolated sandbox · deny-all network · bounded CRM tools",
-				)}
-			/>
-			<DetailRow
-				label="Scope"
-				value={textOf(
-					recordOf(manifest.dataScope).summary,
-					"Bounded CRM access",
-				)}
-			/>
-			<DetailRow
-				label="Triggers"
-				value={
-					agent.triggers.map((trigger) => trigger.name).join(" · ") ||
-					manifestTriggerSummary ||
-					"Manual only"
-				}
-			/>
-			<DetailRow
-				label="Actions"
-				value={actionSummaries.join(" · ") || "No external actions"}
-			/>
-			<DetailRow
-				label="Access"
-				value={
-					<AgentScopeBadges
-						scopes={access}
-						fallback="Bounded CRM read access"
-					/>
-				}
-			/>
-		</div>
-	);
+	if (!capabilities) {
+		return (
+			<p className="text-muted-foreground text-sm">
+				This agent has no deployed version yet.
+			</p>
+		);
+	}
+
+	return <AgentCapabilities capabilities={capabilities} />;
 }
 
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+function _DetailRow({ label, value }: { label: string; value: ReactNode }) {
 	return (
 		<div className="flex min-h-11 flex-col items-start gap-1 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-2">
 			<span className="text-muted-foreground text-xs sm:w-36 sm:shrink-0">
