@@ -4,8 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { companiesSearchParams } from "@/app/(app)/[slug]/companies/companies-search-params";
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
+import { customersSearchParams } from "@/app/(app)/[slug]/customers/customers-search-params";
 import { dealsSearchParams } from "@/app/(app)/[slug]/deals/deals-search-params";
 import { prospectsSearchParams } from "@/app/(app)/[slug]/prospects/prospects-search-params";
+import { toCustomerListInput } from "@/lib/customer-input";
 import { useTRPC } from "@/lib/trpc/client";
 
 export type Section =
@@ -13,6 +15,7 @@ export type Section =
 	| "/companies"
 	| "/calendar"
 	| "/contacts"
+	| "/customers"
 	| "/deals"
 	| "/prospects"
 	| "/sequences"
@@ -41,6 +44,13 @@ export function usePrefetchSection(): (section: string) => void {
 					void queryClient.prefetchQuery(
 						trpc.contacts.list.queryOptions(
 							contactsSearchParams.defaultInput(),
+						),
+					);
+					return;
+				case "/customers":
+					void queryClient.prefetchQuery(
+						trpc.customers.list.queryOptions(
+							toCustomerListInput(customersSearchParams.defaultInput()),
 						),
 					);
 					return;

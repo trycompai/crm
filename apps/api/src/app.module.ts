@@ -15,6 +15,7 @@ import { ContactsModule } from "./contacts/contacts.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { CrmModule } from "./crm/crm.module";
 import { CurrencyModule } from "./currency/currency.module";
+import { CustomersModule } from "./customers/customers.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DatabaseModule } from "./database/database.module";
 import { DealsModule } from "./deals/deals.module";
@@ -61,6 +62,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		ContactsModule,
 		ConversationsModule,
 		CurrencyModule,
+		CustomersModule,
 		DealsModule,
 		FieldsModule,
 		ActivitiesModule,

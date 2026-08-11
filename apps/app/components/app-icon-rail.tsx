@@ -62,6 +62,7 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Customers", href: "/customers", icon: Building, match: "prefix" },
 	{ title: "Work", href: "/work", icon: Task, match: "prefix" },
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];

@@ -20,6 +20,7 @@ import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInp
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, contactBulkOwnerInput, contactBulkCompanyInput, contactBulkInput, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, builderResourceSearchInput, conversationIdInput, conversationEventsInput, conversationSaveInput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, sharedConversationInput } from "../conversations/conversations.contracts";
 import { setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
+import { customerListInput, customerIdInput } from "../customers/customers.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput, onboardingUpdateInput, onboardingItemCreateInput, onboardingItemUpdateInput, dealContactsInput, dealAttachContactInput, dealDetachContactInput, dealContactRoleInput, dealBulkOwnerInput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
 import { fieldListInput, fieldByKeyInput, fieldIdInput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput } from "../fields/fields.contracts";
@@ -41,6 +42,7 @@ import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
 import type { ConversationsRouter } from "../conversations/conversations.router";
 import type { CurrencyRouter } from "../currency/currency.router";
+import type { CustomersRouter } from "../customers/customers.router";
 import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
 import type { FieldsRouter } from "../fields/fields.router";
@@ -272,6 +274,14 @@ const appRouter = t.router({
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CurrencyRouter["removeManualRate"]>>),
     refreshRates: publicProcedure
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CurrencyRouter["refreshRates"]>>)
+    }),
+  customers: t.router({
+    list: publicProcedure
+      .input(customerListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CustomersRouter["list"]>>),
+    byId: publicProcedure
+      .input(customerIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CustomersRouter["byId"]>>)
     }),
   dashboard: t.router({
     summary: publicProcedure

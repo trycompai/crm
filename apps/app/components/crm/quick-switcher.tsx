@@ -1,5 +1,6 @@
 "use client";
 
+import Building from "@carbon/icons-react/es/Building";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Task from "@carbon/icons-react/es/Task";
 import {
@@ -21,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useState } from "react";
 import {
+	showCustomersNavigation,
 	showTodayNavigation,
 	showWorkNavigation,
 } from "@/components/crm/quick-switcher-navigation";
@@ -77,6 +79,12 @@ export function QuickSwitcher() {
 		router.push(workspaceUrl("/work"));
 	};
 
+	const goCustomers = () => {
+		setQuery("");
+		void setOpen(null);
+		router.push(workspaceUrl("/customers"));
+	};
+
 	const goToday = () => {
 		setQuery("");
 		void setOpen(null);
@@ -88,7 +96,7 @@ export function QuickSwitcher() {
 			open={open}
 			onOpenChange={(next) => setOpen(next || null)}
 			title="Search"
-			description="Jump to Today, Work, a company, contact or deal"
+			description="Jump to Today, Customers, Work, a company, contact or deal"
 		>
 			<Command shouldFilter={false}>
 				<CommandInput
@@ -110,6 +118,14 @@ export function QuickSwitcher() {
 							<CommandItem value="work" onSelect={goWork}>
 								<Task />
 								<span>Work</span>
+							</CommandItem>
+						</CommandGroup>
+					) : null}
+					{showCustomersNavigation(query) ? (
+						<CommandGroup heading="Navigation">
+							<CommandItem value="customers" onSelect={goCustomers}>
+								<Building />
+								<span>Customers</span>
 							</CommandItem>
 						</CommandGroup>
 					) : null}

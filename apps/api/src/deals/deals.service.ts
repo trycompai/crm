@@ -5,6 +5,7 @@ import {
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
+import { approvalContentDigest } from "@crm/db/approval";
 import { normalizeCurrency } from "@crm/db/currency";
 import {
 	CLOSED_DEAL_STAGES,
@@ -17,9 +18,7 @@ import {
 	Injectable,
 	Logger,
 	NotFoundException,
-	Optional,
 } from "@nestjs/common";
-import { AgentTriggerService } from "../agent/agent-trigger.service";
 import {
 	ActivityStampService,
 	type StampTargets,
@@ -34,6 +33,7 @@ import {
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
+import { kernelRequestHash } from "../operating-kernel/kernel-idempotency.service";
 import { OperatingKernelCleanupService } from "../operating-kernel/operating-kernel-cleanup.service";
 import {
 	countsByKey,
@@ -88,6 +88,143 @@ const CONTACT_SELECT = {
 
 const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
 
+const ONBOARDING_ITEM_BLUEPRINTS = [
+	{
+		kind: "DECISION",
+		name: "Confirm objectives and measurable success outcomes",
+		details:
+			"Capture the closed-won outcome, success measures and first useful operating cadence before any customer/provider change.",
+	},
+	{
+		kind: "DECISION",
+		name: "Identify stakeholders and approval owners",
+		details:
+			"Name customer stakeholders, Richard/Angus owner boundaries and unresolved blockers without inventing missing people.",
+	},
+	{
+		kind: "SYSTEM",
+		name: "Inventory current systems and their owners",
+		details:
+			"Record only confirmed systems, owners and access paths; leave unknown systems as explicit gaps.",
+	},
+	{
+		kind: "DATA_SOURCE",
+		name: "Map structured and unstructured customer data",
+		details:
+			"Separate databases, spreadsheets, documents, notes and inboxes so ingestion can be scoped safely.",
+	},
+	{
+		kind: "ACCESS",
+		name: "Agree secure access requirements",
+		details:
+			"List required credentials, scopes, consent owners and red-line exclusions before any connector is touched.",
+	},
+	{
+		kind: "INGESTION",
+		name: "Prepare the first Lode Brain ingestion plan",
+		details:
+			"Draft a dry-run ingestion plan with provenance, exclusions and rollback notes for human approval.",
+	},
+	{
+		kind: "DECISION",
+		name: "Resolve launch blockers and support boundaries",
+		details:
+			"Track blockers, support-safe knowledge limits and handoff conditions before go-live.",
+	},
+] as const satisfies readonly {
+	kind: "SYSTEM" | "DATA_SOURCE" | "ACCESS" | "INGESTION" | "DECISION";
+	name: string;
+	details: string;
+}[];
+
+const CUSTOMER_FOUNDATION_GAPS = [
+	"objectives",
+	"successMeasures",
+	"stakeholders",
+	"systems",
+	"structuredData",
+	"unstructuredData",
+	"accessRequirements",
+	"ingestionPlan",
+	"blockers",
+	"instanceDiscovery",
+] as const;
+
+function jsonObject(value: Prisma.JsonValue | null | undefined) {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? { ...(value as Record<string, unknown>) }
+		: {};
+}
+
+function customerFoundationMetadata(input: {
+	existing: Prisma.JsonValue | null | undefined;
+	dealId: string;
+	companyId: string;
+	onboardingId: string;
+	recordedAt: Date;
+}) {
+	const current = jsonObject(input.existing);
+	const existingFoundation = jsonObject(
+		(current.onboardingFoundation as Prisma.JsonValue | undefined) ?? null,
+	);
+	return {
+		...current,
+		onboardingFoundation: {
+			...existingFoundation,
+			dealId: input.dealId,
+			companyId: input.companyId,
+			onboardingId: input.onboardingId,
+			evidenceState: "operator_required",
+			requiredGaps: [...CUSTOMER_FOUNDATION_GAPS],
+			customerMutationDisabled: true,
+			providerMutationDisabled: true,
+			modelExecutionDisabled: true,
+			recordedAt: input.recordedAt.toISOString(),
+		},
+	} satisfies Prisma.InputJsonObject;
+}
+
+function instanceFoundationMetadata(input: {
+	dealId: string;
+	companyId: string;
+	onboardingId: string;
+	recordedAt: Date;
+}) {
+	return {
+		source: "closed-won-onboarding",
+		dealId: input.dealId,
+		companyId: input.companyId,
+		onboardingId: input.onboardingId,
+		mode: "read-only-discovery",
+		customerMutationDisabled: true,
+		providerMutationDisabled: true,
+		recordedAt: input.recordedAt.toISOString(),
+	} satisfies Prisma.InputJsonObject;
+}
+
+function onboardingApprovalSnapshot(input: {
+	dealId: string;
+	companyId: string;
+	accountId: string;
+	instanceId: string;
+	onboardingId: string;
+	workItemIds: string[];
+}) {
+	return {
+		dealId: input.dealId,
+		companyId: input.companyId,
+		customerAccountId: input.accountId,
+		customerInstanceId: input.instanceId,
+		onboardingId: input.onboardingId,
+		requiredGaps: [...CUSTOMER_FOUNDATION_GAPS],
+		proposedExecution: "local-plan-only",
+		customerMutationDisabled: true,
+		providerMutationDisabled: true,
+		modelExecutionDisabled: true,
+		workItemIds: input.workItemIds,
+	} satisfies Prisma.InputJsonObject;
+}
+
 const SORTABLE: Record<
 	string,
 	(dir: Prisma.SortOrder) => Prisma.DealOrderByWithRelationInput[]
@@ -112,7 +249,6 @@ export class DealsService {
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
 		private readonly cleanup: OperatingKernelCleanupService,
-		@Optional() private readonly agent?: AgentTriggerService,
 	) {}
 
 	async list(input: DealListInput) {
@@ -589,48 +725,275 @@ export class DealsService {
 		companyId: string,
 		ownerId: string,
 	): Promise<void> {
-		const onboarding = await this.db.customerOnboarding.upsert({
-			where: { dealId },
-			create: {
+		const now = new Date();
+		await this.db.$transaction(async (tx) => {
+			const deal = await tx.deal.findUnique({
+				where: { id: dealId },
+				select: {
+					id: true,
+					name: true,
+					ownerId: true,
+					company: { select: { id: true, name: true, domain: true } },
+				},
+			});
+			if (!deal) throw new NotFoundException(`No deal with id ${dealId}.`);
+			if (deal.company.id !== companyId) {
+				throw new BadRequestException(
+					"Closed-won onboarding company does not match the deal.",
+				);
+			}
+
+			const onboarding = await tx.customerOnboarding.upsert({
+				where: { dealId },
+				create: {
+					dealId,
+					companyId,
+					ownerId,
+					items: {
+						create: ONBOARDING_ITEM_BLUEPRINTS.map((item, position) => ({
+							...item,
+							source: "closed-won-foundation",
+							position,
+						})),
+					},
+				},
+				update: { companyId, ownerId },
+				select: { id: true },
+			});
+
+			const existingAccount = await tx.customerAccount.findUnique({
+				where: { companyId },
+				select: {
+					id: true,
+					metadata: true,
+					customerOnboardingId: true,
+				},
+			});
+			const account = existingAccount
+				? await tx.customerAccount.update({
+						where: { id: existingAccount.id },
+						data: {
+							name: deal.company.name,
+							status: "ACTIVE",
+							ownerId,
+							customerOnboardingId:
+								existingAccount.customerOnboardingId ?? onboarding.id,
+							metadata: customerFoundationMetadata({
+								existing: existingAccount.metadata,
+								dealId,
+								companyId,
+								onboardingId: onboarding.id,
+								recordedAt: now,
+							}),
+						},
+						select: { id: true, name: true },
+					})
+				: await tx.customerAccount.create({
+						data: {
+							companyId,
+							customerOnboardingId: onboarding.id,
+							name: deal.company.name,
+							externalKey: `company:${companyId}`,
+							status: "ACTIVE",
+							ownerId,
+							metadata: customerFoundationMetadata({
+								existing: null,
+								dealId,
+								companyId,
+								onboardingId: onboarding.id,
+								recordedAt: now,
+							}),
+						},
+						select: { id: true, name: true },
+					});
+
+			const instance = await tx.customerInstance.upsert({
+				where: {
+					accountId_key: {
+						accountId: account.id,
+						key: `onboarding-${dealId}`,
+					},
+				},
+				create: {
+					accountId: account.id,
+					key: `onboarding-${dealId}`,
+					name: `${deal.company.name} discovery`,
+					environment: "customer-discovery",
+					region: "operator-confirmed",
+					status: "DISCOVERED",
+					metadata: instanceFoundationMetadata({
+						dealId,
+						companyId,
+						onboardingId: onboarding.id,
+						recordedAt: now,
+					}),
+				},
+				update: {
+					name: `${deal.company.name} discovery`,
+					status: "DISCOVERED",
+					metadata: instanceFoundationMetadata({
+						dealId,
+						companyId,
+						onboardingId: onboarding.id,
+						recordedAt: now,
+					}),
+				},
+				select: { id: true, name: true },
+			});
+
+			const intakeWorkId = `customer-onboarding:${dealId}:intake`;
+			const discoveryWorkId = `customer-onboarding:${dealId}:instance-discovery`;
+			const intakeEvidence = {
+				source: "closed-won-foundation",
 				dealId,
 				companyId,
-				ownerId,
-				items: {
-					create: [
-						{
-							kind: "DECISION",
-							name: "Confirm the onboarding outcome and success measure",
-							position: 0,
-						},
-						{
-							kind: "SYSTEM",
-							name: "Inventory current systems and their owners",
-							position: 1,
-						},
-						{
-							kind: "DATA_SOURCE",
-							name: "Map structured and unstructured customer data",
-							position: 2,
-						},
-						{
-							kind: "ACCESS",
-							name: "Agree secure access and permissions",
-							position: 3,
-						},
-						{
-							kind: "INGESTION",
-							name: "Approve the first Lode Brain ingestion plan",
-							position: 4,
-						},
-					],
+				onboardingId: onboarding.id,
+				customerAccountId: account.id,
+				requiredGaps: [...CUSTOMER_FOUNDATION_GAPS],
+				customerMutationDisabled: true,
+				providerMutationDisabled: true,
+				modelExecutionDisabled: true,
+			} satisfies Prisma.InputJsonObject;
+			await tx.workItem.upsert({
+				where: { id: intakeWorkId },
+				create: {
+					id: intakeWorkId,
+					subjectType: "CUSTOMER_ACCOUNT",
+					subjectId: account.id,
+					subjectLabel: account.name,
+					ownerId,
+					queue: "customers",
+					urgency: "HIGH",
+					reason:
+						"Closed-won customer needs objectives, success measures, stakeholders, systems, data, access and blockers captured.",
+					primaryAction: "Complete customer onboarding intake",
+					evidence: intakeEvidence,
+					dueAt: now,
 				},
-			},
-			update: { companyId, ownerId },
-			select: { agentPlannedAt: true },
+				update: {
+					subjectId: account.id,
+					subjectLabel: account.name,
+					ownerId,
+					evidence: intakeEvidence,
+				},
+			});
+			await tx.workItem.upsert({
+				where: { id: discoveryWorkId },
+				create: {
+					id: discoveryWorkId,
+					subjectType: "CUSTOMER_INSTANCE",
+					subjectId: instance.id,
+					subjectLabel: instance.name,
+					ownerId,
+					queue: "instances",
+					urgency: "NORMAL",
+					reason:
+						"Prepare read-only instance discovery and a dry-run plan before any provider change.",
+					primaryAction: "Prepare instance discovery dry-run",
+					evidence: {
+						source: "closed-won-foundation",
+						dealId,
+						companyId,
+						onboardingId: onboarding.id,
+						customerAccountId: account.id,
+						customerInstanceId: instance.id,
+						requiredGaps: ["providerResourceCensus", "observedState"],
+						providerMutationDisabled: true,
+						customerMutationDisabled: true,
+					} satisfies Prisma.InputJsonObject,
+				},
+				update: {
+					subjectId: instance.id,
+					subjectLabel: instance.name,
+					ownerId,
+				},
+			});
+
+			const workItemIds = [intakeWorkId, discoveryWorkId];
+			const contentSnapshot = onboardingApprovalSnapshot({
+				dealId,
+				companyId,
+				accountId: account.id,
+				instanceId: instance.id,
+				onboardingId: onboarding.id,
+				workItemIds,
+			});
+			const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60_000);
+			const action = "customers.onboarding.plan.approve";
+			const contentDigest = approvalContentDigest({
+				action,
+				contentSnapshot,
+				targetType: "CUSTOMER_ACCOUNT",
+				targetId: account.id,
+				risk: "HIGH",
+				policyVersion: "customer-onboarding-local-v1",
+				expiresAt,
+				invalidationVersion: 0,
+			});
+			const approval = await tx.approvalRequest.upsert({
+				where: { idempotencyKey: `customers:onboarding:${dealId}:approval` },
+				create: {
+					action,
+					contentDigest,
+					contentSnapshot,
+					targetType: "CUSTOMER_ACCOUNT",
+					targetId: account.id,
+					targetLabel: account.name,
+					risk: "HIGH",
+					policyVersion: "customer-onboarding-local-v1",
+					requestorId: ownerId,
+					expiresAt,
+					idempotencyKey: `customers:onboarding:${dealId}:approval`,
+				},
+				update: {
+					targetId: account.id,
+					targetLabel: account.name,
+					requestorId: ownerId,
+				},
+				select: { id: true, contentDigest: true },
+			});
+
+			const requestHash = kernelRequestHash({
+				operation: "customers.closed-won.ensure",
+				dealId,
+				companyId,
+				accountId: account.id,
+				instanceId: instance.id,
+				onboardingId: onboarding.id,
+				workItemIds,
+				approvalRequestId: approval.id,
+			});
+			const receiptResult = {
+				dealId,
+				companyId,
+				customerAccountId: account.id,
+				customerInstanceId: instance.id,
+				onboardingId: onboarding.id,
+				approvalRequestId: approval.id,
+				approvalContentDigest: approval.contentDigest,
+				workItemIds,
+				customerMutationDisabled: true,
+				providerMutationDisabled: true,
+				modelExecutionDisabled: true,
+			} satisfies Prisma.InputJsonObject;
+			await tx.actionReceipt.upsert({
+				where: { idempotencyKey: `customers:closed-won:${dealId}` },
+				create: {
+					idempotencyKey: `customers:closed-won:${dealId}`,
+					requestHash,
+					provider: "lode-crm",
+					channel: "customers",
+					operationKey: "customers.closed-won.ensure",
+					status: "SUCCEEDED",
+					completedAt: now,
+					result: receiptResult,
+				},
+				update: {
+					requestHash,
+					result: receiptResult,
+				},
+			});
 		});
-		if (!onboarding.agentPlannedAt) {
-			await this.agent?.planCustomerOnboarding(dealId, companyId);
-		}
 	}
 
 	async contactOptions(dealId: string) {
