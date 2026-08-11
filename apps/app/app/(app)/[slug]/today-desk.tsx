@@ -44,7 +44,7 @@ import { todayFocusHistory } from "./today-search-params";
 
 type TodayData = RouterOutputs["today"]["get"];
 type TodaySectionKey = keyof TodayData["sections"];
-type TodayRow = TodayData["sections"]["doNext"]["rows"][number];
+export type TodayRow = TodayData["sections"]["doNext"]["rows"][number];
 
 type SectionDefinition = {
 	key: TodaySectionKey;
@@ -203,7 +203,7 @@ function TodayLoading() {
 	);
 }
 
-function TodaySectionCard({
+export function TodaySectionCard({
 	definition,
 	section,
 	workspaceUrl,
@@ -257,7 +257,7 @@ function emptyMessage(key: TodaySectionKey): string {
 	}[key];
 }
 
-function TodayRowView({
+export function TodayRowView({
 	row,
 	workspaceUrl,
 	onApproval,

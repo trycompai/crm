@@ -8,10 +8,7 @@ import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import { CardPanel } from "@crm/ui/components/card";
 import { Icon } from "@crm/ui/components/icon";
-import {
-	StatusIndicator,
-	type StatusTone,
-} from "@crm/ui/components/status-indicator";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
@@ -39,7 +36,7 @@ import {
 	retryApprovalIntent,
 } from "./approval-action-intent";
 
-type Approval = {
+export type Approval = {
 	id: string;
 	action: string;
 	contentSnapshot?: unknown;
@@ -191,23 +188,50 @@ export function ApprovalFocusSheet({
 					description="This approval could not be loaded or is no longer available."
 				/>
 			) : (
-				<ApprovalFocus
-					approval={approval.data}
-					detailReady={!approval.isError && !approval.isFetching}
-					pending={pending}
-					resultMessage={resultMessage}
-					actionError={actionError}
-					intent={intent.current}
-					onAction={submit}
-					onRetry={retry}
-					onClose={onClose}
-				/>
+				<>
+					<ApprovalFocusHeader approval={approval.data} onClose={onClose} />
+					<ApprovalFocus
+						approval={approval.data}
+						detailReady={!approval.isError && !approval.isFetching}
+						pending={pending}
+						resultMessage={resultMessage}
+						actionError={actionError}
+						intent={intent.current}
+						onAction={submit}
+						onRetry={retry}
+					/>
+				</>
 			)}
 		</DetailSheet>
 	);
 }
 
-function ApprovalFocus({
+function ApprovalFocusHeader({
+	approval,
+	onClose,
+}: {
+	approval: Approval;
+	onClose: () => void;
+}) {
+	return (
+		<DetailSheetHeader
+			title={approval.action}
+			description={approval.target.label ?? approval.target.id}
+			note={
+				<StatusIndicator
+					tone={approval.integrityValid ? "success" : "error"}
+					label={
+						approval.integrityValid ? "Integrity verified" : "Integrity failed"
+					}
+					size="sm"
+				/>
+			}
+			onClose={onClose}
+		/>
+	);
+}
+
+export function ApprovalFocus({
 	approval,
 	detailReady,
 	pending,
@@ -216,7 +240,6 @@ function ApprovalFocus({
 	intent,
 	onAction,
 	onRetry,
-	onClose,
 }: {
 	approval: Approval;
 	detailReady: boolean;
@@ -226,10 +249,8 @@ function ApprovalFocus({
 	intent: ApprovalActionIntent | null;
 	onAction: (operation: ApprovalOperation) => void;
 	onRetry: () => void;
-	onClose: () => void;
 }) {
 	const canReview = approval.integrityValid && detailReady;
-	const statusTone: StatusTone = approval.integrityValid ? "success" : "error";
 	const retryOperation = actionError?.retryable ? actionError.operation : null;
 	const canRetry = canRetryApprovalIntent(
 		intent,
@@ -238,119 +259,99 @@ function ApprovalFocus({
 		approval.integrityValid,
 	);
 	return (
-		<>
-			<DetailSheetHeader
-				title={approval.action}
-				description={approval.target.label ?? approval.target.id}
-				note={
-					<StatusIndicator
-						tone={statusTone}
-						label={
-							approval.integrityValid
-								? "Integrity verified"
-								: "Integrity failed"
-						}
-						size="sm"
-					/>
-				}
-				onClose={onClose}
-			/>
-			<DetailSheetBody>
-				<DetailSheetSection title="Decision">
-					<div className="flex flex-wrap items-center gap-2">
-						<Badge variant="outline">{approval.status}</Badge>
-						<Badge variant="outline">{approval.risk}</Badge>
-						{approval.viewer.canApprove ? (
-							<Button
-								type="button"
-								disabled={pending || !canReview}
-								onClick={() => onAction("approve")}
-							>
-								<Icon icon={Checkmark} data-icon="inline-start" />
-								Approve
-							</Button>
-						) : null}
-						{approval.viewer.canReject ? (
-							<Button
-								type="button"
-								variant="outline"
-								disabled={pending || !canReview}
-								onClick={() => onAction("reject")}
-							>
-								<Icon icon={Close} data-icon="inline-start" />
-								Reject
-							</Button>
-						) : null}
-						{approval.viewer.canInvalidate ? (
-							<Button
-								type="button"
-								variant="destructive"
-								disabled={pending || !canReview}
-								onClick={() => onAction("invalidate")}
-							>
-								<Icon icon={StopOutline} data-icon="inline-start" />
-								Invalidate
-							</Button>
-						) : null}
-						{canRetry ? (
-							<Button
-								type="button"
-								variant="outline"
-								disabled={pending}
-								onClick={onRetry}
-							>
-								Retry {retryOperation ? operationLabel(retryOperation) : null}
-							</Button>
-						) : null}
-					</div>
-					{!approval.integrityValid ? (
-						<DetailSheetProse>
-							This snapshot failed integrity verification. Review is disabled
-							until the server supplies a valid approval.
-						</DetailSheetProse>
+		<DetailSheetBody>
+			<DetailSheetSection title="Decision">
+				<div className="flex flex-wrap items-center gap-2">
+					<Badge variant="outline">{approval.status}</Badge>
+					<Badge variant="outline">{approval.risk}</Badge>
+					{approval.viewer.canApprove ? (
+						<Button
+							type="button"
+							disabled={pending || !canReview}
+							onClick={() => onAction("approve")}
+						>
+							<Icon icon={Checkmark} data-icon="inline-start" />
+							Approve
+						</Button>
 					) : null}
-					<div aria-live="polite" role="status">
-						{resultMessage}
-					</div>
-					<div aria-live="assertive" role="alert">
-						{actionError?.message}
-					</div>
-				</DetailSheetSection>
-				<DetailSheetSection title="Target and expiry">
-					<DetailSheetProperties>
-						<DetailSheetProperty label="Target">
-							{approval.target.label ?? approval.target.id}
-						</DetailSheetProperty>
-						<DetailSheetProperty label="Target type">
-							{approval.target.type}
-						</DetailSheetProperty>
-						<DetailSheetProperty label="Expires">
-							<LocalDateTime
-								date={approval.expiresAt}
-								options={{ dateStyle: "medium", timeStyle: "short" }}
-							/>
-						</DetailSheetProperty>
-						<DetailSheetProperty label="Policy">
-							{approval.policyVersion}
-						</DetailSheetProperty>
-					</DetailSheetProperties>
-				</DetailSheetSection>
-				<DetailSheetSection title="Digest">
+					{approval.viewer.canReject ? (
+						<Button
+							type="button"
+							variant="outline"
+							disabled={pending || !canReview}
+							onClick={() => onAction("reject")}
+						>
+							<Icon icon={Close} data-icon="inline-start" />
+							Reject
+						</Button>
+					) : null}
+					{approval.viewer.canInvalidate ? (
+						<Button
+							type="button"
+							variant="destructive"
+							disabled={pending || !canReview}
+							onClick={() => onAction("invalidate")}
+						>
+							<Icon icon={StopOutline} data-icon="inline-start" />
+							Invalidate
+						</Button>
+					) : null}
+					{canRetry ? (
+						<Button
+							type="button"
+							variant="outline"
+							disabled={pending}
+							onClick={onRetry}
+						>
+							Retry {retryOperation ? operationLabel(retryOperation) : null}
+						</Button>
+					) : null}
+				</div>
+				{!approval.integrityValid ? (
 					<DetailSheetProse>
-						<span className="break-all font-mono">
-							{approval.contentDigest}
-						</span>
+						This snapshot failed integrity verification. Review is disabled
+						until the server supplies a valid approval.
 					</DetailSheetProse>
-				</DetailSheetSection>
-				<DetailSheetSection title="Exact snapshot">
-					<CardPanel className="overflow-x-auto">
-						<pre className="whitespace-pre-wrap break-words font-mono text-xs/5">
-							{snapshotText(approval.contentSnapshot)}
-						</pre>
-					</CardPanel>
-				</DetailSheetSection>
-			</DetailSheetBody>
-		</>
+				) : null}
+				<div aria-live="polite" role="status">
+					{resultMessage}
+				</div>
+				<div aria-live="assertive" role="alert">
+					{actionError?.message}
+				</div>
+			</DetailSheetSection>
+			<DetailSheetSection title="Target and expiry">
+				<DetailSheetProperties>
+					<DetailSheetProperty label="Target">
+						{approval.target.label ?? approval.target.id}
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Target type">
+						{approval.target.type}
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Expires">
+						<LocalDateTime
+							date={approval.expiresAt}
+							options={{ dateStyle: "medium", timeStyle: "short" }}
+						/>
+					</DetailSheetProperty>
+					<DetailSheetProperty label="Policy">
+						{approval.policyVersion}
+					</DetailSheetProperty>
+				</DetailSheetProperties>
+			</DetailSheetSection>
+			<DetailSheetSection title="Digest">
+				<DetailSheetProse>
+					<span className="break-all font-mono">{approval.contentDigest}</span>
+				</DetailSheetProse>
+			</DetailSheetSection>
+			<DetailSheetSection title="Exact snapshot">
+				<CardPanel className="overflow-x-auto">
+					<pre className="whitespace-pre-wrap break-words font-mono text-xs/5">
+						{snapshotText(approval.contentSnapshot)}
+					</pre>
+				</CardPanel>
+			</DetailSheetSection>
+		</DetailSheetBody>
 	);
 }
 
