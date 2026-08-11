@@ -63,6 +63,12 @@ export function SlackChannels() {
 	const joinAction = useAsyncAction({
 		action: async (channelId: string) => join.mutateAsync({ channelId }),
 	});
+	const refresh = useMutation(
+		trpc.slack.refreshPeople.mutationOptions({
+			onSuccess: () => toast.success("Reading the channel list from Slack."),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 
 	const rows = channels.data?.rows ?? [];
 	const canInviteItself = channels.data?.canInviteItself ?? false;
@@ -70,8 +76,6 @@ export function SlackChannels() {
 	const shown = needle
 		? rows.filter((channel) => channel.name.toLowerCase().includes(needle))
 		: rows;
-
-	if (rows.length === 0) return null;
 
 	return (
 		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
@@ -82,19 +86,38 @@ export function SlackChannels() {
 				</p>
 			</div>
 
-			<InputGroup>
-				<InputGroupAddon>
-					<Icon icon={Search} motion="none" className="size-4" />
-				</InputGroupAddon>
-				<InputGroupInput
-					onChange={(event) => setQuery(event.target.value)}
-					placeholder={`Search ${rows.length} channels`}
-					value={query}
-				/>
-			</InputGroup>
+			{rows.length > 0 ? (
+				<InputGroup>
+					<InputGroupAddon>
+						<Icon icon={Search} motion="none" className="size-4" />
+					</InputGroupAddon>
+					<InputGroupInput
+						onChange={(event) => setQuery(event.target.value)}
+						placeholder={`Search ${rows.length} channels`}
+						value={query}
+					/>
+				</InputGroup>
+			) : null}
 
 			<div className="flex flex-col divide-y rounded-lg border">
-				{shown.length === 0 ? (
+				{rows.length === 0 ? (
+					<div className="flex items-center gap-4 px-4 py-4">
+						<p className="flex-1 text-muted-foreground text-sm">
+							{channels.isPending
+								? "Reading the channel list from Slack…"
+								: "No channels yet. Comp AI reads the list from Slack after it connects."}
+						</p>
+						<Button
+							disabled={refresh.isPending}
+							onClick={() => refresh.mutate()}
+							size="sm"
+							variant="outline"
+						>
+							{refresh.isPending ? "Refreshing…" : "Refresh"}
+						</Button>
+					</div>
+				) : null}
+				{rows.length > 0 && shown.length === 0 ? (
 					<p className="px-4 py-4 text-muted-foreground text-sm">
 						No channel matches “{query}”.
 					</p>
