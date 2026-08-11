@@ -289,7 +289,7 @@ export class MailboxMatchService {
 		}
 
 		if (isPlaceholder && !hasRealName) {
-			await this.agent.contactEnrichmentRequested(
+			await this.agent.contactCreated(
 				contact.id,
 				"Created by the sync from an address, with no name on it",
 			);

@@ -25,7 +25,7 @@ const userId = `user-${suffix}`;
 const stamp = new ActivityStampService(db);
 
 const agent = {
-	contactEnrichmentRequested: async () => undefined,
+	contactCreated: async () => undefined,
 	companyEnrichmentRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
 	companyRequested: async () => undefined,

@@ -333,7 +333,7 @@ export class ContactsService {
 
 		this.logger.log({ message: "Contact created", contactId: contact.id });
 
-		await this.agent.contactEnrichmentRequested(
+		await this.agent.contactCreated(
 			contact.id,
 			"Added by a rep, with nothing on the record yet",
 		);
@@ -604,7 +604,7 @@ export class ContactsService {
 			data: { enrichmentStatus: "PENDING", enrichmentError: null },
 		});
 
-		await this.agent.contactEnrichmentRequested(
+		await this.agent.contactCreated(
 			id,
 			contact.linkedinUrl && !contact.imageUrl
 				? "A rep asked for a fresh look — they have a LinkedIn profile on file but no picture"

@@ -34,7 +34,7 @@ const agent = {
 
 const stamp = new ActivityStampService(db);
 const counters = new TrackingCounterService(db);
-const directory = new CompanyDirectoryService(db, agent);
+const directory = new CompanyDirectoryService(agent);
 const filing = new TrackingFilingService(db, counters, directory, agent, stamp);
 
 let userId: string;

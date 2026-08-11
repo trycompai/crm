@@ -26,7 +26,7 @@ const ownerId = `owner-${suffix}`;
 const queued: { entity: FieldEntity; key: string; reason: string }[] = [];
 
 const agent = {
-	contactEnrichmentRequested: async () => undefined,
+	contactCreated: async () => undefined,
 	companyEnrichmentRequested: async () => undefined,
 	companyRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,

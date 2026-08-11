@@ -19,7 +19,7 @@ const secondOwnerId = `second-owner-${suffix}`;
 const ours = { OR: [{ email: { endsWith: `@${domain}` } }] };
 
 const agent = {
-	contactEnrichmentRequested: async () => undefined,
+	contactCreated: async () => undefined,
 	companyEnrichmentRequested: async () => undefined,
 	companyRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,

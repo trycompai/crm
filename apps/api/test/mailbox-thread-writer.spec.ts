@@ -20,7 +20,7 @@ const rootId = `<root-${suffix}@mail.test>`;
 const movedRoot = `outlook-conversation:${suffix}`;
 
 const agent = {
-	contactEnrichmentRequested: async () => undefined,
+	contactCreated: async () => undefined,
 	companyEnrichmentRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
 	companyRequested: async () => undefined,

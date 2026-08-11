@@ -81,7 +81,7 @@ export class AgentTriggerService {
 		});
 	}
 
-	async contactEnrichmentRequested(
+	async contactCreated(
 		contactId: string,
 		reason: string,
 	): Promise<void> {
