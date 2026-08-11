@@ -612,6 +612,20 @@ byte-identical to the one it sent.** Parse for your own marker.
 `bun run --filter=agent test`. The integration specs need `DATABASE_URL` and run
 against a real Postgres, which is the point — "never overwrite a human" is only
 true if the transaction says so.
+
+The `test/e2e` scripts are separate and you run them by hand. Three of them cost
+money or change something outside the database, so each one is off unless you
+switch it on:
+
+| Variable | What it does |
+| --- | --- |
+| `E2E_LIVE_MODEL=1` | `live-run.e2e.ts` calls the real model. It spends credits. |
+| `E2E_SLACK_JOIN=1` | `slack-join.e2e.ts` joins real Slack channels. It does not leave them. |
+| `E2E_LOAD_COUNT` | How many tasks `load.e2e.ts` queues. The default is 300. |
+
+Stop the local agent before you run an e2e script against a dev database. A
+running agent leases the rows the script seeds and retires exhausted tasks the
+script did not create.
 **`taskFromToken` keys on the `task:` marker, not a fixed prefix**
 (`test/crm-token.spec.ts`). **A channel handler must not assume the token it receives
 is byte-identical to the one it sent.**

@@ -9,7 +9,23 @@ export const E2E = {
 	load: {
 		agentPrefix: "E2E Load Agent",
 		defaultCount: 300,
-		maxDrainPasses: 40,
+		drainPassSlack: 5,
+	},
+
+	retry: {
+		companyPrefix: "E2E Retry Co",
+		kind: "e2e-retry",
+		reason: "e2e.retry",
+		priority: 900,
+		claimLimit: 1,
+		leaseMs: 5 * MINUTE_MS,
+		expiredLeaseMs: MINUTE_MS,
+		holdBackMs: 30 * SECOND_MS,
+	},
+
+	slackJoin: {
+		bogusChannelId: "C00NOTREAL99",
+		bogusChannelName: "missing",
 	},
 
 	liveRun: {

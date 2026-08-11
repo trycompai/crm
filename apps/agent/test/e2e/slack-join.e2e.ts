@@ -5,6 +5,11 @@ import {
 } from "../../agent/lib/slack-connection";
 import { runSlackChannelJoin } from "../../agent/lib/slack-join-task";
 import { runSlackPeopleMatch } from "../../agent/lib/slack-people";
+import { E2E } from "./e2e-config";
+
+const JOINS_FOR_REAL = process.env.E2E_SLACK_JOIN === "1";
+const SKIPPED =
+	"skipped: set E2E_SLACK_JOIN=1 to change the real Slack workspace";
 
 const results: Array<{ name: string; ok: boolean; detail: string }> = [];
 
@@ -17,6 +22,12 @@ async function main() {
 	if (!(await slackConnected())) {
 		console.error("FAIL  Slack is not connected. Nothing to test.");
 		process.exit(1);
+	}
+
+	if (!JOINS_FOR_REAL) {
+		console.log(
+			"NOTE  Comp AI joins no channel in this run. A join is permanent.",
+		);
 	}
 
 	console.log(await runSlackPeopleMatch());
@@ -41,25 +52,35 @@ async function main() {
 	const publicUnjoined = channels.find(
 		(row) => !row.isPrivate && !row.isMember,
 	);
-	if (publicUnjoined) {
+	if (!publicUnjoined) {
+		record(
+			"joins a public channel",
+			true,
+			"skipped: Comp AI is already in every public channel",
+		);
+	} else if (!JOINS_FOR_REAL) {
+		record("joins a public channel", true, SKIPPED);
+	} else {
 		const outcome = await runSlackChannelJoin({
 			type: "slack.channel.join",
 			channelId: publicUnjoined.id,
 			channelName: publicUnjoined.name,
 		});
 		record("joins a public channel", outcome.includes("joined"), outcome);
-	} else {
-		record(
-			"joins a public channel",
-			true,
-			"skipped: Comp AI is already in every public channel",
-		);
 	}
 
 	const privateUnjoined = channels.find(
 		(row) => row.isPrivate && !row.isMember,
 	);
-	if (privateUnjoined) {
+	if (!privateUnjoined) {
+		record(
+			"private channel behaves as the grant allows",
+			true,
+			"skipped: no private channel is visible to Comp AI",
+		);
+	} else if (!JOINS_FOR_REAL) {
+		record("private channel behaves as the grant allows", true, SKIPPED);
+	} else {
 		const outcome = await runSlackChannelJoin({
 			type: "slack.channel.join",
 			channelId: privateUnjoined.id,
@@ -70,18 +91,12 @@ async function main() {
 			canInvite ? outcome.includes("joined") : outcome.includes("could not"),
 			outcome,
 		);
-	} else {
-		record(
-			"private channel behaves as the grant allows",
-			true,
-			"skipped: no private channel is visible to Comp AI",
-		);
 	}
 
 	const bogus = await runSlackChannelJoin({
 		type: "slack.channel.join",
-		channelId: "C00NOTREAL99",
-		channelName: "missing",
+		channelId: E2E.slackJoin.bogusChannelId,
+		channelName: E2E.slackJoin.bogusChannelName,
 	}).catch((error: unknown) =>
 		error instanceof Error ? error.message : String(error),
 	);
@@ -103,7 +118,13 @@ async function main() {
 		rejected || "no error thrown",
 	);
 
-	record("workspace grant present", true, canInvite ? "yes" : "no");
+	record(
+		"workspace grant present",
+		canInvite,
+		canInvite
+			? "a user token lets Comp AI add itself to a private channel"
+			: "no user token, so Comp AI cannot add itself to a private channel",
+	);
 
 	const failed = results.filter((row) => !row.ok).length;
 	console.log(

@@ -1,6 +1,6 @@
 import { db } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
-import { runVisibleLane } from "../../agent/lib/dispatch";
+import { runVisibleLane, VISIBLE_BATCH } from "../../agent/lib/dispatch";
 import {
 	reasonOf,
 	removeAgent,
@@ -10,6 +10,7 @@ import {
 import { E2E } from "./e2e-config";
 
 const COUNT = Number(process.env.E2E_LOAD_COUNT ?? E2E.load.defaultCount);
+const DRAIN_PASSES = Math.ceil(COUNT / VISIBLE_BATCH) + E2E.load.drainPassSlack;
 
 async function seedAgent() {
 	const owner = await db.user.findFirstOrThrow({ select: { id: true } });
@@ -74,32 +75,43 @@ async function sweepLeftovers() {
 }
 
 async function cleanUp(
-	agentId: string,
-	companyId: string,
+	agentId: string | null,
+	companyId: string | null,
 	dealIds: string[],
 	taskIds: string[],
 ) {
 	await removeEventRuns(taskIds);
-	await removeAgent(agentId);
-	await db.agentTask.deleteMany({ where: { dealId: { in: dealIds } } });
+	if (agentId) await removeAgent(agentId);
+	if (dealIds.length > 0) {
+		await db.agentTask.deleteMany({ where: { dealId: { in: dealIds } } });
+	}
+	if (!companyId) return;
 	await db.deal.deleteMany({ where: { companyId } });
 	await db.company.delete({ where: { id: companyId } });
 }
 
 async function main() {
 	await sweepLeftovers();
-	const { agentId } = await seedAgent();
-	const owner = await db.user.findFirstOrThrow({ select: { id: true } });
-	const company = await db.company.create({
-		data: { name: `Load Co ${Date.now()}`, domain: `load-${Date.now()}.test` },
-		select: { id: true },
-	});
 
 	const dealIds: string[] = [];
 	const taskIds: string[] = [];
+	let agentId: string | null = null;
+	let companyId: string | null = null;
 	let ok = false;
 
 	try {
+		const seededAgent = await seedAgent();
+		agentId = seededAgent.agentId;
+		const owner = await db.user.findFirstOrThrow({ select: { id: true } });
+		const company = await db.company.create({
+			data: {
+				name: `Load Co ${Date.now()}`,
+				domain: `load-${Date.now()}.test`,
+			},
+			select: { id: true },
+		});
+		companyId = company.id;
+
 		console.log(`Seeding ${COUNT} deal.created events…`);
 		const seedStart = Date.now();
 		const deals = await db.$transaction(
@@ -143,14 +155,16 @@ async function main() {
 		console.log("Draining…");
 		const drainStart = Date.now();
 		let handled = 0;
-		for (let pass = 0; pass < E2E.load.maxDrainPasses; pass += 1) {
+		for (let pass = 0; pass < DRAIN_PASSES; pass += 1) {
 			const done = await runVisibleLane();
 			handled += done;
 			if (done === 0) break;
 		}
 		const drainMs = Date.now() - drainStart;
 
-		const queued = await db.agentRun.count({ where: { agentId } });
+		const queued = await db.agentRun.count({
+			where: { agentId: seededAgent.agentId },
+		});
 		const leftover = await db.agentTask.count({
 			where: { kind: "agent-event", finishedAt: null },
 		});
@@ -167,7 +181,7 @@ async function main() {
 	} finally {
 		console.log("\nCleaning up…");
 		try {
-			await cleanUp(agentId, company.id, dealIds, taskIds);
+			await cleanUp(agentId, companyId, dealIds, taskIds);
 		} catch (error) {
 			ok = false;
 			console.error(`  cleanup failed — ${reasonOf(error)}`);

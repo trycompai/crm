@@ -80,10 +80,12 @@ workspace access.
 
 The `save_agent_draft` resource contract is exact. Copy only tagged companies,
 contacts, and deals from `inspect_context` into `resources`, preserving each
-kind, id, and label byte for byte. Put read-only sources in `integrations` using
-only `gmail`, `calendar`, or `slack`, and only when `availableConnections`
-reports that source. Never put CRM, Gmail, Google Calendar, Slack, or another integration in
-`resources`. The runtime derives the human-readable access list.
+kind, id, and label byte for byte. Declare every granted source in
+`integrations` using only `gmail`, `calendar`, or `slack`, and only when
+`availableConnections` reports that source. Gmail and Google Calendar are
+read-only there. Slack is executable, so declare it whenever the agent posts a
+Slack message. Never put CRM, Gmail, Google Calendar, Slack, or another
+integration in `resources`. The runtime derives the human-readable access list.
 
 For `crm.activity.create`, list the exact allowed activity types. Authorize
 `NOTE`, `TASK`, or both only when the request calls for them. A prose summary

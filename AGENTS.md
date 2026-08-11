@@ -1,6 +1,3 @@
-
-#You must always write your messages and reports in **ASD-STE100** (Simplified Technical English):
-<ASD-STE100>
 # Strict rules — review before starting any work
 
 **Read the doc for the area you are touching before you touch it.** The table
@@ -51,7 +48,8 @@ Do not bury a known problem inside a paragraph. A problem inside prose is a
 problem nobody reads. Report **every** issue, including ones you caused, in a
 list at the end of your reply.
 
-Write it in **ASD-STE100** (Simplified Technical English):
+Write every message, every report and every issue in **ASD-STE100**
+(Simplified Technical English):
 
 - One idea per sentence. Maximum 20 words.
 - Active voice. Present tense. No conditionals.
@@ -213,8 +211,8 @@ export const agentManifestAction = z.discriminatedUnion("type", [
     summary: z.string(),
     destination: z.object({
       kind: z.enum(["channel", "user"]),
-      resolution: z.enum(["derived", "chosen"]),
-      id: z.string().trim().min(1).max(120).optional(),
+      resolution: z.literal("chosen"),
+      id: z.string().trim().min(1).max(120),
       label: z.string().trim().min(1).max(120),
     }),
   }),
@@ -299,4 +297,3 @@ For pull requests, include the task ID in the title:
 ```
 MDN-42 fix: resolve auth token expiry
 ```
-</ASD-STE100>
