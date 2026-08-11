@@ -1,173 +1,33 @@
-import { db, FactStatus } from "@crm/db";
-import {
-	columnFor,
-	type FactField,
-	type FactSubject,
-	fillsBlank,
-} from "../agent/lib/facts";
-import { splitName } from "../agent/lib/names";
+import { db } from "@crm/db";
+import { sweepBlankFacts } from "../agent/lib/blank-facts";
 
 const dry = process.argv.includes("--dry");
 
-const CONTACT_SELECT = {
-	id: true,
-	email: true,
-	firstName: true,
-	lastName: true,
-	title: true,
-	linkedinUrl: true,
-	twitterUrl: true,
-	githubUrl: true,
-} as const;
+const sweep = await sweepBlankFacts({ dry });
 
-const proposals = await db.contactFact.findMany({
-	where: { status: FactStatus.PROPOSED },
-	select: {
-		id: true,
-		contactId: true,
-		field: true,
-		value: true,
-		score: true,
-		contact: { select: CONTACT_SELECT },
-	},
-	orderBy: [{ score: "desc" }, { observedAt: "desc" }],
-});
+for (const fill of sweep.fills) {
+	const dropped =
+		fill.dropped > 0
+			? ` — dropped ${fill.dropped} weaker suggestion${fill.dropped === 1 ? "" : "s"}`
+			: "";
 
-if (proposals.length === 0) {
-	console.log("No suggestions are waiting on anybody.");
-	await db.$disconnect();
-	process.exit(0);
-}
-
-const contactIds = [...new Set(proposals.map((row) => row.contactId))];
-const applied = new Map<string, string>();
-
-for (let start = 0; start < contactIds.length; start += 1000) {
-	const rows = await db.contactFact.findMany({
-		where: {
-			status: FactStatus.APPLIED,
-			contactId: { in: contactIds.slice(start, start + 1000) },
-		},
-		select: { contactId: true, field: true, value: true },
-	});
-
-	for (const row of rows) applied.set(key(row.contactId, row.field), row.value);
-}
-
-type Proposal = (typeof proposals)[number];
-
-const groups = new Map<string, Proposal[]>();
-
-for (const row of proposals) {
-	const id = key(row.contactId, row.field);
-	const group = groups.get(id);
-	if (group) group.push(row);
-	else groups.set(id, [row]);
-}
-
-let filled = 0;
-let settled = 0;
-let waiting = 0;
-
-for (const group of groups.values()) {
-	const [best] = group as [Proposal, ...Proposal[]];
-	const field = best.field as FactField;
-	const contact = best.contact as FactSubject;
-	const column = columnFor(field);
-	const current = applied.get(key(best.contactId, field));
-
-	if (!fillsBlank({ field, contact, hasAgentFact: current !== undefined })) {
-		const value =
-			current ?? (column ? (contact[column] as string | null) : null);
-		const kept = new Set<string>();
-		const stale = group.filter((row) => {
-			const seen = row.value.trim().toLowerCase();
-			if (sameValue(row.value, value)) return true;
-			if (kept.has(seen)) return true;
-
-			kept.add(seen);
-			return false;
-		});
-
-		waiting += group.length - stale.length;
-		if (stale.length === 0) continue;
-
-		if (!dry) {
-			await db.contactFact.updateMany({
-				where: { id: { in: stale.map((row) => row.id) } },
-				data: { status: FactStatus.SUPERSEDED, supersededAt: new Date() },
-			});
-		}
-
-		settled += stale.length;
-		console.log(
-			`${name(contact)} · ${field}: cleared ${stale.length} suggestion${stale.length === 1 ? "" : "s"} that add nothing${value ? ` to "${value}"` : ""}`,
-		);
-		continue;
-	}
-
-	if (!dry) {
-		await db.$transaction(async (tx) => {
-			await tx.contactFact.updateMany({
-				where: {
-					contactId: best.contactId,
-					field,
-					id: { not: best.id },
-					status: { in: [FactStatus.APPLIED, FactStatus.PROPOSED] },
-				},
-				data: { status: FactStatus.SUPERSEDED, supersededAt: new Date() },
-			});
-
-			await tx.contactFact.update({
-				where: { id: best.id },
-				data: { status: FactStatus.APPLIED },
-			});
-
-			if (column) {
-				await tx.contact.update({
-					where: { id: best.contactId },
-					data: { [column]: best.value },
-				});
-			}
-
-			if (field === "name") {
-				const split = splitName(best.value);
-				if (split) {
-					await tx.contact.update({
-						where: { id: best.contactId },
-						data: { firstName: split.firstName, lastName: split.lastName },
-					});
-				}
-			}
-		});
-	}
-
-	filled += 1;
-	settled += group.length - 1;
 	console.log(
-		`${name(contact)} · ${field}: "${best.value}" (${best.score.toFixed(2)})${
-			group.length > 1
-				? ` — dropped ${group.length - 1} weaker suggestion${group.length === 2 ? "" : "s"}`
-				: ""
-		}`,
+		`${fill.contact} · ${fill.field}: "${fill.value}" (${fill.score.toFixed(2)})${dropped}`,
 	);
 }
 
 console.log(
-	`\n${dry ? "Would fill" : "Filled"} ${filled} empty field${filled === 1 ? "" : "s"} from ${proposals.length} waiting suggestions. ${settled} stale suggestion${settled === 1 ? "" : "s"} cleared, ${waiting} still need a rep.`,
+	`\n${dry ? "Would fill" : "Filled"} ${count(sweep.filled, "empty field")} from ${count(sweep.scanned, "waiting suggestion")}. ${count(sweep.settled, "stale suggestion")} cleared, ${sweep.waiting} still need a rep.`,
 );
+
+if (sweep.unscanned > 0) {
+	console.log(
+		`${sweep.unscanned} suggestions were not looked at this pass. Run it again.`,
+	);
+}
 
 await db.$disconnect();
 
-function key(contactId: string, field: string): string {
-	return `${contactId}:${field}`;
-}
-
-function name(contact: FactSubject): string {
-	return [contact.firstName, contact.lastName].filter(Boolean).join(" ");
-}
-
-function sameValue(a: string, b: string | null): boolean {
-	if (!b) return false;
-	return a.trim().toLowerCase() === b.trim().toLowerCase();
+function count(n: number, noun: string): string {
+	return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
