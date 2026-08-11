@@ -14,7 +14,13 @@ export function outreachSendsPaused(): boolean {
 }
 
 export function directTaskKinds(kinds: readonly string[]): readonly string[] {
-	return outreachSendsPaused()
-		? kinds.filter((kind) => kind !== "email-draft-send")
-		: kinds;
+	if (providerMutationsPaused()) {
+		return kinds.filter(
+			(kind) => kind !== "email-draft-send" && kind !== "portrait",
+		);
+	}
+	if (outreachSendsPaused()) {
+		return kinds.filter((kind) => kind !== "email-draft-send");
+	}
+	return kinds;
 }

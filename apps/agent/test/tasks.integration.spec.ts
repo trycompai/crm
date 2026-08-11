@@ -363,6 +363,22 @@ describe("completeTask", () => {
 			}),
 		).toEqual({ attempts: 2, outcome: "current" });
 	});
+
+	it("does not complete an expired lease before it is reclaimed", async () => {
+		const task = await queue();
+		const leased = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+
+		expect(
+			await completeTask(task.id, leased?.attempts ?? 0, "expired"),
+		).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, finishedAt: true, outcome: true },
+			}),
+		).toEqual({ state: "LEASED", finishedAt: null, outcome: null });
+	});
 });
 
 describe("releaseTaskForRetry", () => {
@@ -416,6 +432,22 @@ describe("releaseTaskForRetry", () => {
 			await releaseTaskForRetry(task.id, second?.attempts ?? 0, 250),
 		).not.toBeNull();
 	});
+
+	it("does not retry an expired lease before it is reclaimed", async () => {
+		const task = await queue();
+		const leased = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+
+		expect(
+			await releaseTaskForRetry(task.id, leased?.attempts ?? 0, 250),
+		).toBeNull();
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { state: true, leasedUntil: true },
+			}),
+		).toEqual({ state: "LEASED", leasedUntil: expect.any(Date) });
+	});
 });
 
 describe("noteSession", () => {
@@ -456,6 +488,22 @@ describe("noteSession", () => {
 				select: { attempts: true, sessionId: true },
 			}),
 		).toEqual({ attempts: 2, sessionId: "current-session" });
+	});
+
+	it("does not attach a session to an expired lease", async () => {
+		const task = await queue();
+		const leased = (await claimDue(10, RESEARCH))[0];
+		await expire(task.id);
+
+		expect(
+			await noteSession(task.id, leased?.attempts ?? 0, "expired-session"),
+		).toBe(false);
+		expect(
+			await db.agentTask.findUnique({
+				where: { id: task.id },
+				select: { sessionId: true },
+			}),
+		).toEqual({ sessionId: null });
 	});
 });
 

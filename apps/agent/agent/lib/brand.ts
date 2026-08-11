@@ -1,4 +1,5 @@
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { providerMutationsPaused } from "./autonomy";
 import { mirrorBrandImages } from "./brand-images";
 import { brandToUpdate, filledFields, stillFillable } from "./brand-mapping";
 import { brandByDomain, contextDevEnabled } from "./context-dev";
@@ -101,7 +102,17 @@ export async function runBrand({
 
 	const update = brandToUpdate(result.brand, snapshot(company));
 
-	const { mirrored } = await mirrorBrandImages(companyId, update);
+	let mirrored: string[] = [];
+	if (!providerMutationsPaused()) {
+		if (lease) {
+			const active = await withTaskLease(
+				{ ...lease, companyId, minRemainingMs: 30_000 },
+				async () => true,
+			);
+			if (!active.owned) return leaseLost();
+		}
+		mirrored = (await mirrorBrandImages(companyId, update)).mirrored;
+	}
 
 	const write = async (tx: Prisma.TransactionClient) => {
 		const current = await tx.company.findUnique({

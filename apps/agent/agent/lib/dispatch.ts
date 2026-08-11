@@ -89,6 +89,11 @@ async function runDirect(task: LeasedTask): Promise<void> {
 			const portrait = await runPortrait({
 				contactId: task.contactId,
 				spend: () => ({ ok: true }),
+				lease: {
+					taskId: task.id,
+					expectedAttempt: task.attempts,
+					contactId: task.contactId,
+				},
 			});
 
 			await completeTask(

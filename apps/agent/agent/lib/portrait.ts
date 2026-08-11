@@ -1,6 +1,8 @@
 import { db } from "@crm/db";
 import { blobEnabled, isMirrored, mirror } from "@crm/db/blob";
+import { providerMutationsPaused } from "./autonomy";
 import { findPortrait, type PortraitSource } from "./portrait-sources";
+import { type TaskLeaseScope, withTaskLease } from "./tasks";
 
 export type PortraitResult = {
 	stored: boolean;
@@ -14,11 +16,13 @@ export async function storePortrait({
 	sourceUrl,
 	verified,
 	force = false,
+	lease,
 }: {
 	contactId: string;
 	sourceUrl: string | null;
 	verified: boolean;
 	force?: boolean;
+	lease?: TaskLeaseScope;
 }): Promise<PortraitResult> {
 	if (!sourceUrl) {
 		return {
@@ -34,6 +38,14 @@ export async function storePortrait({
 			imageUrl: null,
 			reason:
 				"The profile was not established to be this person, so its photo is not theirs to use.",
+		};
+	}
+
+	if (providerMutationsPaused()) {
+		return {
+			stored: false,
+			imageUrl: null,
+			reason: "Provider mutations are paused.",
 		};
 	}
 
@@ -64,6 +76,14 @@ export async function storePortrait({
 		};
 	}
 
+	if (lease) {
+		const active = await withTaskLease(
+			{ ...lease, contactId, minRemainingMs: 30_000 },
+			async () => true,
+		);
+		if (!active.owned) return leaseLost(contact.imageUrl);
+	}
+
 	const stored = await mirror(sourceUrl, `contacts/${contactId}`);
 
 	if (!stored) {
@@ -78,10 +98,22 @@ export async function storePortrait({
 		return { stored: false, imageUrl: stored, reason: "Unchanged." };
 	}
 
-	await db.contact.update({
-		where: { id: contactId },
-		data: { imageUrl: stored },
-	});
+	const write = async (client: Pick<typeof db, "contact">) =>
+		client.contact.updateMany({
+			where: { id: contactId, imageUrl: contact.imageUrl },
+			data: { imageUrl: stored },
+		});
+	const updated = lease
+		? await withTaskLease({ ...lease, contactId }, write)
+		: { owned: true as const, value: await write(db) };
+	if (!updated.owned) return leaseLost(contact.imageUrl);
+	if (updated.value.count !== 1) {
+		return {
+			stored: false,
+			imageUrl: contact.imageUrl,
+			reason: "The contact changed while the photo was being copied.",
+		};
+	}
 
 	return { stored: true, imageUrl: stored };
 }
@@ -90,11 +122,21 @@ export async function runPortrait({
 	contactId,
 	spend,
 	force = false,
+	lease,
 }: {
 	contactId: string;
 	spend: (units?: number) => { ok: boolean; reason?: string };
 	force?: boolean;
+	lease?: TaskLeaseScope;
 }): Promise<PortraitResult> {
+	if (providerMutationsPaused()) {
+		return {
+			stored: false,
+			imageUrl: null,
+			reason: "Provider mutations are paused.",
+		};
+	}
+
 	if (!blobEnabled()) {
 		return {
 			stored: false,
@@ -159,7 +201,16 @@ export async function runPortrait({
 		sourceUrl: found.candidate.url,
 		verified: true,
 		force,
+		lease,
 	});
 
 	return { ...result, source: found.candidate.source };
+}
+
+function leaseLost(imageUrl: string | null): PortraitResult {
+	return {
+		stored: false,
+		imageUrl,
+		reason: "The task lease is no longer active.",
+	};
 }

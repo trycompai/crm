@@ -203,4 +203,24 @@ describe("the record follows the task", () => {
 			EnrichmentStatus.RUNNING,
 		);
 	});
+
+	it("does not mark a record running after its lease expires", async () => {
+		const person = await contact();
+		const task = await leaseContact(person.id);
+		await db.agentTask.update({
+			where: { id: task.id },
+			data: { leasedUntil: new Date(Date.now() - 1000) },
+		});
+
+		expect(
+			await markRunning(subjectOf({ contactId: person.id }), {
+				taskId: task.id,
+				expectedAttempt: task.attempts,
+				contactId: person.id,
+			}),
+		).toBe(false);
+		expect((await statusOfContact(person.id))?.enrichmentStatus).toBe(
+			EnrichmentStatus.PENDING,
+		);
+	});
 });

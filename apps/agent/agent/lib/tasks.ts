@@ -34,6 +34,7 @@ export type TaskSubject = {
 export type TaskLeaseScope = {
 	taskId: string;
 	expectedAttempt: number;
+	minRemainingMs?: number;
 	contactId?: string | null;
 	companyId?: string | null;
 	prospectId?: string | null;
@@ -50,12 +51,14 @@ export async function withTaskLease<T>(
 	work: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<{ owned: true; value: T } | { owned: false }> {
 	return db.$transaction(async (tx) => {
+		const activeAfter = new Date(Date.now() + (scope.minRemainingMs ?? 0));
 		const { count } = await tx.agentTask.updateMany({
 			where: {
 				id: scope.taskId,
 				finishedAt: null,
 				state: "LEASED",
 				attempts: scope.expectedAttempt,
+				leasedUntil: { gt: activeAfter },
 				...(scope.contactId ? { contactId: scope.contactId } : {}),
 				...(scope.companyId ? { companyId: scope.companyId } : {}),
 				...(scope.prospectId ? { prospectId: scope.prospectId } : {}),
@@ -179,6 +182,7 @@ export async function completeTask(
 			finishedAt: null,
 			state: "LEASED",
 			attempts: expectedAttempt,
+			leasedUntil: { gt: new Date() },
 		},
 		data: {
 			finishedAt: new Date(),
@@ -231,6 +235,7 @@ export async function noteSession(
 			finishedAt: null,
 			state: "LEASED",
 			attempts: expectedAttempt,
+			leasedUntil: { gt: new Date() },
 		},
 		data: { sessionId },
 	});
@@ -249,6 +254,7 @@ export async function releaseTaskForRetry(
 			finishedAt: null,
 			state: "LEASED",
 			attempts: expectedAttempt,
+			leasedUntil: { gt: new Date() },
 		},
 		data: {
 			dueAt: new Date(Date.now() + delayMs),
