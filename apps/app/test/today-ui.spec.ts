@@ -33,6 +33,10 @@ const quickSwitcher = readFileSync(
 	resolve(appRoot, "components/crm/quick-switcher.tsx"),
 	"utf8",
 );
+const prefetch = readFileSync(
+	resolve(appRoot, "components/crm/section-prefetch.ts"),
+	"utf8",
+);
 
 test("Today registers stay in operator order with counts secondary", () => {
 	const keys = [
@@ -64,6 +68,7 @@ test("Today routes Work rows and approval rows through URL focus", () => {
 	expect(todayDesk).toContain("todayFocusHistory(true)");
 	expect(todayDesk).toContain("todayFocusHistory(false)");
 	expect(todayPage).toContain("trpc.today.get.queryOptions({ limit: 25 })");
+	expect(prefetch).toContain("trpc.today.get.queryOptions({ limit: 25 })");
 	expect(todayPage).toContain(
 		"trpc.approval.detail.queryOptions({ id: approval })",
 	);

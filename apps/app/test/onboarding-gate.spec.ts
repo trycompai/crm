@@ -290,6 +290,28 @@ describe("the slug the app is served under", () => {
 		);
 	});
 
+	it("preserves bare app section deep links when adding the workspace slug", async () => {
+		setup();
+
+		const paths = [
+			"/calendar",
+			"/customers",
+			"/instances",
+			"/marketing",
+			"/prospects",
+			"/service",
+			"/work",
+		];
+
+		for (const path of paths) {
+			expect(
+				redirectedTo(
+					await proxy(request(`${path}?view=mine`, [SESSION_COOKIE])),
+				),
+			).toBe(`/${SLUG}${path}`);
+		}
+	});
+
 	it("moves a stale slug onto the current one, keeping the rest", async () => {
 		setup();
 
