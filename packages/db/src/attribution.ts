@@ -219,7 +219,7 @@ function isSuffix(tail: string[]): boolean {
 	if (tail.length === 1) return true;
 	if (tail.length !== 2) return false;
 
-	return SECOND_LEVEL.has(tail[0] ?? "");
+	return SECOND_LEVEL.has(tail[0] ?? "") && /^[a-z]{2}$/.test(tail[1] ?? "");
 }
 
 function hostOf(referrer: string | null): string | null {

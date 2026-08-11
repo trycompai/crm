@@ -40,11 +40,21 @@ export class TrackingConfigService {
 		if (!config) return null;
 
 		const compiled = { config, hash: configHash(config) };
-		if (read === this.generation) {
+
+		if (read === this.generation && (await this.current(compiled.hash))) {
 			await this.cache.set(CONFIG_KEY, compiled, CONFIG_TTL_MS);
 		}
 
 		return compiled;
+	}
+
+	private async current(hash: string): Promise<boolean> {
+		const row = await this.db.appSetting.findUnique({
+			where: { id: SETTINGS_ID },
+			select: { trackingConfigHash: true },
+		});
+
+		return row?.trackingConfigHash === hash;
 	}
 
 	async forSite(siteId: string): Promise<CompiledConfig | null> {
@@ -59,7 +69,15 @@ export class TrackingConfigService {
 		await this.cache.del(CONFIG_KEY);
 
 		const config = await readTrackingConfig(this.db);
-		if (!config) return;
+
+		if (!config) {
+			await this.db.appSetting.updateMany({
+				where: { id: SETTINGS_ID },
+				data: { trackingConfigHash: null },
+			});
+
+			return;
+		}
 
 		const hash = configHash(config);
 
@@ -69,6 +87,7 @@ export class TrackingConfigService {
 		});
 
 		if (written !== this.generation) return;
+		if (!(await this.current(hash))) return;
 
 		await this.cache.set(CONFIG_KEY, { config, hash }, CONFIG_TTL_MS);
 	}

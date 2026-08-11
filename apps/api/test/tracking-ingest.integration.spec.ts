@@ -46,7 +46,17 @@ const filed: string[] = [];
 
 const filing = {
 	file: async ({ id }: { id: string }) => {
+		const claimed = await db.formSubmission.updateMany({
+			where: { id, filedAt: null },
+			data: { filedAt: new Date() },
+		});
+
+		if (claimed.count === 0) {
+			return { filed: false as const, reason: "another delivery filed it" };
+		}
+
 		filed.push(id);
+
 		return { filed: true as const, contactId: `contact-${id}` };
 	},
 } as unknown as TrackingFilingService;
@@ -162,11 +172,28 @@ describe("the rate limit", () => {
 
 	it("stops writing once the window is spent", async () => {
 		await db.trackingCounter.deleteMany({ where: {} });
-		await counters.take(rateKey(), EVENTS_PER_MINUTE, EVENTS_PER_MINUTE);
+
+		for (const key of spendableWindows()) {
+			await counters.take(key, EVENTS_PER_MINUTE, EVENTS_PER_MINUTE);
+		}
 
 		await accept([view(parent)]);
 
 		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(0);
+	});
+
+	it("does not spend the window on a batch it refuses", async () => {
+		await db.trackingCounter.deleteMany({ where: {} });
+
+		for (const key of spendableWindows()) {
+			await counters.take(key, EVENTS_PER_MINUTE, EVENTS_PER_MINUTE - 1);
+		}
+
+		await accept([view(parent), view(parent)]);
+		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(0);
+
+		await accept([view(parent)]);
+		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(1);
 	});
 });
 
@@ -254,6 +281,7 @@ describe("a batch delivered twice", () => {
 		await Promise.all([accept([submission], id), accept([submission], id)]);
 
 		expect(await db.formSubmission.count({ where: { host: parent } })).toBe(1);
+		expect(filed).toHaveLength(1);
 	});
 
 	it("leaves a submission alone once it has been filed", async () => {
@@ -303,6 +331,8 @@ describe("a batch that looks scripted", () => {
 	});
 });
 
-function rateKey(): string {
-	return `rate:${Math.floor(Date.now() / 60_000)}`;
+function spendableWindows(): string[] {
+	const bucket = Math.floor(Date.now() / 60_000);
+
+	return [`rate:${bucket}`, `rate:${bucket + 1}`];
 }

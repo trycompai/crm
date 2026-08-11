@@ -94,7 +94,9 @@ export class TrackingFilingService {
 			return { filed: true, contactId: existing.id };
 		}
 
-		if (!(await this.withinCap())) {
+		const window = contactWindowKey();
+
+		if (!(await this.counters.take(window, CONTACTS_PER_HOUR))) {
 			return this.skip(submission.id, CONTACT_CAP_REASON);
 		}
 
@@ -115,6 +117,8 @@ export class TrackingFilingService {
 				select: { id: true },
 			});
 		} catch (error) {
+			await this.counters.release(window);
+
 			const raced = await this.raced(error, email);
 			if (!raced) throw error;
 
@@ -253,9 +257,5 @@ export class TrackingFilingService {
 		if (host) return "This domain is suppressed";
 
 		return null;
-	}
-
-	private async withinCap(): Promise<boolean> {
-		return this.counters.take(contactWindowKey(), CONTACTS_PER_HOUR);
 	}
 }

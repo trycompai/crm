@@ -75,8 +75,12 @@ The gauntlet, in order, in `TrackingIngestService.accept`:
 > database.** A per-request counter with a full batch behind it admits twenty times
 > the number on the constant, and a read-then-write in `cache-manager` admits
 > however many requests are in flight. `TrackingCounterService.take(key, limit,
-> amount)` is one `upsert` with an `increment`, so the read is the write. It fails
-> **closed**: a counter it cannot reach refuses the write.
+> amount)` is one statement — an `INSERT … ON CONFLICT DO UPDATE` whose `WHERE`
+> carries the limit — so the check and the charge cannot be separated, and **a
+> refused batch spends nothing**. Increment-then-compare looks equivalent and is
+> not: the refused batch still burns its own size out of the window, so one
+> oversized batch locks out the honest small ones behind it for the rest of the
+> minute. It fails **closed**: a counter it cannot reach refuses the write.
 
 `MAX_BODY_BYTES` is enforced by destroying the request as it streams, before any
 parse. Keep it in step with what the tracker can produce — a form is forty fields

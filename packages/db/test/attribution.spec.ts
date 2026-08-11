@@ -97,6 +97,8 @@ describe("a touch with only a referrer", () => {
 			"https://mail.google.evil.com/",
 			"https://facebook.attacker.net/",
 			"https://outlook.phish.example/",
+			"https://google.com.example/",
+			"https://google.co.example/",
 		]) {
 			expect(classifyTouch({ referrer }, AT).medium).toBe("referral");
 		}

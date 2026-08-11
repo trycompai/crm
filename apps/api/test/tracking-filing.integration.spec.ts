@@ -217,6 +217,45 @@ describe("filing a form submission", () => {
 		expect(notes).toBe(1);
 	});
 
+	it("gives the cap slot back to the delivery that lost the create", async () => {
+		const email = `refunded@${domain}`;
+		const rows = await Promise.all(
+			[1, 2].map((n) =>
+				db.formSubmission.create({
+					data: {
+						host,
+						path: "/pricing",
+						email,
+						fields: { email },
+						dedupeKey: `${suffix}-refunded-${n}`,
+					},
+					select: { id: true },
+				}),
+			),
+		);
+
+		await Promise.all(
+			rows.map((row) =>
+				filing.file({
+					id: row.id,
+					email,
+					host,
+					visitorId: null,
+					name: "Dana Reed",
+				}),
+			),
+		);
+
+		expect(await db.contact.count({ where: { email } })).toBe(1);
+
+		const counter = await db.trackingCounter.findUnique({
+			where: { key: contactWindowKey() },
+			select: { value: true },
+		});
+
+		expect(counter?.value).toBe(1);
+	});
+
 	it("attaches a second submission to the contact already there", async () => {
 		const email = `repeat@${domain}`;
 

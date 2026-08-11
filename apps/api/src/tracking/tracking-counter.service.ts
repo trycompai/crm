@@ -10,15 +10,20 @@ export class TrackingCounterService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async take(key: string, limit: number, amount = 1): Promise<boolean> {
-		try {
-			const counter = await this.db.trackingCounter.upsert({
-				where: { key },
-				create: { key, value: amount, expiresAt: windowExpiry(key) },
-				update: { value: { increment: amount } },
-				select: { value: true },
-			});
+		if (amount <= 0) return true;
+		if (amount > limit) return false;
 
-			return counter.value <= limit;
+		try {
+			const charged = await this.db.$queryRaw<{ value: number }[]>`
+				INSERT INTO "trackingCounter" ("key", "value", "expiresAt")
+				VALUES (${key}, ${amount}, ${windowExpiry(key)})
+				ON CONFLICT ("key") DO UPDATE
+					SET "value" = "trackingCounter"."value" + ${amount}
+					WHERE "trackingCounter"."value" + ${amount} <= ${limit}
+				RETURNING "value";
+			`;
+
+			return charged.length > 0;
 		} catch (error) {
 			this.logger.error(
 				{ message: "Tracking counter could not be read — refusing the write" },
@@ -26,6 +31,21 @@ export class TrackingCounterService {
 			);
 
 			return false;
+		}
+	}
+
+	async release(key: string, amount = 1): Promise<void> {
+		try {
+			await this.db.$executeRaw`
+				UPDATE "trackingCounter"
+				SET "value" = GREATEST("value" - ${amount}, 0)
+				WHERE "key" = ${key};
+			`;
+		} catch (error) {
+			this.logger.error(
+				{ message: "Tracking counter could not be released" },
+				error instanceof Error ? error.stack : String(error),
+			);
 		}
 	}
 
