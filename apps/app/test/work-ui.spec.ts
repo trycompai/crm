@@ -2,8 +2,10 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-	shouldRetryWorkAction,
+	canRetryWorkAction,
+	rememberWorkActionIntent,
 	workActionDescriptors,
+	workActionRetryState,
 } from "../app/(app)/[slug]/work/work-action-descriptors";
 import { showWorkNavigation } from "../components/crm/quick-switcher-navigation";
 import {
@@ -15,6 +17,7 @@ import {
 import {
 	toWorkListInput,
 	workAssigneeOptions,
+	workAssigneeUsers,
 	workFocusHistory,
 } from "../lib/work-input";
 
@@ -68,6 +71,8 @@ test("work URL state keeps list defaults and server facets", () => {
 	expect(workPage).toContain(
 		"toWorkListInput(workSearchParams.toInput(values))",
 	);
+	expect(workPage).toContain("trpc.workspace.members.queryOptions");
+	expect(workPage).not.toContain("trpc.users.list.queryOptions");
 	expect(workTable).toContain("toWorkListInput(rawInput)");
 	expect(workTable).toContain('useQueryState("work", parseAsString)');
 	expect(workTable).toContain("workFocusHistory(true)");
@@ -107,8 +112,8 @@ test("assignee options keep My work visible and filter named owners by count", (
 	const options = workAssigneeOptions(
 		{ "user-1": 2, "user-2": 0, unassigned: 0 },
 		[
-			{ id: "user-1", name: "Richard" },
-			{ id: "user-2", name: "Angus" },
+			{ userId: "user-1", name: "Richard" },
+			{ userId: "user-2", name: "Angus" },
 		],
 	);
 
@@ -118,11 +123,32 @@ test("assignee options keep My work visible and filter named owners by count", (
 		{ value: "user-1", label: "Richard" },
 	]);
 	expect(
-		workAssigneeOptions(undefined, [{ id: "user-2", name: "Angus" }]),
+		workAssigneeOptions(undefined, [{ userId: "user-2", name: "Angus" }]),
 	).toEqual([
 		{ value: "me", label: "My work" },
 		{ value: "unassigned", label: "Unassigned" },
 	]);
+});
+
+test("workspace members map userId for facets and assignment", () => {
+	const members = [
+		{ userId: "user-1", name: "Richard" },
+		{ userId: "user-2", name: "Angus" },
+	];
+
+	expect(workAssigneeUsers(members)).toEqual([
+		{ id: "user-1", name: "Richard" },
+		{ id: "user-2", name: "Angus" },
+	]);
+	const options = workAssigneeOptions(
+		{ "user-2": 3, "removed-user": 2 },
+		members,
+	);
+	expect(options).toContainEqual({ value: "user-2", label: "Angus" });
+	expect(options).not.toContainEqual({
+		value: "removed-user",
+		label: "Removed user",
+	});
 });
 
 test("inherited subject-type keys are rejected before the API input", () => {
@@ -197,13 +223,37 @@ test("work action inputs are exact and preserve an intent request key", () => {
 });
 
 test("known mutation conflicts do not offer blind retry, transport failures do", () => {
-	expect(shouldRetryWorkAction("CONFLICT")).toBe(false);
-	expect(shouldRetryWorkAction("BAD_REQUEST")).toBe(false);
-	expect(shouldRetryWorkAction("FORBIDDEN")).toBe(false);
-	expect(shouldRetryWorkAction("INTERNAL_SERVER_ERROR")).toBe(true);
-	expect(shouldRetryWorkAction(undefined)).toBe(true);
-	expect(workActions).toContain("await invalidate();");
-	expect(workActions).toContain("status.retryable");
+	const conflict = workActionRetryState("complete", "CONFLICT");
+	const validation = workActionRetryState("complete", "BAD_REQUEST");
+	const transport = workActionRetryState("complete", "INTERNAL_SERVER_ERROR");
+
+	expect(conflict.retainIntent).toBe(false);
+	expect(validation.retainIntent).toBe(false);
+	expect(transport.retainIntent).toBe(true);
+	expect(canRetryWorkAction(transport)).toBe(true);
+	expect(canRetryWorkAction(conflict)).toBe(false);
+});
+
+test("lost responses can retry the retained intent after capability refresh", () => {
+	const intent = {
+		action: "complete" as const,
+		input: { id: "work-1", expectedVersion: 4, clientRequestId: "request-1" },
+	};
+	const intentRef: { current: typeof intent | null } = { current: null };
+	rememberWorkActionIntent(intentRef, intent);
+	const lostResponse = workActionRetryState(
+		intentRef.current?.action ?? null,
+		undefined,
+	);
+
+	expect(lostResponse).toEqual({
+		action: "complete",
+		retryable: true,
+		retainIntent: true,
+	});
+	expect(canRetryWorkAction(lostResponse)).toBe(true);
+	expect(intentRef.current).toBe(intent);
+	expect(intentRef.current?.input.clientRequestId).toBe("request-1");
 });
 
 test("terminal status remains rendered when capabilities become empty", () => {

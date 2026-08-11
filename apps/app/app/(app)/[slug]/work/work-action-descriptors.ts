@@ -51,3 +51,34 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
 export function shouldRetryWorkAction(code: string | undefined): boolean {
 	return !NON_RETRYABLE_ERROR_CODES.has(code ?? "");
 }
+
+export type WorkActionRetryState = {
+	action: WorkActionName | null;
+	retryable: boolean;
+	retainIntent: boolean;
+};
+
+export function rememberWorkActionIntent<T>(
+	ref: { current: T | null },
+	intent: T,
+): void {
+	ref.current = intent;
+}
+
+export function workActionRetryState(
+	action: WorkActionName | null,
+	code: string | undefined,
+): WorkActionRetryState {
+	const retryable = shouldRetryWorkAction(code);
+	return {
+		action,
+		retryable,
+		retainIntent: action !== null && retryable,
+	};
+}
+
+export function canRetryWorkAction(
+	state: Pick<WorkActionRetryState, "action" | "retryable">,
+): boolean {
+	return state.action !== null && state.retryable;
+}

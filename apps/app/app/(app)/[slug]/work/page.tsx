@@ -12,7 +12,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { toWorkListInput } from "@/lib/work-input";
+import { toWorkListInput, WORKSPACE_MEMBERS_INPUT } from "@/lib/work-input";
 import { workSearchParams } from "./work-search-params";
 import { WorkTable } from "./work-table";
 
@@ -57,7 +57,9 @@ async function Work({
 				toWorkListInput(workSearchParams.toInput(values)),
 			),
 		),
-		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
+		queryClient.prefetchQuery(
+			trpc.workspace.members.queryOptions(WORKSPACE_MEMBERS_INPUT),
+		),
 	]);
 
 	return (

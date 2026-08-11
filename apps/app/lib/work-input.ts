@@ -2,6 +2,15 @@ import type { RouterInputs } from "@/lib/trpc/types";
 
 type WorkListInput = RouterInputs["work"]["list"];
 
+export const WORKSPACE_MEMBERS_INPUT = {
+	q: "",
+	sort: "joinedAt",
+	dir: "asc",
+	page: 1,
+	pageSize: 100,
+	role: "all",
+} satisfies RouterInputs["workspace"]["members"];
+
 const WORK_STATES = [
 	"all",
 	"OPEN",
@@ -80,19 +89,26 @@ export type WorkSearchValues = {
 	subjectType: string;
 };
 
+export type WorkAssigneeMember = { userId: string; name: string };
 export type WorkAssigneeUser = { id: string; name: string };
 export type WorkAssigneeOption = { value: string; label: string };
 
+export function workAssigneeUsers(
+	members: readonly WorkAssigneeMember[],
+): WorkAssigneeUser[] {
+	return members.map((member) => ({ id: member.userId, name: member.name }));
+}
+
 export function workAssigneeOptions(
 	counts: Record<string, number> | undefined,
-	users: readonly WorkAssigneeUser[],
+	members: readonly WorkAssigneeMember[],
 ): WorkAssigneeOption[] {
 	return [
 		{ value: "me", label: "My work" },
 		{ value: "unassigned", label: "Unassigned" },
-		...users
-			.filter((user) => (counts?.[user.id] ?? 0) > 0)
-			.map((user) => ({ value: user.id, label: user.name })),
+		...members
+			.filter((member) => (counts?.[member.userId] ?? 0) > 0)
+			.map((member) => ({ value: member.userId, label: member.name })),
 	];
 }
 

@@ -35,7 +35,9 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import {
 	toWorkListInput,
+	WORKSPACE_MEMBERS_INPUT,
 	workAssigneeOptions,
+	workAssigneeUsers,
 	workFocusHistory,
 } from "@/lib/work-input";
 import { WorkActions } from "./work-actions";
@@ -231,7 +233,9 @@ export function WorkTable() {
 		...trpc.work.detail.queryOptions({ id: focusId ?? "" }),
 		enabled: focusId !== null,
 	});
-	const users = useQuery(trpc.users.list.queryOptions());
+	const members = useQuery(
+		trpc.workspace.members.queryOptions(WORKSPACE_MEMBERS_INPUT),
+	);
 
 	const focus = useCallback(
 		(id: string) => void setFocusId(id, { history: workFocusHistory(true) }),
@@ -257,7 +261,10 @@ export function WorkTable() {
 			{
 				id: "assignee",
 				label: "Owner",
-				options: workAssigneeOptions(facetCounts?.owner, users.data ?? []),
+				options: workAssigneeOptions(
+					facetCounts?.owner,
+					members.data?.rows ?? [],
+				),
 			},
 			{
 				id: "due",
@@ -270,7 +277,7 @@ export function WorkTable() {
 				options: facetOptions(facetCounts?.subjectType),
 			},
 		],
-		[facetCounts, users.data],
+		[facetCounts, members.data?.rows],
 	);
 
 	return (
@@ -319,7 +326,7 @@ export function WorkTable() {
 				) : (
 					<WorkFocus
 						work={detail.data}
-						users={users.data ?? []}
+						users={workAssigneeUsers(members.data?.rows ?? [])}
 						onClose={() =>
 							void setFocusId(null, { history: workFocusHistory(false) })
 						}

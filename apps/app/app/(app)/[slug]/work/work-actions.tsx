@@ -31,7 +31,7 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc/types";
 import {
@@ -41,10 +41,12 @@ import {
 	workWaitInput,
 } from "@/lib/work-action-inputs";
 import {
-	shouldRetryWorkAction,
+	canRetryWorkAction,
+	rememberWorkActionIntent,
 	type WorkActionDescriptor,
 	type WorkActionName,
 	workActionDescriptors,
+	workActionRetryState,
 } from "./work-action-descriptors";
 
 type WorkDetail = RouterOutputs["work"]["detail"];
@@ -78,6 +80,7 @@ export function WorkActions({
 	const [nextReviewAt, setNextReviewAt] = useState("");
 	const [assigneeId, setAssigneeId] = useState(work.owner?.id ?? "unassigned");
 	const [lastIntent, setLastIntent] = useState<PendingIntent | null>(null);
+	const lastIntentRef = useRef<PendingIntent | null>(null);
 	const [status, setStatus] = useState<{
 		kind: "success" | "error";
 		message: string;
@@ -96,6 +99,7 @@ export function WorkActions({
 		_result: unknown,
 		variables: { clientRequestId: string },
 	) => {
+		lastIntentRef.current = null;
 		setLastIntent(null);
 		setDialogAction(null);
 		setReason("");
@@ -109,9 +113,19 @@ export function WorkActions({
 	};
 
 	const onError = async (error: MutationError) => {
-		const retryable = shouldRetryWorkAction(error.data?.code);
-		if (!retryable) setLastIntent(null);
-		setStatus({ kind: "error", message: error.message, retryable });
+		const retryState = workActionRetryState(
+			lastIntentRef.current?.action ?? null,
+			error.data?.code,
+		);
+		if (!retryState.retainIntent) {
+			lastIntentRef.current = null;
+			setLastIntent(null);
+		}
+		setStatus({
+			kind: "error",
+			message: error.message,
+			retryable: retryState.retryable,
+		});
 		await invalidate();
 	};
 
@@ -179,14 +193,18 @@ export function WorkActions({
 	const pending = Object.values(mutations).some(
 		(mutation) => mutation.isPending,
 	);
-	const canRetry =
-		lastIntent !== null &&
-		descriptors.some((descriptor) => descriptor.name === lastIntent.action) &&
-		status?.kind === "error" &&
-		status.retryable === true;
+	const canRetry = canRetryWorkAction({
+		action: lastIntent?.action ?? null,
+		retryable: status?.kind === "error" && status.retryable === true,
+	});
 
 	const makeBaseInput = () =>
 		workMutationBase(work.id, work.version, crypto.randomUUID());
+
+	const rememberIntent = (intent: PendingIntent) => {
+		rememberWorkActionIntent(lastIntentRef, intent);
+		setLastIntent(intent);
+	};
 
 	const run = (descriptor: WorkActionDescriptor) => {
 		if (descriptor.name === "claim") {
@@ -194,7 +212,7 @@ export function WorkActions({
 				action: "claim",
 				input: makeBaseInput(),
 			};
-			setLastIntent(intent);
+			rememberIntent(intent);
 			setStatus(null);
 			claim.mutate(intent.input);
 			return;
@@ -204,7 +222,7 @@ export function WorkActions({
 				action: "start",
 				input: makeBaseInput(),
 			};
-			setLastIntent(intent);
+			rememberIntent(intent);
 			setStatus(null);
 			start.mutate(intent.input);
 			return;
@@ -220,7 +238,7 @@ export function WorkActions({
 				action: "complete",
 				input: makeBaseInput(),
 			};
-			setLastIntent(intent);
+			rememberIntent(intent);
 			complete.mutate(intent.input);
 			return;
 		}
@@ -232,7 +250,7 @@ export function WorkActions({
 					assigneeId === "unassigned" ? null : assigneeId,
 				),
 			};
-			setLastIntent(intent);
+			rememberIntent(intent);
 			assign.mutate(intent.input);
 			return;
 		}
@@ -253,7 +271,7 @@ export function WorkActions({
 					nextReview.toISOString(),
 				),
 			};
-			setLastIntent(intent);
+			rememberIntent(intent);
 			wait.mutate(intent.input);
 			return;
 		}
@@ -261,39 +279,36 @@ export function WorkActions({
 			action: dialogAction,
 			input: workReasonInput(makeBaseInput(), reason.trim()),
 		};
-		setLastIntent(intent);
+		rememberIntent(intent);
 		if (intent.action === "block") block.mutate(intent.input);
 		if (intent.action === "dismiss") dismiss.mutate(intent.input);
 	};
 
 	const retryLast = () => {
-		if (!lastIntent) return;
-		if (
-			!descriptors.some((descriptor) => descriptor.name === lastIntent.action)
-		)
-			return;
+		const intent = lastIntentRef.current;
+		if (!intent) return;
 		setStatus(null);
-		switch (lastIntent.action) {
+		switch (intent.action) {
 			case "assign":
-				assign.mutate(lastIntent.input);
+				assign.mutate(intent.input);
 				break;
 			case "wait":
-				wait.mutate(lastIntent.input);
+				wait.mutate(intent.input);
 				break;
 			case "block":
-				block.mutate(lastIntent.input);
+				block.mutate(intent.input);
 				break;
 			case "dismiss":
-				dismiss.mutate(lastIntent.input);
+				dismiss.mutate(intent.input);
 				break;
 			case "complete":
-				complete.mutate(lastIntent.input);
+				complete.mutate(intent.input);
 				break;
 			case "start":
-				start.mutate(lastIntent.input);
+				start.mutate(intent.input);
 				break;
 			case "claim":
-				claim.mutate(lastIntent.input);
+				claim.mutate(intent.input);
 				break;
 		}
 	};
