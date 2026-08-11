@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/trycompai/crm/compare/v1.11.0...v1.12.0) (2026-08-11)
+
+
+### Features
+
+* edit a deployed agent, and show what Slack actually granted (CMP-77) ([#109](https://github.com/trycompai/crm/issues/109)) ([76b443a](https://github.com/trycompai/crm/commit/76b443ae4fe2567c5c5e51465a82db5faa1f3e62))
+
 ## [1.11.0](https://github.com/trycompai/crm/compare/v1.10.0...v1.11.0) (2026-08-11)
 
 
