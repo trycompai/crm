@@ -23,20 +23,28 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  ownedCompanies Company[]           @relation("CompanyOwner")
-  ownedContacts  Contact[]           @relation("ContactOwner")
-  ownedDeals     Deal[]              @relation("DealOwner")
-  activities     Activity[]          @relation("ActivityAuthor")
-  emailMessages  EmailMessage[]      @relation("EmailMessageAuthor")
-  draftsCreated  EmailDraft[]        @relation("DraftCreator")
-  draftsApproved EmailDraft[]        @relation("DraftApprover")
-  outreachPermissions Prospect[]     @relation("ProspectOutreachPermission")
-  reviews        SuppressionReview[] @relation("ReviewReviewer")
-  mailboxSyncs   MailboxSync[]
-  factDecisions  ContactFact[]       @relation("FactDecider")
-  conversations  AgentConversation[] @relation("ConversationOwner")
-  fieldValues    FieldValue[]        @relation("FieldValueUser")
-  onboardings    CustomerOnboarding[] @relation("OnboardingOwner")
+  ownedCompanies          Company[]            @relation("CompanyOwner")
+  ownedContacts           Contact[]            @relation("ContactOwner")
+  ownedDeals              Deal[]               @relation("DealOwner")
+  activities              Activity[]           @relation("ActivityAuthor")
+  emailMessages           EmailMessage[]       @relation("EmailMessageAuthor")
+  draftsCreated           EmailDraft[]         @relation("DraftCreator")
+  draftsApproved          EmailDraft[]         @relation("DraftApprover")
+  outreachPermissions     Prospect[]           @relation("ProspectOutreachPermission")
+  reviews                 SuppressionReview[]  @relation("ReviewReviewer")
+  mailboxSyncs            MailboxSync[]
+  factDecisions           ContactFact[]        @relation("FactDecider")
+  conversations           AgentConversation[]  @relation("ConversationOwner")
+  fieldValues             FieldValue[]         @relation("FieldValueUser")
+  onboardings             CustomerOnboarding[] @relation("OnboardingOwner")
+  proposedApprovals       ApprovalProposal[]   @relation("ApprovalProposalProposer")
+  approvedApprovals       ApprovalProposal[]   @relation("ApprovalProposalApprover")
+  decidedFounderDecisions FounderDecision[]    @relation("FounderDecisionDecider")
+  authoredContent         ContentDraft[]       @relation("ContentDraftAuthor")
+  approvedContent         ContentDraft[]       @relation("ContentDraftApprover")
+  authoredSocial          SocialDraft[]        @relation("SocialDraftAuthor")
+  approvedSocial          SocialDraft[]        @relation("SocialDraftApprover")
+  hermesAudits            HermesAudit[]        @relation("HermesAuditUser")
 
   createdAgentDefinitions AgentDefinition[]             @relation("AgentDefinitionCreator")
   createdAgentVersions    AgentVersion[]                @relation("AgentVersionCreator")
@@ -293,20 +301,22 @@ model Company {
 
   lastActivityAt DateTime?
 
-  contacts         Contact[]           @relation("CompanyContacts")
-  conversations    AgentConversation[]
-  deals            Deal[]
-  activities       Activity[]
-  emailThreads     EmailThread[]
-  emailDrafts      EmailDraft[]
-  websiteEnquiries WebsiteEnquiry[]
-  calendarEvents   CalendarEvent[]
-  granolaNotes     GranolaNote[]
-  fieldValues      FieldValue[]
-  prospects        Prospect[]
-  onboardings      CustomerOnboarding[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  contacts           Contact[]            @relation("CompanyContacts")
+  conversations      AgentConversation[]
+  deals              Deal[]
+  activities         Activity[]
+  emailThreads       EmailThread[]
+  emailDrafts        EmailDraft[]
+  websiteEnquiries   WebsiteEnquiry[]
+  calendarEvents     CalendarEvent[]
+  granolaNotes       GranolaNote[]
+  fieldValues        FieldValue[]
+  prospects          Prospect[]
+  onboardings        CustomerOnboarding[]
+  approvalQueues     ApprovalQueue[]      @relation("ApprovalQueueCompany")
+  discoveryLearnings DiscoveryLearning[]  @relation("DiscoveryLearningCompany")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([ownerId])
   @@index([name])
@@ -356,18 +366,19 @@ model Contact {
 
   lastActivityAt DateTime?
 
-  deals            DealContact[]
-  activities       Activity[]
-  emailThreads     EmailThread[]
-  emailDrafts      EmailDraft[]
-  websiteEnquiries WebsiteEnquiry[]
-  calendarEvents   CalendarEvent[]
-  eventAttendance  CalendarAttendee[]
-  granolaNotes     GranolaNote[]
-  fieldValues      FieldValue[]
-  prospects        Prospect[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  deals              DealContact[]
+  activities         Activity[]
+  emailThreads       EmailThread[]
+  emailDrafts        EmailDraft[]
+  websiteEnquiries   WebsiteEnquiry[]
+  calendarEvents     CalendarEvent[]
+  eventAttendance    CalendarAttendee[]
+  granolaNotes       GranolaNote[]
+  fieldValues        FieldValue[]
+  prospects          Prospect[]
+  discoveryLearnings DiscoveryLearning[] @relation("DiscoveryLearningContact")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -543,11 +554,11 @@ model ContactBrief {
 }
 
 model AgentTask {
-  id         String  @id @default(cuid())
-  contactId  String?
-  companyId  String?
-  prospectId String?
-  dealId     String?
+  id           String  @id @default(cuid())
+  contactId    String?
+  companyId    String?
+  prospectId   String?
+  dealId       String?
   emailDraftId String?
 
   kind   String
@@ -1009,14 +1020,15 @@ model Deal {
 
   lastActivityAt DateTime?
 
-  contacts     DealContact[]
-  activities   Activity[]
-  emailDrafts  EmailDraft[]
-  onboarding   CustomerOnboarding?
-  granolaNotes GranolaNote[]
-  fieldValues  FieldValue[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  contacts           DealContact[]
+  activities         Activity[]
+  emailDrafts        EmailDraft[]
+  onboarding         CustomerOnboarding?
+  granolaNotes       GranolaNote[]
+  fieldValues        FieldValue[]
+  discoveryLearnings DiscoveryLearning[] @relation("DiscoveryLearningDeal")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -1385,16 +1397,16 @@ model EmailDraft {
   externalDraftId   String?
   externalMessageId String?
 
-  threadId  String?
-  thread    EmailThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
-  companyId String?
-  company   Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  contactId String?
-  contact   Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  dealId    String?
-  deal      Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  threadId   String?
+  thread     EmailThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  companyId  String?
+  company    Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId  String?
+  contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  dealId     String?
+  deal       Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
   prospectId String?
-  prospect   Prospect?   @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  prospect   Prospect?    @relation(fields: [prospectId], references: [id], onDelete: SetNull)
 
   createdById  String
   createdBy    User    @relation("DraftCreator", fields: [createdById], references: [id])
@@ -1409,17 +1421,17 @@ model EmailDraft {
   htmlBody      String?
   attachments   Json?
 
-  status         EmailDraftStatus @default(DRAFT)
-  experimentKey  String?
-  variant        OutreachVariant?
-  sequenceId     String?
-  sequenceStep   Int?
-  scheduledFor   DateTime?
+  status          EmailDraftStatus @default(DRAFT)
+  experimentKey   String?
+  variant         OutreachVariant?
+  sequenceId      String?
+  sequenceStep    Int?
+  scheduledFor    DateTime?
   sendRequestedAt DateTime?
-  sendError      String?
-  approvedAt     DateTime?
-  approvalDigest String?
-  sentAt         DateTime?
+  sendError       String?
+  approvedAt      DateTime?
+  approvalDigest  String?
+  sentAt          DateTime?
 
   messages EmailMessage[]
   events   EmailProviderEvent[]
@@ -1429,33 +1441,33 @@ model EmailDraft {
 
   @@unique([provider, externalDraftId])
   @@unique([provider, externalMessageId])
+  @@unique([prospectId, experimentKey, sequenceStep])
   @@index([contactId, status])
   @@index([companyId, status])
   @@index([prospectId, status])
   @@index([sequenceId, sequenceStep])
   @@index([status, scheduledFor])
-  @@unique([prospectId, experimentKey, sequenceStep])
   @@map("emailDraft")
 }
 
 model CustomerOnboarding {
-  id              String                   @id @default(cuid())
-  dealId          String                   @unique
-  deal            Deal                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  companyId       String
-  company         Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  ownerId         String
-  owner           User                     @relation("OnboardingOwner", fields: [ownerId], references: [id])
-  status          CustomerOnboardingStatus @default(DISCOVERY)
-  objective       String?
-  systemsSummary  String?
-  dataSummary     String?
-  brainPlan       String?
-  agentPlannedAt  DateTime?
-  targetLiveAt    DateTime?
-  items           OnboardingItem[]
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  id             String                   @id @default(cuid())
+  dealId         String                   @unique
+  deal           Deal                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  companyId      String
+  company        Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownerId        String
+  owner          User                     @relation("OnboardingOwner", fields: [ownerId], references: [id])
+  status         CustomerOnboardingStatus @default(DISCOVERY)
+  objective      String?
+  systemsSummary String?
+  dataSummary    String?
+  brainPlan      String?
+  agentPlannedAt DateTime?
+  targetLiveAt   DateTime?
+  items          OnboardingItem[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 
   @@index([companyId, status])
   @@index([ownerId, status])
@@ -1463,19 +1475,19 @@ model CustomerOnboarding {
 }
 
 model OnboardingItem {
-  id           String                 @id @default(cuid())
+  id           String               @id @default(cuid())
   onboardingId String
-  onboarding   CustomerOnboarding     @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  onboarding   CustomerOnboarding   @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
   kind         OnboardingItemKind
-  status       OnboardingItemStatus   @default(NOT_STARTED)
+  status       OnboardingItemStatus @default(NOT_STARTED)
   name         String
   details      String?
   ownerName    String?
   source       String?
   dueAt        DateTime?
-  position     Int                    @default(0)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  position     Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   @@index([onboardingId, kind, position])
   @@map("onboardingItem")
@@ -1658,7 +1670,7 @@ model GranolaNote {
   @@index([activityId])
   @@index([calendarEventExternalId])
   @@index([sourceUpdatedAt])
-	@@map("granolaNote")
+  @@map("granolaNote")
 }
 
 model GranolaNoteExclusion {
@@ -1733,15 +1745,17 @@ model TelemetryCounter {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  website     String?
-  members     Member[]
-  invitations Invitation[]
+  id             String          @id
+  name           String
+  slug           String
+  logo           String?
+  createdAt      DateTime
+  metadata       String?
+  website        String?
+  members        Member[]
+  invitations    Invitation[]
+  pipelineStages PipelineStage[] @relation("PipelineStageWorkspace")
+  approvalQueues ApprovalQueue[] @relation("ApprovalQueueWorkspace")
 
   @@unique([slug])
   @@map("organization")
@@ -1758,6 +1772,8 @@ model WorkspaceProfile {
   sessionId String?
 
   refreshedAt DateTime @default(now())
+
+  approvalQueues ApprovalQueue[] @relation("ApprovalQueueWorkspaceProfile")
 
   @@map("workspaceProfile")
 }
@@ -1807,4 +1823,227 @@ model SsoProvider {
 
   @@unique([providerId])
   @@map("ssoProvider")
+}
+
+enum ApprovalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+enum PipelineStageCategory {
+  NEW
+  PROSPECTING
+  ENGAGEMENT
+  QUALIFICATION
+  OPPORTUNITY
+  COMMIT
+  CLOSED
+  DISQUALIFIED
+}
+
+enum DraftStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ContentType {
+  BLOG
+  LINKEDIN
+  NEWSLETTER
+  WEBSITE
+  OTHER
+}
+
+enum SocialPlatform {
+  LINKEDIN
+  X
+  INSTAGRAM
+  FACEBOOK
+  OTHER
+}
+
+enum DecisionScope {
+  COMPANY
+  COMMERCIAL
+  CONTENT
+  OPERATIONS
+  PRODUCT
+  LEGAL
+  OTHER
+}
+
+model ApprovalQueue {
+  id                 String             @id @default(cuid())
+  recordType         String
+  recordId           String
+  companyId          String?
+  company            Company?           @relation("ApprovalQueueCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  organizationId     String?
+  workspace          Organization?      @relation("ApprovalQueueWorkspace", fields: [organizationId], references: [id], onDelete: SetNull)
+  workspaceProfileId String?
+  workspaceProfile   WorkspaceProfile?  @relation("ApprovalQueueWorkspaceProfile", fields: [workspaceProfileId], references: [id], onDelete: SetNull)
+  proposals          ApprovalProposal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([recordType, recordId])
+  @@index([companyId])
+  @@index([organizationId])
+  @@index([workspaceProfileId])
+}
+
+model ApprovalProposal {
+  id              String         @id @default(cuid())
+  queueId         String
+  queue           ApprovalQueue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  type            String
+  payload         Json
+  proposerContext Json?
+  status          ApprovalStatus @default(PROPOSED)
+  approvalCode    String?        @unique
+  proposerId      String?
+  proposer        User?          @relation("ApprovalProposalProposer", fields: [proposerId], references: [id], onDelete: SetNull)
+  approverId      String?
+  approver        User?          @relation("ApprovalProposalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  decidedAt       DateTime?
+  resolvedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([queueId])
+  @@index([status, createdAt])
+  @@index([proposerId])
+  @@index([approverId])
+}
+
+model FounderDecision {
+  id             String           @id @default(cuid())
+  scope          DecisionScope
+  decisionText   String
+  rationale      String?
+  effectiveFrom  DateTime?
+  effectiveUntil DateTime?
+  supersededById String?          @unique
+  supersededBy   FounderDecision? @relation("FounderDecisionSuperseded", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes     FounderDecision? @relation("FounderDecisionSuperseded")
+  decidedById    String?
+  decidedBy      User?            @relation("FounderDecisionDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope, createdAt])
+  @@index([effectiveFrom])
+  @@index([effectiveUntil])
+}
+
+model PipelineStage {
+  id            String                @id @default(cuid())
+  workspaceId   String
+  workspace     Organization          @relation("PipelineStageWorkspace", fields: [workspaceId], references: [id], onDelete: Cascade)
+  order         Int
+  name          String
+  category      PipelineStageCategory
+  entryCriteria String?
+  exitCriteria  String?
+  description   String?
+  isActive      Boolean               @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, order])
+  @@unique([workspaceId, name])
+  @@index([workspaceId, category])
+}
+
+model ContentDraft {
+  id                  String      @id @default(cuid())
+  type                ContentType
+  title               String?
+  body                String
+  status              DraftStatus @default(DRAFT)
+  authorId            String?
+  author              User?       @relation("ContentDraftAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  approverId          String?
+  approver            User?       @relation("ContentDraftApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approvalCode        String?     @unique
+  scheduledAt         DateTime?
+  publishedAt         DateTime?
+  publicationReceipts Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([authorId])
+}
+
+model SocialDraft {
+  id             String         @id @default(cuid())
+  platform       SocialPlatform
+  content        String
+  scheduledAt    DateTime?
+  status         DraftStatus    @default(DRAFT)
+  authorId       String?
+  author         User?          @relation("SocialDraftAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  approverId     String?
+  approver       User?          @relation("SocialDraftApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approvalCode   String?        @unique
+  publishedAt    DateTime?
+  publishReceipt Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([authorId])
+}
+
+model DiscoveryLearning {
+  id        String   @id @default(cuid())
+  source    String
+  evidence  Json?
+  tags      Json?
+  companyId String?
+  company   Company? @relation("DiscoveryLearningCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  contactId String?
+  contact   Contact? @relation("DiscoveryLearningContact", fields: [contactId], references: [id], onDelete: SetNull)
+  dealId    String?
+  deal      Deal?    @relation("DiscoveryLearningDeal", fields: [dealId], references: [id], onDelete: SetNull)
+  sessionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([dealId, createdAt])
+  @@index([source, createdAt])
+}
+
+model HermesAudit {
+  id        String   @id @default(cuid())
+  tool      String
+  args      Json?
+  outcome   String
+  sessionId String
+  model     String?
+  cost      Decimal? @db.Decimal(14, 4)
+  userId    String?
+  user      User?    @relation("HermesAuditUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([tool, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([userId])
 }
