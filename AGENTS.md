@@ -1,3 +1,6 @@
+
+#You must always write your messages and reports in **ASD-STE100** (Simplified Technical English):
+<ASD-STE100>
 # Strict rules — review before starting any work
 
 **Read the doc for the area you are touching before you touch it.** The table
@@ -245,3 +248,4 @@ For pull requests, include the task ID in the title:
 ```
 MDN-42 fix: resolve auth token expiry
 ```
+</ASD-STE100>
