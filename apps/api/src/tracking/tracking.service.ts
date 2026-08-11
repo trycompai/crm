@@ -11,8 +11,13 @@ import { safeFetch } from "@crm/db/safe-fetch";
 import { SETTINGS_ID } from "@crm/db/settings";
 import {
 	COOKIE_LIFETIMES,
+	gtmContainers,
+	gtmContainerUrl,
+	gtmSnippet,
+	gtmTag,
 	hostAllowed,
 	loaderUrl,
+	MAX_VERIFY_BYTES,
 	normalizeHost,
 	trackingReady,
 	trackingSnippet,
@@ -40,6 +45,7 @@ export interface TrackingSettings {
 	ready: boolean;
 	scriptUrl: string;
 	snippet: string | null;
+	tagManagerSnippet: string | null;
 	crossDomain: boolean;
 	limitToDomains: boolean;
 	cookieSubdomains: boolean;
@@ -89,6 +95,11 @@ export interface SourceRow {
 	contacts: number;
 }
 
+export interface FoundInContainer {
+	id: string;
+	carriesSiteId: boolean;
+}
+
 export type VerifyResult =
 	| {
 			status: "found";
@@ -96,8 +107,14 @@ export type VerifyResult =
 			responseMs: number;
 			allowed: boolean;
 			pageView: boolean;
+			container: FoundInContainer | null;
 	  }
-	| { status: "missing"; host: string; responseMs: number }
+	| {
+			status: "missing";
+			host: string;
+			responseMs: number;
+			containers: string[];
+	  }
 	| { status: "unreachable"; host: string; detail: string };
 
 @Injectable()
@@ -145,6 +162,7 @@ export class TrackingService {
 			ready,
 			scriptUrl: scriptUrl(),
 			snippet: siteId ? snippet(siteId) : null,
+			tagManagerSnippet: siteId ? gtmSnippet(appUrl, siteId) : null,
 			crossDomain: row?.trackingCrossDomain ?? true,
 			limitToDomains: row?.trackingLimitToDomains ?? true,
 			cookieSubdomains: row?.trackingCookieSubdomains ?? false,
@@ -316,11 +334,21 @@ export class TrackingService {
 			};
 		}
 
-		const body = (await fetched.response.text()).slice(0, 512_000);
+		const body = (await fetched.response.text()).slice(0, MAX_VERIFY_BYTES);
 		const siteId = compiled?.config.siteId;
 
-		if (!siteId || !mentions(body, siteId)) {
-			return { status: "missing", host, responseMs };
+		if (!siteId) {
+			return { status: "missing", host, responseMs, containers: [] };
+		}
+
+		const inHtml = mentions(body, siteId);
+		const containers = inHtml ? [] : gtmContainers(body);
+		const container = inHtml
+			? null
+			: await this.inContainers(containers, siteId);
+
+		if (!inHtml && !container) {
+			return { status: "missing", host, responseMs, containers };
 		}
 
 		const since = new Date(Date.now() - VERIFY_WINDOW_MS);
@@ -335,7 +363,32 @@ export class TrackingService {
 			responseMs,
 			allowed: compiled ? hostAllowed(host, compiled.config) : false,
 			pageView: seen !== null,
+			container,
 		};
+	}
+
+	private async inContainers(
+		containers: string[],
+		siteId: string,
+	): Promise<FoundInContainer | null> {
+		let attribute: FoundInContainer | null = null;
+
+		for (const id of containers) {
+			const fetched = await safeFetch(gtmContainerUrl(id), {
+				timeoutMs: 8_000,
+			});
+			if (!fetched?.response.ok) continue;
+
+			const source = (await fetched.response.text()).slice(0, MAX_VERIFY_BYTES);
+			const state = gtmTag(source, siteId);
+
+			if (state === "url") return { id, carriesSiteId: true };
+			if (state === "attribute" && !attribute) {
+				attribute = { id, carriesSiteId: false };
+			}
+		}
+
+		return attribute;
 	}
 
 	async activityForCompany(companyId: string): Promise<WebsiteActivity> {

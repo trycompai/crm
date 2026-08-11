@@ -13,7 +13,7 @@ cookie is first-party, and the only thing that ever leaves the browser is a POST
 
 | | |
 | --- | --- |
-| `apps/app/lib/tracking/loader.ts` → `/t/crm.js` | The tag a rep pastes. Reads `data-site`, checks the shape, injects the second script. Immutable and cached for a year at the edge |
+| `apps/app/lib/tracking/loader.ts` → `/t/crm.js` | The tag a rep pastes. Reads the site id from `data-site` or from `?site=`, checks the shape, injects the second script. Immutable and cached for a year at the edge |
 | `apps/app/lib/tracking/tracker.ts` → `/t/<siteId>.js` | The tracker itself, with the config **baked into the source** rather than fetched. Cached for five minutes |
 
 The split is the whole cache design. The tag never changes, so it is `immutable`
@@ -21,6 +21,16 @@ and free forever; the config does change, so the file that carries it is the one
 with the short life. Baking the config in also means a page view costs one request,
 not a request and then a config fetch before anything can be recorded.
 
+- **The site id has two carriers, and a tag manager is the reason.** Google Tag
+  Manager's Custom HTML injector rebuilds the script element and keeps only the
+  URL — `data-site`, `async` and `defer` are all dropped on the way in. An
+  attribute-only tag therefore loads `/t/crm.js`, finds no site, and returns:
+  the loader is in the network tab, the tracker never is, and the install looks
+  installed while recording nothing. `?site=` rides in the `src`, which no
+  injector can strip. **`data-site` still wins when both are present**, so a
+  pasted tag beats a stale URL. Either way **the loader stays config-free** —
+  baking the install's own id into it would put a year-immutable edge cache in
+  front of the rotate kill switch.
 - **Five minutes is a promise.** Pause tracking and every browser stops within
   `CONFIG_MAX_AGE_SECONDS`. That is why `/t/[site]` carries **no
   `stale-while-revalidate`** — a revalidation window is exactly a licence to keep
@@ -186,6 +196,18 @@ everybody: a member's render would fire a request that can only be refused.
   redirects, so the host in the result comes from `fetched.url`, not from what the
   rep typed — otherwise `acme.com` reports the allow-list status of a page that
   lives on `www.acme.com`.
+- **Verify reads Tag Manager containers, not only the HTML.** A tag a container
+  injects is not in the response, so an HTML-only check calls a working install
+  broken — and it did. When the HTML carries no tag, `verify` takes the `GTM-…`
+  ids out of it and reads `gtmContainerUrl(id)`, at most `MAX_CONTAINERS` of
+  them. **The URL is built from the id we matched, never from anything a rep
+  typed**, so the one host this can ever reach is Google's. A container holding
+  the attribute form is reported as *found and broken*, with the fix, because
+  that is precisely what it is — and `missing` names the containers it read, so
+  a rep can tell *not installed* from *not looked at*.
+- **`MAX_VERIFY_BYTES` is measured against real marketing pages.** The old
+  512 KB cut was smaller than one homepage this repo's own company ships, and a
+  tag past the cut reads exactly like a tag that is not there.
 - **Rotating the site id is the kill switch for a stolen snippet.** The old id stops
   resolving at `forSite` within the cache TTL.
 - **The compiled config is cached for five minutes and invalidated on every write.**

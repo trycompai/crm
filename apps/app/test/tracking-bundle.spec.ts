@@ -43,6 +43,82 @@ describe("the tracking bundle stays inside its budget", () => {
 		expect(LOADER_SOURCE).toContain("cmp_[0-9a-f]{8}");
 		expect(LOADER_SOURCE).toContain("document.currentScript");
 	});
+});
+
+function inject(
+	tag: { src: string; "data-site"?: string },
+	existing: boolean = false,
+): string[] {
+	const injected: string[] = [];
+
+	const script = {
+		src: tag.src,
+		getAttribute: (name: string) =>
+			name === "data-site" ? (tag["data-site"] ?? null) : null,
+	};
+
+	const document = {
+		currentScript: script,
+		querySelector: () => script,
+		getElementById: () => (existing ? script : null),
+		createElement: () => ({}) as Record<string, unknown>,
+		head: {
+			appendChild: (node: { src: string }) => injected.push(node.src),
+		},
+	};
+
+	new Function("document", LOADER_SOURCE)(document);
+
+	return injected;
+}
+
+describe("the loader finds the site id however the page was built", () => {
+	test("reads the attribute a rep pasted into their own HTML", () => {
+		expect(
+			inject({
+				src: "https://crm.example.com/t/crm.js",
+				"data-site": "cmp_8f3ad91c",
+			}),
+		).toEqual(["https://crm.example.com/t/cmp_8f3ad91c.js"]);
+	});
+
+	test("reads the URL when a tag manager stripped the attribute", () => {
+		expect(
+			inject({ src: "https://crm.example.com/t/crm.js?site=cmp_8f3ad91c" }),
+		).toEqual(["https://crm.example.com/t/cmp_8f3ad91c.js"]);
+	});
+
+	test("prefers the attribute, so a stale URL cannot outvote the pasted tag", () => {
+		expect(
+			inject({
+				src: "https://crm.example.com/t/crm.js?site=cmp_11112222",
+				"data-site": "cmp_8f3ad91c",
+			}),
+		).toEqual(["https://crm.example.com/t/cmp_8f3ad91c.js"]);
+	});
+
+	test("injects nothing when neither carries a site", () => {
+		expect(inject({ src: "https://crm.example.com/t/crm.js" })).toEqual([]);
+	});
+
+	test("refuses a site id from the URL that is not one", () => {
+		for (const site of ["../config", "cmp_ZZZZZZZZ", "cmp_", ""]) {
+			expect(
+				inject({
+					src: `https://crm.example.com/t/crm.js?site=${encodeURIComponent(site)}`,
+				}),
+			).toEqual([]);
+		}
+	});
+
+	test("injects once, however many copies of the tag a container fires", () => {
+		expect(
+			inject(
+				{ src: "https://crm.example.com/t/crm.js?site=cmp_8f3ad91c" },
+				true,
+			),
+		).toEqual([]);
+	});
 
 	test("the tracker bakes the config in rather than fetching it", () => {
 		const source = trackerSource(CONFIG, "https://crm.example.com/api/t/e");

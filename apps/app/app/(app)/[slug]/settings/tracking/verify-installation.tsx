@@ -60,7 +60,8 @@ export function VerifyInstallation() {
 					</div>
 				</CardTitle>
 				<CardDescription>
-					We load one page and look for the script.
+					We load one page and look for the script, then read your Tag Manager
+					container if it is not in the HTML.
 				</CardDescription>
 
 				<CardAction>
@@ -127,6 +128,16 @@ function Indicator({ result }: { result: Result }) {
 		);
 	}
 
+	if (result.status === "found" && result.container?.carriesSiteId === false) {
+		return (
+			<StatusIndicator
+				size="sm"
+				tone="warning"
+				label="Tag Manager needs a fix"
+			/>
+		);
+	}
+
 	return (
 		<StatusIndicator
 			size="sm"
@@ -159,6 +170,28 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 					The page answered in {result.responseMs} ms, but the tag was not in
 					the HTML. Check that it sits in the head, above anything that rewrites
 					the page.
+					{result.containers.length > 0
+						? ` We also read Tag Manager container ${result.containers.join(" and ")}, and the tag is not in there either.`
+						: ""}
+				</AlertDescription>
+			</Alert>
+		);
+	}
+
+	if (result.container && !result.container.carriesSiteId) {
+		return (
+			<Alert variant="destructive">
+				<Icon icon={Warning} />
+				<AlertTitle>Tag Manager will drop the site ID</AlertTitle>
+				<AlertDescription>
+					Container {result.container.id} carries the tag, but the site ID is
+					not in the script URL. Tag Manager keeps only the URL when it injects
+					a script, so a data-site attribute never reaches the page and the
+					tracker never starts. Copy the Tag Manager snippet above and replace
+					the tag's HTML.
+					{result.pageView
+						? " A page view did arrive in the last five minutes, so something on this site is still recording."
+						: ""}
 				</AlertDescription>
 			</Alert>
 		);
@@ -167,10 +200,17 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 	return (
 		<Alert>
 			<Icon icon={CheckmarkFilled} className="text-success" />
-			<AlertTitle>Script found on {result.host}</AlertTitle>
+			<AlertTitle>
+				{result.container
+					? `Script found in container ${result.container.id}`
+					: `Script found on ${result.host}`}
+			</AlertTitle>
 			<AlertDescription>
 				It answered in {result.responseMs} ms. Site ID {siteId} matched, and
 				this domain is {result.allowed ? "on" : "not on"} the allow list.
+				{result.container
+					? " The tag is not in the HTML, so it only runs once Tag Manager fires it — a page view is the proof."
+					: ""}
 				{result.pageView
 					? " A page view arrived in the last five minutes."
 					: " No page view has arrived yet — open the page in a browser to send one."}

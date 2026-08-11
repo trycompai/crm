@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	configHash,
 	dedupeKey,
+	gtmContainers,
+	gtmContainerUrl,
+	gtmSnippet,
+	gtmTag,
 	hostAllowed,
 	isSiteId,
 	loaderUrl,
@@ -70,6 +74,81 @@ describe("the snippet a rep copies", () => {
 		expect(loaderUrl("https://crm.example.com/")).toBe(
 			"https://crm.example.com/t/crm.js",
 		);
+	});
+});
+
+describe("the snippet a rep pastes into Tag Manager", () => {
+	const value = gtmSnippet("https://crm.example.com", "cmp_6e9356c9");
+
+	test("carries the site id in the URL, where the injector cannot drop it", () => {
+		expect(value).toBe(
+			'<script src="https://crm.example.com/t/crm.js?site=cmp_6e9356c9" async defer></script>',
+		);
+	});
+
+	test("carries no data-site, so there is nothing to lose", () => {
+		expect(value).not.toInclude("data-site");
+	});
+});
+
+describe("finding the tag inside a Tag Manager container", () => {
+	const custom = (attributes: string) =>
+		`{"function":"__html","vtp_html":"\\u003Cscript ${attributes} type=\\"text\\/gtmscript\\"\\u003E\\u003C\\/script\\u003E"}`;
+
+	test("reads the container ids out of a page", () => {
+		const html =
+			'<script src="https://www.googletagmanager.com/gtm.js?id=GTM-N47SXGJB"></script>' +
+			"<script>(function(w,l){})(window,'dataLayer');'GTM-N47SXGJB'</script>";
+
+		expect(gtmContainers(html)).toEqual(["GTM-N47SXGJB"]);
+	});
+
+	test("takes at most two containers, because each one is half a megabyte", () => {
+		const html = ["GTM-AAAA1111", "GTM-BBBB2222", "GTM-CCCC3333"].join(" ");
+
+		expect(gtmContainers(html)).toEqual(["GTM-AAAA1111", "GTM-BBBB2222"]);
+	});
+
+	test("finds nothing in a page that has no container", () => {
+		expect(gtmContainers("<html><body>nothing here</body></html>")).toEqual([]);
+	});
+
+	test("builds the container URL from the id alone, so nothing user-typed is fetched", () => {
+		expect(gtmContainerUrl("GTM-N47SXGJB")).toBe(
+			"https://www.googletagmanager.com/gtm.js?id=GTM-N47SXGJB",
+		);
+	});
+
+	test("reports the URL form as the one that survives injection", () => {
+		const source = custom(
+			'data-gtmsrc=\\"https:\\/\\/crm.example.com\\/t\\/crm.js?site=cmp_8f3ad91c\\" async defer',
+		);
+
+		expect(gtmTag(source, "cmp_8f3ad91c")).toBe("url");
+	});
+
+	test("reports the attribute form, which Tag Manager strips on the way in", () => {
+		const source = custom(
+			'data-gtmsrc=\\"https:\\/\\/crm.example.com\\/t\\/crm.js\\" data-site=\\"cmp_8f3ad91c\\" async defer',
+		);
+
+		expect(gtmTag(source, "cmp_8f3ad91c")).toBe("attribute");
+	});
+
+	test("is absent when the container carries a tag for a site id we rotated away from", () => {
+		const source = custom(
+			'data-gtmsrc=\\"https:\\/\\/crm.example.com\\/t\\/crm.js\\" data-site=\\"cmp_11112222\\"',
+		);
+
+		expect(gtmTag(source, "cmp_8f3ad91c")).toBe("absent");
+	});
+
+	test("is absent from a container full of somebody else's tags", () => {
+		const source = custom(
+			'data-gtmsrc=\\"https:\\/\\/js-na2.hs-scripts.com\\/243178497.js\\"',
+		);
+
+		expect(gtmTag(source, "cmp_8f3ad91c")).toBe("absent");
 	});
 });
 

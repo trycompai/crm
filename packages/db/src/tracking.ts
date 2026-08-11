@@ -32,6 +32,12 @@ export const EVENT_RETENTION_DAYS = 90;
 
 export const VERIFY_WINDOW_MS = 5 * 60_000;
 
+export const MAX_VERIFY_BYTES = 2_000_000;
+
+export const MAX_CONTAINERS = 2;
+
+export type GtmTagState = "absent" | "url" | "attribute";
+
 export type DomainScopeValue = "SITE_AND_SUBDOMAINS" | "EXACT_HOST";
 
 export interface TrackedHost {
@@ -90,6 +96,33 @@ export function loaderUrl(appUrl: string): string {
 
 export function trackingSnippet(appUrl: string, siteId: string): string {
 	return `<script src="${loaderUrl(appUrl)}" data-site="${siteId}" async defer></script>`;
+}
+
+export function gtmLoaderUrl(appUrl: string, siteId: string): string {
+	return `${loaderUrl(appUrl)}?site=${siteId}`;
+}
+
+export function gtmSnippet(appUrl: string, siteId: string): string {
+	return `<script src="${gtmLoaderUrl(appUrl, siteId)}" async defer></script>`;
+}
+
+export function gtmContainerUrl(container: string): string {
+	return `https://www.googletagmanager.com/gtm.js?id=${container}`;
+}
+
+export function gtmContainers(html: string): string[] {
+	const found = html.match(/GTM-[A-Z0-9]{4,10}/g) ?? [];
+
+	return [...new Set(found)].slice(0, MAX_CONTAINERS);
+}
+
+export function gtmTag(source: string, siteId: string): GtmTagState {
+	const text = source.replace(/\\\//g, "/");
+
+	if (!text.includes("/t/crm.js")) return "absent";
+	if (text.includes(`/t/crm.js?site=${siteId}`)) return "url";
+
+	return text.includes(siteId) ? "attribute" : "absent";
 }
 
 export function configHash(config: TrackingConfig): string {

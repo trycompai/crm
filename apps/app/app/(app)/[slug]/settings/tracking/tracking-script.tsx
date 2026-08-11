@@ -68,19 +68,26 @@ export function TrackingScript() {
 
 	if (!tracking.data) return null;
 
-	const { siteId, snippet, scriptUrl, receivingSince, paused, canManage } =
-		tracking.data;
+	const {
+		siteId,
+		snippet,
+		tagManagerSnippet,
+		scriptUrl,
+		receivingSince,
+		paused,
+		canManage,
+	} = tracking.data;
 
-	const copy = () => {
+	const copy = (value: string | null) => {
 		const clipboard = navigator.clipboard;
 
-		if (!snippet || !clipboard) {
+		if (!value || !clipboard) {
 			toast.error("Could not copy the script. Select it instead.");
 			return;
 		}
 
 		clipboard
-			.writeText(snippet)
+			.writeText(value)
 			.then(() => toast.success("Script copied."))
 			.catch(() => toast.error("Could not copy the script."));
 	};
@@ -109,7 +116,7 @@ export function TrackingScript() {
 				</CardDescription>
 
 				<CardAction>
-					<Button size="sm" onClick={copy} type="button">
+					<Button size="sm" onClick={() => copy(snippet)} type="button">
 						<Icon icon={Copy} data-icon="inline-start" />
 						Copy
 					</Button>
@@ -143,15 +150,41 @@ export function TrackingScript() {
 							Add it through Google Tag Manager
 						</AccordionTrigger>
 						<AccordionContent>
+							<pre className="overflow-x-auto rounded-md border bg-muted p-4 font-mono text-code-foreground text-xs/5">
+								<span className="text-code-accent">{"<script"}</span>
+								{"\n  src="}
+								<span className="text-code-string">{`"${scriptUrl}?site=${siteId}"`}</span>
+								{"\n  async\n  defer\n"}
+								<span className="text-code-accent">{"></script>"}</span>
+							</pre>
 							<ol className="flex list-decimal flex-col gap-1 pl-4 text-muted-foreground text-xs/relaxed">
 								<li>In Tag Manager, add a new Custom HTML tag.</li>
-								<li>Paste the snippet above as the tag's HTML.</li>
+								<li>
+									Paste this snippet — not the one above — as the tag's HTML.
+								</li>
 								<li>
 									Trigger it on All Pages, then publish the container. Keep{" "}
 									<span className="font-mono text-foreground">{scriptUrl}</span>{" "}
 									off any consent-blocked category you do not need.
 								</li>
 							</ol>
+							<div className="flex items-center justify-between gap-4">
+								<p className="text-muted-foreground text-xs/relaxed">
+									Tag Manager drops a{" "}
+									<span className="font-mono text-foreground">data-site</span>{" "}
+									attribute when it injects a script, so this form carries the
+									site ID in the URL instead.
+								</p>
+								<Button
+									size="xs"
+									variant="outline"
+									type="button"
+									onClick={() => copy(tagManagerSnippet)}
+								>
+									<Icon icon={Copy} data-icon="inline-start" />
+									Copy
+								</Button>
+							</div>
 						</AccordionContent>
 					</AccordionItem>
 				</Accordion>
