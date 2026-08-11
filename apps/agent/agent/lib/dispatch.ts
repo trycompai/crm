@@ -68,7 +68,7 @@ export async function runVisibleLane(): Promise<number> {
 	return handled;
 }
 
-async function runDirect(task: LeasedTask): Promise<void> {
+export async function runDirect(task: LeasedTask): Promise<void> {
 	try {
 		if (task.kind === "brand" && task.companyId) {
 			const result = await runBrand({
@@ -95,6 +95,10 @@ async function runDirect(task: LeasedTask): Promise<void> {
 					contactId: task.contactId,
 				},
 			});
+			if (portrait.retryable) {
+				await releaseTaskForRetry(task.id, task.attempts);
+				return;
+			}
 
 			await completeTask(
 				task.id,

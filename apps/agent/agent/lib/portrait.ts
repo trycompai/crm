@@ -9,6 +9,7 @@ export type PortraitResult = {
 	imageUrl: string | null;
 	source?: PortraitSource;
 	reason?: string;
+	retryable?: boolean;
 };
 
 export async function storePortrait({
@@ -46,6 +47,7 @@ export async function storePortrait({
 			stored: false,
 			imageUrl: null,
 			reason: "Provider mutations are paused.",
+			retryable: true,
 		};
 	}
 
@@ -134,6 +136,7 @@ export async function runPortrait({
 			stored: false,
 			imageUrl: null,
 			reason: "Provider mutations are paused.",
+			retryable: true,
 		};
 	}
 
@@ -212,5 +215,6 @@ function leaseLost(imageUrl: string | null): PortraitResult {
 		stored: false,
 		imageUrl,
 		reason: "The task lease is no longer active.",
+		retryable: true,
 	};
 }
