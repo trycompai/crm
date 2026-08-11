@@ -138,11 +138,17 @@ deleted* comes to be true of email and not of forms.
   substring-matches prose breaks the first time somebody improves the wording.
 - **`CONTACTS_PER_HOUR` bounds the blast radius** of a scripted form. It is charged
   only when a *new* contact would be created — an existing contact costs nothing,
-  because attaching to somebody already in the CRM cannot flood it.
+  because attaching to somebody already in the CRM cannot flood it — and **a create
+  that loses the race hands its slot back**, so duplicate delivery of one form
+  cannot eat the hour's quota for a contact that was only ever made once.
 - **The email race is handled, not hoped away.** Two submissions for one address
   land at once, one `create` loses on the unique index, and the loser attaches to
   the contact that won. Left as a raw `P2002` it becomes a stored submission that is
   never filed and never retried.
+- **`attach` claims the row before it writes anything.** It is an
+  `updateMany` on `filedAt: null`, and a caller that loses the claim returns without
+  writing — otherwise two concurrent deliveries of one submission each leave the
+  contact a `Submitted a form on …` note.
 - **Duplicate delivery retries an unfiled row.** `dedupeKey` collapses a resend
   inside one minute, but if the first attempt died before it filed — no `filedAt`,
   no `skipReason` — the resend is the retry.
@@ -183,12 +189,15 @@ everybody: a member's render would fire a request that can only be refused.
 - **Rotating the site id is the kill switch for a stolen snippet.** The old id stops
   resolving at `forSite` within the cache TTL.
 - **The compiled config is cached for five minutes and invalidated on every write.**
-  `invalidate()` bumps a generation before it deletes, and both it and `compiled()`
-  refuse to write a value read before the bump — so a read already in flight cannot
-  put the pre-pause config back for another five minutes. **The generation is
-  per-process.** With `REDIS_URL` set the cache is shared but the counter is not, so
-  a second instance's in-flight read can still re-cache a stale config; the pause
-  guarantee is `CONFIG_MAX_AGE_SECONDS` plus, in that case, up to one more TTL.
+  Two things guard the cache, because one is not enough. `invalidate()` bumps a
+  **per-process generation** before it deletes, which stops this replica's own
+  in-flight read putting the pre-pause config back. That counter means nothing to a
+  second replica, so nothing is written to the cache unless its hash still equals
+  `AppSetting.trackingConfigHash` — **the shared version, in the database, that
+  every replica can see**. A read that raced a change computes the old hash, finds
+  it no longer current, and declines to cache it. Pausing sets the column to
+  `null`, so while tracking is paused **no config can validate and none is cached
+  at all**.
 
 ## Where it lives
 
