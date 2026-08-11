@@ -13,10 +13,10 @@ export class TrackingRollupService {
 				date_trunc('day', "occurredAt") AS "day",
 				"host",
 				"path",
-				count(*) FILTER (WHERE "type" = 'page_view')::int AS "views",
+				count(*)::int AS "views",
 				count(DISTINCT "visitorId")::int AS "visitors"
 			FROM "trackedEvent"
-			WHERE "occurredAt" < ${before}
+			WHERE "occurredAt" < ${before} AND "type" = 'page_view'
 			GROUP BY 1, 2, 3
 			ON CONFLICT ("day", "host", "path") DO UPDATE
 			SET "views" = GREATEST("trackedPageDaily"."views", EXCLUDED."views"),

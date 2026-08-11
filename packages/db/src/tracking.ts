@@ -14,11 +14,13 @@ export const COOKIE_LIFETIMES = [
 
 export const MAX_EVENTS_PER_BATCH = 20;
 
-export const MAX_BODY_BYTES = 1024;
+export const MAX_BODY_BYTES = 32_768;
 
 export const EVENTS_PER_MINUTE = 600;
 
 export const CONTACTS_PER_HOUR = 50;
+
+export const CONTACT_CAP_REASON = "Hourly contact cap reached — not filed";
 
 export const LOADER_MAX_AGE_SECONDS = 600;
 
@@ -65,24 +67,6 @@ export function windowExpiry(key: string, at: Date = new Date()): Date {
 	if (!Number.isFinite(bucket)) return new Date(at.getTime() + span * 2);
 
 	return new Date((bucket + 1) * span + span);
-}
-
-export function cookieDomainFor(
-	host: string,
-	config: TrackingConfig,
-): string | null {
-	if (config.cookieSubdomains) return null;
-
-	const candidate = host.toLowerCase();
-
-	for (const entry of config.hosts) {
-		if (entry.scope !== "SITE_AND_SUBDOMAINS") continue;
-		if (candidate === entry.host || candidate.endsWith(`.${entry.host}`)) {
-			return `.${entry.host}`;
-		}
-	}
-
-	return null;
 }
 
 export function trackingReady(
@@ -166,16 +150,37 @@ export function normalizePath(input: string | null | undefined): string {
 	return trimmed === "" ? "/" : trimmed;
 }
 
+export function stripQuery(input: string | null | undefined): string | null {
+	const raw = input?.trim();
+	if (!raw) return null;
+
+	const cut = raw.split(/[?#]/)[0] ?? "";
+
+	return cut === "" ? null : cut;
+}
+
+export function matchedHost(
+	host: string,
+	config: TrackingConfig,
+): TrackedHost | null {
+	const candidate = host.toLowerCase();
+
+	const exact = config.hosts.find((entry) => candidate === entry.host);
+	if (exact) return exact;
+
+	return (
+		config.hosts.find(
+			(entry) =>
+				entry.scope === "SITE_AND_SUBDOMAINS" &&
+				candidate.endsWith(`.${entry.host}`),
+		) ?? null
+	);
+}
+
 export function hostAllowed(host: string, config: TrackingConfig): boolean {
 	if (!config.limitToDomains) return true;
 
-	const candidate = host.toLowerCase();
-
-	return config.hosts.some((entry) =>
-		entry.scope === "SITE_AND_SUBDOMAINS"
-			? candidate === entry.host || candidate.endsWith(`.${entry.host}`)
-			: candidate === entry.host,
-	);
+	return matchedHost(host, config) !== null;
 }
 
 export function originAllowed(

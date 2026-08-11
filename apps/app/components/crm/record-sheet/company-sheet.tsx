@@ -328,9 +328,7 @@ function CompanyOverview({ company }: { company: Company }) {
 						</DetailSheetSection>
 					) : null}
 
-					<DetailSheetSection title="Website activity">
-						<WebsiteActivity companyId={company.id} />
-					</DetailSheetSection>
+					<WebsiteActivity companyId={company.id} />
 				</DetailSheetMain>
 
 				<DetailSheetRail>

@@ -1,7 +1,11 @@
 import { workspaceDomains } from "@crm/auth";
-import { ActivityType, type Db, RecordSource } from "@crm/db";
+import { ActivityType, type Db, Prisma, RecordSource } from "@crm/db";
 import type { Touch } from "@crm/db/attribution";
-import { CONTACTS_PER_HOUR, contactWindowKey } from "@crm/db/tracking";
+import {
+	CONTACT_CAP_REASON,
+	CONTACTS_PER_HOUR,
+	contactWindowKey,
+} from "@crm/db/tracking";
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
@@ -91,26 +95,33 @@ export class TrackingFilingService {
 		}
 
 		if (!(await this.withinCap())) {
-			return this.skip(
-				submission.id,
-				`More than ${CONTACTS_PER_HOUR} contacts in an hour — not filed`,
-			);
+			return this.skip(submission.id, CONTACT_CAP_REASON);
 		}
 
 		const companyId = await this.companies.companyForEmail(email);
 		const { firstName, lastName } = splitName(submission.name, email);
 
-		const contact = await this.db.contact.create({
-			data: {
-				firstName,
-				lastName,
-				email,
-				companyId,
-				source: RecordSource.TRACKING,
-				lastActivityAt: new Date(),
-			},
-			select: { id: true },
-		});
+		let contact: { id: string };
+		try {
+			contact = await this.db.contact.create({
+				data: {
+					firstName,
+					lastName,
+					email,
+					companyId,
+					source: RecordSource.TRACKING,
+					lastActivityAt: new Date(),
+				},
+				select: { id: true },
+			});
+		} catch (error) {
+			const raced = await this.raced(error, email);
+			if (!raced) throw error;
+
+			await this.attach(submission.id, raced.id, submission);
+
+			return { filed: true, contactId: raced.id };
+		}
 
 		await this.attach(submission.id, contact.id, submission);
 
@@ -126,6 +137,23 @@ export class TrackingFilingService {
 		});
 
 		return { filed: true, contactId: contact.id };
+	}
+
+	private async raced(
+		error: unknown,
+		email: string,
+	): Promise<{ id: string } | null> {
+		if (
+			!(error instanceof Prisma.PrismaClientKnownRequestError) ||
+			error.code !== "P2002"
+		) {
+			return null;
+		}
+
+		return this.db.contact.findUnique({
+			where: { email },
+			select: { id: true },
+		});
 	}
 
 	private async attach(

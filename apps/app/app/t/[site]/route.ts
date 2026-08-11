@@ -38,7 +38,7 @@ export async function GET(
 	return new Response(source, {
 		headers: {
 			"content-type": "application/javascript; charset=utf-8",
-			"cache-control": `public, max-age=${CONFIG_MAX_AGE_SECONDS}, s-maxage=${CONFIG_MAX_AGE_SECONDS}, stale-while-revalidate=86400`,
+			"cache-control": `public, max-age=${CONFIG_MAX_AGE_SECONDS}, s-maxage=${CONFIG_MAX_AGE_SECONDS}`,
 			"x-content-type-options": "nosniff",
 			...(payload.hash ? { etag: `"${payload.hash}"` } : {}),
 		},

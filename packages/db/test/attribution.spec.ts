@@ -69,6 +69,37 @@ describe("a touch with only a referrer", () => {
 		);
 	});
 
+	test("calls a webmail host email, not the search engine it shares a name with", () => {
+		const gmail = classifyTouch({ referrer: "https://mail.google.com/" }, AT);
+
+		expect(gmail.source).toBe("Gmail");
+		expect(gmail.medium).toBe("email");
+
+		const yahoo = classifyTouch({ referrer: "https://mail.yahoo.com/" }, AT);
+
+		expect(yahoo.source).toBe("Yahoo Mail");
+		expect(yahoo.medium).toBe("email");
+	});
+
+	test("never trusts a host that merely contains a provider's name", () => {
+		for (const referrer of [
+			"https://notgoogle.com/",
+			"https://evilfacebook.com/",
+			"https://google.com.phish.example/",
+		]) {
+			expect(classifyTouch({ referrer }, AT).medium).toBe("referral");
+		}
+	});
+
+	test("still recognises a provider on a subdomain or a country domain", () => {
+		expect(
+			classifyTouch({ referrer: "https://images.google.de/" }, AT).source,
+		).toBe("Google");
+		expect(
+			classifyTouch({ referrer: "https://m.facebook.com/" }, AT).source,
+		).toBe("Facebook");
+	});
+
 	test("falls back to the bare host for anything else", () => {
 		const touch = classifyTouch({ referrer: "https://www.acme.com/blog" }, AT);
 

@@ -1,4 +1,5 @@
 import {
+	appUrl,
 	canManageTracking,
 	isWorkspaceRole,
 	WORKSPACE_ID,
@@ -303,7 +304,7 @@ export class TrackingService {
 		const started = Date.now();
 		const fetched = await safeFetch(target.toString(), { timeoutMs: 8_000 });
 		const responseMs = Date.now() - started;
-		const host = target.hostname.toLowerCase();
+		const host = (fetched?.url ?? target).hostname.toLowerCase();
 
 		if (!fetched?.response.ok) {
 			return {
@@ -447,10 +448,10 @@ export class TrackingService {
 				where: { type: "page_view", source: { not: null } },
 				_count: { _all: true },
 			}),
-			this.db.trackedVisitor.groupBy({
-				by: ["firstSource", "firstMedium"],
+			this.db.trackedVisitor.findMany({
 				where: { contactId: { not: null }, firstSource: { not: null } },
-				_count: { _all: true },
+				select: { firstSource: true, firstMedium: true, contactId: true },
+				distinct: ["firstSource", "firstMedium", "contactId"],
 			}),
 		]);
 
@@ -473,7 +474,7 @@ export class TrackingService {
 			const existing = rows.get(key);
 
 			if (existing) {
-				existing.contacts = row._count._all;
+				existing.contacts += 1;
 				continue;
 			}
 
@@ -481,7 +482,7 @@ export class TrackingService {
 				source: row.firstSource,
 				medium: row.firstMedium,
 				views: 0,
-				contacts: row._count._all,
+				contacts: 1,
 			});
 		}
 
@@ -529,16 +530,12 @@ function summarise(touch: {
 	};
 }
 
-function appUrl(): string {
-	return process.env.APP_URL ?? "http://localhost:3000";
-}
-
 function scriptUrl(): string {
-	return loaderUrl(appUrl());
+	return loaderUrl(appUrl);
 }
 
 function snippet(siteId: string): string {
-	return trackingSnippet(appUrl(), siteId);
+	return trackingSnippet(appUrl, siteId);
 }
 
 function absolute(input: string): URL | null {

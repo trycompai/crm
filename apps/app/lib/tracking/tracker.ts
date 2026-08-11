@@ -1,6 +1,11 @@
 import { COOKIE_FIRST_TOUCH } from "@crm/db/attribution";
 import type { TrackingConfig } from "@crm/db/tracking";
-import { COOKIE_NAME, LINKER_MAX_AGE_SECONDS } from "@crm/db/tracking";
+import {
+	COOKIE_NAME,
+	LINKER_MAX_AGE_SECONDS,
+	MAX_BODY_BYTES,
+	MAX_EVENTS_PER_BATCH,
+} from "@crm/db/tracking";
 
 export function trackerSource(
 	config: TrackingConfig,
@@ -8,19 +13,21 @@ export function trackerSource(
 ): string {
 	return `(function(){
 var C=${JSON.stringify(config)},E=${JSON.stringify(endpoint)},N=${JSON.stringify(COOKIE_NAME)},FS=${JSON.stringify(COOKIE_FIRST_TOUCH)};
+var B=${MAX_BODY_BYTES},M=${MAX_EVENTS_PER_BATCH};
 var d=document,w=window,loc=w.location;
 if(w.__crmT)return;w.__crmT=1;
 function host(){return loc.hostname.toLowerCase()}
-function allowed(h){
- if(!C.limitToDomains)return!0;
+function known(h){
  for(var i=0;i<C.hosts.length;i++){var e=C.hosts[i];
   if(e.scope==="SITE_AND_SUBDOMAINS"){if(h===e.host||h.slice(-(e.host.length+1))==="."+e.host)return!0}
   else if(h===e.host)return!0}
  return!1}
+function allowed(h){return!C.limitToDomains||known(h)}
 if(!allowed(host()))return;
 if(C.honourDnt&&(navigator.doNotTrack==="1"||w.doNotTrack==="1"||navigator.globalPrivacyControl))return;
 if(navigator.webdriver||d.visibilityState==="prerender")return;
-function read(){var m=d.cookie.match(new RegExp("(?:^|; )"+N+"=([^;]*)"));return m?decodeURIComponent(m[1]):null}
+function decode(v){try{return decodeURIComponent(v)}catch(e){return null}}
+function read(){var m=d.cookie.match(new RegExp("(?:^|; )"+N+"=([^;]*)"));return m?decode(m[1]):null}
 function cookieDomain(){
  if(C.cookieSubdomains)return null;
  var h=host();
@@ -47,7 +54,7 @@ if(C.crossDomain){
   try{history.replaceState(null,"",loc.href.replace(/[#&]_crm=[A-Za-z0-9_.-]+/,""))}catch(e){}}}
 var vid=linked||existing||mint();
 write(vid);
-function param(q,k){var m=q.match(new RegExp("[?&]"+k+"=([^&]*)"));return m?decodeURIComponent(m[1].replace(/\\+/g," ")).slice(0,120):undefined}
+function param(q,k){var m=q.match(new RegExp("[?&]"+k+"=([^&]*)"));if(!m)return undefined;var v=decode(m[1].replace(/\\+/g," "));return v?v.slice(0,120):undefined}
 function touch(){
  var q=loc.search,t={landing:loc.pathname.slice(0,120),at:Date.now()};
  var s=param(q,"utm_source"),m=param(q,"utm_medium");
@@ -63,7 +70,9 @@ function touch(){
 function readFirst(){
  var m=d.cookie.match(new RegExp("(?:^|; )"+FS+"=([^;]*)"));
  if(!m)return null;
- try{return JSON.parse(decodeURIComponent(m[1]))}catch(e){return null}}
+ var v=decode(m[1]);
+ if(!v)return null;
+ try{return JSON.parse(v)}catch(e){return null}}
 function writeFirst(t){
  var p=FS+"="+encodeURIComponent(JSON.stringify(t))+"; path=/; samesite=lax";
  if(C.cookieDays>0)p+="; max-age="+C.cookieDays*86400;
@@ -75,17 +84,28 @@ var last=touch();
 var first=readFirst();
 if(!first){first=last;writeFirst(first)}
 var q=[],timer=null;
-function flush(){
- if(!q.length)return;
- var body=JSON.stringify({siteId:C.siteId,visitorId:vid,events:q.splice(0,20)});
+function pack(evts){return JSON.stringify({siteId:C.siteId,visitorId:vid,events:evts})}
+function bytes(s){try{return new Blob([s]).size}catch(e){return s.length*3}}
+function shrink(e,body){
+ var keys=e.fields?Object.keys(e.fields):[];
+ while(keys.length>1&&bytes(body)>B){delete e.fields[keys.pop()];body=pack([e])}
+ return body}
+function post(body){
  try{
   if(navigator.sendBeacon&&navigator.sendBeacon(E,new Blob([body],{type:"text/plain"})))return;
   fetch(E,{method:"POST",body:body,keepalive:!0,mode:"no-cors",headers:{"content-type":"text/plain"}})
  }catch(e){}}
+function flush(){
+ clearTimeout(timer);
+ while(q.length){
+  var take=q.splice(0,M),body=pack(take);
+  while(bytes(body)>B&&take.length>1){q.unshift(take.pop());body=pack(take)}
+  if(bytes(body)>B)body=shrink(take[0],body);
+  if(bytes(body)<=B)post(body)}}
 function send(e){
  e.host=host();e.at=Date.now();
  q.push(e);
- if(q.length>=20){clearTimeout(timer);flush();return}
+ if(q.length>=M){flush();return}
  clearTimeout(timer);timer=setTimeout(flush,2000)}
 function view(){send({type:"page_view",path:loc.pathname,referrer:d.referrer||undefined,touch:last})}
 function label(el){
@@ -122,7 +142,7 @@ function decorate(){
   while(el&&el.tagName!=="A")el=el.parentElement;
   if(!el||!el.href)return;
   var u;try{u=new URL(el.href)}catch(e){return}
-  if(u.hostname.toLowerCase()===host()||!allowed(u.hostname.toLowerCase()))return;
+  if(u.hostname.toLowerCase()===host()||!known(u.hostname.toLowerCase()))return;
   u.hash=u.hash.replace(/[#&]?_crm=[A-Za-z0-9_.-]+/,"");
   u.hash=(u.hash?u.hash+"&":"")+"_crm="+vid+"."+Math.floor(Date.now()/1000);
   el.href=u.toString()},!0)}

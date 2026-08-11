@@ -1,0 +1,189 @@
+# Website tracking
+
+A first-party script on the customer's own marketing site, a collector in the API,
+and one rule about what it is for: **a form submission becomes a contact.** Page
+views exist to give that contact a story, not to be a web-analytics product.
+
+Everything here is one install's own website. There is no second tenant, no shared
+pixel, and no vendor: the script is served from the same origin as the app, the
+cookie is first-party, and the only thing that ever leaves the browser is a POST to
+`/api/t/e` on the install's own API.
+
+## Two scripts, and why
+
+| | |
+| --- | --- |
+| `apps/app/lib/tracking/loader.ts` → `/t/crm.js` | The tag a rep pastes. Reads `data-site`, checks the shape, injects the second script. Immutable and cached for a year at the edge |
+| `apps/app/lib/tracking/tracker.ts` → `/t/<siteId>.js` | The tracker itself, with the config **baked into the source** rather than fetched. Cached for five minutes |
+
+The split is the whole cache design. The tag never changes, so it is `immutable`
+and free forever; the config does change, so the file that carries it is the one
+with the short life. Baking the config in also means a page view costs one request,
+not a request and then a config fetch before anything can be recorded.
+
+- **Five minutes is a promise.** Pause tracking and every browser stops within
+  `CONFIG_MAX_AGE_SECONDS`. That is why `/t/[site]` carries **no
+  `stale-while-revalidate`** — a revalidation window is exactly a licence to keep
+  executing the old config after the pause, and 24 hours of it once cost this
+  guarantee entirely.
+- **Both routes are anonymous**, listed in `proxy.ts` as `ANONYMOUS = ["/t"]`. A
+  stranger's browser on the customer's marketing site has no session and must not
+  be redirected to `/sign-in`.
+- **The tracker has a size budget**, asserted in `apps/app/test/tracking-bundle.spec.ts`:
+  1 KB brotli for the loader, 4 KB for the tracker, because the settings page
+  promises a number. A change that busts it fails the test rather than the promise.
+
+### Writing tracker source
+
+It is a string of ES5 in a template literal, minified by hand, and it runs on
+somebody else's page. That imposes rules nothing else in this repo has:
+
+- **Never throw.** An uncaught error on line 40 means no listeners are installed and
+  the page records nothing at all. Every `decodeURIComponent`, `JSON.parse`, `new
+  URL` and `history` call is already wrapped; a malformed UTM parameter must read as
+  *absent*, never as *fatal*.
+- **Constants come from `@crm/db/tracking`**, interpolated in — `MAX_BODY_BYTES`,
+  `MAX_EVENTS_PER_BATCH`, `LINKER_MAX_AGE_SECONDS`, `COOKIE_NAME`. A literal at the
+  call site is a client and a server that disagree, and the disagreement is silent.
+- **The client stays inside the body limit the collector enforces.** `flush()`
+  measures the packed batch and splits it, then trims a single oversized form's
+  fields, rather than posting a body the collector will destroy — a rejected POST is
+  not retried, so the whole batch would simply be lost.
+
+## The collector
+
+`POST /api/t/e`, anonymous, 204, in `TrackingController`. It answers nothing: a
+tracker that could read a response is a tracker whose failures a stranger can probe.
+
+The gauntlet, in order, in `TrackingIngestService.accept`:
+
+1. **User agent** — the `BOT` pattern.
+2. **Site id** — must be a live `cmp_` id, and `forSite` refuses a rotated one.
+3. **Origin** — `originAllowed`. A missing `Origin` header is refused **even with
+   the allow list off**, because the header is the only thing tying the POST to a
+   browser on a page.
+4. **Visitor id** — 8–64 of `[a-zA-Z0-9_-]`, or the batch is dropped.
+5. **`scripted()`** — three or more events sharing one timestamp is a replay. It
+   only fires when **every** event carries a numeric `at`; missing timestamps are
+   no signal, and treating them as proof discarded honest traffic.
+6. **Host** — each event's own host against the allow list. The batch is filtered,
+   not refused, because one bad host in twenty is a bug in somebody's SPA.
+7. **Rate** — `EVENTS_PER_MINUTE` charged **per accepted event, atomically**,
+   through `TrackingCounter`.
+
+> **The rate limit counts events, not requests, and it counts them in the
+> database.** A per-request counter with a full batch behind it admits twenty times
+> the number on the constant, and a read-then-write in `cache-manager` admits
+> however many requests are in flight. `TrackingCounterService.take(key, limit,
+> amount)` is one `upsert` with an `increment`, so the read is the write. It fails
+> **closed**: a counter it cannot reach refuses the write.
+
+`MAX_BODY_BYTES` is enforced by destroying the request as it streams, before any
+parse. Keep it in step with what the tracker can produce — a form is forty fields
+of five hundred characters, and a limit under that silently drops the submission
+this whole feature exists to catch.
+
+### What is never stored
+
+- **No query strings.** `normalizePath` strips `?` and `#` from every path, and
+  `stripQuery` does the same to every referrer, on the event row *and* inside the
+  `firstTouch` / `lastTouch` blobs. A password-reset link in a referrer is a
+  password-reset link in the database. UTM parameters are captured as their own
+  fields, so nothing is lost by it.
+- **No sensitive fields.** `clean()` drops any field whose *name* matches
+  `SENSITIVE`, anything shaped like a card number, and every `password`, `hidden`
+  and `file` input — the last three never leave the browser at all.
+- **No IP address**, anywhere, ever.
+
+## Attribution
+
+`packages/db/src/attribution.ts`, and it is pure: no database, no config, one
+function. `classifyTouch` turns UTM parameters and a referrer into a `Touch`.
+
+- **An explicit `utm_source` beats the referrer**, because the marketer said so.
+- **The referrer host is matched on DNS labels, never on a substring.**
+  `notgoogle.com` is a referral and `google.com.phish.example` is a referral;
+  `images.google.de` is Google. A substring match hands a phisher a trusted source
+  name in the rep's report.
+- **Webmail is checked before search.** `mail.google.com` contains `google.`, so
+  order alone decides whether a campaign's own click-throughs read as *email* or as
+  *organic search* — and reading your newsletter as Google organic is how a
+  marketing report lies.
+- **`Direct` is a source, not a null.** Everything lands in one of the seven
+  `MEDIUMS`; an unrecognised medium is `other`.
+
+## Filing: from a submission to a contact
+
+`TrackingFilingService.file` is the only path from a form to a `Contact`, and it
+reuses the mailbox pipeline's judgement rather than inventing a second one —
+`isMachineAddress`, `isAutomatedAddress`, `isMachineDomain`, `workspaceDomains`,
+`SuppressedContact`, `SuppressedDomain`, `companyForEmail`, `splitName`. **A rule
+that holds for the inbox holds here.** A second copy is how *deleted contacts stay
+deleted* comes to be true of email and not of forms.
+
+- **Every submission is stored; filing is separate and may decline.** `skipReason`
+  says why, and the row stays for a rep to look at.
+- **A refusal is a `skipReason`, never a lost row**, and `CONTACT_CAP_REASON` is a
+  shared constant because `rollup.service.ts` matches on it. Telemetry that
+  substring-matches prose breaks the first time somebody improves the wording.
+- **`CONTACTS_PER_HOUR` bounds the blast radius** of a scripted form. It is charged
+  only when a *new* contact would be created — an existing contact costs nothing,
+  because attaching to somebody already in the CRM cannot flood it.
+- **The email race is handled, not hoped away.** Two submissions for one address
+  land at once, one `create` loses on the unique index, and the loser attaches to
+  the contact that won. Left as a raw `P2002` it becomes a stored submission that is
+  never filed and never retried.
+- **Duplicate delivery retries an unfiled row.** `dedupeKey` collapses a resend
+  inside one minute, but if the first attempt died before it filed — no `filedAt`,
+  no `skipReason` — the resend is the retry.
+- **The agent is told, never asked.** `agent.contactCreated` writes an `AgentTask`.
+  No enrichment, no scoring and no identity matching happens here; see `docs/api.md`.
+
+## Retention
+
+`POST /internal/tracking/retention`, nightly at 04:00 via `apps/api/vercel.json`,
+`CRON_SECRET` or nothing.
+
+- **The cutoff is a whole UTC day**, `EVENT_RETENTION_DAYS` back and then truncated.
+  A mid-day cutoff splits one calendar day across two nightly runs, and
+  `trackedPageDaily` keeps the larger half of a day it saw twice — so the boundary
+  day is quietly under-reported forever. Roll whole days or do not roll.
+- **Roll before you delete.** `TrackingRollupService` aggregates `page_view` rows
+  only; a click is not a page view, and counting visitors over both produces a row
+  reading `views = 0, visitors = 3`.
+- **Deleting is batched and bounded** — `SWEEP_BATCH` × `MAX_SWEEP_PASSES`. A sweep
+  that hits the ceiling **says so**, in the log and in the response, because
+  silently leaving events behind reads exactly like having deleted them.
+- **A visitor outlives their events only if a contact points at them.** An
+  anonymous visitor with nothing left is removed.
+
+## Settings, and who may change them
+
+Settings → Tracking & Analytics. `canManageTracking` (`@crm/auth`) gates every
+mutation **in the service**, and the same flag disables the control — the button and
+the 403 cannot disagree, as everywhere else.
+
+`tracking.sources` is manager-only too, so the page must not prefetch it for
+everybody: a member's render would fire a request that can only be refused.
+
+- **Verify reports on the page it actually fetched.** `safeFetch` follows
+  redirects, so the host in the result comes from `fetched.url`, not from what the
+  rep typed — otherwise `acme.com` reports the allow-list status of a page that
+  lives on `www.acme.com`.
+- **Rotating the site id is the kill switch for a stolen snippet.** The old id stops
+  resolving at `forSite` within the cache TTL.
+- **The compiled config is cached for five minutes and invalidated on every write.**
+  `invalidate()` bumps a generation before it deletes, so a cache-miss read already
+  in flight cannot put the pre-pause config back for another five minutes.
+
+## Where it lives
+
+| | |
+| --- | --- |
+| `packages/db/src/tracking.ts` | Every constant and every pure helper both sides share. **The single source of truth** — a literal copied out of here is a future divergence |
+| `packages/db/src/attribution.ts` | `classifyTouch` and the source tables. No imports, no database |
+| `apps/app/lib/tracking/` | The loader and the tracker source |
+| `apps/app/app/t/` | The two public routes |
+| `apps/api/src/tracking/` | Collector, config cache, ingest, filing, counters, rollup, retention, tRPC router |
+| `apps/app/app/(app)/[slug]/settings/tracking/` | The settings page |
+| `apps/app/components/crm/website-activity.tsx` | The record-sheet section, which renders its own heading so it can render nothing at all |

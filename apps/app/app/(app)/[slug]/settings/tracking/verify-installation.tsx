@@ -94,7 +94,10 @@ export function VerifyInstallation() {
 							<InputGroupInput
 								id={urlId}
 								value={url}
-								onChange={(event) => setUrl(event.target.value)}
+								onChange={(event) => {
+									setUrl(event.target.value);
+									setResult(null);
+								}}
 								placeholder="acme.com/pricing"
 								autoComplete="off"
 								autoCapitalize="off"

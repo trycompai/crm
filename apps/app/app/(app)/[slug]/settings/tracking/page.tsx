@@ -51,10 +51,13 @@ async function Tracking() {
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 
-	const [settings] = await Promise.all([
-		queryClient.fetchQuery(trpc.tracking.settings.queryOptions()),
-		queryClient.prefetchQuery(trpc.tracking.sources.queryOptions()),
-	]);
+	const settings = await queryClient.fetchQuery(
+		trpc.tracking.settings.queryOptions(),
+	);
+
+	if (settings.canManage) {
+		await queryClient.prefetchQuery(trpc.tracking.sources.queryOptions());
+	}
 
 	return (
 		<HydrateClient>
@@ -63,7 +66,7 @@ async function Tracking() {
 					<>
 						<TrackingScript />
 						<VerifyInstallation />
-						<TrafficSources />
+						{settings.canManage ? <TrafficSources /> : null}
 						<TrackingRules />
 						<AllowedDomains />
 						<TrackingCookies />

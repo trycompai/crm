@@ -431,9 +431,7 @@ function ContactOverview({ contact }: { contact: Contact }) {
 				</DetailSheetSection>
 			) : null}
 
-			<DetailSheetSection title="Website activity">
-				<WebsiteActivity contactId={contact.id} />
-			</DetailSheetSection>
+			<WebsiteActivity contactId={contact.id} />
 		</DetailSheetBody>
 	);
 }

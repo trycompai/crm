@@ -120,19 +120,20 @@ export function classifyTouch(raw: RawTouch, at: Date = new Date()): Touch {
 		};
 	}
 
-	const known =
-		match(host, SEARCH) ?? match(host, SOCIAL) ?? match(host, MAIL) ?? null;
+	const mail = match(host, MAIL);
+	const search = mail ? null : match(host, SEARCH);
+	const social = mail || search ? null : match(host, SOCIAL);
 
-	const medium: Medium = match(host, SEARCH)
-		? "organic"
-		: match(host, SOCIAL)
-			? "social"
-			: match(host, MAIL)
-				? "email"
+	const medium: Medium = mail
+		? "email"
+		: search
+			? "organic"
+			: social
+				? "social"
 				: "referral";
 
 	return {
-		source: known ?? host,
+		source: mail ?? search ?? social ?? host,
 		medium: utmMedium ? mediumFrom(utmMedium) : medium,
 		campaign,
 		term,
@@ -177,11 +178,29 @@ function mediumFrom(value: string | null | undefined): Medium {
 }
 
 function match(host: string, table: Record<string, string>): string | null {
+	const labels = host.split(".");
+
 	for (const [needle, name] of Object.entries(table)) {
-		if (host === needle || host.includes(needle)) return name;
+		if (matches(labels, needle)) return name;
 	}
 
 	return null;
+}
+
+function matches(labels: string[], needle: string): boolean {
+	const open = needle.endsWith(".");
+	const wanted = (open ? needle.slice(0, -1) : needle).split(".");
+
+	for (let start = 0; start + wanted.length <= labels.length; start += 1) {
+		if (wanted.some((label, index) => labels[start + index] !== label))
+			continue;
+
+		const tail = labels.length - start - wanted.length;
+
+		if (open ? tail >= 1 && tail <= 2 : tail === 0) return true;
+	}
+
+	return false;
 }
 
 function hostOf(referrer: string | null): string | null {

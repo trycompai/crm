@@ -5,10 +5,12 @@ import {
 	hostAllowed,
 	isSiteId,
 	loaderUrl,
+	matchedHost,
 	mintSiteId,
 	normalizeHost,
 	normalizePath,
 	originAllowed,
+	stripQuery,
 	type TrackingConfig,
 	trackingReady,
 	trackingSnippet,
@@ -135,6 +137,52 @@ describe("the allow-list", () => {
 		const open = { ...CONFIG, limitToDomains: false };
 
 		expect(hostAllowed("anything.example", open)).toBe(true);
+	});
+});
+
+describe("the domain an event belongs to", () => {
+	test("is the parent when the scope covers subdomains", () => {
+		expect(matchedHost("docs.trycomp.ai", CONFIG)?.host).toBe("trycomp.ai");
+		expect(matchedHost("trycomp.ai", CONFIG)?.host).toBe("trycomp.ai");
+	});
+
+	test("is the exact row when that is the whole of the scope", () => {
+		expect(matchedHost("shop.example.com", CONFIG)?.host).toBe(
+			"shop.example.com",
+		);
+		expect(matchedHost("www.shop.example.com", CONFIG)).toBeNull();
+	});
+
+	test("is nothing for a host nobody configured", () => {
+		expect(matchedHost("elsewhere.example", CONFIG)).toBeNull();
+	});
+
+	test("prefers the host's own row to the parent that also covers it", () => {
+		const both: TrackingConfig = {
+			...CONFIG,
+			hosts: [
+				{ host: "trycomp.ai", scope: "SITE_AND_SUBDOMAINS" },
+				{ host: "docs.trycomp.ai", scope: "EXACT_HOST" },
+			],
+		};
+
+		expect(matchedHost("docs.trycomp.ai", both)?.host).toBe("docs.trycomp.ai");
+		expect(matchedHost("blog.trycomp.ai", both)?.host).toBe("trycomp.ai");
+	});
+});
+
+describe("a stored referrer", () => {
+	test("keeps the page but never the query a secret could sit in", () => {
+		expect(stripQuery("https://acme.com/reset?token=abc#x")).toBe(
+			"https://acme.com/reset",
+		);
+		expect(stripQuery("https://acme.com/blog")).toBe("https://acme.com/blog");
+	});
+
+	test("is nothing when there was nothing but a query", () => {
+		for (const value of ["", "  ", null, undefined, "?token=abc"]) {
+			expect(stripQuery(value)).toBeNull();
+		}
 	});
 });
 

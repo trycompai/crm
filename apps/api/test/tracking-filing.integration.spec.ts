@@ -7,7 +7,11 @@ import {
 	it,
 } from "bun:test";
 import { db } from "@crm/db";
-import { CONTACTS_PER_HOUR, contactWindowKey } from "@crm/db/tracking";
+import {
+	CONTACT_CAP_REASON,
+	CONTACTS_PER_HOUR,
+	contactWindowKey,
+} from "@crm/db/tracking";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompanyDirectoryService } from "../src/companies/company-directory.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
@@ -209,7 +213,7 @@ describe("filing a form submission", () => {
 
 		expect(outcome.filed).toBe(false);
 		expect(stored?.contactId).toBeNull();
-		expect(stored?.skipReason).toContain("contacts in an hour");
+		expect(stored?.skipReason).toBe(CONTACT_CAP_REASON);
 	});
 });
 

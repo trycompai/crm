@@ -24,6 +24,8 @@ export interface CompiledConfig {
 export class TrackingConfigService {
 	private readonly logger = new Logger(TrackingConfigService.name);
 
+	private generation = 0;
+
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		@Inject(CACHE_MANAGER) private readonly cache: Cache,
@@ -33,11 +35,14 @@ export class TrackingConfigService {
 		const cached = await this.cache.get<CompiledConfig>(CONFIG_KEY);
 		if (cached) return cached;
 
+		const read = this.generation;
 		const config = await readTrackingConfig(this.db);
 		if (!config) return null;
 
 		const compiled = { config, hash: configHash(config) };
-		await this.cache.set(CONFIG_KEY, compiled, CONFIG_TTL_MS);
+		if (read === this.generation) {
+			await this.cache.set(CONFIG_KEY, compiled, CONFIG_TTL_MS);
+		}
 
 		return compiled;
 	}
@@ -48,6 +53,7 @@ export class TrackingConfigService {
 	}
 
 	async invalidate(): Promise<void> {
+		this.generation += 1;
 		await this.cache.del(CONFIG_KEY);
 
 		const config = await readTrackingConfig(this.db);

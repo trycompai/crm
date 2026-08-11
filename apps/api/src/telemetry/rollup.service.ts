@@ -9,6 +9,7 @@ import {
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
 import { readAgentModel } from "@crm/db/settings";
+import { CONTACT_CAP_REASON } from "@crm/db/tracking";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import {
 	bucket,
@@ -500,7 +501,7 @@ export class RollupService {
 			trackingDomains,
 			trackingViews,
 			trackingForms,
-			trackingFiled,
+			trackingContacts,
 			trackingCapped,
 			trackingPaused,
 		] = await Promise.all([
@@ -510,14 +511,11 @@ export class RollupService {
 				where: { type: "page_view", occurredAt: { gte: since } },
 			}),
 			this.db.formSubmission.count({ where: { createdAt: { gte: since } } }),
-			this.db.formSubmission.count({
-				where: { createdAt: { gte: since }, filedAt: { not: null } },
+			this.db.contact.count({
+				where: { createdAt: { gte: since }, source: RecordSource.TRACKING },
 			}),
 			this.db.formSubmission.count({
-				where: {
-					createdAt: { gte: since },
-					skipReason: { contains: "contacts in an hour" },
-				},
+				where: { createdAt: { gte: since }, skipReason: CONTACT_CAP_REASON },
 			}),
 			this.db.appSetting.count({ where: { trackingPaused: true } }),
 		]);
@@ -559,7 +557,7 @@ export class RollupService {
 			tracking_domains: bucket(trackingDomains),
 			tracking_page_views: trackingViews,
 			tracking_forms: trackingForms,
-			tracking_contacts_created: trackingFiled,
+			tracking_contacts_created: trackingContacts,
 			tracking_capped: trackingCapped,
 			tracking_paused: trackingPaused > 0,
 

@@ -9,12 +9,12 @@ export class TrackingCounterService {
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async take(key: string, limit: number): Promise<boolean> {
+	async take(key: string, limit: number, amount = 1): Promise<boolean> {
 		try {
 			const counter = await this.db.trackingCounter.upsert({
 				where: { key },
-				create: { key, value: 1, expiresAt: windowExpiry(key) },
-				update: { value: { increment: 1 } },
+				create: { key, value: amount, expiresAt: windowExpiry(key) },
+				update: { value: { increment: amount } },
 				select: { value: true },
 			});
 

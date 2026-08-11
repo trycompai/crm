@@ -126,28 +126,40 @@ export class TrackingRetentionController {
 			throw new ForbiddenException();
 		}
 
-		const before = new Date(
-			Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60_000,
+		const before = startOfDay(
+			new Date(Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60_000),
 		);
 
 		const rolled = await this.rollups.run(before);
-		const removed = await this.sweepEvents(before);
+		const { removed, complete } = await this.sweepEvents(before);
 		const visitors = await this.sweepVisitors(before);
 		const counters = await this.counters.sweep();
+
+		if (!complete) {
+			this.logger.warn({
+				message:
+					"Tracking retention hit its pass limit — events older than the window remain",
+				removed,
+				retentionDays: EVENT_RETENTION_DAYS,
+			});
+		}
 
 		this.logger.log({
 			message: "Tracking retention swept",
 			rolled,
 			removed,
+			complete,
 			visitors,
 			counters,
 			retentionDays: EVENT_RETENTION_DAYS,
 		});
 
-		return { rolled, removed, visitors, counters };
+		return { rolled, removed, complete, visitors, counters };
 	}
 
-	private async sweepEvents(before: Date): Promise<number> {
+	private async sweepEvents(
+		before: Date,
+	): Promise<{ removed: number; complete: boolean }> {
 		let removed = 0;
 
 		for (let pass = 0; pass < MAX_SWEEP_PASSES; pass += 1) {
@@ -161,10 +173,10 @@ export class TrackingRetentionController {
 			`;
 
 			removed += deleted;
-			if (deleted < SWEEP_BATCH) break;
+			if (deleted < SWEEP_BATCH) return { removed, complete: true };
 		}
 
-		return removed;
+		return { removed, complete: false };
 	}
 
 	private async sweepVisitors(before: Date): Promise<number> {
@@ -218,6 +230,13 @@ async function read(
 		request.on("end", () => finish(Buffer.concat(chunks).toString("utf8")));
 		request.on("error", () => finish(null));
 	});
+}
+
+function startOfDay(at: Date): Date {
+	const day = new Date(at);
+	day.setUTCHours(0, 0, 0, 0);
+
+	return day;
 }
 
 function timingSafeEquals(a: string, b: string): boolean {

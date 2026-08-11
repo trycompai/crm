@@ -5,20 +5,19 @@ import {
 	EVENTS_PER_MINUTE,
 	hostAllowed,
 	MAX_EVENTS_PER_BATCH,
+	matchedHost,
 	normalizePath,
 	originAllowed,
 	rateWindowKey,
+	stripQuery,
 	type TrackingConfig,
 } from "@crm/db/tracking";
-import { CACHE_MANAGER } from "@nestjs/cache-manager";
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { Cache } from "cache-manager";
+import { Injectable, Logger } from "@nestjs/common";
 import { normalizeEmail } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
+import { TrackingCounterService } from "./tracking-counter.service";
 import { TrackingFilingService } from "./tracking-filing.service";
-
-const RATE_KEY = "tracking";
 
 const MAX_LABEL = 80;
 
@@ -50,14 +49,19 @@ export interface IncomingBatch {
 	events: IncomingEvent[];
 }
 
+interface AcceptedEvent {
+	event: IncomingEvent;
+	host: string;
+}
+
 @Injectable()
 export class TrackingIngestService {
 	private readonly logger = new Logger(TrackingIngestService.name);
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
-		@Inject(CACHE_MANAGER) private readonly cache: Cache,
 		private readonly config: TrackingConfigService,
+		private readonly counters: TrackingCounterService,
 		private readonly filing: TrackingFilingService,
 	) {}
 
@@ -71,7 +75,6 @@ export class TrackingIngestService {
 		if (!compiled) return;
 
 		if (!originAllowed(request.origin, compiled.config)) return;
-		if (!(await this.withinRate())) return;
 
 		const visitorId = sanitizeId(batch.visitorId);
 		if (!visitorId) return;
@@ -79,80 +82,104 @@ export class TrackingIngestService {
 		const events = batch.events.slice(0, MAX_EVENTS_PER_BATCH);
 		if (scripted(events)) return;
 
-		const pageViews = events.filter(
-			(event) => event.type === "page_view" || event.type === "click",
+		const accepted = events.flatMap<AcceptedEvent>((event) => {
+			const host = event.host?.toLowerCase().trim();
+
+			return host && hostAllowed(host, compiled.config)
+				? [{ event, host }]
+				: [];
+		});
+
+		if (accepted.length === 0) return;
+		if (!(await this.withinRate(accepted.length))) return;
+
+		const pageViews = accepted.filter(
+			({ event }) => event.type === "page_view" || event.type === "click",
 		);
-		const forms = events.filter((event) => event.type === "form_submit");
+		const forms = accepted.filter(({ event }) => event.type === "form_submit");
 
 		if (pageViews.length > 0) {
 			await this.events(visitorId, pageViews, compiled.config);
 		}
 
 		for (const form of forms) {
-			await this.submission(visitorId, form, compiled.config);
+			await this.submission(visitorId, form);
 		}
 	}
 
 	private async events(
 		visitorId: string,
-		events: IncomingEvent[],
+		accepted: AcceptedEvent[],
 		config: TrackingConfig,
 	): Promise<void> {
-		const rows = events.flatMap((event) => {
-			const host = event.host?.toLowerCase().trim();
-			if (!host || !hostAllowed(host, config)) return [];
-
+		const rows = accepted.map(({ event, host }) => {
 			const touch =
 				event.type === "page_view" && event.touch
-					? classifyTouch(event.touch)
+					? classifyTouch(arriving(event.touch))
 					: null;
 
-			return [
-				{
-					visitorId,
-					type: event.type,
-					host,
-					path: trim(normalizePath(event.path), MAX_PATH),
-					referrer: event.referrer ? trim(event.referrer, MAX_PATH) : null,
-					label: event.label ? trim(event.label, MAX_LABEL) : null,
-					source: touch?.source ?? null,
-					medium: touch?.medium ?? null,
-					campaign: touch?.campaign ?? null,
-					occurredAt: occurredAt(event.at),
-				},
-			];
-		});
+			const referrer = stripQuery(event.referrer);
 
-		if (rows.length === 0) return;
+			return {
+				visitorId,
+				type: event.type,
+				host,
+				path: trim(normalizePath(event.path), MAX_PATH),
+				referrer: referrer ? trim(referrer, MAX_PATH) : null,
+				label: event.label ? trim(event.label, MAX_LABEL) : null,
+				source: touch?.source ?? null,
+				medium: touch?.medium ?? null,
+				campaign: touch?.campaign ?? null,
+				occurredAt: occurredAt(event.at),
+			};
+		});
 
 		await this.db.trackedEvent.createMany({ data: rows });
 
-		const hosts = [...new Set(rows.map((row) => row.host))];
-		const views = rows.filter((row) => row.type === "page_view").length;
+		await this.countViews(rows, config);
+	}
 
-		await this.db.trackedDomain.updateMany({
-			where: { host: { in: hosts } },
-			data: { pageViews: { increment: views }, lastSeenAt: new Date() },
-		});
+	private async countViews(
+		rows: { host: string; type: string }[],
+		config: TrackingConfig,
+	): Promise<void> {
+		const tallies = new Map<string, number>();
+
+		for (const row of rows) {
+			const entry = matchedHost(row.host, config);
+			if (!entry) continue;
+
+			const views = tallies.get(entry.host) ?? 0;
+			tallies.set(entry.host, views + (row.type === "page_view" ? 1 : 0));
+		}
+
+		const lastSeenAt = new Date();
+
+		await Promise.all(
+			[...tallies].map(([host, views]) =>
+				this.db.trackedDomain.updateMany({
+					where: { host },
+					data: { pageViews: { increment: views }, lastSeenAt },
+				}),
+			),
+		);
 	}
 
 	private async submission(
 		visitorId: string,
-		event: IncomingEvent,
-		config: TrackingConfig,
+		{ event, host }: AcceptedEvent,
 	): Promise<void> {
-		const host = event.host?.toLowerCase().trim();
-		if (!host || !hostAllowed(host, config)) return;
-
 		const fields = clean(event.fields ?? {});
 		const email = emailFrom(fields);
 		const path = trim(normalizePath(event.path), MAX_PATH);
 		const at = occurredAt(event.at);
 
-		const lastTouch = classifyTouch(event.touch ?? {}, at);
+		const lastTouch = classifyTouch(arriving(event.touch ?? {}), at);
 		const firstTouch = event.firstTouch
-			? classifyTouch(event.firstTouch, at)
+			? classifyTouch(arriving(event.firstTouch), at)
 			: lastTouch;
+
+		const key = dedupeKey({ host, path, email, at });
 
 		const created = await this.db.formSubmission.createMany({
 			data: [
@@ -164,20 +191,19 @@ export class TrackingIngestService {
 					fields,
 					firstTouch: stored(firstTouch),
 					lastTouch: stored(lastTouch),
-					dedupeKey: dedupeKey({ host, path, email, at }),
+					dedupeKey: key,
 				},
 			],
 			skipDuplicates: true,
 		});
 
-		if (created.count === 0) return;
-
 		const submission = await this.db.formSubmission.findUnique({
-			where: { dedupeKey: dedupeKey({ host, path, email, at }) },
-			select: { id: true },
+			where: { dedupeKey: key },
+			select: { id: true, filedAt: true, skipReason: true },
 		});
 
 		if (!submission) return;
+		if (created.count === 0 && !unfiled(submission)) return;
 
 		const outcome = await this.filing.file({
 			id: submission.id,
@@ -198,22 +224,22 @@ export class TrackingIngestService {
 		}
 	}
 
-	private async withinRate(): Promise<boolean> {
-		const now = Date.now();
-		const key = `${RATE_KEY}:${rateWindowKey(new Date(now))}`;
-		const untilWindowCloses = 60_000 - (now % 60_000) + 5_000;
-
-		try {
-			const used = (await this.cache.get<number>(key)) ?? 0;
-			if (used >= EVENTS_PER_MINUTE) return false;
-
-			await this.cache.set(key, used + 1, untilWindowCloses);
-
-			return true;
-		} catch {
-			return true;
-		}
+	private async withinRate(events: number): Promise<boolean> {
+		return this.counters.take(rateWindowKey(), EVENTS_PER_MINUTE, events);
 	}
+}
+
+function unfiled(submission: {
+	filedAt: Date | null;
+	skipReason: string | null;
+}): boolean {
+	return submission.filedAt === null && submission.skipReason === null;
+}
+
+function arriving(touch: RawTouch): RawTouch {
+	return touch.referrer
+		? { ...touch, referrer: stripQuery(touch.referrer) ?? undefined }
+		: touch;
 }
 
 function stored(touch: Touch): Record<string, string | null> {
@@ -232,9 +258,13 @@ function stored(touch: Touch): Record<string, string | null> {
 function scripted(events: IncomingEvent[]): boolean {
 	if (events.length < 3) return false;
 
-	const stamps = new Set(events.map((event) => event.at));
+	const stamps = events.flatMap((event) =>
+		typeof event.at === "number" && Number.isFinite(event.at) ? [event.at] : [],
+	);
 
-	return stamps.size === 1;
+	if (stamps.length !== events.length) return false;
+
+	return new Set(stamps).size === 1;
 }
 
 function occurredAt(at: number | undefined): Date {
