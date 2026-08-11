@@ -1,0 +1,61 @@
+name: Production database release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact reviewed commit to release
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY DATABASE
+        required: true
+        type: string
+
+concurrency:
+  group: production-database-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Migrate and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production-database
+    env:
+      DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+      ALLOWED_SIGN_IN: release-verification@example.invalid
+      BETTER_AUTH_SECRET: release-verification-only-secret-not-used-at-runtime
+      API_URL: https://api.example.invalid
+      APP_URL: https://app.example.invalid
+    steps:
+      - name: Verify explicit confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "DEPLOY DATABASE"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact commit
+        env:
+          EXPECTED_SHA: ${{ inputs.commit_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Apply additive migrations
+        run: bun run db:deploy
+
+      - name: Assert deployed schema
+        working-directory: packages/db
+        run: bunx --bun prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code

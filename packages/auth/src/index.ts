@@ -44,6 +44,7 @@ export {
 	ssoProviderName,
 } from "./sso";
 export {
+	canonicalWorkspaceEmail,
 	hasSignInAllowList,
 	isWorkspaceEmail,
 	primaryWorkspaceDomain,

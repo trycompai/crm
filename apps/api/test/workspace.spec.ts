@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { isWorkspaceEmail } from "@crm/auth/workspace";
+import { canonicalWorkspaceEmail, isWorkspaceEmail } from "@crm/auth/workspace";
 import { externalParticipants } from "../src/mailbox/participants";
 
 beforeEach(() => {
 	process.env.ALLOWED_SIGN_IN = "acme.com";
+	process.env.SIGN_IN_EMAIL_ALIASES = "";
 });
 
 describe("isWorkspaceEmail", () => {
@@ -59,6 +60,26 @@ describe("isWorkspaceEmail", () => {
 		expect(isWorkspaceEmail("lewis@acme.com")).toBe(true);
 		expect(isWorkspaceEmail("contractor@gmail.com")).toBe(true);
 		expect(isWorkspaceEmail("stranger@gmail.com")).toBe(false);
+	});
+
+	it("canonicalises an allowed alias without admitting the rest of its domain", () => {
+		process.env.ALLOWED_SIGN_IN = "admin@acme.com,angus@acme.com";
+		process.env.SIGN_IN_EMAIL_ALIASES = "richard@acme.com=admin@acme.com";
+
+		expect(canonicalWorkspaceEmail(" RICHARD@acme.com ")).toBe(
+			"admin@acme.com",
+		);
+		expect(isWorkspaceEmail("richard@acme.com")).toBe(true);
+		expect(isWorkspaceEmail("someone-else@acme.com")).toBe(false);
+	});
+
+	it("ignores malformed aliases", () => {
+		process.env.ALLOWED_SIGN_IN = "admin@acme.com";
+		process.env.SIGN_IN_EMAIL_ALIASES =
+			"missing-pair,not-an-email=admin@acme.com,a@acme.com=b@acme.com=c@acme.com";
+
+		expect(isWorkspaceEmail("not-an-email")).toBe(false);
+		expect(isWorkspaceEmail("a@acme.com")).toBe(false);
 	});
 });
 

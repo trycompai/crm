@@ -98,25 +98,27 @@ the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
    auto-loads the working directory's `.env` while Prisma's CLI only sees
    `@crm/env/load`.
 
-## Migrations run on the production deploy, and nowhere else
+## Production migrations are a protected release
 
-`apps/api/scripts/build-func.mjs` runs `prisma migrate deploy` during the crm-api
-build, gated on `VERCEL_ENV === "production"`. The schema therefore moves when the
-promotion pull request merges and `release` deploys — with the code that needs it,
-and once rather than once per branch.
+The application build never applies a migration. A reviewed exact commit is applied
+through the `Production database release` workflow, whose `production-database`
+environment must require Richard and a second explicit confirmation. Configure its
+`PRODUCTION_DIRECT_DATABASE_URL` secret with an unpooled connection, enter the exact
+reviewed commit SHA, and type `DEPLOY DATABASE`.
 
-Preview deploys share the production database: `DATABASE_URL` is a single value
-across production, preview and development. Until that changes, **a preview of a
-branch that adds a migration runs against a database without those tables** — it
-builds, and the pages that touch them fail. Test schema changes locally, where
-`bun run dev` migrates for you. Before the gate existed the reverse was true and
-worse: every preview applied its own migrations to the production database, so on
-2026-08-07 the live schema ran six migrations ahead of the live code all day.
+The workflow checks out that exact commit, applies its additive migrations, and then
+requires an empty Prisma schema diff. The production API build performs the same
+read-only comparison and fails when the database does not match `schema.prisma`; it
+does not attempt to repair production during a normal Vercel build.
+
+Preview deployments do not apply schema changes. A branch that needs a new table must
+be tested against an isolated local or preview database, and production migration must
+complete before the corresponding production application deployment.
 
 ### `migrate deploy` is not proof the schema is right
 
-The build follows the deploy with `prisma migrate diff --exit-code` against
-`schema.prisma` and shouts in the build log when they disagree. **`No pending
+The protected workflow and production build run `prisma migrate diff --exit-code`
+against `schema.prisma` and fail when they disagree. **`No pending
 migrations to apply` only means `_prisma_migrations` has a row for every file** —
 it says nothing about what the tables actually look like.
 

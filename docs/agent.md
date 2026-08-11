@@ -50,12 +50,20 @@ the agent and the API both need it. Luna is the affordable default; change the
 
 | | Kinds | How | Per tick |
 | --- | --- | --- | --- |
-| **Visible** | `brand`, `portrait` | Directly — no `receive`, no model | 60, six at a time |
+| **Direct** | `brand`, `portrait`, website intake, AgentMail intake, Granola intake, approved AgentMail sends | Directly — no `receive`, no model | 60, six at a time |
 | **Research** | everything else | One eve session per row | 12 |
 
-**Neither visible kind has anything to decide**, and through a session they queued
-behind sixty LLM runs for 25 minutes (`test/lanes.integration.spec.ts`). **The row says
-what the work is; the lane only says whether it needs a conversation.**
+Direct tasks are deterministic adapters. Brand and portrait work do not decide
+anything; intake tasks only normalize provider data; approved sends revalidate the
+stored approval, recipient, suppression, route, inbox state and content digest before
+calling AgentMail. **The row says what the work is; the lane only says whether it
+needs a conversation.**
+
+`PROVIDER_MUTATIONS_PAUSED` and `OUTREACH_SENDS_PAUSED` default to paused. An
+`email-draft-send` task is excluded from leasing unless both are explicitly `false`,
+and the sender checks them again immediately before provider work. AgentMail intake
+is read-only and remains available while sending is paused. Sync never re-enables an
+inbox that an operator paused.
 
 **Priority**: `brand` 900 · `portrait` 800 · `workspace` 500 · `requested` 300 ·
 `meeting` 200 · `identify` 100 · `sweep` 50 · `companyProfile` 40 · `recheck` 0. The
@@ -70,7 +78,7 @@ its sub-select's `ORDER BY`.
 it after writing any `AgentTask`.
 
 - **Fire-and-forget, never awaited** — the row is still the message.
-- **Both lanes.** Visible-only made them diverge under `eve dev`, where there is no
+- **Both lanes.** Direct-only made them diverge under `eve dev`, where there is no
   cron: logos resolved instantly while `identify` sat at `attempts = 0` forever.
 - **Calls the channel's own `send`, not `receive`** — it is already on the crm channel.
   Principal from `APP_AUTH` (`lib/app-auth.ts`); `taskAuth()` keeps schedule and route

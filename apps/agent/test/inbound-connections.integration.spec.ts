@@ -228,7 +228,7 @@ describe("AgentMail inbound storage", () => {
 					provider: EmailProvider.AGENTMAIL,
 					externalInboxId: agentMailSyncInboxId,
 					email: `sync@${agentMailDomain}`,
-					isEnabled: true,
+					isEnabled: false,
 					lastSyncedAt: oldCheck,
 				},
 			});
@@ -243,13 +243,14 @@ describe("AgentMail inbound storage", () => {
 						externalInboxId: agentMailSyncInboxId,
 					},
 				},
-				select: { lastSyncedAt: true },
+				select: { lastSyncedAt: true, isEnabled: true },
 			});
 
 			expect(result.status).toBe("synced");
 			expect(inbox.lastSyncedAt?.getTime()).toBeGreaterThanOrEqual(
 				startedAt.getTime(),
 			);
+			expect(inbox.isEnabled).toBe(false);
 		} finally {
 			if (previousKey) process.env.AGENTMAIL_API_KEY = previousKey;
 			else delete process.env.AGENTMAIL_API_KEY;
@@ -449,6 +450,8 @@ describe("Granola meeting storage", () => {
 	});
 
 	it("continues pagination when a note is no longer accessible", async () => {
+		const previousApiKey = process.env.GRANOLA_API_KEY;
+		process.env.GRANOLA_API_KEY = "granola-test-key";
 		const requests: string[] = [];
 		const request = (async (input: RequestInfo | URL) => {
 			const url = new URL(String(input));
@@ -474,11 +477,16 @@ describe("Granola meeting storage", () => {
 			});
 		}) as typeof fetch;
 
-		const outcome = await runGranolaSync(db, request, 0);
-		expect(outcome.status).toBe("synced");
-		expect(outcome.unchanged).toBe(1);
-		expect(requests).toHaveLength(3);
-		expect(requests.at(-1)).toContain("cursor=next-page");
+		try {
+			const outcome = await runGranolaSync(db, request, 0);
+			expect(outcome.status).toBe("synced");
+			expect(outcome.unchanged).toBe(1);
+			expect(requests).toHaveLength(3);
+			expect(requests.at(-1)).toContain("cursor=next-page");
+		} finally {
+			if (previousApiKey === undefined) delete process.env.GRANOLA_API_KEY;
+			else process.env.GRANOLA_API_KEY = previousApiKey;
+		}
 	});
 
 	it("leaves a multi-company meeting unmatched without a trusted folder map", async () => {

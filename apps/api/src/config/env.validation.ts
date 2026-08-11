@@ -54,6 +54,10 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	SIGN_IN_EMAIL_ALIASES?: string;
+
+	@IsOptional()
+	@IsString()
 	GOOGLE_CLIENT_ID?: string;
 
 	@IsOptional()
@@ -149,6 +153,14 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	PROVIDER_MUTATIONS_PAUSED?: string;
+
+	@IsOptional()
+	@IsString()
+	OUTREACH_SENDS_PAUSED?: string;
+
+	@IsOptional()
+	@IsString()
 	GRANOLA_API_KEY?: string;
 
 	@IsOptional()
@@ -168,16 +180,49 @@ export function validateEnv(
 		skipMissingProperties: false,
 		whitelist: false,
 	});
+	const details = errors.map((error) =>
+		Object.values(error.constraints ?? {}).join(", "),
+	);
+	const allowListError = validateAllowedSignIn(validated.ALLOWED_SIGN_IN);
+	if (allowListError) details.push(allowListError);
 
-	if (errors.length > 0) {
-		const details = errors
-			.map((error) => Object.values(error.constraints ?? {}).join(", "))
-			.join("\n  - ");
-
+	if (details.length > 0) {
 		throw new Error(
-			`Invalid environment configuration:\n  - ${details}\n\nSee .env.example at the root of the repo.`,
+			`Invalid environment configuration:\n  - ${details.join("\n  - ")}\n\nSee .env.example at the root of the repo.`,
 		);
 	}
 
 	return validated;
+}
+
+function validateAllowedSignIn(value: string | undefined): string | null {
+	const entries = value
+		?.split(",")
+		.map((entry) => entry.trim().toLowerCase())
+		.filter(Boolean);
+	if (!entries || entries.length === 0) {
+		return "ALLOWED_SIGN_IN must contain at least one email address or domain.";
+	}
+	if (entries.some((entry) => !validAllowListEntry(entry))) {
+		return "ALLOWED_SIGN_IN contains a malformed email address or domain.";
+	}
+	return null;
+}
+
+function validAllowListEntry(entry: string): boolean {
+	const normalized = entry.replace(/^@/, "");
+	const parts = normalized.split("@");
+	if (parts.length === 1) return validHost(parts[0] ?? "");
+	if (parts.length !== 2 || !parts[0]) return false;
+	return /^[^\s@]+$/.test(parts[0]) && validHost(parts[1] ?? "");
+}
+
+function validHost(host: string): boolean {
+	return (
+		host.length > 0 &&
+		host.length <= 253 &&
+		host
+			.split(".")
+			.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
+	);
 }

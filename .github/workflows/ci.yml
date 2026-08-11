@@ -59,6 +59,10 @@ jobs:
       - name: Apply migrations
         run: bun run db:deploy
 
+      - name: Assert migration and schema parity
+        working-directory: packages/db
+        run: bunx --bun prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
       - run: bun run check-types
 
       - run: bun run lint

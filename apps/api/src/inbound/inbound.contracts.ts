@@ -15,3 +15,7 @@ export const granolaExcludeInput = z.object({
 });
 
 export type GranolaExcludeInput = z.infer<typeof granolaExcludeInput>;
+
+export const agentMailEnabledInput = z.object({ enabled: z.boolean() });
+
+export type AgentMailEnabledInput = z.infer<typeof agentMailEnabledInput>;

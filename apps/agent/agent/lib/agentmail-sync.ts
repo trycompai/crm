@@ -88,7 +88,7 @@ export async function runAgentMailSync(
 			isDefault: true,
 			isEnabled: true,
 		},
-		update: { email: inboxEmail, isEnabled: true },
+		update: { email: inboxEmail },
 		select: { id: true, lastSyncedAt: true },
 	});
 

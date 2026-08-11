@@ -1,6 +1,7 @@
-import type { auth } from "@crm/auth";
+import { type auth, isWorkspaceEmail } from "@crm/auth";
 import {
 	Controller,
+	ForbiddenException,
 	Get,
 	Param,
 	Query,
@@ -24,6 +25,9 @@ export class ConversationAttachmentsController {
 		@Session() session: CrmSession,
 		@Res({ passthrough: true }) response: Response,
 	) {
+		if (!isWorkspaceEmail(session.user.email)) {
+			throw new ForbiddenException();
+		}
 		const attachment = await this.conversations.attachment(
 			id,
 			session.user.id,

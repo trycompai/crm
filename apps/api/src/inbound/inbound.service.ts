@@ -1,7 +1,9 @@
+import { isWorkspaceAdmin, isWorkspaceRole, WORKSPACE_ID } from "@crm/auth";
 import { type Db, EmailProvider } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
@@ -19,7 +21,7 @@ export class InboundService {
 		private readonly agent: AgentTriggerService,
 	) {}
 
-	async status() {
+	async status(userId: string) {
 		const [
 			websiteTotal,
 			websiteTests,
@@ -30,6 +32,7 @@ export class InboundService {
 			granolaMatched,
 			latestGranola,
 			tasks,
+			member,
 		] = await Promise.all([
 			this.db.websiteEnquiry.count(),
 			this.db.websiteEnquiry.count({ where: { test: true } }),
@@ -78,6 +81,15 @@ export class InboundService {
 					createdAt: true,
 				},
 			}),
+			this.db.member.findUnique({
+				where: {
+					organizationId_userId: {
+						organizationId: WORKSPACE_ID,
+						userId,
+					},
+				},
+				select: { role: true },
+			}),
 		]);
 
 		const websiteTask = latestTask(tasks, "website-intake-sync");
@@ -86,7 +98,15 @@ export class InboundService {
 		const websiteConfigured = configuredFrom(websiteTask, websiteTotal > 0);
 		const agentMailConfigured = configuredFrom(agentMailTask, inbox !== null);
 		const granolaConfigured = configuredFrom(granolaTask, granolaNotes > 0);
-		const outboundEnabled = Boolean(agentMailConfigured && inbox?.isEnabled);
+		const providerPaused =
+			process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false";
+		const outreachPaused =
+			process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false";
+		const inboxEnabled = Boolean(inbox?.isEnabled);
+		const outboundEnabled = Boolean(
+			agentMailConfigured && inboxEnabled && !providerPaused && !outreachPaused,
+		);
+		const role = member && isWorkspaceRole(member.role) ? member.role : null;
 
 		return {
 			website: {
@@ -101,6 +121,10 @@ export class InboundService {
 			agentMail: {
 				configured: agentMailConfigured,
 				outboundEnabled,
+				inboxEnabled,
+				providerPaused,
+				outreachPaused,
+				canResumeOutbound: isWorkspaceAdmin(role),
 				inbox: inbox?.email ?? null,
 				messages,
 				lastSyncedAt: inbox?.lastSyncedAt?.toISOString() ?? null,
@@ -120,9 +144,53 @@ export class InboundService {
 		};
 	}
 
-	async syncNow() {
+	async syncNow(userId: string) {
 		const result = await this.agent.syncInbound();
-		return { ...result, status: await this.status() };
+		return { ...result, status: await this.status(userId) };
+	}
+
+	async setAgentMailEnabled(enabled: boolean, userId: string) {
+		const member = await this.db.member.findUnique({
+			where: {
+				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
+			},
+			select: { role: true },
+		});
+		const role = member && isWorkspaceRole(member.role) ? member.role : null;
+		if (enabled && !isWorkspaceAdmin(role)) {
+			throw new ForbiddenException(
+				"Only the CRM owner can resume outbound provider actions.",
+			);
+		}
+
+		const inbox = await this.db.emailInbox.findFirst({
+			where: { provider: EmailProvider.AGENTMAIL },
+			orderBy: { updatedAt: "desc" },
+			select: { id: true, externalInboxId: true },
+		});
+		if (!inbox) throw new NotFoundException("AgentMail is not configured.");
+
+		await this.db.$transaction(async (tx) => {
+			await tx.emailInbox.update({
+				where: { id: inbox.id },
+				data: { isEnabled: enabled },
+			});
+			if (!enabled) {
+				await tx.emailDraft.updateMany({
+					where: {
+						provider: EmailProvider.AGENTMAIL,
+						externalInboxId: inbox.externalInboxId,
+						status: { in: ["APPROVED", "SENDING"] },
+					},
+					data: {
+						status: "REJECTED",
+						sendError: "AgentMail outreach was paused by a CRM operator.",
+					},
+				});
+			}
+		});
+
+		return { enabled };
 	}
 
 	async granolaReview() {

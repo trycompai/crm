@@ -1,4 +1,4 @@
-import type { auth } from "@crm/auth";
+import { type auth, isWorkspaceEmail } from "@crm/auth";
 import { Controller, Get } from "@nestjs/common";
 import {
 	OptionalAuth,
@@ -21,7 +21,7 @@ export class AuthController {
 	@Get("session")
 	@OptionalAuth()
 	getSession(@Session() session?: CrmSession) {
-		if (!session) {
+		if (!session || !isWorkspaceEmail(session.user.email)) {
 			return { authenticated: false, user: null };
 		}
 

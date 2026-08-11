@@ -178,26 +178,20 @@ const directDatabaseUrl = !isProductionDeployment
 		process.env.DATABASE_URL;
 
 if (!process.env.VERCEL) {
-	console.log("• not a Vercel build — skipping migrations");
+	console.log("• not a Vercel build — skipping production schema verification");
 } else if (!isProductionDeployment) {
 	console.log(
-		`• ${process.env.VERCEL_ENV || "non-production"} deployment — skipping migrations, only production applies them`,
+		`• ${process.env.VERCEL_ENV || "non-production"} deployment — skipping production schema verification`,
 	);
 } else if (!directDatabaseUrl) {
-	console.log("• no database URL at build time — skipping migrations");
+	throw new Error(
+		"Production deployment requires a direct database URL for schema verification.",
+	);
 } else {
 	const dbDir = join(repoRoot, "packages/db");
 	const dbEnv = { ...process.env, DATABASE_URL: directDatabaseUrl };
 
-	console.log("• applying migrations (prisma migrate deploy)...");
-	execSync(`${bun} x prisma migrate deploy`, {
-		cwd: dbDir,
-		stdio: "inherit",
-		env: dbEnv,
-	});
-	console.log("✓ migrations applied");
-
-	console.log("• checking the deployed schema against schema.prisma...");
+	console.log("• verifying the production schema against schema.prisma...");
 	const drift = spawnSync(
 		bun,
 		[
@@ -216,22 +210,12 @@ if (!process.env.VERCEL) {
 	if (drift.status === 0) {
 		console.log("✓ schema matches");
 	} else if (drift.status === 2) {
-		console.log("");
-		console.log("!!  THE PRODUCTION SCHEMA DOES NOT MATCH schema.prisma  !!");
-		console.log(
-			"    Every migration is recorded as applied, so `migrate deploy` will keep reporting",
+		throw new Error(
+			`Production schema drift blocks deployment. Apply the protected database release first.\n${drift.stdout || ""}`,
 		);
-		console.log(
-			"    nothing pending while queries fail on columns that are not there. Reconcile with",
-		);
-		console.log(
-			"    `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script`.",
-		);
-		console.log("");
-		console.log(drift.stdout || "");
 	} else {
-		console.log(
-			`• could not compare the schema (${drift.stderr?.trim() || "unknown error"})`,
+		throw new Error(
+			`Could not verify the production schema: ${drift.stderr?.trim() || "unknown error"}`,
 		);
 	}
 }

@@ -56,6 +56,13 @@ list, read by the sign-in guard *and* the sync's "which side is external" decisi
 if they drifted a colleague would be refused at the door or filed as a lead. **An empty
 list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
 
+**`SIGN_IN_EMAIL_ALIASES`** optionally maps an identity-provider alias to one
+canonical allowed address using comma-separated `alias=canonical` pairs. The
+canonical address must be in `ALLOWED_SIGN_IN`; malformed entries are ignored and do
+not widen access. New users are stored under the canonical address, and every new
+session is checked against the current allow-list so removing access takes effect at
+the next sign-in.
+
 ## Where things are
 
 - **`API_URL`** (`:3001`) mints session cookies and serves `/api/auth/*`;
@@ -149,6 +156,11 @@ stores received mail against matching CRM records. Outbound sending is confined
 to the agent: a retained public route, explicit operator permission, an enabled
 inbox and approval of all three sequence steps are required. Sending is
 idempotent and later steps stop when the enrolled recipient replies.
+
+`PROVIDER_MUTATIONS_PAUSED` and `OUTREACH_SENDS_PAUSED` both default to paused.
+AgentMail sends are not leased or attempted unless both are explicitly `false`.
+The global switch is the incident and recovery kill switch; the outreach switch
+pauses only that channel while read-only sync continues.
 
 `GRANOLA_API_KEY` enables agent-owned polling of meeting notes, summaries,
 attendees and transcripts. Imported notes are stored idempotently, projected onto

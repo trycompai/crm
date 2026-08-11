@@ -1,6 +1,13 @@
+import { isWorkspaceEmail } from "@crm/auth";
 import type { Db } from "@crm/db";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
-import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+	ForbiddenException,
+	Inject,
+	Injectable,
+	Logger,
+	NotFoundException,
+} from "@nestjs/common";
 import type { Cache } from "cache-manager";
 import { InjectDatabase } from "../database/database.constants";
 
@@ -31,6 +38,7 @@ export class AuthService {
 		const cached = await this.cache.get<UserProfile>(key);
 
 		if (cached) {
+			this.assertAllowed(cached.email);
 			return cached;
 		}
 
@@ -53,6 +61,8 @@ export class AuthService {
 			throw new NotFoundException(`No user with id ${userId}.`);
 		}
 
+		this.assertAllowed(user.email);
+
 		const profile: UserProfile = {
 			...user,
 			createdAt: user.createdAt.toISOString(),
@@ -66,5 +76,13 @@ export class AuthService {
 	async invalidateProfile(userId: string): Promise<void> {
 		await this.cache.del(profileKey(userId));
 		this.logger.debug({ message: "Invalidated cached profile", userId });
+	}
+
+	private assertAllowed(email: string): void {
+		if (!isWorkspaceEmail(email)) {
+			throw new ForbiddenException(
+				"This account is no longer allowed to access this CRM.",
+			);
+		}
 	}
 }

@@ -15,6 +15,7 @@ import {
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import {
+	canonicalWorkspaceEmail,
 	hasSignInAllowList,
 	isWorkspaceEmail,
 	primaryWorkspaceDomain,
@@ -136,7 +137,8 @@ export const auth = betterAuth({
 						});
 					}
 
-					if (!isWorkspaceEmail(user.email)) {
+					const email = canonicalWorkspaceEmail(user.email);
+					if (!email || !isWorkspaceEmail(email)) {
 						const domain = primaryWorkspaceDomain();
 						throw new APIError("FORBIDDEN", {
 							message: domain
@@ -145,7 +147,7 @@ export const auth = betterAuth({
 						});
 					}
 
-					return { data: user };
+					return { data: { ...user, email } };
 				},
 			},
 		},
@@ -153,6 +155,18 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
+					const user = await db.user.findUnique({
+						where: { id: session.userId },
+						select: { email: true },
+					});
+
+					if (!user || !isWorkspaceEmail(user.email)) {
+						throw new APIError("FORBIDDEN", {
+							message:
+								"This CRM is private. This account is no longer on the sign-in allow-list.",
+						});
+					}
+
 					const workspaceId = await ensureWorkspaceMembership(session.userId);
 
 					return {

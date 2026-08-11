@@ -122,7 +122,12 @@ self-hoster's admin cannot redeploy.
   Microsoft, or both — and none of them granted. `mailboxGrantsNeeded` returns which,
   so `/grant-access` offers the button they can actually use.
 - `ALLOWED_SIGN_IN` still decides who gets an account, in
-  `databaseHooks.user.create.before`, for SSO sign-ups too.
+  `databaseHooks.user.create.before`, for SSO sign-ups too. Session creation and every
+  application authorization boundary re-check the current allow-list, so removing an
+  existing address takes effect without waiting for its cookie to expire.
+- `SIGN_IN_EMAIL_ALIASES` canonicalizes an approved alias before account creation.
+  The canonical address must also be present in `ALLOWED_SIGN_IN`; aliases are never
+  an independent grant.
 - `organizationProvisioning: { disabled: true }` — `ensureWorkspaceMembership` already
   does the join.
 
@@ -172,6 +177,23 @@ self-hoster's admin cannot redeploy.
 - **Microsoft has no token-revocation endpoint.** `revoke` clears the columns and the
   UI says the consent itself is removed in the user's Microsoft account. Google's still
   posts to `oauth2.googleapis.com/revoke` and refuses to clear if that fails.
+
+### AgentMail outbound control
+
+AgentMail intake and AgentMail sending are separate capabilities. Intake may continue
+while outbound work is paused. `EmailInbox.isEnabled` is the durable operator switch:
+sync preserves it, every send re-checks it, and pausing rejects queued approved or
+in-flight local drafts for that inbox.
+
+Any workspace member may stop outbound work. Only an owner or admin may resume the
+inbox. Environment recovery switches still take precedence, so an enabled inbox does
+not become send-capable until both `PROVIDER_MUTATIONS_PAUSED` and
+`OUTREACH_SENDS_PAUSED` are explicitly `false`.
+
+Approval is consumed with a conditional state transition. Concurrent approval calls
+cannot create a second set of send tasks. If a provider confirms delivery after local
+authority was revoked during the network call, the external receipt is retained while
+the local draft remains rejected; later sequence steps stay stopped.
 
 ## Not every address on a thread is a person
 

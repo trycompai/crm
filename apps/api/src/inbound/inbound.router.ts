@@ -9,7 +9,11 @@ import {
 import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
-import { granolaExcludeInput, granolaMatchInput } from "./inbound.contracts";
+import {
+	agentMailEnabledInput,
+	granolaExcludeInput,
+	granolaMatchInput,
+} from "./inbound.contracts";
 import { InboundService } from "./inbound.service";
 
 @Router({ alias: "inbound" })
@@ -18,13 +22,21 @@ export class InboundRouter {
 	constructor(private readonly inbound: InboundService) {}
 
 	@Query()
-	async status() {
-		return this.inbound.status();
+	async status(@Ctx() ctx: AuthedTrpcContext) {
+		return this.inbound.status(ctx.user.id);
 	}
 
 	@Mutation()
-	async syncNow() {
-		return this.inbound.syncNow();
+	async syncNow(@Ctx() ctx: AuthedTrpcContext) {
+		return this.inbound.syncNow(ctx.user.id);
+	}
+
+	@Mutation({ input: agentMailEnabledInput })
+	async setAgentMailEnabled(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentMailEnabledInput>,
+	) {
+		return this.inbound.setAgentMailEnabled(input.enabled, ctx.user.id);
 	}
 
 	@Query()

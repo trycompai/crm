@@ -2,6 +2,7 @@ import { EnrichmentStatus } from "@crm/db";
 import { sendApprovedAgentMailDraft } from "./agentmail-send";
 import { runAgentMailSync } from "./agentmail-sync";
 import { APP_AUTH, type AppAuth } from "./app-auth";
+import { directTaskKinds } from "./autonomy";
 import { brandOutcome, runBrand } from "./brand";
 import { markRunning, settle } from "./enrichment";
 import { runGranolaSync } from "./granola-sync";
@@ -52,7 +53,7 @@ export async function runVisibleLane(): Promise<number> {
 	while (handled < VISIBLE_BATCH) {
 		const tasks = await claimDue(
 			Math.min(VISIBLE_CONCURRENCY, VISIBLE_BATCH - handled),
-			{ only: DIRECT_KINDS },
+			{ only: directTaskKinds(DIRECT_KINDS) },
 			VISIBLE_LEASE_MS,
 		);
 

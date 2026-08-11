@@ -36,6 +36,10 @@ export class OutreachService {
 		]);
 
 		return {
+			sendingPaused:
+				process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !==
+					"false" ||
+				process.env.OUTREACH_SENDS_PAUSED?.trim().toLowerCase() !== "false",
 			prospects: Object.fromEntries(
 				prospects.map((row) => [row.status, row._count]),
 			),
@@ -369,8 +373,8 @@ export class OutreachService {
 				const scheduledFor = new Date(
 					now.getTime() + delay * 24 * 60 * 60 * 1_000,
 				);
-				await tx.emailDraft.update({
-					where: { id: draft.id },
+				const approved = await tx.emailDraft.updateMany({
+					where: { id: draft.id, status: "PENDING_APPROVAL" },
 					data: {
 						status: "APPROVED",
 						approvedById: userId,
@@ -381,6 +385,11 @@ export class OutreachService {
 						sendError: null,
 					},
 				});
+				if (approved.count !== 1) {
+					throw new BadRequestException(
+						"This sequence was changed or approved elsewhere.",
+					);
+				}
 				await tx.agentTask.create({
 					data: {
 						emailDraftId: draft.id,

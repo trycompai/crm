@@ -1,6 +1,7 @@
 import { db } from "@crm/db";
 import { outreachApprovalDigest } from "@crm/db/outreach";
 import { z } from "zod";
+import { outreachSendsPaused } from "./autonomy";
 
 const createResponse = z.object({ draft_id: z.string().min(1) });
 const sendResponse = z.object({
@@ -12,6 +13,13 @@ export async function sendApprovedAgentMailDraft(
 	emailDraftId: string,
 	request: typeof fetch = fetch,
 ) {
+	if (outreachSendsPaused()) {
+		return {
+			sent: false as const,
+			retryable: true as const,
+			reason: "Outbound provider mutations are paused.",
+		};
+	}
 	const apiKey = process.env.AGENTMAIL_API_KEY?.trim();
 	if (!apiKey) {
 		return {
@@ -25,6 +33,7 @@ export async function sendApprovedAgentMailDraft(
 	const draft = await db.emailDraft.findUnique({
 		where: { id: emailDraftId },
 		include: {
+			inbox: { select: { isEnabled: true } },
 			contact: { select: { email: true } },
 			prospect: {
 				select: {
@@ -70,6 +79,7 @@ export async function sendApprovedAgentMailDraft(
 		};
 	}
 	if (
+		!draft.inbox.isEnabled ||
 		!draft.prospect?.emailAllowed ||
 		draft.prospect.status !== "PROMOTED" ||
 		draft.prospect.routeStatus !== "SEND_READY_REVIEW"
@@ -253,8 +263,8 @@ export async function sendApprovedAgentMailDraft(
 				lastMessageAt: sentAt,
 			},
 		});
-		await tx.emailDraft.update({
-			where: { id: draft.id },
+		const finalized = await tx.emailDraft.updateMany({
+			where: { id: draft.id, status: "SENDING" },
 			data: {
 				status: "SENT",
 				externalMessageId: sent.message_id,
@@ -263,6 +273,18 @@ export async function sendApprovedAgentMailDraft(
 				sendError: null,
 			},
 		});
+		if (finalized.count === 0) {
+			await tx.emailDraft.update({
+				where: { id: draft.id },
+				data: {
+					externalMessageId: sent.message_id,
+					threadId: thread.id,
+					sentAt,
+					sendError:
+						"Provider confirmed delivery after the local send authority was revoked.",
+				},
+			});
+		}
 		await tx.emailMessage.upsert({
 			where: {
 				provider_externalMessageId: {
@@ -337,6 +359,7 @@ async function sendStillAllowed(
 			where: { id },
 			select: {
 				status: true,
+				inbox: { select: { isEnabled: true } },
 				prospect: {
 					select: {
 						emailAllowed: true,
@@ -352,6 +375,7 @@ async function sendStillAllowed(
 	]);
 	return Boolean(
 		draft?.status === "SENDING" &&
+			draft.inbox.isEnabled &&
 			draft.prospect?.emailAllowed &&
 			draft.prospect.routeEmail?.toLowerCase() === recipient &&
 			draft.prospect.routeStatus === "SEND_READY_REVIEW" &&

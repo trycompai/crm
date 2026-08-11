@@ -60,6 +60,19 @@ export function InboundConnections() {
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	const agentMailControl = useMutation(
+		trpc.inbound.setAgentMailEnabled.mutationOptions({
+			onSuccess: async (result) => {
+				await cache.inbound();
+				toast.success(
+					result.enabled
+						? "AgentMail outreach resumed."
+						: "AgentMail outreach paused and queued sends stopped.",
+				);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 
 	const websiteState = connectionState({
 		configured: status.data.website.configured,
@@ -173,6 +186,27 @@ export function InboundConnections() {
 						>
 							{sync.isPending ? "Checking…" : "Check now"}
 						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={
+								!status.data.agentMail.configured ||
+								agentMailControl.isPending ||
+								(!status.data.agentMail.inboxEnabled &&
+									!status.data.agentMail.canResumeOutbound)
+							}
+							onClick={() =>
+								agentMailControl.mutate({
+									enabled: !status.data.agentMail.inboxEnabled,
+								})
+							}
+						>
+							{agentMailControl.isPending
+								? "Saving…"
+								: status.data.agentMail.inboxEnabled
+									? "Pause outreach"
+									: "Resume outreach"}
+						</Button>
 					</CardAction>
 				</CardHeader>
 
@@ -208,6 +242,12 @@ export function InboundConnections() {
 									"Ready for the first check"
 								)}
 							</p>
+							{status.data.agentMail.providerPaused ||
+							status.data.agentMail.outreachPaused ? (
+								<p className="text-muted-foreground text-xs">
+									Provider writes remain paused by the recovery switch.
+								</p>
+							) : null}
 						</>
 					) : (
 						<p className="text-muted-foreground text-xs">

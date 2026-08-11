@@ -1,13 +1,18 @@
-import { auth, needsMailboxGrant, type Session } from "@crm/auth";
+import {
+	auth,
+	isWorkspaceEmail,
+	needsMailboxGrant,
+	type Session,
+} from "@crm/auth";
 import { db } from "@crm/db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
-export const getSession = cache(
-	async (): Promise<Session | null> =>
-		auth.api.getSession({ headers: await headers() }),
-);
+export const getSession = cache(async (): Promise<Session | null> => {
+	const session = await auth.api.getSession({ headers: await headers() });
+	return session && isWorkspaceEmail(session.user.email) ? session : null;
+});
 
 export async function requireSession(): Promise<Session> {
 	const session = await getSession();
