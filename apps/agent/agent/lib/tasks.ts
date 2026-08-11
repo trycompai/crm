@@ -1,4 +1,4 @@
-import { db, Prisma } from "@crm/db";
+import { db, type Prisma } from "@crm/db";
 import { MAX_ATTEMPTS, RETIRED_OUTCOME } from "@crm/db/agent-tasks";
 import { DISPATCH } from "./dispatch-config";
 
@@ -36,10 +36,10 @@ export async function claimDue(
 	const now = new Date();
 	const until = new Date(now.getTime() + leaseMs);
 
-	const list = "only" in kinds ? kinds.only : kinds.except;
+	const list = "only" in kinds ? [...kinds.only] : [...kinds.except];
 	if ("only" in kinds && list.length === 0) return [];
 
-	const match = Prisma.sql`t2.kind ${"only" in kinds ? Prisma.sql`IN` : Prisma.sql`NOT IN`} (${Prisma.join(list)})`;
+	const onlyMode = "only" in kinds;
 
 	const claimed = await db.$queryRaw<LeasedTask[]>`
 		UPDATE "agentTask" AS t
@@ -52,7 +52,10 @@ export async function claimDue(
 				AND t2."dueAt" <= ${now}
 				AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
 				AND t2."attempts" < ${MAX_ATTEMPTS}
-				AND ${match}
+				AND CASE
+					WHEN ${onlyMode}::boolean THEN t2.kind = ANY(${list}::text[])
+					ELSE t2.kind <> ALL(${list}::text[])
+				END
 			ORDER BY t2."priority" DESC, t2."dueAt" ASC
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
