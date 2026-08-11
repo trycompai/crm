@@ -24,6 +24,7 @@ import { formatMoney } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
+import { InlineCompanyField } from "@/components/crm/company-picker";
 import { contactName } from "@/components/crm/contact-name";
 import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
@@ -249,7 +250,6 @@ function DealOverview({ deal }: { deal: Deal }) {
 	const cache = useCrmCache();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
 	const update = useMutation(
 		trpc.deals.update.mutationOptions({
@@ -332,13 +332,10 @@ function DealOverview({ deal }: { deal: Deal }) {
 						saving={isSaving("expectedCloseDate")}
 						onSave={(next) => save({ expectedCloseDate: next || null })}
 					/>
-					<InlineSelectField
-						label="Company"
+					<InlineCompanyField
 						value={deal.company.id}
-						options={(companies.data ?? []).map((company) => ({
-							value: company.id,
-							label: company.name,
-						}))}
+						company={deal.company}
+						saving={isSaving("companyId")}
 						onSave={(companyId) => save({ companyId })}
 					/>
 					<InlineSelectField

@@ -57,13 +57,17 @@ export function reportBulk(
 
 export function BulkActionsMenu({
 	pending,
+	open,
+	onOpenChange,
 	children,
 }: {
 	pending?: boolean;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 	children: ReactNode;
 }) {
 	return (
-		<DropdownMenu>
+		<DropdownMenu open={open} onOpenChange={onOpenChange}>
 			<DropdownMenuTrigger asChild>
 				<Button variant="outline" size="sm" disabled={pending}>
 					{pending ? <Spinner /> : null}

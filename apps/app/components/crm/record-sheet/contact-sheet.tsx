@@ -24,6 +24,7 @@ import { TableCell } from "@crm/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
+import { InlineCompanyField } from "@/components/crm/company-picker";
 import { contactName } from "@/components/crm/contact-name";
 import { ContactEnrichmentAction } from "@/components/crm/enrichment-actions";
 import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
@@ -288,7 +289,6 @@ function ContactOverview({ contact }: { contact: Contact }) {
 	const cache = useCrmCache();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
 	const { applied, proposed } = factsByField(contact.facts);
 
@@ -382,16 +382,11 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(githubUrl) => save({ githubUrl })}
 						{...agentProps("githubUrl")}
 					/>
-					<InlineSelectField
-						label="Company"
+					<InlineCompanyField
 						value={contact.company?.id ?? NONE}
-						options={[
-							{ value: NONE, label: "No company" },
-							...(companies.data ?? []).map((company) => ({
-								value: company.id,
-								label: company.name,
-							})),
-						]}
+						company={contact.company}
+						saving={isSaving("companyId")}
+						none={{ value: NONE, label: "No company" }}
 						onSave={(companyId) =>
 							save({ companyId: companyId === NONE ? null : companyId })
 						}
