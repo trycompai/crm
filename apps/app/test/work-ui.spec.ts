@@ -1,7 +1,17 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+	shouldRetryWorkAction,
+	workActionDescriptors,
+} from "../app/(app)/[slug]/work/work-action-descriptors";
 import { showWorkNavigation } from "../components/crm/quick-switcher-navigation";
+import {
+	workAssignInput,
+	workMutationBase,
+	workReasonInput,
+	workWaitInput,
+} from "../lib/work-action-inputs";
 import {
 	toWorkListInput,
 	workAssigneeOptions,
@@ -33,6 +43,20 @@ const quickSwitcher = readFileSync(
 	resolve(appRoot, "components/crm/quick-switcher.tsx"),
 	"utf8",
 );
+const workActions = readFileSync(
+	resolve(appRoot, "app/(app)/[slug]/work/work-actions.tsx"),
+	"utf8",
+);
+
+const noCapabilities = {
+	canClaim: false,
+	canAssign: false,
+	canStart: false,
+	canWait: false,
+	canBlock: false,
+	canComplete: false,
+	canDismiss: false,
+};
 
 test("work URL state keeps list defaults and server facets", () => {
 	expect(workParams).toContain('defaultSort: "updatedAt"');
@@ -132,6 +156,60 @@ test("work actions remain fail-closed without server capabilities", () => {
 	expect(workTable).not.toContain("useMutation");
 	expect(workTable).not.toContain("role ===");
 	expect(workTable).not.toContain("state ===");
+});
+
+test("work action descriptors are capability-driven", () => {
+	expect(workActionDescriptors(noCapabilities)).toEqual([]);
+	expect(
+		workActionDescriptors({
+			...noCapabilities,
+			canClaim: true,
+			canComplete: true,
+		}),
+	).toEqual([
+		{ name: "claim", capability: "canClaim", label: "Claim" },
+		{ name: "complete", capability: "canComplete", label: "Complete" },
+	]);
+	expect(workActionDescriptors({ ...noCapabilities, canAssign: true })).toEqual(
+		[{ name: "assign", capability: "canAssign", label: "Assign" }],
+	);
+});
+
+test("work action inputs are exact and preserve an intent request key", () => {
+	const base = workMutationBase("work-1", 4, "request-1");
+	expect(base).toEqual({
+		id: "work-1",
+		expectedVersion: 4,
+		clientRequestId: "request-1",
+	});
+	expect(workAssignInput(base, null)).toEqual({ ...base, assigneeId: null });
+	expect(
+		workWaitInput(base, "Need a reply", "2030-01-01T10:00:00.000Z"),
+	).toEqual({
+		...base,
+		reason: "Need a reply",
+		nextReviewAt: "2030-01-01T10:00:00.000Z",
+	});
+	expect(workReasonInput(base, "Not a fit")).toEqual({
+		...base,
+		reason: "Not a fit",
+	});
+});
+
+test("known mutation conflicts do not offer blind retry, transport failures do", () => {
+	expect(shouldRetryWorkAction("CONFLICT")).toBe(false);
+	expect(shouldRetryWorkAction("BAD_REQUEST")).toBe(false);
+	expect(shouldRetryWorkAction("FORBIDDEN")).toBe(false);
+	expect(shouldRetryWorkAction("INTERNAL_SERVER_ERROR")).toBe(true);
+	expect(shouldRetryWorkAction(undefined)).toBe(true);
+	expect(workActions).toContain("await invalidate();");
+	expect(workActions).toContain("status.retryable");
+});
+
+test("terminal status remains rendered when capabilities become empty", () => {
+	expect(workActions).not.toContain("if (!primary) return null");
+	expect(workActions).toContain("{primary ? (");
+	expect(workActions).toContain('status?.kind === "success"');
 });
 
 test("detail sheets preserve connected openers and allow default close focus otherwise", () => {

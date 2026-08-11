@@ -38,11 +38,15 @@ import {
 	workAssigneeOptions,
 	workFocusHistory,
 } from "@/lib/work-input";
+import { WorkActions } from "./work-actions";
 import { workSearchParams } from "./work-search-params";
 
 type WorkRow = RouterOutputs["work"]["list"]["rows"][number];
 type WorkState = WorkRow["state"];
+type WorkCapabilities = RouterOutputs["work"]["detail"]["capabilities"];
 type WorkFocusData = {
+	id: string;
+	version: number;
 	subject: { label: string | null; type: string };
 	queue: string;
 	state: WorkState;
@@ -60,6 +64,7 @@ type WorkFocusData = {
 	nextReviewAt: string | null;
 	createdAt: string;
 	updatedAt: string;
+	capabilities: WorkCapabilities;
 };
 
 const STATE_LABELS: Record<WorkState, string> = {
@@ -314,6 +319,7 @@ export function WorkTable() {
 				) : (
 					<WorkFocus
 						work={detail.data}
+						users={users.data ?? []}
 						onClose={() =>
 							void setFocusId(null, { history: workFocusHistory(false) })
 						}
@@ -326,9 +332,11 @@ export function WorkTable() {
 
 function WorkFocus({
 	work,
+	users,
 	onClose,
 }: {
 	work: WorkFocusData;
+	users: readonly { id: string; name: string }[];
 	onClose: () => void;
 }) {
 	return (
@@ -343,6 +351,7 @@ function WorkFocus({
 						size="sm"
 					/>
 				}
+				actions={<WorkActions work={work} users={users} />}
 				onClose={onClose}
 			/>
 			<DetailSheetBody>
