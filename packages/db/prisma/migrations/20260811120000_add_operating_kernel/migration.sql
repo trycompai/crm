@@ -265,6 +265,7 @@ CREATE TABLE "actionReceipt" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "completedAt" TIMESTAMP(3),
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "actionReceipt_agent_action_scope_check" CHECK ("agentActionId" IS NULL OR "channel" IS NOT NULL),
     CONSTRAINT "actionReceipt_provider_operation_scope_check" CHECK ("providerOperationId" IS NULL OR "providerAccountId" IS NOT NULL),
     CONSTRAINT "actionReceipt_terminal_completed_check" CHECK ("status" = 'PENDING' OR "completedAt" IS NOT NULL),
     CONSTRAINT "actionReceipt_pkey" PRIMARY KEY ("id")
@@ -881,6 +882,7 @@ CREATE TABLE "costLineItem" (
 );
 
 CREATE UNIQUE INDEX "agentTask_idempotencyKey_key" ON "agentTask"("idempotencyKey");
+CREATE UNIQUE INDEX "agentAction_receipt_scope_key" ON "agentAction"("id", "provider", "channel", "requestHash");
 CREATE UNIQUE INDEX "approvalRequest_idempotencyKey_key" ON "approvalRequest"("idempotencyKey");
 CREATE UNIQUE INDEX "approvalRequest_action_contentDigest_targetType_targetId_po_key" ON "approvalRequest"("action", "contentDigest", "targetType", "targetId", "policyVersion", "invalidationVersion");
 CREATE UNIQUE INDEX "approvalRequest_id_contentDigest_key" ON "approvalRequest"("id", "contentDigest");
@@ -1080,7 +1082,7 @@ ALTER TABLE "agentTask" ADD CONSTRAINT "agentTask_approval_scope_fkey" FOREIGN K
 ALTER TABLE "agentRun" ADD CONSTRAINT "agentRun_approval_scope_fkey" FOREIGN KEY ("approvalRequestId", "approvalContentDigest") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "agentAction" ADD CONSTRAINT "agentAction_approval_scope_fkey" FOREIGN KEY ("approvalRequestId", "requestHash") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_providerAccountId_provider_fkey" FOREIGN KEY ("providerAccountId", "provider") REFERENCES "providerAccount"("id", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_agentActionId_fkey" FOREIGN KEY ("agentActionId") REFERENCES "agentAction"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_agent_action_scope_fkey" FOREIGN KEY ("agentActionId", "provider", "channel", "requestHash") REFERENCES "agentAction"("id", "provider", "channel", "requestHash") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_approvalRequestId_requestHash_fkey" FOREIGN KEY ("approvalRequestId", "requestHash") REFERENCES "approvalRequest"("id", "contentDigest") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "actionReceipt" ADD CONSTRAINT "actionReceipt_provider_operation_scope_fkey" FOREIGN KEY ("providerOperationId", "providerAccountId", "provider") REFERENCES "providerOperation"("id", "providerAccountId", "provider") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "connectorBinding" ADD CONSTRAINT "connectorBinding_secretReferenceId_provider_accountId_fkey" FOREIGN KEY ("secretReferenceId", "provider", "accountId") REFERENCES "secretReference"("id", "provider", "externalAccountId") ON DELETE RESTRICT ON UPDATE CASCADE;

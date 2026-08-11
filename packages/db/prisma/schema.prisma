@@ -1371,6 +1371,7 @@ model AgentAction {
 
   receipts ActionReceipt[]
 
+  @@unique([id, provider, channel, requestHash], map: "agentAction_receipt_scope_key")
   @@index([agentId, plannedAt])
   @@index([runId, plannedAt])
   @@index([provider, externalId])
@@ -2581,7 +2582,7 @@ model ActionReceipt {
   providerAccountId   String?
   providerAccount     ProviderAccount?   @relation(fields: [providerAccountId, provider], references: [id, provider], onDelete: Restrict)
   agentActionId       String?
-  agentAction         AgentAction?       @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
+  agentAction         AgentAction?       @relation(fields: [agentActionId, provider, channel, requestHash], references: [id, provider, channel, requestHash], onDelete: Restrict, map: "actionReceipt_agent_action_scope_fkey")
   approvalRequestId   String?
   approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId, requestHash], references: [id, contentDigest], onDelete: Restrict)
   providerOperationId String?
