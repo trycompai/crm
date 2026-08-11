@@ -151,7 +151,11 @@ wrong in the direction that looks useful.
   same blank, and the sheet shows one at a time — so left alone, accepting one reveals
   the next, forever. The same rule holds when a rep accepts one (`decideFact`).
 - **The same value is never offered twice.** A second `PROPOSED` row with a value
-  already waiting is refused at the write path, not deduplicated on read.
+  already waiting is refused at the write path, not deduplicated on read. **The refusal
+  is for offers only** — the check runs after `applies` is decided, so evidence that has
+  reached `VERIFIED` since the offer was made still lands, settles the suggestion it
+  matches, and replaces the older value. Refusing it there left a weaker value on the
+  record with the answer sitting unread beneath it.
 - **A new fact field goes in `FIELDS` (`lib/facts.ts`) *and* `FACT_COLUMNS`**
   (`apps/api/src/contacts/contacts.service.ts`).
 

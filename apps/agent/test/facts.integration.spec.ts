@@ -218,6 +218,38 @@ describe("recordFact", () => {
 		expect(facts.find((f) => f.value === "Comp AI")?.status).toBe("APPLIED");
 	});
 
+	it("lets verified evidence settle the suggestion it matches", async () => {
+		const offer = await recordFact({
+			contactId,
+			field: "employer",
+			value: "Fleetio Inc",
+			evidence: [seen("web.cited-claim"), seen("search.cites-profile")],
+			method: "web",
+		});
+		expect(offer.applied).toBe(false);
+
+		const result = await recordFact({
+			contactId,
+			field: "employer",
+			value: "Fleetio Inc",
+			evidence: [seen("linkedin.employer-and-name")],
+			method: "linkedin.profile",
+		});
+
+		expect(result.stored).toBe(true);
+		expect(result.applied).toBe(true);
+
+		const facts = await db.contactFact.findMany({
+			where: { contactId, field: "employer" },
+			select: { value: true, status: true, score: true },
+		});
+
+		const live = facts.filter((fact) => fact.status === "APPLIED");
+		expect(live).toHaveLength(1);
+		expect(live[0]?.value).toBe("Fleetio Inc");
+		expect(facts.filter((fact) => fact.status === "PROPOSED")).toHaveLength(0);
+	});
+
 	it("stores the evidence, so the score can be explained later", async () => {
 		const fact = await db.contactFact.findFirst({
 			where: { contactId, field: "title" },

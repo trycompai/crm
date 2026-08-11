@@ -26,7 +26,7 @@ export type FactSubject = {
 	lastName: string | null;
 } & Record<string, unknown>;
 
-export function columnFor(field: FactField): string | null {
+export function factColumn(field: FactField): string | null {
 	return FIELDS[field].column;
 }
 
@@ -142,7 +142,24 @@ export async function recordFact(
 		};
 	}
 
+	const column = FIELDS[field].column;
+	const hasAgentFact = Boolean(currentApplied);
+
+	if (humanOwns({ field, column, contact, hasAgentFact })) {
+		return {
+			...base,
+			stored: false,
+			applied: false,
+			reason: `A person already filled in ${field}. That outranks anything found on the web.`,
+		};
+	}
+
+	const applies =
+		scored.band === FactBand.VERIFIED ||
+		fillsBlank({ field, contact, hasAgentFact });
+
 	if (
+		!applies &&
 		existing.some(
 			(fact) =>
 				fact.status === FactStatus.PROPOSED && sameValue(fact.value, trimmed),
@@ -156,23 +173,6 @@ export async function recordFact(
 				"This exact value is already in front of a rep, waiting on them. Offering it twice only makes them read it twice.",
 		};
 	}
-
-	const column = FIELDS[field].column;
-
-	if (
-		humanOwns({ field, column, contact, hasAgentFact: Boolean(currentApplied) })
-	) {
-		return {
-			...base,
-			stored: false,
-			applied: false,
-			reason: `A person already filled in ${field}. That outranks anything found on the web.`,
-		};
-	}
-
-	const applies =
-		scored.band === FactBand.VERIFIED ||
-		isEmpty({ field, column, contact, hasAgentFact: Boolean(currentApplied) });
 
 	const sessionId = currentFocus().sessionId;
 

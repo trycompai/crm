@@ -1,8 +1,8 @@
 import { db, FactStatus } from "@crm/db";
 import {
-	columnFor,
 	type FactField,
 	type FactSubject,
+	factColumn,
 	fillsBlank,
 } from "./facts";
 import { splitName } from "./names";
@@ -79,7 +79,7 @@ export async function sweepBlankFacts(
 		const [best] = group;
 		const field = best.field as FactField;
 		const contact = best.contact as FactSubject;
-		const column = columnFor(field);
+		const column = factColumn(field);
 		const current = applied.get(key(best.contactId, field));
 
 		if (!fillsBlank({ field, contact, hasAgentFact: current !== undefined })) {
