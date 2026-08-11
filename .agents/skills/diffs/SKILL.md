@@ -22,27 +22,30 @@ Install `react` and `react-dom` when the app uses the React entry.
 
 ## Select an API reference
 
-| Surface                                                      | Reference                                              |
-| ------------------------------------------------------------ | ------------------------------------------------------ |
-| Root components, parsing, and file extension APIs            | [Core API](references/api-core.md)                     |
-| Languages, themes, highlighter state, and streams            | [Highlighting API](references/api-highlighting.md)     |
-| Renderers, managers, DOM helpers, comparisons, and constants | [Low-level rendering API](references/api-rendering.md) |
-| Shared data, option, render, selection, and editor types     | [Shared types](references/api-types.md)                |
-| `@pierre/diffs/react`                                        | [React API](references/api-react.md)                   |
-| `@pierre/diffs/edit`                                         | [Editor API](references/api-editor.md)                 |
-| `@pierre/diffs/ssr`                                          | [SSR API](references/api-ssr.md)                       |
-| `@pierre/diffs/worker` and worker scripts                    | [Worker API](references/api-worker.md)                 |
+| Surface               | Reference                              |
+| --------------------- | -------------------------------------- |
+| `@pierre/diffs/react` | [React API](references/api-react.md)   |
+| `@pierre/diffs/edit`  | [Editor API](references/api-editor.md) |
 
 ## Select a recipe
 
-| Task                                | Recipe                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| Render a file or diff in React      | [Render with React](references/recipe-react.md)                          |
-| Render a file or diff without React | [Render with vanilla JavaScript](references/recipe-vanilla.md)           |
-| Build a virtualized review surface  | [Use CodeView](references/recipe-code-view.md)                           |
-| Edit a React surface or CodeView    | [Edit with React](references/recipe-edit-react.md)                       |
-| Edit a vanilla surface or CodeView  | [Edit with vanilla JavaScript](references/recipe-edit-vanilla.md)        |
-| Preload markup on the server        | [Use SSR](references/recipe-ssr.md)                                      |
-| Highlight through a worker pool     | [Use workers](references/recipe-workers.md)                              |
-| Add line annotations and selection  | [Add annotations and selection](references/recipe-annotations.md)        |
-| Register a Shiki language or theme  | [Register custom highlighting](references/recipe-custom-highlighting.md) |
+| Task                               | Recipe                                             |
+| ---------------------------------- | -------------------------------------------------- |
+| Render a file or diff in React     | [Render with React](references/recipe-react.md)    |
+| Build a virtualized review surface | [Use CodeView](references/recipe-code-view.md)     |
+| Edit a React surface or CodeView   | [Edit with React](references/recipe-edit-react.md) |
+
+## Not vendored here
+
+These references were not copied into this skill. There is no local file for
+them. Read the package types and the upstream documentation instead.
+
+- Core API: root components, parsing, and file extension APIs.
+- Highlighting API: languages, themes, highlighter state, and streams.
+- Low-level rendering API: renderers, managers, DOM helpers, and constants.
+- Shared types: data, option, render, selection, and editor types.
+- SSR API for `@pierre/diffs/ssr`, and the recipe for preloading server markup.
+- Worker API for `@pierre/diffs/worker`, and the recipe for a worker pool.
+- Recipes for vanilla JavaScript rendering and vanilla editing.
+- Recipes for line annotations and selection.
+- Recipe for registering a custom Shiki language or theme.

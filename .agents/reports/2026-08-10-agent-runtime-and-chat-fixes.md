@@ -288,7 +288,7 @@ The built-in Better Auth Slack provider is an OpenID user-login provider. It req
 
 The implementation intentionally uses Better Auth's custom `genericOAuth` plugin and pins the app-origin callback URI in both authorization and token exchange.
 
-The exact bot scopes are:
+CMP-73 shipped six bot scopes:
 
 - `channels:read`
 - `groups:read`
@@ -296,6 +296,23 @@ The exact bot scopes are:
 - `im:write`
 - `users:read`
 - `users:read.email`
+
+That list is no longer the whole grant, and it must not be quoted as one.
+`packages/auth/src/slack-scopes.ts` is the source of truth. `SLACK_SCOPES`
+(line 10) now names 16 bot scopes, and `SLACK_REQUESTED_SCOPES` (line 109) sends
+every one of them at install time (`packages/auth/src/auth.ts:131`):
+
+`channels:history`, `channels:join`, `channels:manage`, `channels:read`,
+`channels:write.invites`, `chat:write`, `chat:write.public`,
+`conversations.connect:write`, `groups:history`, `groups:read`, `groups:write`,
+`groups:write.invites`, `im:write`, `links:write`, `users:read`,
+`users:read.email`.
+
+Ten of those 16 carry `sensitive: true`, including `channels:history`,
+`groups:history` and `chat:write.public`. The install also asks the installer
+for a user grant, `SLACK_USER_SCOPES` (`slack-scopes.ts:111`): `channels:read`,
+`channels:write`, `groups:read`, `groups:write`. Read the file before you
+describe this grant to anyone.
 
 Slack is not trusted for implicit account linking, sign-up is disabled for this provider, and missing Slack profile data routes to the connection page with actionable error copy.
 

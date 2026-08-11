@@ -163,7 +163,8 @@ silent.
 Everything needed already exists:
 
 - Bot token — `account` row, `providerId: "slack"`, `accessToken` set.
-- Scope — `chat:write` is already requested (`packages/auth/src/auth.ts:117`).
+- Scope — `chat:write` is already requested
+  (`packages/auth/src/slack-scopes.ts:48`, sent by `auth.ts:131`).
 - Destination resolution — `builder-runtime.ts:636` `slackDestinationIssues()`
   already rejects ids and labels outside the inspected workspace.
 - Idempotency — `AgentAction.idempotencyKey` is unique; use it so a retry cannot
@@ -208,32 +209,42 @@ but it is a **feature**, and this spec is a **correctness fix**. Separate task,
 separate review. Do it after this one; it is far more useful once actions
 actually execute and failures are visible.
 
-### Follow-on gap found once EVENT triggers landed
+### Follow-on gaps found once EVENT triggers landed, both now closed
 
-`EVENT` triggers have since been implemented: `draft-input.ts` now accepts
-`{ type: "EVENT", event: z.enum(AGENT_EVENT_TYPES) }`, and
-`packages/db/src/agent-events.ts:1` defines:
+`EVENT` triggers have since been implemented. `draft-input.ts:26` accepts
+`{ type: z.literal("EVENT"), ...triggerMetadata, event: z.enum(CRM_EVENT_TYPES) }`,
+and `draft-input.ts:1` imports `CRM_EVENT_TYPES` from `@crm/db/crm-events`.
+
+The event names live in `packages/db/src/crm-events.ts`. `CRM_EVENT_CATALOG`
+(line 9) is the catalogue, and `CRM_EVENT_TYPES` (line 44) is its key list:
 
 ```ts
-export const AGENT_EVENT_TYPES = ["deal.created", "deal.closed"] as const;
+export const CRM_EVENT_CATALOG = {
+  "company.created": { … },
+  "contact.created": { … },
+  "deal.created": { … },
+  "deal.stage.changed": { … },
+  "deal.opened": { … },
+  "deal.closed": { … },
+} as const satisfies Record<string, CrmEventDefinition>;
 ```
 
-Two problems surfaced immediately, both worth their own small task:
+There is no `agent-events.ts` and no `AGENT_EVENT_TYPES` constant. An earlier
+version of this spec named both. Read `crm-events.ts` instead.
 
-**An agent can only have one trigger.** `trigger` in the draft schema is a single
-discriminated-union object, not an array. A user asking for "a message when a
-deal is opened, closed, or created" is forced to pick one event and told to
-"build a second agent for the other event afterwards" — which is a schema
-limitation presented as a product rule. The database already supports the
-opposite: `AgentTrigger` (`schema.prisma:697`) is its own model keyed by
-`agentId` + `versionId`, so many triggers per version are representable today.
-The draft schema is the only thing preventing it.
+Two problems surfaced when `EVENT` first landed. Both are fixed. Keep them
+fixed:
 
-**"Opened" is not an event.** The user's mental model included a deal opening;
-only `deal.created` and `deal.closed` exist. The builder folded "opened" into
-"created", which is defensible, but the explanation leaked the internal
-constraint instead of stating what the CRM can actually notice. If stage
-transitions matter, the event list needs to say so.
+**An agent can have many triggers.** The draft schema takes an array:
+`triggers: z.array(trigger).min(1).max(10)` (`draft-input.ts:64`). A user asking
+for "a message when a deal is opened, closed, or created" gets one agent with
+three triggers. The database always allowed this. `AgentTrigger` is its own
+model keyed by `agentId` and `versionId`.
+
+**"Opened" is an event.** `deal.opened` is in the catalogue, described as "A
+closed deal returns to the open pipeline". `deal.stage.changed` covers stage
+transitions. The builder must offer these by name and must not fold "opened"
+into "created".
 
 Also out of scope: builder conversation state — see
 `.agents/prompts/fix-builder-conversation-state.md`.

@@ -82,11 +82,14 @@ Nothing after this step may use a literal page metric.
 
 ## Step 2 — Brand marks
 
-Extract path data from Paper nodes `L5E-0` (HubSpot), `L5Z-0` (Docusign),
-`KJJ-0` (Ergo) into `packages/ui/src/components/brand-logos/hubspot.tsx`,
-`docusign.tsx`, `ergo.tsx`, shaped exactly like the existing `stripe.tsx`:
-a single default-exported component taking `React.SVGProps<SVGSVGElement>`,
+Two marks are missing. Extract path data from Paper nodes `L5E-0` (HubSpot) and
+`KJJ-0` (Ergo) into `packages/ui/src/components/brand-logos/hubspot.tsx` and
+`ergo.tsx`, shaped exactly like the existing `stripe.tsx`: a single
+default-exported component taking `React.SVGProps<SVGSVGElement>`,
 `viewBox="0 0 24 24"`, `aria-hidden="true"`, brand hex inline.
+
+`packages/ui/src/components/brand-logos/docusign.tsx` already exists, and
+`add-connection-dialog.tsx:4` already imports it. Do not rebuild it.
 
 Do not invent paths. If a node will not yield clean data, stop and say so.
 

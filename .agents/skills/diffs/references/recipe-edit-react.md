@@ -59,7 +59,6 @@ export function EditableDiff() {
       },
       onChange(file) {
         draftRef.current = file;
-        saveDraft(file);
       },
     }),
     []

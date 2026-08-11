@@ -51,21 +51,37 @@ events visible to conversations.events() (root only):   11
 total events persisted in the last 36h (all sessions):  749
 ```
 
-`conversations.service.ts:878` is why:
+The read in `conversations.events()` was why. It filtered on
+`sessionId: conversation.sessionId` alone, so a builder conversation returned
+only its root-session events. **On reload the UI received 11 events out of 224.**
+That is the "choppy" feeling. It is not a rendering problem, the data was never
+sent.
+
+That read is now fixed. `apps/api/src/conversations/conversations.service.ts:877`
+takes conversation-owned events as well:
 
 ```ts
-const events = await this.db.agentEvent.findMany({
-  where: { sessionId: conversation.sessionId },   // root session only
+const eventWhere: Prisma.AgentEventWhereInput =
+  conversation.kind === "BUILDER"
+    ? {
+        OR: [
+          { conversationId: input.id },
+          ...(conversation.sessionId
+            ? [{ sessionId: conversation.sessionId }]
+            : []),
+        ],
+      }
+    : conversation.sessionId
+      ? { sessionId: conversation.sessionId }
+      : { id: { in: [] } };
 ```
 
-**On reload the UI receives 11 events out of 224.** That is the "choppy" feeling
-— it is not a rendering problem, the data was never sent.
+### Proof — the durable question record was never written
 
-### Proof — the durable question record is never written
-
-`crm.ts:113` has an `input.requested` channel handler that writes
-`agentConversation.pendingInputRequest`. It has never fired for a subagent
-question, because **that event type is not emitted**:
+`crm.ts:205` has an `input.requested` channel handler that writes
+`agentConversation.pendingInputRequest`. At the time of this investigation it
+had never written a row for a subagent question. The event type was absent from
+the recorded stream:
 
 ```
 distinct event types, last 36h:
@@ -81,6 +97,11 @@ The only two `input.requested` rows in the entire database are from **2026-08-05
 *"call agent_builder immediately; do not ask the user a clarification yourself"*.
 That change moved every question into the subagent and silently severed the
 durable path. Nothing failed; the write just stopped happening.
+
+The event type itself was never the obstacle. eve proxies `input.requested` from
+a descendant session up to the parent stream so the root channel can prompt the
+user, and `apps/agent/node_modules/eve/docs/subagents.mdx` states that contract.
+Read it before you conclude that a subagent event cannot reach the channel.
 
 Consequence, on every recent builder conversation:
 
@@ -143,10 +164,9 @@ be reconciled rather than left to coexist.
 
 Another agent made real progress. Keep all of this:
 
-- `crm.ts:113` — `input.requested` handler writing `pendingInputRequest`, and
-  clearing it to `Prisma.DbNull` on completion (`crm.ts:211`). Correct code; it
-  simply listens for an event that never arrives. Keep the write, change the
-  trigger.
+- `crm.ts:205` — `input.requested` handler writing `pendingInputRequest`, and
+  clearing it to `Prisma.DbNull` on completion (`crm.ts:268`, `284`, `321`,
+  `345`). Correct code. Keep it.
 - `conversations.service.ts:377` — the conversation payload already exposes
   `pendingQuestion` derived from `pendingInputRequest`. The durable channel
   exists end to end; only the writer is missing.
@@ -161,15 +181,25 @@ Another agent made real progress. Keep all of this:
 
 ## The work
 
-### 1. Write the pending question from where it is actually raised
+### 1. Write the pending question from where it is actually raised: done
 
 `pendingInputRequest` must be written whenever the builder asks, regardless of
-which session raised it. Do not rely on the `input.requested` channel event —
-it is not emitted for subagents.
+which session raised it.
 
-Write it from the builder's `ask_question` path itself, keyed to the
-conversation. Clear it when the answer is accepted and on turn end. After this,
-`answerBuilderQuestion` validates against a row that exists, and the card
+The `input.requested` channel event is the correct hook, and it does reach the
+root channel. eve proxies `input.requested`, `authorization.required` and
+`authorization.completed` from descendant sessions up to the parent stream so
+the root channel can prompt the user. That is the declared-subagent contract in
+`apps/agent/node_modules/eve/docs/subagents.mdx`. An earlier version of this
+spec said the event is not emitted for subagents. That was wrong.
+
+The path now works end to end. `crm.ts:205` handles the event and calls
+`persistBuilderInputRequest` (`apps/agent/agent/lib/builder-input.ts:15`), which
+writes an `agentEvent` row carrying `conversationId` and sets both
+`continuationToken` and `pendingInputRequest` on the conversation in one
+transaction. Replays and stale requests are rejected by `supersedes()`.
+
+`answerBuilderQuestion` now validates against a row that exists, and the card
 survives refresh because it is a database read.
 
 The token helper is not the problem: stored tokens look like
@@ -177,12 +207,17 @@ The token helper is not the problem: stored tokens look like
 (`custom-agent-dispatch.ts:626`) uses `lastIndexOf`, so the `crm:` channel prefix
 resolves correctly. Leave it alone.
 
-### 2. Return child-session events from `conversations.events()`
+### 2. Return child-session events from `conversations.events()`: done
 
 Without this the transcript stays 95% missing and the thread keeps feeling
-broken even once the question card is fixed. Either record descendant session
-ids on the conversation as they start, or resolve them at read time. Preserve
-ordering across sessions and keep the existing `limit`.
+broken even once the question card is fixed.
+
+The shape that was built: `AgentEvent.conversationId`
+(`packages/db/prisma/schema.prisma:473`). The audit hook stamps it on every
+event from a builder session, root or child
+(`apps/agent/agent/hooks/audit.ts:19`). The read ORs conversation ownership with
+the root session id, keeps `orderBy` on `emittedAt` then `id`, and keeps the
+existing `limit`.
 
 ### 3. Finish the sticky-state cleanup
 

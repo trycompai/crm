@@ -43,12 +43,14 @@ account rows where providerId = "slack":  0
 
 ## Root cause
 
-`packages/auth/src/auth.ts:71`:
+`packages/auth/src/auth.ts:80`:
 
 ```ts
-accountLinking: {
-  enabled: true,
-  trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID, "slack"],
+account: {
+  accountLinking: {
+    enabled: true,
+    trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID],
+  },
 },
 ```
 
@@ -71,10 +73,13 @@ flag (`api/routes/account.mjs:180`, `api/routes/callback.mjs:102`,
 
 ## Why it is a category error
 
-- `auth.ts:117` requests only `scopes`, never `user_scope`. Slack OAuth v2 then
-  returns a **bot token** (`xoxb-`) at the top level; a user token would sit
-  under `authed_user.access_token`. Better Auth stores `tokens.accessToken`, so
-  the row holds a **workspace credential in an identity table**.
+- `auth.ts:131` requests the bot `scopes`, and `auth.ts:133` also requests
+  `user_scope`. Slack OAuth v2 returns the **bot token** (`xoxb-`) at the top
+  level and the installer's user token under `authed_user.access_token`.
+  `getToken` returns the bot token as `accessToken` (`auth.ts:162`) and passes
+  the raw payload to `storeSlackUserGrant` (`auth.ts:159`). Better Auth stores
+  `tokens.accessToken`, so the `account` row holds a **workspace credential in
+  an identity table**.
 - The consumer already knows. `slack-connection.service.ts` looks the connection
   up with **no `userId` filter** (`where: { providerId: "slack", accessToken: { not: null } }`).
   It is already workspace-wide in everything but storage.
@@ -94,7 +99,7 @@ the whole instance. Do not build multi-tenant plumbing; do not assume it either.
 `teamName`, `botUserId`, `accessToken`, `scope`, `installedById` (audit only —
 who clicked, not who owns), `installedAt`, `updatedAt`.
 
-`teamName` also removes the placeholder at `slack-connection.service.ts:61`,
+`teamName` also removes the placeholder at `slack-connection.service.ts:85`,
 which currently returns the literal string `"Slack workspace"`.
 
 **2. Own the OAuth round trip.** An authorize redirect and a callback that
@@ -109,9 +114,10 @@ everything the bot can see; per-user ownership buys nothing and creates an
 orphan when that person leaves. Record who installed it for audit, gate on
 admin role, and show the installer's name on the connection page.
 
-**4. Repoint the readers.** `slack-connection.service.ts` and
-`apps/agent/agent/lib/slack-people.ts:20` both query `account`. Both move to
-`SlackInstallation`. Neither scopes by user today, so behaviour is unchanged.
+**4. Repoint the readers.** `slack-connection.service.ts:36` and
+`slackAccessToken()` in `apps/agent/agent/lib/slack-connection.ts:4` both query
+`account`. Both move to `SlackInstallation`. Neither scopes by user today, so
+behaviour is unchanged.
 
 **5. Update disconnect.** `SlackConnectionService.disconnect()` currently deletes
 `account` rows and clears `slackChannel`. Delete the installation row instead,
@@ -119,8 +125,10 @@ keeping the same rules: **clear cached channels** (a new app means a new bot
 user, a member of nothing) and **keep `slackMemberMatch`** (Slack user ids are
 workspace-scoped and survive a reinstall).
 
-**6. Remove `"slack"` from `trustedProviders`** (`auth.ts:73`). It is not an
-identity provider.
+**6. `trustedProviders` needs no change.** `auth.ts:83` reads
+`trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID]`. Slack is not in
+that list and has never been in it. An earlier version of this spec told the
+implementer to remove it. That was wrong. Do no work here.
 
 **7. Migrate.** Move any existing `providerId: "slack"` account rows into the new
 table, then delete them. Locally there are currently zero — confirm before
@@ -140,32 +148,47 @@ After connecting, agents cannot post anywhere until a human runs `/invite` in
 each channel. Nothing in the product says so. A destination the bot has not been
 invited to reports as unavailable, which reads as "that channel does not exist".
 
-## Root cause — two independent gaps
+## Root cause: one gap, and one claim this spec got wrong
 
-**The scope is missing.** `auth.ts:117` requests:
+**The scope is already requested.** `packages/auth/src/slack-scopes.ts:10`
+defines `SLACK_SCOPES`. `SLACK_REQUESTED_SCOPES` (line 109) is every `scope`
+field in that list, and `auth.ts:131` sends it as
+`scopes: [...SLACK_REQUESTED_SCOPES]`. The 16 requested scopes are:
 
 ```
-channels:history  channels:manage  channels:read  channels:write.invites
-chat:write  conversations.connect:write  groups:history  groups:read
-groups:write  groups:write.invites  im:write  users:read  users:read.email
+channels:history  channels:join  channels:manage  channels:read
+channels:write.invites  chat:write  chat:write.public
+conversations.connect:write  groups:history  groups:read  groups:write
+groups:write.invites  im:write  links:write  users:read  users:read.email
 ```
 
-`conversations.join` requires **`channels:join`**, which is not in that list. The
-bot is structurally incapable of adding itself to a channel.
+`channels:join` is at `slack-scopes.ts:66`, so `conversations.join` is available
+to the bot. An earlier version of this spec listed 13 scopes, left out
+`channels:join`, `chat:write.public` and `links:write`, and said the bot was
+structurally incapable of joining a channel. All of that was wrong. Slack does
+not grant a new scope to an existing install, so a workspace that connected
+before a scope was added must reconnect to get it.
 
-**The inventory is discarded.** `slack-people.ts:139` lists *all* public and
-private channels — but `persistSlackChannels` (line 87) keeps only the ones the
-bot is already in:
+**Most of the inventory is now kept.** `persistSlackChannels`
+(`apps/agent/agent/lib/slack-people.ts:135`) filters at line 142:
 
 ```ts
-const available = channels.filter(
-  (channel) => channel.is_member && !channel.is_archived,
-);
+.filter(
+  (channel) =>
+    !channel.is_archived &&
+    (channel.is_member || !channel.is_private || canInviteItself),
+)
 ```
 
-Everything joinable is dropped before it reaches the database, so no UI can offer
-it. `SlackChannel` has no notion of "exists but not joined", and no
-public/private distinction.
+A public channel is persisted whether or not the bot is a member. A private
+channel is persisted only when the install holds a user token
+(`canInviteItself`), because only a user token can invite the bot to one.
+`SlackChannel` already stores `isPrivate` and `isMember`
+(`packages/db/prisma/schema.prisma:73`), so "exists but not joined" is
+representable today.
+
+What is still missing: a private channel that no user token can see never
+reaches the database, and `available` still mixes reachability with policy.
 
 ## The distinction that has to exist
 
@@ -182,9 +205,10 @@ unavailable"*, and lets an admin deny a channel the bot happens to be in.
 
 ## Work
 
-**1. Add `channels:join` to the scope list.** Note in the connection UI that
-existing installs must reconnect to pick up a new scope — Slack does not grant
-scopes retroactively.
+**1. Keep `channels:join` in the scope list.** It is already there
+(`slack-scopes.ts:66`). Note in the connection UI that an existing install must
+reconnect to pick up any scope added after it was installed. Slack does not
+grant scopes retroactively.
 
 **2. Persist the whole inventory.** Store every non-archived channel with
 `isMember`, `isPrivate`, `memberCount`. Drop the `available` flag in favour of
