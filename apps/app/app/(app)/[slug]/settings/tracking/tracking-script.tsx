@@ -33,6 +33,7 @@ import { Label } from "@crm/ui/components/label";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -41,6 +42,7 @@ export function TrackingScript() {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const tracking = useQuery(trpc.tracking.settings.queryOptions());
+	const [section, setSection] = useState("html");
 
 	const setFlag = useMutation(
 		trpc.tracking.setFlag.mutationOptions({
@@ -116,7 +118,13 @@ export function TrackingScript() {
 				</CardDescription>
 
 				<CardAction>
-					<Button size="sm" onClick={() => copy(snippet)} type="button">
+					<Button
+						size="sm"
+						onClick={() =>
+							copy(section === "gtm" ? tagManagerSnippet : snippet)
+						}
+						type="button"
+					>
 						<Icon icon={Copy} data-icon="inline-start" />
 						Copy
 					</Button>
@@ -124,10 +132,15 @@ export function TrackingScript() {
 			</CardHeader>
 
 			<CardContent>
-				<Accordion type="single" collapsible defaultValue="html">
+				<Accordion
+					type="single"
+					collapsible
+					value={section}
+					onValueChange={setSection}
+				>
 					<AccordionItem value="html">
 						<AccordionTrigger>Paste it into your HTML</AccordionTrigger>
-						<AccordionContent>
+						<AccordionContent className="flex flex-col gap-4">
 							<pre className="overflow-x-auto rounded-md border bg-muted p-4 font-mono text-code-foreground text-xs/5">
 								<span className="text-code-accent">{"<script"}</span>
 								{"\n  src="}
@@ -149,7 +162,7 @@ export function TrackingScript() {
 						<AccordionTrigger>
 							Add it through Google Tag Manager
 						</AccordionTrigger>
-						<AccordionContent>
+						<AccordionContent className="flex flex-col gap-4">
 							<pre className="overflow-x-auto rounded-md border bg-muted p-4 font-mono text-code-foreground text-xs/5">
 								<span className="text-code-accent">{"<script"}</span>
 								{"\n  src="}
@@ -168,23 +181,12 @@ export function TrackingScript() {
 									off any consent-blocked category you do not need.
 								</li>
 							</ol>
-							<div className="flex items-center justify-between gap-4">
-								<p className="text-muted-foreground text-xs/relaxed">
-									Tag Manager drops a{" "}
-									<span className="font-mono text-foreground">data-site</span>{" "}
-									attribute when it injects a script, so this form carries the
-									site ID in the URL instead.
-								</p>
-								<Button
-									size="xs"
-									variant="outline"
-									type="button"
-									onClick={() => copy(tagManagerSnippet)}
-								>
-									<Icon icon={Copy} data-icon="inline-start" />
-									Copy
-								</Button>
-							</div>
+							<p className="text-muted-foreground text-xs/relaxed">
+								Tag Manager drops a{" "}
+								<span className="font-mono text-foreground">data-site</span>{" "}
+								attribute when it injects a script, so this form carries the
+								site ID in the URL instead.
+							</p>
 						</AccordionContent>
 					</AccordionItem>
 				</Accordion>
