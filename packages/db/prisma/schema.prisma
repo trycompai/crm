@@ -60,6 +60,7 @@ model User {
   approvedRequests      ApprovalRequest[] @relation("ApprovalRequestApprover")
   ownedCampaigns        Campaign[]        @relation("CampaignOwner")
   ownedSupportCases     SupportCase[]     @relation("SupportCaseOwner")
+  matchedSupportCases   SupportCase[]     @relation("SupportCaseMatchedBy")
   ownedCustomerAccounts CustomerAccount[] @relation("CustomerAccountOwner")
 
   members     Member[]
@@ -310,6 +311,7 @@ enum WorkItemState {
 enum AgentTaskState {
   QUEUED
   LEASED
+  WAITING_FOR_APPROVAL
   SUCCEEDED
   FAILED
   CANCELLED
@@ -426,6 +428,13 @@ enum SupportCasePriority {
   NORMAL
   HIGH
   URGENT
+}
+
+enum SupportIdentityMatchState {
+  UNMATCHED
+  MATCH_PROPOSED
+  MATCHED
+  EXCLUDED
 }
 
 enum SupportCaseEventType {
@@ -908,10 +917,10 @@ model AgentTask {
   kind   String
   reason String
 
-  priority Int             @default(0)
-  budget   Int             @default(4)
-  attempts Int             @default(0)
-  state    AgentTaskState?
+  priority Int            @default(0)
+  budget   Int            @default(4)
+  attempts Int            @default(0)
+  state    AgentTaskState @default(QUEUED)
 
   operationKey      String?
   idempotencyKey    String?          @unique
@@ -926,7 +935,7 @@ model AgentTask {
   provider          String?
   scopes            Json?
   approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentTasks", fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentTasks", fields: [approvalRequestId], references: [id], onDelete: Restrict)
 
   dueAt       DateTime
   leasedUntil DateTime?
@@ -1267,7 +1276,7 @@ model AgentRun {
   scopes       Json?
 
   approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentRuns", fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentRuns", fields: [approvalRequestId], references: [id], onDelete: Restrict)
 
   errorCode    String?
   errorMessage String?
@@ -1347,7 +1356,7 @@ model AgentAction {
   scopes       Json?
 
   approvalRequestId String?
-  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentActions", fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest? @relation("ApprovalRequestAgentActions", fields: [approvalRequestId], references: [id], onDelete: Restrict)
 
   errorCode    String?
   errorMessage String?
@@ -2459,11 +2468,13 @@ model WorkItem {
   subjectId    String
   subjectLabel String?
 
-  ownerId String?
-  owner   User?           @relation("WorkItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  queue   String
-  urgency WorkItemUrgency @default(NORMAL)
-  dueAt   DateTime?
+  ownerId      String?
+  owner        User?           @relation("WorkItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  queue        String
+  urgency      WorkItemUrgency @default(NORMAL)
+  dueAt        DateTime?
+  nextReviewAt DateTime?
+  version      Int             @default(0)
 
   evidence      Json?
   reason        String
@@ -2475,7 +2486,9 @@ model WorkItem {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  @@unique([id, version])
   @@index([state, urgency, dueAt])
+  @@index([state, nextReviewAt])
   @@index([ownerId, state, dueAt])
   @@index([queue, state, dueAt])
   @@index([subjectType, subjectId])
@@ -2486,6 +2499,7 @@ model ApprovalRequest {
   id                  String                @id @default(cuid())
   action              String
   contentDigest       String
+  contentSnapshot     Json
   targetType          SubjectType
   targetId            String
   targetLabel         String?
@@ -2497,6 +2511,7 @@ model ApprovalRequest {
   approver            User?                 @relation("ApprovalRequestApprover", fields: [approverId], references: [id], onDelete: SetNull)
   expiresAt           DateTime
   invalidationVersion Int                   @default(0)
+  version             Int                   @default(0)
   status              ApprovalRequestStatus @default(PENDING)
   idempotencyKey      String                @unique
 
@@ -2511,10 +2526,14 @@ model ApprovalRequest {
   actionReceipts     ActionReceipt[]     @relation("ApprovalRequestActionReceipts")
   publications       Publication[]
   supportReplyDrafts SupportReplyDraft[]
+  plans              Plan[]
   controlCommands    ControlCommand[]
 
   @@unique([action, contentDigest, targetType, targetId, policyVersion, invalidationVersion])
+  @@unique([id, contentDigest])
+  @@unique([id, version])
   @@index([status, expiresAt])
+  @@index([status, version, updatedAt])
   @@index([targetType, targetId, createdAt])
   @@index([requestorId, createdAt])
   @@index([approverId, status, createdAt])
@@ -2530,7 +2549,7 @@ model PolicyGrant {
   operation String
   limits    Json?
 
-  expiresAt DateTime?
+  expiresAt DateTime
   revokedAt DateTime?
   grantKey  String    @unique
   createdAt DateTime  @default(now())
@@ -2558,13 +2577,13 @@ model ActionReceipt {
   status           ActionReceiptStatus @default(PENDING)
 
   providerAccountId   String?
-  providerAccount     ProviderAccount?   @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  providerAccount     ProviderAccount?   @relation(fields: [providerAccountId, provider], references: [id, provider], onDelete: Restrict)
   agentActionId       String?
   agentAction         AgentAction?       @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
   approvalRequestId   String?
-  approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest     ApprovalRequest?   @relation("ApprovalRequestActionReceipts", fields: [approvalRequestId, requestHash], references: [id, contentDigest], onDelete: Restrict)
   providerOperationId String?            @unique
-  providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId], references: [id], onDelete: SetNull)
+  providerOperation   ProviderOperation? @relation("ProviderOperationReceipt", fields: [providerOperationId], references: [id], onDelete: Restrict)
   publication         Publication?
   supportReplyDraft   SupportReplyDraft?
 
@@ -2574,6 +2593,7 @@ model ActionReceipt {
 
   @@unique([providerAccountId, externalId])
   @@unique([provider, externalId], map: "actionReceipt_unbound_provider_externalId_key", where: { providerAccountId: null })
+  @@unique([id, approvalRequestId, requestHash])
   @@index([requestHash])
   @@index([operationKey])
   @@index([status, createdAt])
@@ -2588,14 +2608,18 @@ model ConnectorBinding {
   accountId         String
   scopes            Json
   secretReferenceId String
-  secretReference   SecretReference        @relation("ConnectorSecretReference", fields: [secretReferenceId], references: [id], onDelete: Restrict)
+  secretReference   SecretReference        @relation("ConnectorSecretReference", fields: [secretReferenceId, provider, accountId], references: [id, provider, externalAccountId], onDelete: Restrict)
   status            ConnectorBindingStatus @default(ACTIVE)
 
-  health    ConnectorHealth?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  health             ConnectorHealth?
+  publications       Publication[]
+  supportCases       SupportCase[]
+  supportCaseSources SupportCaseSource[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@unique([provider, accountId])
+  @@unique([id, provider])
   @@index([status, updatedAt])
   @@map("connectorBinding")
 }
@@ -2603,9 +2627,7 @@ model ConnectorBinding {
 model ConnectorHealth {
   id                  String             @id @default(cuid())
   bindingId           String             @unique
-  binding             ConnectorBinding   @relation(fields: [bindingId], references: [id], onDelete: Cascade)
-  provider            String
-  accountId           String
+  binding             ConnectorBinding   @relation(fields: [bindingId], references: [id], onDelete: Restrict)
   cursor              String?
   freshnessAt         DateTime?
   paused              Boolean            @default(false)
@@ -2623,7 +2645,6 @@ model ConnectorHealth {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([provider, accountId])
   @@index([paused, freshnessAt])
   @@index([paused, nextRetryAt])
   @@index([testState, freshnessAt])
@@ -2834,33 +2855,39 @@ model AttributionCredit {
 }
 
 model Publication {
-  id                String            @id @default(cuid())
-  campaignId        String?
-  campaign          Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contentItemId     String?
-  contentItem       ContentItem?      @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
-  contentVariantId  String?
-  contentVariant    ContentVariant?   @relation(fields: [contentVariantId], references: [id], onDelete: SetNull)
-  channel           String
-  provider          String
-  externalId        String?
-  idempotencyKey    String            @unique
-  status            PublicationStatus @default(PLANNED)
-  approvalRequestId String?
-  approvalRequest   ApprovalRequest?  @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
-  actionReceiptId   String?           @unique
-  actionReceipt     ActionReceipt?    @relation(fields: [actionReceiptId], references: [id], onDelete: SetNull)
-  scheduledAt       DateTime?
-  publishedAt       DateTime?
-  receipt           Json?
-  errorMessage      String?
+  id                 String            @id @default(cuid())
+  campaignId         String?
+  campaign           Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentItemId      String?
+  contentItem        ContentItem?      @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  contentVariantId   String?
+  contentVariant     ContentVariant?   @relation(fields: [contentVariantId], references: [id], onDelete: SetNull)
+  connectorBindingId String?
+  connectorBinding   ConnectorBinding? @relation(fields: [connectorBindingId, provider], references: [id, provider], onDelete: Restrict)
+  channel            String
+  provider           String
+  externalId         String?
+  idempotencyKey     String            @unique
+  contentDigest      String
+  status             PublicationStatus @default(PLANNED)
+  approvalRequestId  String?
+  approvalRequest    ApprovalRequest?  @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
+  actionReceiptId    String?           @unique
+  actionReceipt      ActionReceipt?    @relation(fields: [actionReceiptId, approvalRequestId, contentDigest], references: [id, approvalRequestId, requestHash], onDelete: Restrict)
+  scheduledAt        DateTime?
+  publishedAt        DateTime?
+  receipt            Json?
+  errorMessage       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([provider, externalId])
+  @@unique([connectorBindingId, externalId])
+  @@unique([provider, externalId], map: "publication_unbound_provider_externalId_key", where: { connectorBindingId: null })
+  @@unique([actionReceiptId, approvalRequestId, contentDigest])
   @@index([status, scheduledAt])
   @@index([approvalRequestId, status, scheduledAt])
+  @@index([connectorBindingId, status, scheduledAt])
   @@index([campaignId, publishedAt])
   @@index([contentVariantId])
   @@map("publication")
@@ -2888,28 +2915,36 @@ model MarketingSourceReceipt {
 }
 
 model SupportCase {
-  id                String              @id @default(cuid())
-  customerAccountId String?
-  customerAccount   CustomerAccount?    @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
-  dedupeKey         String              @unique
-  subjectType       SubjectType?
-  subjectId         String?
-  provider          String?
-  externalId        String?
-  channel           String
-  queue             String?
-  title             String
-  description       String?
-  status            SupportCaseStatus   @default(NEW)
-  priority          SupportCasePriority @default(NORMAL)
-  ownerId           String?
-  owner             User?               @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  slaPolicyId       String?
-  slaPolicy         SupportSlaPolicy?   @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
-  openedAt          DateTime            @default(now())
-  firstResponseAt   DateTime?
-  dueAt             DateTime?
-  resolvedAt        DateTime?
+  id                 String                    @id @default(cuid())
+  customerAccountId  String?
+  customerAccount    CustomerAccount?          @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  dedupeKey          String                    @unique
+  connectorBindingId String?
+  connectorBinding   ConnectorBinding?         @relation(fields: [connectorBindingId, provider], references: [id, provider], onDelete: Restrict)
+  subjectType        SubjectType?
+  subjectId          String?
+  provider           String?
+  externalId         String?
+  channel            String
+  queue              String?
+  title              String
+  description        String?
+  status             SupportCaseStatus         @default(NEW)
+  priority           SupportCasePriority       @default(NORMAL)
+  matchState         SupportIdentityMatchState @default(UNMATCHED)
+  matchMethod        String?
+  matchEvidence      Json?
+  matchedAt          DateTime?
+  matchedById        String?
+  matchedBy          User?                     @relation("SupportCaseMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
+  ownerId            String?
+  owner              User?                     @relation("SupportCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  slaPolicyId        String?
+  slaPolicy          SupportSlaPolicy?         @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  openedAt           DateTime                  @default(now())
+  firstResponseAt    DateTime?
+  dueAt              DateTime?
+  resolvedAt         DateTime?
 
   sources         SupportCaseSource[]
   events          SupportCaseEvent[]
@@ -2921,8 +2956,11 @@ model SupportCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([provider, externalId])
+  @@unique([connectorBindingId, externalId])
+  @@unique([provider, externalId], map: "supportCase_unbound_provider_externalId_key", where: { connectorBindingId: null })
   @@index([status, priority, dueAt])
+  @@index([matchState, updatedAt])
+  @@index([matchedById, matchState, updatedAt])
   @@index([ownerId, status, dueAt])
   @@index([queue, status, updatedAt])
   @@index([subjectType, subjectId])
@@ -2932,18 +2970,21 @@ model SupportCase {
 }
 
 model SupportCaseSource {
-  id          String      @id @default(cuid())
-  caseId      String
-  case        SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  source      String
-  externalId  String
-  url         String?
-  contentHash String?
-  payload     Json
-  receivedAt  DateTime
-  createdAt   DateTime    @default(now())
+  id                 String            @id @default(cuid())
+  caseId             String
+  case               SupportCase       @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  connectorBindingId String?
+  connectorBinding   ConnectorBinding? @relation(fields: [connectorBindingId], references: [id], onDelete: Restrict)
+  source             String
+  externalId         String
+  url                String?
+  contentHash        String?
+  payload            Json
+  receivedAt         DateTime
+  createdAt          DateTime          @default(now())
 
-  @@unique([source, externalId])
+  @@unique([connectorBindingId, source, externalId])
+  @@unique([source, externalId], map: "supportCaseSource_unbound_source_externalId_key", where: { connectorBindingId: null })
   @@index([caseId, receivedAt])
   @@index([contentHash])
   @@map("supportCaseSource")
@@ -2952,7 +2993,7 @@ model SupportCaseSource {
 model SupportCaseEvent {
   id         String               @id @default(cuid())
   caseId     String
-  case       SupportCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case       SupportCase          @relation(fields: [caseId], references: [id], onDelete: Restrict)
   eventType  SupportCaseEventType
   actorType  String?
   actorId    String?
@@ -2992,7 +3033,7 @@ model SupportSlaPolicy {
 model SupportTriageProposal {
   id              String                      @id @default(cuid())
   caseId          String
-  case            SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case            SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Restrict)
   queue           String?
   priority        SupportCasePriority?
   category        String?
@@ -3014,23 +3055,25 @@ model SupportTriageProposal {
 model SupportReplyDraft {
   id                String                  @id @default(cuid())
   caseId            String
-  case              SupportCase             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case              SupportCase             @relation(fields: [caseId], references: [id], onDelete: Restrict)
   channel           String
   provider          String?
   recipients        Json
   subject           String?
   body              String
+  contentDigest     String
   status            SupportReplyDraftStatus @default(DRAFT)
   approvalRequestId String?
-  approvalRequest   ApprovalRequest?        @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest?        @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
   idempotencyKey    String                  @unique
   actionReceiptId   String?                 @unique
-  actionReceipt     ActionReceipt?          @relation(fields: [actionReceiptId], references: [id], onDelete: SetNull)
+  actionReceipt     ActionReceipt?          @relation(fields: [actionReceiptId, approvalRequestId, contentDigest], references: [id, approvalRequestId, requestHash], onDelete: Restrict)
   sentAt            DateTime?
   errorMessage      String?
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
+  @@unique([actionReceiptId, approvalRequestId, contentDigest])
   @@index([caseId, status, createdAt])
   @@index([approvalRequestId, status, createdAt])
   @@index([status, createdAt])
@@ -3062,7 +3105,7 @@ model SupportKnowledgeDocument {
 model SupportEscalation {
   id           String                    @id @default(cuid())
   caseId       String
-  case         SupportCase               @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case         SupportCase               @relation(fields: [caseId], references: [id], onDelete: Restrict)
   queue        String
   severity     SupportEscalationSeverity
   reason       String
@@ -3081,7 +3124,7 @@ model SupportEscalation {
 model SupportProductHandoff {
   id          String                      @id @default(cuid())
   caseId      String
-  case        SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case        SupportCase                 @relation(fields: [caseId], references: [id], onDelete: Restrict)
   productArea String
   summary     String
   impact      String?
@@ -3109,13 +3152,15 @@ model CustomerAccount {
   owner                User?                 @relation("CustomerAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   metadata             Json?
 
-  instances        CustomerInstance[]
-  providerAccounts ProviderAccount[]
-  secretReferences SecretReference[]
-  usageSamples     UsageSample[]
-  costLineItems    CostLineItem[]
-  supportCases     SupportCase[]
-  slaPolicies      SupportSlaPolicy[]
+  instances          CustomerInstance[]
+  providerAccounts   ProviderAccount[]
+  providerResources  ProviderResource[]
+  providerOperations ProviderOperation[]
+  secretReferences   SecretReference[]
+  usageSamples       UsageSample[]
+  costLineItems      CostLineItem[]
+  supportCases       SupportCase[]
+  slaPolicies        SupportSlaPolicy[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3128,7 +3173,7 @@ model CustomerAccount {
 model CustomerInstance {
   id          String                 @id @default(cuid())
   accountId   String
-  account     CustomerAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account     CustomerAccount        @relation(fields: [accountId], references: [id], onDelete: Restrict)
   key         String
   name        String
   environment String
@@ -3152,6 +3197,7 @@ model CustomerInstance {
   updatedAt DateTime @updatedAt
 
   @@unique([accountId, key])
+  @@unique([id, accountId])
   @@index([status, updatedAt])
   @@index([accountId, status])
   @@map("customerInstance")
@@ -3160,15 +3206,15 @@ model CustomerInstance {
 model ProviderAccount {
   id                String                @id @default(cuid())
   customerAccountId String
-  customerAccount   CustomerAccount       @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  customerAccount   CustomerAccount       @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   instanceId        String?
-  instance          CustomerInstance?     @relation("ProviderAccountInstance", fields: [instanceId], references: [id], onDelete: SetNull)
+  instance          CustomerInstance?     @relation("ProviderAccountInstance", fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
   provider          String
   externalAccountId String
   displayName       String?
   scopes            Json?
   secretReferenceId String?
-  secretReference   SecretReference?      @relation("ProviderAccountSecretReference", fields: [secretReferenceId], references: [id], onDelete: SetNull)
+  secretReference   SecretReference?      @relation("ProviderAccountSecretReference", fields: [secretReferenceId, customerAccountId, provider, externalAccountId], references: [id, customerAccountId, provider, externalAccountId], onDelete: Restrict)
   status            ProviderAccountStatus @default(PENDING)
   metadata          Json?
 
@@ -3182,6 +3228,9 @@ model ProviderAccount {
   updatedAt DateTime @updatedAt
 
   @@unique([customerAccountId, provider, externalAccountId])
+  @@unique([id, customerAccountId])
+  @@unique([id, customerAccountId, provider])
+  @@unique([id, provider])
   @@index([instanceId, provider, status])
   @@index([provider, status, updatedAt])
   @@map("providerAccount")
@@ -3189,10 +3238,12 @@ model ProviderAccount {
 
 model ProviderResource {
   id                String                 @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount        @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   providerAccountId String
-  providerAccount   ProviderAccount        @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount        @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
   instanceId        String?
-  instance          CustomerInstance?      @relation("ProviderResourceInstance", fields: [instanceId], references: [id], onDelete: SetNull)
+  instance          CustomerInstance?      @relation("ProviderResourceInstance", fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
   provider          String
   resourceType      String
   externalId        String
@@ -3204,6 +3255,7 @@ model ProviderResource {
   updatedAt         DateTime               @updatedAt
 
   @@unique([providerAccountId, resourceType, externalId])
+  @@index([customerAccountId, status, updatedAt])
   @@index([instanceId, resourceType, status])
   @@index([provider, resourceType, status])
   @@map("providerResource")
@@ -3214,6 +3266,7 @@ model SecretReference {
   customerAccountId  String?
   customerAccount    CustomerAccount?      @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
   provider           String
+  externalAccountId  String
   reference          String
   version            String?
   status             SecretReferenceStatus @default(ACTIVE)
@@ -3226,15 +3279,17 @@ model SecretReference {
   updatedAt DateTime @updatedAt
 
   @@unique([provider, reference])
+  @@unique([id, provider, externalAccountId])
+  @@unique([id, customerAccountId, provider, externalAccountId])
   @@index([customerAccountId, status])
-  @@index([provider, status])
+  @@index([provider, externalAccountId, status])
   @@map("secretReference")
 }
 
 model DesiredStateRevision {
   id         String                     @id @default(cuid())
   instanceId String
-  instance   CustomerInstance           @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instance   CustomerInstance           @relation(fields: [instanceId], references: [id], onDelete: Restrict)
   revision   Int
   digest     String
   desired    Json
@@ -3246,6 +3301,7 @@ model DesiredStateRevision {
 
   @@unique([instanceId, revision])
   @@unique([instanceId, digest])
+  @@unique([id, instanceId])
   @@index([instanceId, status, revision])
   @@map("desiredStateRevision")
 }
@@ -3253,7 +3309,7 @@ model DesiredStateRevision {
 model ObservedState {
   id         String              @id @default(cuid())
   instanceId String
-  instance   CustomerInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instance   CustomerInstance    @relation(fields: [instanceId], references: [id], onDelete: Restrict)
   digest     String?
   observed   Json
   status     ObservedStateStatus @default(UNKNOWN)
@@ -3263,6 +3319,7 @@ model ObservedState {
 
   plans Plan[]
 
+  @@unique([id, instanceId])
   @@index([instanceId, observedAt])
   @@index([instanceId, status, observedAt])
   @@map("observedState")
@@ -3271,14 +3328,17 @@ model ObservedState {
 model Plan {
   id                 String                @id @default(cuid())
   instanceId         String
-  instance           CustomerInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instance           CustomerInstance      @relation(fields: [instanceId], references: [id], onDelete: Restrict)
   desiredRevisionId  String?
-  desiredRevision    DesiredStateRevision? @relation("DesiredRevisionPlans", fields: [desiredRevisionId], references: [id], onDelete: SetNull)
+  desiredRevision    DesiredStateRevision? @relation("DesiredRevisionPlans", fields: [desiredRevisionId, instanceId], references: [id, instanceId], onDelete: Restrict)
   observedStateId    String
-  observedState      ObservedState         @relation(fields: [observedStateId], references: [id], onDelete: Restrict)
+  observedState      ObservedState         @relation(fields: [observedStateId, instanceId], references: [id, instanceId], onDelete: Restrict)
   preconditionDigest String
+  contentDigest      String
   status             PlanStatus            @default(DRAFT)
   idempotencyKey     String                @unique
+  approvalRequestId  String?
+  approvalRequest    ApprovalRequest?      @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
   summary            String?
   errorMessage       String?
   createdAt          DateTime              @default(now())
@@ -3288,16 +3348,19 @@ model Plan {
 
   steps PlanStep[]
 
+  @@unique([id, instanceId])
   @@index([instanceId, status, createdAt])
-  @@index([desiredRevisionId])
-  @@index([observedStateId])
+  @@index([approvalRequestId, status, createdAt])
+  @@index([desiredRevisionId, instanceId])
+  @@index([observedStateId, instanceId])
   @@map("plan")
 }
 
 model PlanStep {
   id             String         @id @default(cuid())
   planId         String
-  plan           Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  instanceId     String
+  plan           Plan           @relation(fields: [planId, instanceId], references: [id, instanceId], onDelete: Restrict)
   position       Int
   operation      String
   provider       String?
@@ -3317,6 +3380,7 @@ model PlanStep {
   providerOperations ProviderOperation[]
 
   @@unique([planId, position])
+  @@unique([id, instanceId])
   @@index([planId, status, position])
   @@index([resourceType, resourceId])
   @@map("planStep")
@@ -3325,13 +3389,14 @@ model PlanStep {
 model ControlCommand {
   id                String               @id @default(cuid())
   instanceId        String
-  instance          CustomerInstance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instance          CustomerInstance     @relation(fields: [instanceId], references: [id], onDelete: Restrict)
   command           String
   payload           Json?
+  contentDigest     String
   status            ControlCommandStatus @default(QUEUED)
   idempotencyKey    String               @unique
   approvalRequestId String?
-  approvalRequest   ApprovalRequest?     @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest?     @relation(fields: [approvalRequestId, contentDigest], references: [id, contentDigest], onDelete: Restrict)
   requestedByType   String?
   requestedById     String?
   result            Json?
@@ -3343,6 +3408,7 @@ model ControlCommand {
 
   providerOperations ProviderOperation[]
 
+  @@unique([id, instanceId])
   @@index([instanceId, status, createdAt])
   @@index([approvalRequestId])
   @@map("controlCommand")
@@ -3350,14 +3416,16 @@ model ControlCommand {
 
 model ProviderOperation {
   id                String                  @id @default(cuid())
+  customerAccountId String
+  customerAccount   CustomerAccount         @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   instanceId        String?
-  instance          CustomerInstance?       @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instance          CustomerInstance?       @relation(fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
   providerAccountId String?
-  providerAccount   ProviderAccount?        @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  providerAccount   ProviderAccount?        @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
   planStepId        String?
-  planStep          PlanStep?               @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  planStep          PlanStep?               @relation(fields: [planStepId, instanceId], references: [id, instanceId], onDelete: Restrict)
   controlCommandId  String?
-  controlCommand    ControlCommand?         @relation(fields: [controlCommandId], references: [id], onDelete: SetNull)
+  controlCommand    ControlCommand?         @relation(fields: [controlCommandId, instanceId], references: [id, instanceId], onDelete: Restrict)
   provider          String
   operation         String
   operationKey      String?
@@ -3378,6 +3446,7 @@ model ProviderOperation {
 
   @@unique([providerAccountId, externalId])
   @@unique([provider, externalId], map: "providerOperation_unbound_provider_externalId_key", where: { providerAccountId: null })
+  @@index([customerAccountId, status, createdAt])
   @@index([instanceId, status, createdAt])
   @@index([providerAccountId, status, createdAt])
   @@index([planStepId])
@@ -3389,9 +3458,9 @@ model ProviderOperation {
 model Incident {
   id             String           @id @default(cuid())
   instanceId     String
-  instance       CustomerInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  instance       CustomerInstance @relation(fields: [instanceId], references: [id], onDelete: Restrict)
   provider       String?
-  fingerprint    String?          @unique
+  fingerprint    String?
   severity       IncidentSeverity
   status         IncidentStatus   @default(OPEN)
   title          String
@@ -3403,6 +3472,7 @@ model Incident {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
+  @@unique([instanceId, fingerprint])
   @@index([instanceId, status, severity, detectedAt])
   @@index([provider, status, detectedAt])
   @@map("incident")
@@ -3411,11 +3481,11 @@ model Incident {
 model UsageSample {
   id                String            @id @default(cuid())
   customerAccountId String
-  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   instanceId        String?
-  instance          CustomerInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instance          CustomerInstance? @relation(fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
   providerAccountId String?
-  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
   provider          String?
   metric            String
   quantity          Decimal           @db.Decimal(20, 6)
@@ -3434,11 +3504,11 @@ model UsageSample {
 model CostLineItem {
   id                String            @id @default(cuid())
   customerAccountId String
-  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
+  customerAccount   CustomerAccount   @relation(fields: [customerAccountId], references: [id], onDelete: Restrict)
   instanceId        String?
-  instance          CustomerInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instance          CustomerInstance? @relation(fields: [instanceId, customerAccountId], references: [id, accountId], onDelete: Restrict)
   providerAccountId String?
-  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId], references: [id], onDelete: SetNull)
+  providerAccount   ProviderAccount?  @relation(fields: [providerAccountId, customerAccountId, provider], references: [id, customerAccountId, provider], onDelete: Restrict)
   provider          String
   externalId        String?
   category          String
@@ -3452,7 +3522,8 @@ model CostLineItem {
   metadata          Json?
   createdAt         DateTime          @default(now())
 
-  @@unique([provider, externalId])
+  @@unique([providerAccountId, externalId])
+  @@unique([provider, externalId], map: "costLineItem_unbound_provider_externalId_key", where: { providerAccountId: null })
   @@index([customerAccountId, periodStart, periodEnd])
   @@index([instanceId, periodStart, periodEnd])
   @@index([provider, category, periodStart])
