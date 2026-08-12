@@ -45,12 +45,32 @@ export interface IncomingEvent {
 	fields?: Record<string, string>;
 	touch?: RawTouch;
 	firstTouch?: RawTouch;
+	consent?: {
+		analytics?: unknown;
+		source?: unknown;
+		at?: unknown;
+	};
 }
 
 export interface IncomingBatch {
 	siteId: string;
 	visitorId: string;
 	events: IncomingEvent[];
+}
+
+export function incomingBatch(value: unknown): IncomingBatch | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+	const candidate = value as Record<string, unknown>;
+	if (typeof candidate.siteId !== "string") return null;
+	if (typeof candidate.visitorId !== "string") return null;
+	if (!Array.isArray(candidate.events)) return null;
+
+	return {
+		siteId: candidate.siteId,
+		visitorId: candidate.visitorId,
+		events: candidate.events.slice(0, MAX_EVENTS_PER_BATCH) as IncomingEvent[],
+	};
 }
 
 interface AcceptedEvent {
@@ -87,9 +107,13 @@ export class TrackingIngestService {
 		if (scripted(events)) return;
 
 		const accepted = events.flatMap<AcceptedEvent>((event) => {
+			if (!event || typeof event !== "object") return [];
 			if (!KEPT.has(event.type)) return [];
 
-			const host = event.host?.toLowerCase().trim().slice(0, MAX_HOST);
+			const host =
+				typeof event.host === "string"
+					? event.host.toLowerCase().trim().slice(0, MAX_HOST)
+					: "";
 
 			return host && hostAllowed(host, compiled.config)
 				? [{ event, host }]
@@ -121,18 +145,20 @@ export class TrackingIngestService {
 		const rows = accepted.map(({ event, host }) => {
 			const touch =
 				event.type === "page_view" && event.touch
-					? classifyTouch(arriving(event.touch))
+					? classifyTouch(arriving(cleanTouch(event.touch)))
 					: null;
 
-			const referrer = stripQuery(event.referrer);
+			const referrer = stripQuery(text(event.referrer));
 
 			return {
 				visitorId,
 				type: event.type,
 				host,
-				path: trim(normalizePath(event.path), MAX_PATH),
+				path: trim(normalizePath(text(event.path)), MAX_PATH),
 				referrer: referrer ? trim(referrer, MAX_PATH) : null,
-				label: event.label ? trim(event.label, MAX_LABEL) : null,
+				label: text(event.label)
+					? trim(text(event.label) ?? "", MAX_LABEL)
+					: null,
 				source: touch?.source ?? null,
 				medium: touch?.medium ?? null,
 				campaign: touch?.campaign ?? null,
@@ -175,14 +201,14 @@ export class TrackingIngestService {
 		visitorId: string,
 		{ event, host }: AcceptedEvent,
 	): Promise<void> {
-		const fields = clean(event.fields ?? {});
+		const fields = clean(event.fields);
 		const email = emailFrom(fields);
-		const path = trim(normalizePath(event.path), MAX_PATH);
+		const path = trim(normalizePath(text(event.path)), MAX_PATH);
 		const at = occurredAt(event.at);
 
-		const lastTouch = classifyTouch(arriving(event.touch ?? {}), at);
+		const lastTouch = classifyTouch(arriving(cleanTouch(event.touch)), at);
 		const firstTouch = event.firstTouch
-			? classifyTouch(arriving(event.firstTouch), at)
+			? classifyTouch(arriving(cleanTouch(event.firstTouch)), at)
 			: lastTouch;
 
 		const key = dedupeKey({ host, path, email, at });
@@ -197,6 +223,7 @@ export class TrackingIngestService {
 					fields,
 					firstTouch: stored(firstTouch),
 					lastTouch: stored(lastTouch),
+					consentEvidence: consentEvidence(fields, event.consent),
 					dedupeKey: key,
 				},
 			],
@@ -205,7 +232,12 @@ export class TrackingIngestService {
 
 		const submission = await this.db.formSubmission.findUnique({
 			where: { dedupeKey: key },
-			select: { id: true, filedAt: true, skipReason: true },
+			select: {
+				id: true,
+				filedAt: true,
+				reviewQueuedAt: true,
+				skipReason: true,
+			},
 		});
 
 		if (!submission) return;
@@ -237,9 +269,14 @@ export class TrackingIngestService {
 
 function unfiled(submission: {
 	filedAt: Date | null;
+	reviewQueuedAt: Date | null;
 	skipReason: string | null;
 }): boolean {
-	return submission.filedAt === null && submission.skipReason === null;
+	return (
+		submission.filedAt === null &&
+		submission.reviewQueuedAt === null &&
+		submission.skipReason === null
+	);
 }
 
 function arriving(touch: RawTouch): RawTouch {
@@ -266,9 +303,12 @@ function stored(touch: Touch): Record<string, string | null> {
 function scripted(events: IncomingEvent[]): boolean {
 	if (events.length < 3) return false;
 
-	const stamps = events.flatMap((event) =>
-		typeof event.at === "number" && Number.isFinite(event.at) ? [event.at] : [],
-	);
+	const stamps = events.flatMap((event) => {
+		if (!event || typeof event !== "object") return [];
+		return typeof event.at === "number" && Number.isFinite(event.at)
+			? [event.at]
+			: [];
+	});
 
 	if (stamps.length !== events.length) return false;
 
@@ -296,8 +336,9 @@ function sanitizeId(value: string | undefined): string | null {
 	return /^[a-zA-Z0-9_-]{8,64}$/.test(trimmed) ? trimmed : null;
 }
 
-function clean(fields: Record<string, string>): Record<string, string> {
+function clean(fields: unknown): Record<string, string> {
 	const kept: Record<string, string> = {};
+	if (!plainRecord(fields)) return kept;
 
 	for (const [key, value] of Object.entries(fields).slice(0, 40)) {
 		if (typeof value !== "string") continue;
@@ -308,6 +349,74 @@ function clean(fields: Record<string, string>): Record<string, string> {
 	}
 
 	return kept;
+}
+
+function consentEvidence(
+	fields: Record<string, string>,
+	consent: IncomingEvent["consent"],
+): {
+	verified: false;
+	lawfulBasis: null;
+	analytics: boolean;
+	source: string | null;
+	at: string | null;
+	signals: Record<string, string>;
+} {
+	const signals = Object.fromEntries(
+		Object.entries(fields).filter(([key]) =>
+			/consent|marketing|newsletter|privacy|terms|opt[\s_-]?in/i.test(key),
+		),
+	);
+
+	const source =
+		typeof consent?.source === "string" ? trim(consent.source, 80) : null;
+	const at =
+		typeof consent?.at === "number" && Number.isFinite(consent.at)
+			? occurredAt(consent.at).toISOString()
+			: null;
+
+	return {
+		verified: false,
+		lawfulBasis: null,
+		analytics: consent?.analytics === true,
+		source,
+		at,
+		signals,
+	};
+}
+
+function cleanTouch(value: unknown): RawTouch {
+	if (!plainRecord(value)) return {};
+
+	const touch: RawTouch = {};
+	for (const key of [
+		"source",
+		"medium",
+		"campaign",
+		"term",
+		"content",
+		"referrer",
+		"landing",
+	] as const) {
+		const candidate = value[key];
+		if (typeof candidate === "string") touch[key] = candidate.slice(0, 512);
+	}
+	if (typeof value.at === "number" && Number.isFinite(value.at)) {
+		touch.at = value.at;
+	}
+
+	return touch;
+}
+
+function plainRecord(value: unknown): value is Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+function text(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
 }
 
 function emailFrom(fields: Record<string, string>): string | null {

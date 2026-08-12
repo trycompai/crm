@@ -108,6 +108,21 @@ export class AgentTriggerService {
 		});
 	}
 
+	async trackingSubmissionReceived(
+		submissionId: string,
+		host: string,
+	): Promise<void> {
+		await this.enqueue(
+			{
+				kind: "inbound-candidate-replay",
+				reason: `Review tracking submission ${submissionId} from ${host}`,
+				priority: PRIORITY.inbound,
+				budget: 0,
+			},
+			true,
+		);
+	}
+
 	async slackPeopleRequested(reason: string, required = false): Promise<void> {
 		await this.enqueue(
 			{

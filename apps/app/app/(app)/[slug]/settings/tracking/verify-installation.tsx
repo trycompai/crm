@@ -27,6 +27,7 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { maskedSiteId } from "./tracking-script";
 
 type Result = RouterOutputs["tracking"]["verify"];
 
@@ -206,8 +207,9 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 					: `Script found on ${result.host}`}
 			</AlertTitle>
 			<AlertDescription>
-				It answered in {result.responseMs} ms. Site ID {siteId} matched, and
-				this domain is {result.allowed ? "on" : "not on"} the allow list.
+				It answered in {result.responseMs} ms. Site ID {maskedSiteId(siteId)}{" "}
+				matched, and this domain is {result.allowed ? "on" : "not on"} the allow
+				list.
 				{result.container
 					? " The tag is not in the HTML, so it only runs once Tag Manager fires it — a page view is the proof."
 					: ""}

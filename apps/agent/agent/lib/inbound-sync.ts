@@ -15,8 +15,12 @@ function replayContinuation(
 	const scopes = value as Record<string, unknown>;
 	if (scopes.hasMore !== true) return null;
 	const continuation: Record<string, string | boolean> = {};
+	if (scopes.formsDone === true) continuation.formsDone = true;
 	if (scopes.websiteDone === true) continuation.websiteDone = true;
 	if (scopes.emailDone === true) continuation.emailDone = true;
+	if (typeof scopes.nextFormCursor === "string") {
+		continuation.formSubmissionId = scopes.nextFormCursor;
+	}
 	if (typeof scopes.nextWebsiteCursor === "string") {
 		continuation.websiteExternalId = scopes.nextWebsiteCursor;
 	}

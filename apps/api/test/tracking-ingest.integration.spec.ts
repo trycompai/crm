@@ -198,6 +198,41 @@ describe("the rate limit", () => {
 });
 
 describe("what a stored event keeps", () => {
+	it("rejects a disallowed origin and a disallowed event host", async () => {
+		await ingest.accept(
+			{ siteId: SITE_ID, visitorId: visitorId(), events: [view(parent)] },
+			{ origin: "https://evil.example", userAgent: "Mozilla/5.0" },
+		);
+		await ingest.accept(
+			{
+				siteId: SITE_ID,
+				visitorId: visitorId(),
+				events: [view("trycomp.ai.evil.example")],
+			},
+			REQUEST,
+		);
+
+		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(0);
+		expect(
+			await db.trackedEvent.count({
+				where: { host: "trycomp.ai.evil.example" },
+			}),
+		).toBe(0);
+	});
+
+	it("rejects a rotated or paused site id", async () => {
+		await ingest.accept(
+			{
+				siteId: "cmp_deadbeef",
+				visitorId: visitorId(),
+				events: [view(parent)],
+			},
+			REQUEST,
+		);
+
+		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(0);
+	});
+
 	it("never keeps the query string of a referrer", async () => {
 		await accept([
 			{
@@ -238,6 +273,45 @@ describe("what a stored event keeps", () => {
 		});
 
 		expect(JSON.stringify(row)).not.toContain("token=secret");
+	});
+
+	it("bounds malformed fields and keeps consent as unverified evidence", async () => {
+		await accept([
+			{
+				type: "form_submit",
+				host: parent,
+				path: "/contact",
+				at: Date.now(),
+				fields: {
+					email: `bounded-${suffix}@acme.test`,
+					message: "x".repeat(2_000),
+					marketing_consent: "false",
+					password_hint: "must-not-survive",
+				},
+				consent: {
+					analytics: true,
+					source: "document-attribute",
+					at: Date.now(),
+				},
+			},
+		]);
+
+		const row = await db.formSubmission.findFirstOrThrow({
+			where: { host: parent, email: `bounded-${suffix}@acme.test` },
+			select: { fields: true, consentEvidence: true },
+		});
+		const fields = row.fields as Record<string, string>;
+
+		expect(fields.message).toHaveLength(512);
+		expect(fields.password_hint).toBeUndefined();
+		expect(row.consentEvidence).toEqual({
+			verified: false,
+			lawfulBasis: null,
+			analytics: true,
+			source: "document-attribute",
+			at: expect.any(String),
+			signals: { marketing_consent: "false" },
+		});
 	});
 });
 

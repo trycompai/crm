@@ -79,6 +79,8 @@ export function TrackingScript() {
 		paused,
 		canManage,
 	} = tracking.data;
+	const displaySiteId = maskedSiteId(siteId);
+	const hasSiteId = siteId !== null;
 
 	const copy = (value: string | null) => {
 		const clipboard = navigator.clipboard;
@@ -120,6 +122,7 @@ export function TrackingScript() {
 				<CardAction>
 					<Button
 						size="sm"
+						disabled={!snippet}
 						onClick={() =>
 							copy(section === "gtm" ? tagManagerSnippet : snippet)
 						}
@@ -146,14 +149,16 @@ export function TrackingScript() {
 								{"\n  src="}
 								<span className="text-code-string">{`"${scriptUrl}"`}</span>
 								{"\n  data-site="}
-								<span className="text-code-string">{`"${siteId}"`}</span>
+								<span className="text-code-string">{`"${displaySiteId}"`}</span>
 								{"\n  async\n  defer\n"}
 								<span className="text-code-accent">{"></script>"}</span>
 							</pre>
 							<p className="text-muted-foreground text-xs/relaxed">
 								Site ID{" "}
-								<span className="font-mono text-foreground">{siteId}</span> ·
-								Rotating it stops every copy of the old script at once.
+								<span className="font-mono text-foreground">
+									{displaySiteId}
+								</span>{" "}
+								· The complete identifier is copied to the clipboard only.
 							</p>
 						</AccordionContent>
 					</AccordionItem>
@@ -166,7 +171,7 @@ export function TrackingScript() {
 							<pre className="overflow-x-auto rounded-md border bg-muted p-4 font-mono text-code-foreground text-xs/5">
 								<span className="text-code-accent">{"<script"}</span>
 								{"\n  src="}
-								<span className="text-code-string">{`"${scriptUrl}?site=${siteId}"`}</span>
+								<span className="text-code-string">{`"${scriptUrl}?site=${displaySiteId}"`}</span>
 								{"\n  async\n  defer\n"}
 								<span className="text-code-accent">{"></script>"}</span>
 							</pre>
@@ -222,18 +227,19 @@ export function TrackingScript() {
 									size="xs"
 									disabled={!canManage || rotate.isPending}
 								>
-									Rotate site ID
+									{hasSiteId ? "Rotate site ID" : "Generate site ID"}
 								</Button>
 							</AlertDialogTrigger>
 
 							<AlertDialogContent>
 								<AlertDialogHeader>
-									<AlertDialogTitle>Rotate the site ID?</AlertDialogTitle>
+									<AlertDialogTitle>
+										{hasSiteId ? "Rotate the site ID?" : "Generate a site ID?"}
+									</AlertDialogTitle>
 									<AlertDialogDescription>
-										Every copy of the old script stops recording at once,
-										including any you have forgotten about. You will need to
-										paste the new tag on every page that carries the old one.
-										Nothing already collected is lost.
+										{hasSiteId
+											? "Every copy of the old script stops recording at once, including any you have forgotten about. You will need to paste the new tag on every page that carries the old one. Nothing already collected is lost."
+											: "This creates the public identifier used in the install snippet. Tracking remains paused until you explicitly resume it."}
 									</AlertDialogDescription>
 								</AlertDialogHeader>
 
@@ -243,7 +249,7 @@ export function TrackingScript() {
 										variant="destructive"
 										onClick={() => rotate.mutate()}
 									>
-										Rotate
+										{hasSiteId ? "Rotate" : "Generate"}
 									</AlertDialogAction>
 								</AlertDialogFooter>
 							</AlertDialogContent>
@@ -253,4 +259,10 @@ export function TrackingScript() {
 			</CardContent>
 		</Card>
 	);
+}
+
+export function maskedSiteId(siteId: string | null): string {
+	return siteId
+		? `${siteId.slice(0, 4)}••••${siteId.slice(-4)}`
+		: "cmp_••••••••";
 }

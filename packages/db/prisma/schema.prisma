@@ -2248,7 +2248,7 @@ model AppSetting {
   trackingHonourDnt        Boolean  @default(true)
   trackingCookieDays       Int      @default(395)
   trackingConfigHash       String?
-  trackingPaused           Boolean  @default(false)
+  trackingPaused           Boolean  @default(true)
 
   updatedAt DateTime @updatedAt
 
@@ -2355,6 +2355,10 @@ model FormSubmission {
   visitorId String?
   contactId String?
   contact   Contact? @relation("SubmissionContact", fields: [contactId], references: [id], onDelete: SetNull)
+  candidateId String?
+  candidate ContactCandidate? @relation("TrackingSubmissionCandidate", fields: [candidateId], references: [id], onDelete: Restrict)
+  receiptId String? @unique
+  receipt InboundSourceReceipt? @relation("TrackingSubmissionReceipt", fields: [receiptId], references: [id], onDelete: Restrict)
 
   host  String
   path  String
@@ -2364,14 +2368,18 @@ model FormSubmission {
 
   firstTouch Json?
   lastTouch  Json?
+  consentEvidence Json?
 
   dedupeKey  String    @unique
   filedAt    DateTime?
+  reviewQueuedAt DateTime?
   skipReason String?
 
   createdAt DateTime @default(now())
 
   @@index([contactId])
+  @@index([candidateId])
+  @@index([reviewQueuedAt])
   @@index([createdAt])
   @@map("formSubmission")
 }
@@ -3796,6 +3804,7 @@ model InboundSourceReceipt {
   fieldProvenance   EntityFieldProvenance[]       @relation("InboundReceiptFieldProvenance")
   linkProvenance    EntityLinkProvenance[]        @relation("InboundReceiptLinkProvenance")
   recordQuarantines RecordQuarantine[]            @relation("InboundReceiptQuarantine")
+  formSubmissions   FormSubmission[]              @relation("TrackingSubmissionReceipt")
 
   @@unique([connector, provider, accountId, sourceObjectType, sourceObjectId, sourceDigest], map: "inboundSourceReceipt_source_identity_key")
   @@unique([id, sourceDigest], map: "inboundSourceReceipt_id_sourceDigest_key")
@@ -3831,6 +3840,7 @@ model ContactCandidate {
   updatedAt             DateTime                        @updatedAt
 
   observations ContactCandidateObservation[]
+  formSubmissions FormSubmission[] @relation("TrackingSubmissionCandidate")
 
   @@index([status, permissionState, updatedAt])
   @@index([identityKey], map: "contactCandidate_identityKey_idx")

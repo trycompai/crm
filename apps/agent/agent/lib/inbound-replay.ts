@@ -36,15 +36,19 @@ export type InboundReplayOutcome = {
 	duplicateObservations: number;
 	excluded: number;
 	hasMore: boolean;
+	nextFormCursor: string | null;
 	nextWebsiteCursor: string | null;
 	nextEmailCursor: string | null;
+	formsDone: boolean;
 	websiteDone: boolean;
 	emailDone: boolean;
 };
 
 export type InboundReplayCursor = {
+	formSubmissionId?: string | null;
 	websiteExternalId?: string | null;
 	emailMessageId?: string | null;
+	formsDone?: boolean;
 	websiteDone?: boolean;
 	emailDone?: boolean;
 };
@@ -60,7 +64,7 @@ export function inboundReplayPageWindow(remaining: number): {
 }
 
 export function inboundReplayOutcomeText(result: InboundReplayOutcome): string {
-	return `Scanned ${result.scanned}; receipts ${result.receipts}; candidates ${result.candidates}; observations ${result.observations}; duplicates ${result.duplicates}; excluded ${result.excluded}; hasMore ${result.hasMore}; websiteDone ${result.websiteDone}; emailDone ${result.emailDone}; nextWebsiteCursor ${result.nextWebsiteCursor ?? "none"}; nextEmailCursor ${result.nextEmailCursor ?? "none"}.`;
+	return `Scanned ${result.scanned}; receipts ${result.receipts}; candidates ${result.candidates}; observations ${result.observations}; duplicates ${result.duplicates}; excluded ${result.excluded}; hasMore ${result.hasMore}; formsDone ${result.formsDone}; websiteDone ${result.websiteDone}; emailDone ${result.emailDone}; nextFormCursor ${result.nextFormCursor ?? "none"}; nextWebsiteCursor ${result.nextWebsiteCursor ?? "none"}; nextEmailCursor ${result.nextEmailCursor ?? "none"}.`;
 }
 
 type Participant = {
@@ -90,6 +94,7 @@ type CandidateInput = {
 		updatedAt: Date | null;
 		metadata: Record<string, string | number | boolean | null>;
 		versionDigest: string;
+		url?: string | null;
 	};
 };
 
@@ -226,6 +231,34 @@ export function emailSourceDigest(row: {
 	});
 }
 
+export function trackingSubmissionSourceDigest(row: {
+	id: string;
+	visitorId: string | null;
+	host: string;
+	path: string;
+	email: string | null;
+	fields: unknown;
+	firstTouch: unknown;
+	lastTouch: unknown;
+	consentEvidence: unknown;
+	dedupeKey: string;
+	createdAt: Date;
+}): string {
+	return digest({
+		id: row.id,
+		visitorId: row.visitorId,
+		host: row.host,
+		path: row.path,
+		email: emailAddress(row.email),
+		fields: row.fields,
+		firstTouch: row.firstTouch,
+		lastTouch: row.lastTouch,
+		consentEvidence: row.consentEvidence,
+		dedupeKey: row.dedupeKey,
+		createdAt: row.createdAt.toISOString(),
+	});
+}
+
 export function emailParticipants(value: unknown): Participant[] {
 	const source = Array.isArray(value)
 		? value
@@ -305,6 +338,7 @@ async function ensureReceipt(
 				sourceDigest: input.versionDigest,
 				sourceCreatedAt: input.createdAt,
 				sourceUpdatedAt: input.updatedAt,
+				sourceUrl: input.url ?? null,
 				redactedMetadata: sourceMetadata(input),
 			},
 			select: { id: true },
@@ -550,7 +584,7 @@ async function processCandidate(
 	rules: ParticipantRules,
 	outcome: InboundReplayOutcome,
 	receipt?: SourceReceiptResult,
-): Promise<void> {
+): Promise<{ receiptId: string; candidateId: string }> {
 	const sourceReceipt =
 		receipt ?? (await ensureReceipt(database, input.source));
 	if (!receipt) {
@@ -573,6 +607,8 @@ async function processCandidate(
 	} else {
 		duplicate(outcome, "observation");
 	}
+
+	return { receiptId: sourceReceipt.id, candidateId: candidate.id };
 }
 
 export async function runInboundCandidateReplay(
@@ -590,12 +626,130 @@ export async function runInboundCandidateReplay(
 		duplicateObservations: 0,
 		excluded: 0,
 		hasMore: false,
+		nextFormCursor: null,
 		nextWebsiteCursor: null,
 		nextEmailCursor: null,
+		formsDone: cursor.formsDone === true,
 		websiteDone: cursor.websiteDone === true,
 		emailDone: cursor.emailDone === true,
 	};
 	const rules = await participantRules(database);
+	let formCursor: string | undefined = cursor.formSubmissionId ?? undefined;
+	let formHasMore = false;
+	let formRead = 0;
+	while (!outcome.formsDone && formRead < INBOUND_REPLAY_MAX_RECORDS) {
+		const window = inboundReplayPageWindow(
+			INBOUND_REPLAY_MAX_RECORDS - formRead,
+		);
+		const take = window.request;
+		const pageLimit = window.process;
+		const forms = await database.formSubmission.findMany({
+			where: formCursor ? { id: { gt: formCursor } } : undefined,
+			orderBy: { id: "asc" },
+			take,
+			select: {
+				id: true,
+				visitorId: true,
+				host: true,
+				path: true,
+				email: true,
+				fields: true,
+				firstTouch: true,
+				lastTouch: true,
+				consentEvidence: true,
+				dedupeKey: true,
+				createdAt: true,
+			},
+		});
+		const page = forms.slice(0, pageLimit);
+		formHasMore = forms.length > page.length;
+		if (page.length === 0) break;
+
+		for (const row of page) {
+			formRead += 1;
+			formCursor = row.id;
+			outcome.scanned += 1;
+			const sourceDigest = trackingSubmissionSourceDigest(row);
+			const source = {
+				connector: "tracking",
+				provider: "first-party-collector",
+				accountId: row.host,
+				objectType: "form-submission",
+				objectId: row.id,
+				createdAt: row.createdAt,
+				updatedAt: null,
+				versionDigest: sourceDigest,
+				url: `https://${row.host}${row.path}`,
+				metadata: {
+					resourceType: "form-submission",
+					resourceId: row.id,
+					status: "pending",
+					capturedAt: row.createdAt.toISOString(),
+				},
+			};
+			const email = emailAddress(row.email);
+			const name = formValue(
+				row.fields,
+				/^(full[\s_-]?name|name|first[\s_-]?name|given)/i,
+			);
+
+			if (!email) {
+				const receipt = await ensureReceipt(database, source);
+				if (receipt.created) outcome.receipts += 1;
+				else duplicate(outcome, "receipt");
+				await database.formSubmission.update({
+					where: { id: row.id },
+					data: { receiptId: receipt.id },
+				});
+				outcome.excluded += 1;
+				continue;
+			}
+
+			const excluded = excludedParticipant({ email, name }, rules);
+			if (excluded.internal) {
+				const receipt = await ensureReceipt(database, source);
+				if (receipt.created) outcome.receipts += 1;
+				else duplicate(outcome, "receipt");
+				await database.formSubmission.update({
+					where: { id: row.id },
+					data: {
+						receiptId: receipt.id,
+						skipReason: "Internal identity excluded from candidate review",
+					},
+				});
+				outcome.excluded += 1;
+				continue;
+			}
+
+			const linked = await processCandidate(
+				database,
+				{
+					email,
+					name,
+					businessName: formValue(
+						row.fields,
+						/^(company|organisation|organization|business)/i,
+					),
+					evidenceClass: "tracking-form-unverified-permission",
+					source,
+				},
+				rules,
+				outcome,
+			);
+			await database.formSubmission.update({
+				where: { id: row.id },
+				data: {
+					candidateId: linked.candidateId,
+					receiptId: linked.receiptId,
+					skipReason: null,
+				},
+			});
+		}
+
+		if (forms.length < take || formRead >= INBOUND_REPLAY_MAX_RECORDS) break;
+	}
+	if (!formHasMore) outcome.formsDone = true;
+
 	let websiteCursor: string | undefined = cursor.websiteExternalId ?? undefined;
 	let websiteHasMore = false;
 	let websiteRead = 0;
@@ -789,8 +943,22 @@ export async function runInboundCandidateReplay(
 			break;
 	}
 	if (!messageHasMore) outcome.emailDone = true;
-	outcome.hasMore = websiteHasMore || messageHasMore;
+	outcome.hasMore = formHasMore || websiteHasMore || messageHasMore;
+	outcome.nextFormCursor = formHasMore ? (formCursor ?? null) : null;
 	outcome.nextWebsiteCursor = websiteHasMore ? (websiteCursor ?? null) : null;
 	outcome.nextEmailCursor = messageHasMore ? (messageCursor ?? null) : null;
 	return outcome;
+}
+
+function formValue(value: unknown, pattern: RegExp): string | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+	for (const [key, candidate] of Object.entries(value)) {
+		if (pattern.test(key) && typeof candidate === "string") {
+			const normalized = clean(candidate);
+			if (normalized) return normalized;
+		}
+	}
+
+	return null;
 }

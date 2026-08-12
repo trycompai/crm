@@ -36,8 +36,8 @@ export function TrafficSources() {
 			<CardHeader>
 				<CardTitle>Traffic sources</CardTitle>
 				<CardDescription>
-					Where your visitors come from. Only people who have submitted a form
-					are attributed to a record.
+					Where your visitors come from. Form identities remain review proposals
+					until a person accepts them.
 				</CardDescription>
 			</CardHeader>
 

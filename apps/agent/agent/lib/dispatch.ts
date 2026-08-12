@@ -46,8 +46,12 @@ function replayCursor(value: unknown): InboundReplayCursor {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
 	const scopes = value as Record<string, unknown>;
 	return {
+		...(scopes.formsDone === true ? { formsDone: true } : {}),
 		...(scopes.websiteDone === true ? { websiteDone: true } : {}),
 		...(scopes.emailDone === true ? { emailDone: true } : {}),
+		...(typeof scopes.formSubmissionId === "string"
+			? { formSubmissionId: scopes.formSubmissionId }
+			: {}),
 		...(typeof scopes.websiteExternalId === "string"
 			? { websiteExternalId: scopes.websiteExternalId }
 			: {}),
@@ -255,8 +259,10 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 			undefined,
 			{
 				hasMore: result.hasMore,
+				formsDone: result.formsDone,
 				websiteDone: result.websiteDone,
 				emailDone: result.emailDone,
+				nextFormCursor: result.nextFormCursor,
 				nextWebsiteCursor: result.nextWebsiteCursor,
 				nextEmailCursor: result.nextEmailCursor,
 			},

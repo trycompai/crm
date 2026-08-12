@@ -75,7 +75,8 @@ export function TrackingCookies() {
 			<CardHeader>
 				<CardTitle>Cookies</CardTitle>
 				<CardDescription>
-					How a returning visitor is recognised.
+					How a returning visitor is recognised. The tracker remains inactive
+					until the site sets data-crm-consent="granted".
 				</CardDescription>
 			</CardHeader>
 

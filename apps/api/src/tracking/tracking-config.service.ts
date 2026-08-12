@@ -92,29 +92,6 @@ export class TrackingConfigService {
 		await this.cache.set(CONFIG_KEY, { config, hash }, CONFIG_TTL_MS);
 	}
 
-	async ensureSiteId(): Promise<string> {
-		const existing = await this.db.appSetting.findUnique({
-			where: { id: SETTINGS_ID },
-			select: { trackingSiteId: true },
-		});
-
-		if (existing?.trackingSiteId) return existing.trackingSiteId;
-
-		const trackingSiteId = mintSiteId();
-
-		await this.db.appSetting.upsert({
-			where: { id: SETTINGS_ID },
-			create: { id: SETTINGS_ID, trackingSiteId },
-			update: { trackingSiteId },
-		});
-
-		await this.invalidate();
-
-		this.logger.log({ message: "Tracking site id minted" });
-
-		return trackingSiteId;
-	}
-
 	async rotateSiteId(): Promise<string> {
 		const trackingSiteId = mintSiteId();
 

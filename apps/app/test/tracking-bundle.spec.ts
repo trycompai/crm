@@ -127,4 +127,14 @@ describe("the loader finds the site id however the page was built", () => {
 		expect(source).toContain("docs.trycomp.ai");
 		expect(source).not.toContain("/api/t/config");
 	});
+
+	test("the tracker fails closed for privacy and QA signals", () => {
+		const source = trackerSource(CONFIG, "https://crm.example.com/api/t/e");
+
+		expect(source).toContain('data-crm-tracking")==="off"');
+		expect(source).toContain('data-crm-consent")!=="granted"');
+		expect(source).toContain("navigator.globalPrivacyControl");
+		expect(source).toContain("navigator.webdriver");
+		expect(source).toContain("marketing|newsletter|privacy|terms");
+	});
 });

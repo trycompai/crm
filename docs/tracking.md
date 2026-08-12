@@ -1,8 +1,9 @@
 # Website tracking
 
 A first-party script on the customer's own marketing site, a collector in the API,
-and one rule about what it is for: **a form submission becomes a contact.** Page
-views exist to give that contact a story, not to be a web-analytics product.
+and one rule about what it is for: **a form submission becomes reviewable identity
+evidence, never a trusted contact.** Page views exist to give that proposal a
+story, not to be a web-analytics product.
 
 Everything here is one install's own website. There is no second tenant, no shared
 pixel, and no vendor: the script is served from the same origin as the app, the
@@ -31,6 +32,11 @@ not a request and then a config fetch before anything can be recorded.
   pasted tag beats a stale URL. Either way **the loader stays config-free** —
   baking the install's own id into it would put a year-immutable edge cache in
   front of the rotate kill switch.
+- **Consent is a prerequisite, not an inference.** The tracker returns before it
+  writes a cookie or installs a listener unless the host page has set
+  `data-crm-consent="granted"` on its root element. A consent manager owns that
+  change. The tracker records the signal as unverified evidence with no lawful
+  basis; it never turns analytics consent into outreach permission.
 - **Five minutes is a promise.** Pause tracking and every browser stops within
   `CONFIG_MAX_AGE_SECONDS`. That is why `/t/[site]` carries **no
   `stale-while-revalidate`** — a revalidation window is exactly a licence to keep
@@ -57,7 +63,7 @@ somebody else's page. That imposes rules nothing else in this repo has:
   call site is a client and a server that disagree, and the disagreement is silent.
 - **The client stays inside the body limit the collector enforces.** `flush()`
   measures the packed batch and splits it, then trims a single oversized form's
-  fields, rather than posting a body the collector will destroy — a rejected POST is
+  fields, rather than posting a body the collector will discard — a rejected POST is
   not retried, so the whole batch would simply be lost.
 
 ## The collector
@@ -100,10 +106,11 @@ The gauntlet, in order, in `TrackingIngestService.accept`:
 > oversized batch locks out the honest small ones behind it for the rest of the
 > minute. It fails **closed**: a counter it cannot reach refuses the write.
 
-`MAX_BODY_BYTES` is enforced by destroying the request as it streams, before any
-parse. Keep it in step with what the tracker can produce — a form is forty fields
-of five hundred characters, and a limit under that silently drops the submission
-this whole feature exists to catch.
+`MAX_BODY_BYTES` is enforced while the request streams, before any parse. Once the
+limit is crossed, the collector retains no more chunks, drains the request, and
+returns the same opaque 204 as every refused beacon. Keep it in step with what the
+tracker can produce — a form is forty fields of five hundred characters, and a
+limit under that silently drops the submission this whole feature exists to catch.
 
 ### What is never stored
 
@@ -116,6 +123,9 @@ this whole feature exists to catch.
   `SENSITIVE`, anything shaped like a card number, and every `password`, `hidden`
   and `file` input — the last three never leave the browser at all.
 - **No IP address**, anywhere, ever.
+- **No mailbox or meeting content.** The public payload contract accepts only the
+  three tracking event types, bounded page/label/touch values, bounded form
+  fields, and the analytics-consent signal. Collector logs never include the body.
 
 ## Attribution
 
@@ -140,38 +150,36 @@ function. `classifyTouch` turns UTM parameters and a referrer into a `Touch`.
 - **`Direct` is a source, not a null.** Everything lands in one of the seven
   `MEDIUMS`; an unrecognised medium is `other`.
 
-## Filing: from a submission to a contact
+## Filing: from a submission to a review proposal
 
-`TrackingFilingService.file` is the only path from a form to a `Contact`, and it
-reuses the mailbox pipeline's judgement rather than inventing a second one —
-`isMachineAddress`, `isAutomatedAddress`, `isMachineDomain`, `workspaceDomains`,
-`SuppressedContact`, `SuppressedDomain`, `companyForEmail`, `splitName`. **A rule
-that holds for the inbox holds here.** A second copy is how *deleted contacts stay
-deleted* comes to be true of email and not of forms.
+`TrackingFilingService.file` claims a stored form once and queues the existing
+`inbound-candidate-replay` AgentTask. It never creates a `Contact`, company, draft,
+or send permission. The agent-side deterministic replay writes an
+`InboundSourceReceipt`, a `ContactCandidate`, and one observation, then links the
+raw `FormSubmission` to both. Suppression, internal-address exclusion, canonical
+identity proposals, and review permission all stay in the agent boundary.
 
-- **Every submission is stored; filing is separate and may decline.** `skipReason`
-  says why, and the row stays for a rep to look at.
-- **A refusal is a `skipReason`, never a lost row**, and `CONTACT_CAP_REASON` is a
-  shared constant because `rollup.service.ts` matches on it. Telemetry that
-  substring-matches prose breaks the first time somebody improves the wording.
-- **`CONTACTS_PER_HOUR` bounds the blast radius** of a scripted form. It is charged
-  only when a *new* contact would be created — an existing contact costs nothing,
-  because attaching to somebody already in the CRM cannot flood it — and **a create
-  that loses the race hands its slot back**, so duplicate delivery of one form
-  cannot eat the hour's quota for a contact that was only ever made once.
-- **The email race is handled, not hoped away.** Two submissions for one address
-  land at once, one `create` loses on the unique index, and the loser attaches to
-  the contact that won. Left as a raw `P2002` it becomes a stored submission that is
-  never filed and never retried.
-- **`attach` claims the row before it writes anything.** It is an
-  `updateMany` on `filedAt: null`, and a caller that loses the claim returns without
-  writing — otherwise two concurrent deliveries of one submission each leave the
-  contact a `Submitted a form on …` note.
-- **Duplicate delivery retries an unfiled row.** `dedupeKey` collapses a resend
-  inside one minute, but if the first attempt died before it filed — no `filedAt`,
-  no `skipReason` — the resend is the retry.
-- **The agent is told, never asked.** `agent.contactCreated` writes an `AgentTask`.
-  No enrichment, no scoring and no identity matching happens here; see `docs/api.md`.
+- **Every submission is stored before review.** The raw allowed fields,
+  query-free page and referrer, first/last UTM touch, consent signals, visitor id,
+  and dedupe key stay on the immutable source row.
+- **Consent is evidence, not permission.** Captured controls are stored with
+  `verified: false` and no lawful basis. A page view or form submit never creates
+  outreach permission, a send-ready prospect, or an email draft.
+- **Duplicate delivery is idempotent.** `dedupeKey` collapses a resend inside one
+  minute; `reviewQueuedAt` claims the submission once; receipt, candidate, and
+  observation identities make replay safe.
+- **Raw-to-canonical linkage is explicit.** `FormSubmission.receiptId` points to
+  its source receipt and `candidateId` points to the review proposal. The source
+  digest covers fields, attribution, consent evidence, visitor id, and timestamp.
+- **No model runs in ingestion.** The API only validates, stores, and queues. Any
+  future enrichment, scoring, or identity judgement stays in `apps/agent`; see
+  `docs/api.md`.
+
+Tracking is paused by default, including on upgrade. Creating or rotating the site
+identifier does not resume it. The settings page masks the identifier on screen;
+the complete install snippet is only placed on the clipboard after an explicit
+copy action. Website or Tag Manager installation remains a separate operator
+change.
 
 ## Retention
 
@@ -190,6 +198,11 @@ deleted* comes to be true of email and not of forms.
   silently leaving events behind reads exactly like having deleted them.
 - **A visitor outlives their events only if a contact points at them.** An
   anonymous visitor with nothing left is removed.
+- **Proposal evidence is not part of the analytics sweep.** `FormSubmission`, its
+  immutable receipt, candidate, and observation are a governed review chain, not
+  page-view telemetry. There is no automated subject-erasure workflow for that
+  chain yet. Tracking must remain paused until the controller approves a
+  purpose-based retention schedule and an erasure or de-identification procedure.
 
 ## Settings, and who may change them
 

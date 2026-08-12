@@ -24,6 +24,8 @@ function known(h){
  return!1}
 function allowed(h){return!C.limitToDomains||known(h)}
 if(!allowed(host()))return;
+if(d.documentElement&&d.documentElement.getAttribute("data-crm-tracking")==="off")return;
+if(!d.documentElement||d.documentElement.getAttribute("data-crm-consent")!=="granted")return;
 if(C.honourDnt&&(navigator.doNotTrack==="1"||w.doNotTrack==="1"||navigator.globalPrivacyControl))return;
 if(navigator.webdriver||d.visibilityState==="prerender")return;
 function decode(v){try{return decodeURIComponent(v)}catch(e){return null}}
@@ -54,6 +56,7 @@ if(C.crossDomain){
   try{history.replaceState(null,"",loc.href.replace(/[#&]_crm=[A-Za-z0-9_.-]+/,""))}catch(e){}}}
 var vid=linked||existing||mint();
 write(vid);
+var CONSENT={analytics:!0,source:"document-attribute",at:Date.now()};
 function param(q,k){var m=q.match(new RegExp("[?&]"+k+"=([^&]*)"));if(!m)return undefined;var v=decode(m[1].replace(/\\+/g," "));return v?v.slice(0,120):undefined}
 function touch(){
  var q=loc.search,t={landing:loc.pathname.slice(0,120),at:Date.now()};
@@ -103,7 +106,7 @@ function flush(){
   if(bytes(body)>B)body=shrink(take[0],body);
   if(bytes(body)<=B)post(body)}}
 function send(e){
- e.host=host();e.at=Date.now();
+ e.host=host();e.at=Date.now();e.consent=CONSENT;
  q.push(e);
  if(q.length>=M){flush();return}
  clearTimeout(timer);timer=setTimeout(flush,2000)}
@@ -127,10 +130,13 @@ function onSubmit(ev){
  var fields={},n=0;
  for(var i=0;i<f.elements.length&&n<40;i++){
   var el=f.elements[i],name=el.name||el.id;
-  if(!name||!el.value)continue;
+  if(!name)continue;
   var type=(el.type||"").toLowerCase();
   if(type==="password"||type==="hidden"||type==="file")continue;
-  if(type==="checkbox"||type==="radio"){if(!el.checked)continue}
+  if(type==="checkbox"||type==="radio"){
+   if(/consent|marketing|newsletter|privacy|terms|opt[ _-]?in/i.test(name)){fields[name]=el.checked?String(el.value||"true"):"false";n++;continue}
+   if(!el.checked)continue}
+  if(!el.value)continue;
   fields[name]=String(el.value).slice(0,512);n++}
  if(!n)return;
  send({type:"form_submit",path:loc.pathname,fields:fields,touch:last,firstTouch:first});

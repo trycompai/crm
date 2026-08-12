@@ -27,6 +27,7 @@ import { TrackingConfigService } from "./tracking-config.service";
 import { TrackingCounterService } from "./tracking-counter.service";
 import {
 	type IncomingBatch,
+	incomingBatch,
 	TrackingIngestService,
 } from "./tracking-ingest.service";
 import { TrackingRollupService } from "./tracking-rollup.service";
@@ -70,14 +71,15 @@ export class TrackingController {
 		const raw = await read(request, MAX_BODY_BYTES);
 		if (!raw) return;
 
-		let batch: IncomingBatch;
+		let parsed: unknown;
 		try {
-			batch = JSON.parse(raw) as IncomingBatch;
+			parsed = JSON.parse(raw);
 		} catch {
 			return;
 		}
 
-		if (!isSiteId(batch?.siteId) || !Array.isArray(batch?.events)) return;
+		const batch: IncomingBatch | null = incomingBatch(parsed);
+		if (!batch || !isSiteId(batch.siteId)) return;
 
 		try {
 			await this.ingest.accept(batch, {
@@ -205,16 +207,22 @@ async function read(
 ): Promise<string | null> {
 	const existing = (request as { body?: unknown }).body;
 	if (typeof existing === "string") {
-		return existing.length > limit ? null : existing;
+		return Buffer.byteLength(existing, "utf8") > limit ? null : existing;
 	}
 	if (existing && typeof existing === "object") {
-		return JSON.stringify(existing);
+		try {
+			const serialized = JSON.stringify(existing);
+			return Buffer.byteLength(serialized, "utf8") > limit ? null : serialized;
+		} catch {
+			return null;
+		}
 	}
 
 	return new Promise((resolve) => {
 		const chunks: Buffer[] = [];
 		let size = 0;
 		let settled = false;
+		let oversized = false;
 
 		const finish = (value: string | null) => {
 			if (settled) return;
@@ -223,16 +231,19 @@ async function read(
 		};
 
 		request.on("data", (chunk: Buffer) => {
+			if (oversized) return;
 			size += chunk.length;
 			if (size > limit) {
-				request.destroy();
-				finish(null);
+				oversized = true;
+				chunks.length = 0;
 				return;
 			}
 			chunks.push(chunk);
 		});
 
-		request.on("end", () => finish(Buffer.concat(chunks).toString("utf8")));
+		request.on("end", () =>
+			finish(oversized ? null : Buffer.concat(chunks).toString("utf8")),
+		);
 		request.on("error", () => finish(null));
 	});
 }

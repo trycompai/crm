@@ -13,14 +13,7 @@ export function TrackingSections() {
 	const trpc = useTRPC();
 	const tracking = useQuery(trpc.tracking.settings.queryOptions());
 
-	if (!tracking.data?.ready) {
-		return (
-			<>
-				<AllowedDomains />
-				<TrackingRules />
-			</>
-		);
-	}
+	if (!tracking.data) return null;
 
 	return (
 		<>

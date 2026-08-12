@@ -153,9 +153,7 @@ export class TrackingService {
 			domains.length,
 		);
 
-		const siteId = ready
-			? await this.config.ensureSiteId()
-			: (row?.trackingSiteId ?? null);
+		const siteId = row?.trackingSiteId ?? null;
 
 		return {
 			siteId,
@@ -169,7 +167,7 @@ export class TrackingService {
 			secureCookies: row?.trackingSecureCookies ?? true,
 			honourDnt: row?.trackingHonourDnt ?? true,
 			cookieDays: row?.trackingCookieDays ?? 395,
-			paused: row?.trackingPaused ?? false,
+			paused: row?.trackingPaused ?? true,
 			cookieLifetimes: [...COOKIE_LIFETIMES],
 			domains: domains.map((domain) => ({
 				id: domain.id,
