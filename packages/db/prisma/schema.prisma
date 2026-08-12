@@ -2102,10 +2102,11 @@ model WebsiteEnquiry {
 }
 
 model CalendarEvent {
-  id                String   @id @default(cuid())
-  iCalUid           String
-  originalStartTime DateTime
-  recurringEventId  String?
+  id                 String   @id @default(cuid())
+  iCalUid            String   @map("providerICalUid")
+  calendarStorageKey String   @default(cuid()) @map("iCalUid")
+  originalStartTime  DateTime
+  recurringEventId   String?
 
   title          String?
   description    String?
@@ -2131,7 +2132,8 @@ model CalendarEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-	@@unique([syncedByUserId, iCalUid, originalStartTime])
+  @@unique([syncedByUserId, iCalUid, originalStartTime], map: "calendarEvent_syncedByUserId_iCalUid_originalStartTime_key")
+  @@unique([calendarStorageKey, originalStartTime], map: "calendarEvent_iCalUid_originalStartTime_key")
   @@index([companyId, startsAt])
   @@index([contactId, startsAt])
   @@map("calendarEvent")
