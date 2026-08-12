@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { DIRECT_KINDS, isDirectKind, PRIORITY } from "@crm/db/agent-tasks";
+import {
+	DIRECT_KINDS,
+	isDirectKind,
+	PORTRAIT_STAND_DOWN_MS,
+	PRIORITY,
+} from "@crm/db/agent-tasks";
 import { claimDue } from "../agent/lib/tasks";
 
 const REASON = "lane-test";
@@ -107,9 +112,20 @@ describe("kind vocabulary", () => {
 	});
 
 	it("puts what a rep sees first above what they have to click for", () => {
-		expect(PRIORITY.brand).toBeGreaterThan(PRIORITY.requested);
+		expect(PRIORITY.brand).toBe(900);
+		expect(PRIORITY.portrait).toBe(800);
+		expect(PRIORITY.brand).toBeGreaterThan(PRIORITY.portrait);
 		expect(PRIORITY.portrait).toBeGreaterThan(PRIORITY.requested);
 		expect(PRIORITY.requested).toBeGreaterThan(PRIORITY.companyProfile);
 		expect(PRIORITY.companyProfile).toBeGreaterThan(PRIORITY.recheck);
+	});
+
+	it("puts portrait on the visible direct lane", () => {
+		expect(DIRECT_KINDS).toContain("portrait");
+		expect(isDirectKind("portrait")).toBe(true);
+	});
+
+	it("stands a finished portrait down for thirty days before looking again", () => {
+		expect(PORTRAIT_STAND_DOWN_MS).toBe(30 * 24 * 60 * 60 * 1000);
 	});
 });

@@ -48,3 +48,7 @@ export const PRIORITY = {
 	slackJoin: 950,
 	event: 700,
 } as const;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const PORTRAIT_STAND_DOWN_MS = 30 * DAY_MS;
