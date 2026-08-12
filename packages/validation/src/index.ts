@@ -10,8 +10,10 @@ export type {
 	InputOption,
 	InputRequest,
 	InputRequested,
+	LifecycleRole,
 	Permission,
 } from "./agents";
+export { LIFECYCLE_ROLES, lifecycleRole, readLifecycleRole } from "./agents";
 export type { AuthTest, Installation, JoinPayload, Reply } from "./slack";
 
 export class InvalidInput extends Error {

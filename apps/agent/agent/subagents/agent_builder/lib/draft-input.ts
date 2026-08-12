@@ -2,6 +2,7 @@ import { CRM_EVENT_TYPES } from "@crm/db/crm-events";
 import { z } from "zod";
 import { AGENT_ACTION_TYPES } from "../../../lib/agent-actions";
 import type { DraftAgentInput } from "../../../lib/builder-runtime";
+import { LIFECYCLE_ROLES } from "../../../lib/lifecycle-roles";
 
 const recordResource = z.object({
 	kind: z.enum(["company", "contact", "deal"]),
@@ -61,6 +62,7 @@ export const builderDraftToolInput = z.object({
 	name: z.string().trim().min(1).max(100),
 	description: z.string().trim().min(1).max(320),
 	instructions: z.string().trim().min(40).max(20_000),
+	lifecycleRole: z.enum(LIFECYCLE_ROLES).optional(),
 	triggers: z.array(trigger).min(1).max(10),
 	recordScope: z.enum(["SELECTED", "WORKSPACE"]),
 	resources: z.array(recordResource).max(30),

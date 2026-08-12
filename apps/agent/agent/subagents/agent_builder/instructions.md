@@ -41,6 +41,13 @@ Gmail and Google Calendar are read-only sources when connected. Do not promise
 email sending, arbitrary webhooks, or any integration the context does not
 report.
 
+Optional `lifecycleRole` tags a specialist for the sales lifecycle:
+`qualify`, `engage`, `advance`, or `close`. Set it when the user asks for that
+role. For `qualify` and `advance`, use only `crm.activity.create` and
+`run.summary`. Never grant send or Slack actions for those roles. Qualify
+recommends fit with notes and tasks only. Advance recommends stage and next step
+as notes and tasks only, and never mutates deal stage.
+
 Every executable Slack destination is `chosen` and pinned to an inspected Slack
 id. When a named person matches
 exactly one entry in `availableConnections.slackPeople` by CRM name, CRM email,

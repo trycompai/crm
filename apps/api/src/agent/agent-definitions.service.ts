@@ -1,6 +1,6 @@
 import type { Db, Prisma } from "@crm/db";
 import type { AgentDefinitionStatus } from "@crm/db/enums";
-import { schemas } from "@crm/validation";
+import { readLifecycleRole, schemas } from "@crm/validation";
 import {
 	BadRequestException,
 	Injectable,
@@ -43,7 +43,13 @@ export class AgentDefinitionsService {
 				updatedAt: true,
 				createdBy: { select: { id: true, name: true, image: true } },
 				currentVersion: {
-					select: { id: true, number: true, deployedAt: true },
+					select: { id: true, number: true, deployedAt: true, manifest: true },
+				},
+				versions: {
+					where: { status: { in: ["DRAFT", "READY"] } },
+					orderBy: { number: "desc" },
+					take: 1,
+					select: { manifest: true },
 				},
 				triggers: {
 					where: { enabled: true },
@@ -55,22 +61,29 @@ export class AgentDefinitionsService {
 			},
 		});
 
-		return rows.map((row) => ({
-			...row,
-			createdAt: row.createdAt.toISOString(),
-			updatedAt: row.updatedAt.toISOString(),
-			currentVersion: row.currentVersion
-				? {
-						...row.currentVersion,
-						deployedAt: row.currentVersion.deployedAt?.toISOString() ?? null,
-					}
-				: null,
-			triggers: row.triggers.map((trigger) => ({
-				...trigger,
-				nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
-			})),
-			runCount: row._count.runs,
-		}));
+		return rows.map((row) => {
+			const { versions, currentVersion, ...agent } = row;
+			const manifest = currentVersion?.manifest ?? versions[0]?.manifest;
+			const { manifest: _manifest, ...currentVersionPublic } =
+				currentVersion ?? {};
+			return {
+				...agent,
+				lifecycleRole: readLifecycleRole(manifest),
+				createdAt: agent.createdAt.toISOString(),
+				updatedAt: agent.updatedAt.toISOString(),
+				currentVersion: currentVersion
+					? {
+							...currentVersionPublic,
+							deployedAt: currentVersion.deployedAt?.toISOString() ?? null,
+						}
+					: null,
+				triggers: agent.triggers.map((trigger) => ({
+					...trigger,
+					nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
+				})),
+				runCount: agent._count.runs,
+			};
+		});
 	}
 
 	async byId(id: string, userId: string) {
@@ -825,6 +838,7 @@ function readCapabilities(manifest: unknown) {
 					(issue) => `${issue.path.join(".") || "manifest"} ${issue.message}`,
 				)
 				.join("; "),
+			lifecycleRole: readLifecycleRole(manifest),
 			actions: [],
 			dataScope: null,
 			channel: null,
@@ -838,6 +852,7 @@ function readCapabilities(manifest: unknown) {
 	return {
 		readable: true as const,
 		problem: null,
+		lifecycleRole: parsed.data.lifecycleRole ?? null,
 		actions: parsed.data.actions,
 		dataScope: parsed.data.dataScope,
 		channel: slack?.destination ?? null,
