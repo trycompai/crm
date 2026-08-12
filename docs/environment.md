@@ -122,6 +122,23 @@ single place that knows what is set.
 because the API and the seed write pictures too. The Next.js app is deliberately
 excluded — recognising our URL for the image optimizer needs no token.
 
+### Full agentic mode checklist
+
+Set these for full research + rep Agent panel on production (names only; never
+commit values). Source of truth: `FULL_AGENTIC_CHECKLIST` in
+`apps/agent/agent/lib/capabilities.ts`.
+
+| Source | Kind | Unlocks |
+| --- | --- | --- |
+| `RAPIDAPI_KEY` | env | LinkedIn identity |
+| `PERPLEXITY_API_KEY` | env | Web research / LinkedIn slug search |
+| `BLOB_READ_WRITE_TOKEN` | env | Stored logos and photos |
+| `AGENT_BRIDGE_SECRET` | env | Agent tab + dispatch poke (same value on app and agent) |
+| Settings → General | setting | Context company brand data (not an env var) |
+
+Also needed for the model outside Vercel OIDC: `AI_GATEWAY_API_KEY`. Optional
+rate-limit help for GitHub matching: `GITHUB_TOKEN`.
+
 ### The Context key is asked for, not configured
 
 **`CONTEXT_DEV_API_KEY` is not a variable here and must not become one.** The key lives

@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	CONTEXT_DEV,
+	FULL_AGENTIC_CHECKLIST,
+	FULL_AGENTIC_ENV_VARS,
 	capabilitiesFrom,
 	enabled,
+	enableChecklistMarkdown,
 	markdownFor,
 	unavailable,
 } from "../agent/lib/capabilities";
@@ -11,6 +14,7 @@ const KEYS = [
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
+	"AGENT_BRIDGE_SECRET",
 ] as const;
 
 const saved: Record<string, string | undefined> = {};
@@ -33,6 +37,7 @@ describe("capabilities", () => {
 	it("reports everything off on a bare install", async () => {
 		expect(capabilitiesFrom(null).every((c) => !c.enabled)).toBe(true);
 		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("AGENT_BRIDGE_SECRET")).toBe(false);
 	});
 
 	it("turns one on without turning on the others", async () => {
@@ -40,11 +45,14 @@ describe("capabilities", () => {
 
 		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
 		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("AGENT_BRIDGE_SECRET")).toBe(false);
 	});
 
 	it("treats blank and whitespace as unset", async () => {
 		process.env.RAPIDAPI_KEY = "   ";
+		process.env.AGENT_BRIDGE_SECRET = "\t  ";
 		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("AGENT_BRIDGE_SECRET")).toBe(false);
 	});
 
 	it("is read live, so a late-configured process is not stuck off", async () => {
@@ -57,6 +65,16 @@ describe("capabilities", () => {
 		process.env.SOMETHING_ELSE = "x";
 		expect(await enabled("SOMETHING_ELSE")).toBe(false);
 		delete process.env.SOMETHING_ELSE;
+	});
+
+	it("reports AGENT_BRIDGE_SECRET when set", async () => {
+		process.env.AGENT_BRIDGE_SECRET = "bridge-secret";
+		const bridge = capabilitiesFrom(null).find(
+			(c) => c.id === "AGENT_BRIDGE_SECRET",
+		);
+		expect(bridge?.enabled).toBe(true);
+		expect(bridge?.from).toBe("AGENT_BRIDGE_SECRET");
+		expect(await enabled("AGENT_BRIDGE_SECRET")).toBe(true);
 	});
 });
 
@@ -112,6 +130,7 @@ describe("the capability briefing", () => {
 		expect(markdown).toContain("LinkedIn");
 		expect(markdown).toContain("Not configured here");
 		expect(markdown).toContain("Web research");
+		expect(markdown).toContain("Agent panel");
 	});
 
 	it("counts a stored Context key as configured", () => {
@@ -131,5 +150,38 @@ describe("the capability briefing", () => {
 		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
 			"Not configured here",
 		);
+	});
+});
+
+describe("full agentic enable checklist", () => {
+	it("names every production env var and the Context setting", () => {
+		expect(FULL_AGENTIC_ENV_VARS).toEqual([
+			"RAPIDAPI_KEY",
+			"PERPLEXITY_API_KEY",
+			"BLOB_READ_WRITE_TOKEN",
+			"AGENT_BRIDGE_SECRET",
+		]);
+		expect(
+			FULL_AGENTIC_CHECKLIST.find((item) => item.kind === "setting")?.source,
+		).toBe("Settings → General");
+	});
+
+	it("lists env names only, never secret values", () => {
+		process.env.RAPIDAPI_KEY = "super-secret-value";
+		const text = enableChecklistMarkdown(capabilitiesFrom(null));
+
+		expect(text).toContain("`RAPIDAPI_KEY`");
+		expect(text).toContain("`PERPLEXITY_API_KEY`");
+		expect(text).toContain("`BLOB_READ_WRITE_TOKEN`");
+		expect(text).toContain("`AGENT_BRIDGE_SECRET`");
+		expect(text).toContain("Settings → General");
+		expect(text).not.toContain("super-secret-value");
+		expect(text).toContain("[x] `RAPIDAPI_KEY`");
+		expect(text).toContain("[ ] `PERPLEXITY_API_KEY`");
+	});
+
+	it("marks Context when a key is stored", () => {
+		const text = enableChecklistMarkdown(capabilitiesFrom("ctx"));
+		expect(text).toContain("[x] Context key at `Settings → General`");
 	});
 });

@@ -55,7 +55,9 @@ export function ResearchKey() {
 				<CardTitle>Company research</CardTitle>
 				<CardDescription>
 					Enter your Context API key so our agents can research every company in
-					the CRM.
+					the CRM. Other agent sources are deploy-time env vars only:
+					RAPIDAPI_KEY, PERPLEXITY_API_KEY, BLOB_READ_WRITE_TOKEN, and
+					AGENT_BRIDGE_SECRET (same value on the app and the agent).
 				</CardDescription>
 
 				<CardAction>

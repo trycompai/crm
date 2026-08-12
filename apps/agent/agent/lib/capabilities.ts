@@ -13,6 +13,50 @@ export type Capability = {
 	readonly from: string;
 };
 
+export type EnableChecklistItem = {
+	readonly id: string;
+	readonly label: string;
+	readonly source: string;
+	readonly kind: "env" | "setting";
+};
+
+export const FULL_AGENTIC_CHECKLIST: readonly EnableChecklistItem[] = [
+	{
+		id: "RAPIDAPI_KEY",
+		label: "LinkedIn",
+		source: "RAPIDAPI_KEY",
+		kind: "env",
+	},
+	{
+		id: "PERPLEXITY_API_KEY",
+		label: "Web research",
+		source: "PERPLEXITY_API_KEY",
+		kind: "env",
+	},
+	{
+		id: CONTEXT_DEV,
+		label: "Company brand data",
+		source: "Settings → General",
+		kind: "setting",
+	},
+	{
+		id: "BLOB_READ_WRITE_TOKEN",
+		label: "Picture storage",
+		source: "BLOB_READ_WRITE_TOKEN",
+		kind: "env",
+	},
+	{
+		id: "AGENT_BRIDGE_SECRET",
+		label: "Agent panel",
+		source: "AGENT_BRIDGE_SECRET",
+		kind: "env",
+	},
+] as const;
+
+export const FULL_AGENTIC_ENV_VARS = FULL_AGENTIC_CHECKLIST.filter(
+	(item) => item.kind === "env",
+).map((item) => item.source);
+
 export async function contextDevKey(): Promise<string | null> {
 	try {
 		return await readContextDevKey(db);
@@ -65,6 +109,12 @@ export function capabilitiesFrom(
 			label: "Picture storage",
 			gives:
 				"somewhere to keep a logo or a profile photo. Without it a record has no picture at all, because the URLs these sources hand back expire and are never stored as they are",
+		},
+		{
+			...fromEnv("AGENT_BRIDGE_SECRET"),
+			label: "Agent panel",
+			gives:
+				"a rep can open a contact, company or deal Agent tab and talk to you live, and the API can poke dispatch without waiting for the schedule",
 		},
 	];
 }
@@ -133,6 +183,34 @@ export function markdownFor(all: readonly Capability[]): string {
 			"Their tools will tell you the same thing if you call them. Note what",
 			"you could not check rather than guessing at it.",
 		);
+	}
+
+	return lines.join("\n");
+}
+
+export function enableChecklistMarkdown(
+	all: readonly Capability[] = capabilitiesFrom(null),
+): string {
+	const byId = new Map(all.map((capability) => [capability.id, capability]));
+	const lines = [
+		"## Full agentic mode enable checklist",
+		"",
+		"Env vars only (names, never values). Same value for `AGENT_BRIDGE_SECRET` on the app and the agent.",
+		"",
+	];
+
+	for (const item of FULL_AGENTIC_CHECKLIST) {
+		if (item.kind === "env") {
+			const on = byId.get(item.id)?.enabled === true;
+			lines.push(
+				`- [${on ? "x" : " "}] \`${item.source}\` — ${item.label}`,
+			);
+		} else {
+			const on = byId.get(item.id)?.enabled === true;
+			lines.push(
+				`- [${on ? "x" : " "}] Context key at \`${item.source}\` — ${item.label} (not an env var)`,
+			);
+		}
 	}
 
 	return lines.join("\n");

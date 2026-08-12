@@ -189,6 +189,11 @@ states it in the session instructions, and gives tools a shared "not configured,
 retrying will not help" result — **checked before the research budget is charged**. A
 missing key removes a place to look. **Never an error, never throws.**
 
+It tracks `RAPIDAPI_KEY`, `PERPLEXITY_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
+`AGENT_BRIDGE_SECRET`, and the Context key from Settings → General.
+`FULL_AGENTIC_CHECKLIST` / `enableChecklistMarkdown()` is the captain-facing enable
+list (env names only; no secret values).
+
 **`capabilities()` is async** because the Context key is a row;
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
