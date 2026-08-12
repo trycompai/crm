@@ -41,7 +41,9 @@ if (env.google) {
 
 		accessType: "offline",
 
-		...(primaryWorkspaceDomain() ? { hd: primaryWorkspaceDomain() } : {}),
+		...(!env.googleDisableHd && primaryWorkspaceDomain()
+			? { hd: primaryWorkspaceDomain() }
+			: {}),
 	};
 }
 
@@ -72,7 +74,7 @@ export const auth = betterAuth({
 	}),
 
 	emailAndPassword: {
-		enabled: false,
+		enabled: env.emailAndPasswordEnabled,
 	},
 
 	socialProviders,
