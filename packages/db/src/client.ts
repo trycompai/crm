@@ -120,14 +120,14 @@ const createPrismaClient = () => {
 	return client;
 };
 
-const globalForPrisma = globalThis as unknown as {
-	prisma: ReturnType<typeof createPrismaClient> | undefined;
-};
+declare global {
+	var prisma: ReturnType<typeof createPrismaClient> | undefined;
+}
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+export const db = globalThis.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
-	globalForPrisma.prisma = db;
+	globalThis.prisma = db;
 }
 
 export type Db = typeof db;

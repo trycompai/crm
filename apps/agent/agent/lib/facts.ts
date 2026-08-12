@@ -1,4 +1,4 @@
-import { db, FactBand, FactStatus } from "@crm/db";
+import { db, FactBand, FactStatus, type Prisma } from "@crm/db";
 import { type Evidence, scoreEvidence } from "./evidence";
 import { currentFocus } from "./focus";
 import { isDerivedName, splitName } from "./names";
@@ -195,7 +195,7 @@ export async function recordFact(
 				value: trimmed,
 				score: scored.score,
 				band: scored.band as FactBand,
-				evidence: input.evidence as unknown as object,
+				evidence: input.evidence as Prisma.InputJsonValue,
 				method: input.method,
 				sourceUrl: input.sourceUrl ?? null,
 				sessionId,
@@ -287,7 +287,7 @@ export async function writeBrief(input: {
 
 	const data = {
 		narrative: input.narrative.trim(),
-		sections: input.sections as unknown as object,
+		sections: input.sections as Prisma.InputJsonValue,
 		score: scored.score,
 		sourceUrl: input.sourceUrl ?? null,
 		sessionId: currentFocus().sessionId,
