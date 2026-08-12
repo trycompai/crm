@@ -4,12 +4,19 @@ import { cn } from "@crm/ui/lib/utils";
 import type * as React from "react";
 import { PageTransition } from "./page-transition";
 
-function PageShell({ className, ...props }: React.ComponentProps<"div">) {
+function PageShell({
+	className,
+	contained = false,
+	...props
+}: React.ComponentProps<"div"> & { contained?: boolean }) {
 	return (
 		<PageTransition>
 			<main
 				data-slot="page-shell-scroll"
-				className="flex min-w-0 flex-1 flex-col overflow-y-auto px-4 pt-4 pb-4 md:px-6 md:pt-6 md:pb-6"
+				className={cn(
+					"flex min-w-0 flex-1 flex-col px-4 pt-4 pb-4 md:px-6 md:pt-6 md:pb-6",
+					contained ? "min-h-0 overflow-hidden" : "overflow-y-auto",
+				)}
 			>
 				<div
 					data-slot="page-shell"

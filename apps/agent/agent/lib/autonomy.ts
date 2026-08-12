@@ -27,10 +27,22 @@ export function assertModelSpendAllowed(): void {
 	}
 }
 
+export function directOpenAiAllowed(): boolean {
+	return Boolean(
+		!modelSpendPaused() &&
+			process.env.VERCEL_ENV !== "production" &&
+			process.env.LODE_AGENT_OPENAI_MODEL?.trim() &&
+			process.env.OPENAI_API_KEY?.trim(),
+	);
+}
+
 export function directTaskKinds(kinds: readonly string[]): readonly string[] {
 	if (providerMutationsPaused()) {
 		return kinds.filter(
-			(kind) => kind !== "email-draft-send" && kind !== "portrait",
+			(kind) =>
+				kind !== "email-draft-send" &&
+				kind !== "portrait" &&
+				kind !== "slack-channel-join",
 		);
 	}
 	if (outreachSendsPaused()) {

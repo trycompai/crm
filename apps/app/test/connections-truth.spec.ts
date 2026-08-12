@@ -65,7 +65,7 @@ test("AI Gateway catalog checks are explicit and not a page-load provider call",
 	expect(aiGateway).toContain("enabled: false");
 	expect(aiGateway).toContain("does not start an agent session");
 	expect(aiGateway).toContain("AI_GATEWAY_API_KEY");
-	expect(aiGateway).toContain("Vercel with OIDC");
+	expect(aiGateway).toContain("Vercel OIDC alone");
 });
 
 test("Inbound checks are source-specific and replay stays proposal-only", () => {

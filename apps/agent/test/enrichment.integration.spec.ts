@@ -7,7 +7,9 @@ const domain = "lifecycle.example.test";
 const taskKind = "test-enrichment-lease";
 
 async function clear() {
-	await db.agentTask.deleteMany({ where: { kind: taskKind } });
+	await db.agentTask.deleteMany({
+		where: { OR: [{ kind: taskKind }, { reason: "lifecycle" }] },
+	});
 	await db.company.deleteMany({ where: { domain } });
 	await db.contact.deleteMany({
 		where: { email: { startsWith: "lifecycle-" } },
@@ -41,6 +43,25 @@ function subjectOf(ids: { contactId?: string; companyId?: string }) {
 		contactId: ids.contactId ?? null,
 		companyId: ids.companyId ?? null,
 	};
+}
+
+async function retiredTask(companyId: string) {
+	const row = await db.company.findUniqueOrThrow({
+		where: { id: companyId },
+		select: { updatedAt: true },
+	});
+
+	return db.agentTask.create({
+		data: {
+			companyId,
+			kind: "company-profile",
+			reason: "lifecycle",
+			attempts: 3,
+			dueAt: row.updatedAt,
+			finishedAt: new Date(row.updatedAt.getTime() + 1),
+		},
+		select: { id: true },
+	});
 }
 
 async function statusOfContact(id: string) {
@@ -140,6 +161,110 @@ describe("the record follows the task", () => {
 			where: { id: person.id },
 			select: { enrichmentError: true },
 		});
+		expect(row?.enrichmentError).toBeNull();
+	});
+
+	it("records the failure of a task that was retired before it ran", async () => {
+		const org = await company();
+		const task = await retiredTask(org.id);
+
+		await settle(
+			{ ...subjectOf({ companyId: org.id }), id: task.id },
+			EnrichmentStatus.FAILED,
+			"Research was attempted several times and never completed.",
+		);
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true },
+		});
+		expect(row?.enrichmentStatus).toBe("FAILED");
+	});
+
+	it("leaves a fresh request alone when a retired task settles late", async () => {
+		const org = await company();
+		const task = await retiredTask(org.id);
+
+		await db.company.update({
+			where: { id: org.id },
+			data: {
+				enrichmentStatus: EnrichmentStatus.PENDING,
+				enrichmentError: null,
+			},
+		});
+
+		await settle(
+			{ ...subjectOf({ companyId: org.id }), id: task.id },
+			EnrichmentStatus.FAILED,
+			"Research was attempted several times and never completed.",
+		);
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("PENDING");
+		expect(row?.enrichmentError).toBeNull();
+	});
+
+	it("leaves a queued record alone when a task that never ended fails late", async () => {
+		const org = await company();
+		const open = await db.agentTask.create({
+			data: {
+				companyId: org.id,
+				kind: "company-profile",
+				reason: "lifecycle",
+				dueAt: new Date(),
+			},
+			select: { id: true },
+		});
+
+		await db.company.update({
+			where: { id: org.id },
+			data: {
+				enrichmentStatus: EnrichmentStatus.PENDING,
+				enrichmentError: null,
+			},
+		});
+
+		await settle(
+			{ ...subjectOf({ companyId: org.id }), id: open.id },
+			EnrichmentStatus.FAILED,
+			"The agent turn failed.",
+		);
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("PENDING");
+		expect(row?.enrichmentError).toBeNull();
+	});
+
+	it("leaves the record to a newer request when an ended task settles late", async () => {
+		const org = await company();
+		const task = await retiredTask(org.id);
+		await db.agentTask.create({
+			data: {
+				companyId: org.id,
+				kind: "recheck",
+				reason: "lifecycle",
+				dueAt: new Date(),
+			},
+			select: { id: true },
+		});
+
+		await settle(
+			{ ...subjectOf({ companyId: org.id }), id: task.id },
+			EnrichmentStatus.FAILED,
+			"Research was attempted several times and never completed.",
+		);
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("PENDING");
 		expect(row?.enrichmentError).toBeNull();
 	});
 

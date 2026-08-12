@@ -16,6 +16,9 @@ export const TASK_KINDS = [
 	"outreach-compose",
 	"email-draft-send",
 	"customer-onboarding-plan",
+	"slack-people-match",
+	"slack-channel-join",
+	"agent-event",
 ] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
@@ -27,6 +30,9 @@ export const DIRECT_KINDS = [
 	"agentmail-sync",
 	"granola-sync",
 	"email-draft-send",
+	"slack-people-match",
+	"slack-channel-join",
+	"agent-event",
 ] as const;
 
 export type DirectKind = (typeof DIRECT_KINDS)[number];
@@ -56,4 +62,7 @@ export const PRIORITY = {
 	companyProfile: 40,
 	fieldBackfill: 20,
 	recheck: 0,
+	slackPeople: 150,
+	slackJoin: 950,
+	event: 700,
 } as const;

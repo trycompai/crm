@@ -15,6 +15,8 @@ const SIGN_IN_PATH = "/sign-in";
 
 const UNGATED = ["/grant-access", "/eve"];
 
+const ANONYMOUS = ["/t"];
+
 const SECTIONS = [
 	"/agents",
 	"/calendar",
@@ -36,6 +38,8 @@ export async function proxy(request: NextRequest) {
 	const { pathname } = request.nextUrl;
 
 	if (pathname === SIGN_IN_PATH) return NextResponse.next();
+
+	if (isAnonymous(pathname)) return NextResponse.next();
 
 	if (
 		getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX }) === null
@@ -84,6 +88,10 @@ function isPublic(pathname: string): boolean {
 
 function isUngated(pathname: string): boolean {
 	return UNGATED.some((prefix) => isUnder(pathname, prefix));
+}
+
+function isAnonymous(pathname: string): boolean {
+	return ANONYMOUS.some((prefix) => isUnder(pathname, prefix));
 }
 
 function isSetup(pathname: string): boolean {

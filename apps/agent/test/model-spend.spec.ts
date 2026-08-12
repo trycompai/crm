@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import rootGate from "../agent/hooks/model-spend";
 import {
 	assertModelSpendAllowed,
+	directOpenAiAllowed,
 	modelSpendPaused,
 } from "../agent/lib/autonomy";
+import {
+	drainAgentRuns,
+	drainBuilder,
+} from "../agent/lib/custom-agent-dispatch";
 import { ask, perplexityEnabled } from "../agent/lib/perplexity";
 import builderGate from "../agent/subagents/agent_builder/hooks/model-spend";
 import runnerGate from "../agent/subagents/agent_runner/hooks/model-spend";
@@ -13,6 +20,8 @@ const keys = [
 	"AI_GATEWAY_SPEND_PAUSED",
 	"PERPLEXITY_API_KEY",
 	"VERCEL_ENV",
+	"LODE_AGENT_OPENAI_MODEL",
+	"OPENAI_API_KEY",
 ] as const;
 const originalEnv = new Map(keys.map((key) => [key, process.env[key]]));
 const originalFetch = globalThis.fetch;
@@ -59,6 +68,23 @@ describe("model spend gate", () => {
 
 		process.env.AI_GATEWAY_API_KEY = "configured";
 		expect(modelSpendPaused()).toBe(false);
+		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
+		process.env.OPENAI_API_KEY = "configured";
+		expect(directOpenAiAllowed()).toBe(false);
+	});
+
+	it("passes Vercel environment truth through Turbo", () => {
+		const root = readFileSync(
+			resolve(import.meta.dir, "../../..", "turbo.json"),
+			"utf8",
+		);
+		const agent = readFileSync(
+			resolve(import.meta.dir, "..", "turbo.json"),
+			"utf8",
+		);
+
+		expect(root).toContain('"VERCEL_ENV"');
+		expect(agent.match(/"VERCEL_ENV"/g)).toHaveLength(2);
 	});
 
 	it("blocks every Eve model scope before a step", () => {
@@ -84,5 +110,18 @@ describe("model spend gate", () => {
 			reason: "Model spend is paused.",
 		});
 		expect(requests).toBe(0);
+	});
+
+	it("leaves builder and deployed run queues untouched while paused", async () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "true";
+		let sends = 0;
+		const send = (async () => {
+			sends += 1;
+			return { id: "not-sent" };
+		}) as never;
+
+		expect(await drainBuilder(send)).toBe(0);
+		expect(await drainAgentRuns(send)).toBe(0);
+		expect(sends).toBe(0);
 	});
 });

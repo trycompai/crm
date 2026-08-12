@@ -32,6 +32,7 @@ import {
 	MessageScrollerViewport,
 } from "@crm/ui/components/message-scroller";
 import { Reasoning } from "@crm/ui/components/reasoning";
+import { ThinkingIndicator } from "@crm/ui/components/thinking-indicator";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -50,7 +51,9 @@ import {
 	hasCreateAgentCommand,
 } from "@/lib/agent-builder";
 import {
+	agentBuilderCallIsActive,
 	builderConversationIsWorking,
+	builderSessionStreamKey,
 	completedBuilderSteps,
 	displayedArtifactVersionId,
 	latestCompletedArtifactVersionId,
@@ -63,7 +66,6 @@ import {
 	eventStreamSettled,
 	latestTurnFailure,
 	messagesFromEvents,
-	pendingQuestion,
 	splitMarkdownTable,
 	type TranscriptItem,
 	toTranscript,
@@ -107,10 +109,18 @@ type DraftVersion = {
 type BuilderSubmission = {
 	id: string;
 	createdAt: string;
+	clientRequestId?: string | null;
 	commandType: "CHAT" | "CREATE_AGENT";
 	message: unknown;
 	status: string;
 	errorMessage: string | null;
+};
+
+type PendingSubmission = {
+	clientRequestId: string;
+	createdAt: string;
+	commandType: "CHAT" | "CREATE_AGENT";
+	message: unknown;
 };
 
 export function AgentBuilderChat({
@@ -127,6 +137,7 @@ export function AgentBuilderChat({
 		key: string;
 		events: readonly MessageStreamEvent[];
 	} | null>(null);
+	const [sending, setSending] = useState<PendingSubmission[]>([]);
 	const conversation = useQuery({
 		...trpc.conversations.builderById.queryOptions({ id: conversationId }),
 		enabled: !sharedChat,
@@ -222,12 +233,20 @@ export function AgentBuilderChat({
 
 	const data = conversation.data ?? (initialData as Conversation);
 	const submissions = data.submissions as BuilderSubmission[];
+	const confirmedRequestIds = new Set(
+		submissions
+			.map((submission) => submission.clientRequestId)
+			.filter((id): id is string => Boolean(id)),
+	);
+	const pendingSubmissions = sending.filter(
+		(item) => !confirmedRequestIds.has(item.clientRequestId),
+	);
 	const persistedEvents = (events.data ??
 		[]) as unknown as MessageStreamEvent[];
-	const streamKey =
-		data.sessionId && builderConversationIsWorking(data)
-			? `${data.sessionId}:${submissions.at(-1)?.id ?? "initial"}`
-			: null;
+	const streamKey = builderSessionStreamKey(
+		data.sessionId,
+		submissions.at(-1)?.id ?? null,
+	);
 	const transcriptEvents =
 		streamKey && liveStream?.key === streamKey
 			? liveStream.events
@@ -239,7 +258,7 @@ export function AgentBuilderChat({
 		agentMessages,
 	);
 	const answeredQuestionIds = questionResponseIds(submissions);
-	const waitingQuestion = pendingQuestion(agentMessages);
+	const waitingQuestion = data.pendingQuestion;
 	const question =
 		waitingQuestion &&
 		!hasQueuedQuestionResponse(submissions, waitingQuestion.requestId)
@@ -248,6 +267,9 @@ export function AgentBuilderChat({
 	const failure = latestTurnFailure(transcriptEvents);
 	const creatingAgent = hasCreateAgentCommand(submissions);
 	const working = builderConversationIsWorking(data) && !failure;
+	const builderCallActive = agentBuilderCallIsActive(transcriptEvents);
+	const currentSubmissionCreatesAgent =
+		submissions.at(-1)?.commandType === "CREATE_AGENT";
 	const reviewVersion = reviewVersionId(data);
 	const artifactVersion = displayedArtifactVersionId(data, working);
 	const retryPrompt = retryPromptOf(submissions.at(-1));
@@ -255,11 +277,31 @@ export function AgentBuilderChat({
 		prompt: BuilderPrompt,
 		clientRequestId = crypto.randomUUID(),
 	) => {
-		await submit.mutateAsync({
-			id: conversationId,
-			clientRequestId,
-			...prompt,
-		});
+		setSending((current) => [
+			...current,
+			{
+				clientRequestId,
+				createdAt: new Date().toISOString(),
+				commandType: prompt.commandType ?? "CHAT",
+				message: {
+					text: prompt.message,
+					resources: prompt.resources,
+					attachments: prompt.attachments,
+				},
+			},
+		]);
+
+		try {
+			await submit.mutateAsync({
+				id: conversationId,
+				clientRequestId,
+				...prompt,
+			});
+		} finally {
+			setSending((current) =>
+				current.filter((item) => item.clientRequestId !== clientRequestId),
+			);
+		}
 	};
 
 	return (
@@ -335,7 +377,36 @@ export function AgentBuilderChat({
 								</MessageScrollerItem>
 							))}
 
-							{working && creatingAgent ? (
+							{pendingSubmissions.map((item) => (
+								<MessageScrollerItem
+									key={item.clientRequestId}
+									messageId={`sending:${item.clientRequestId}`}
+									scrollAnchor
+								>
+									<UserSubmission
+										submission={{
+											id: item.clientRequestId,
+											createdAt: item.createdAt,
+											commandType: item.commandType,
+											message: item.message,
+											status: "PENDING",
+											errorMessage: null,
+										}}
+										failed={false}
+										error={null}
+										sending
+									/>
+								</MessageScrollerItem>
+							))}
+
+							{pendingSubmissions.length > 0 ||
+							(working && !builderCallActive) ? (
+								<MessageScrollerItem messageId={`thinking:${conversationId}`}>
+									<ThinkingIndicator />
+								</MessageScrollerItem>
+							) : null}
+
+							{working && builderCallActive ? (
 								<MessageScrollerItem
 									messageId={`building-agent:${conversationId}`}
 								>
@@ -360,30 +431,13 @@ export function AgentBuilderChat({
 								</MessageScrollerItem>
 							) : null}
 
-							{!working &&
-							failure &&
-							creatingAgent &&
-							!reviewVersion &&
-							data.agent?.status !== "LIVE" ? (
+							{!working && failure ? (
 								<MessageScrollerItem
 									messageId={`builder-failure:${conversationId}`}
 								>
 									<BuilderFailureCard
 										failure={failure}
-										creatingAgent
-										retrying={submit.isPending}
-										onRetry={retryPrompt ? () => send(retryPrompt) : null}
-									/>
-								</MessageScrollerItem>
-							) : null}
-
-							{!working && failure && !creatingAgent ? (
-								<MessageScrollerItem
-									messageId={`builder-failure:${conversationId}`}
-								>
-									<BuilderFailureCard
-										failure={failure}
-										creatingAgent={false}
+										creatingAgent={currentSubmissionCreatesAgent}
 										retrying={submit.isPending}
 										onRetry={retryPrompt ? () => send(retryPrompt) : null}
 									/>
@@ -411,7 +465,7 @@ export function AgentBuilderChat({
 										conversation={data}
 										onFollowUp={(message) =>
 											send({
-												commandType: "CHAT",
+												commandType: "CREATE_AGENT",
 												message,
 												resources: [],
 												attachments: [],
@@ -684,10 +738,12 @@ function UserSubmission({
 	submission,
 	failed,
 	error,
+	sending = false,
 }: {
 	submission: BuilderSubmission;
 	failed: boolean;
 	error: string | null;
+	sending?: boolean;
 }) {
 	const message = builderMessageOf(submission.message);
 	const command =
@@ -698,7 +754,12 @@ function UserSubmission({
 	const response = inputResponseOf(submission.message);
 
 	return (
-		<div className="flex min-w-0 w-full justify-end">
+		<div
+			className={cn(
+				"flex min-w-0 w-full justify-end transition-opacity",
+				sending && "opacity-60",
+			)}
+		>
 			<div
 				className={cn(
 					"flex w-fit min-w-0 max-w-full flex-col gap-2 rounded-md bg-muted px-3 py-2.5 text-sm leading-5 sm:max-w-[620px] sm:px-3.5 sm:py-3",
@@ -1255,7 +1316,11 @@ function DeployedAgentCard({
 	});
 
 	if (!agent) return null;
-	const nextRun = agent.triggers.find((trigger) => trigger.enabled)?.nextRunAt;
+	const enabledTriggers = agent.triggers.filter((trigger) => trigger.enabled);
+	const nextRun =
+		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
+	const triggerSummary =
+		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
 
 	return (
 		<div className="flex flex-col gap-[18px]">
@@ -1263,13 +1328,13 @@ function DeployedAgentCard({
 				<p className="text-sm leading-5">{agent.name} is live.</p>
 				<p className="text-muted-foreground text-sm leading-5">
 					I created the Eve agent, applied its bounded CRM and integration
-					access, and scheduled its first run.
+					access, and made it live for the team.
 				</p>
 			</div>
 			<AgentCardShell name={agent.name} status="Live">
 				<div className="flex flex-col gap-2 p-4">
 					<ReviewRow
-						label="Next run"
+						label="Trigger"
 						value={
 							nextRun ? (
 								<LocalDateTime
@@ -1282,7 +1347,7 @@ function DeployedAgentCard({
 									}}
 								/>
 							) : (
-								"Manual only"
+								triggerSummary
 							)
 						}
 					/>
@@ -1322,24 +1387,19 @@ function DeployedAgentCard({
 				<p className="flex h-7 items-center text-muted-foreground text-sm">
 					Suggested follow-ups
 				</p>
-				{["Run it once now", "Add another teammate to the notification"].map(
-					(suggestion) => (
-						<button
-							key={suggestion}
-							type="button"
-							onClick={() => void onFollowUp(suggestion)}
-							className="flex w-full items-center gap-3 border-t py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
-						>
-							<span className="min-w-0 flex-1 wrap-break-word text-sm">
-								{suggestion}
-							</span>
-							<Icon
-								icon={ArrowRight}
-								className="size-4 text-muted-foreground"
-							/>
-						</button>
-					),
-				)}
+				{["Add another teammate to the notification"].map((suggestion) => (
+					<button
+						key={suggestion}
+						type="button"
+						onClick={() => void onFollowUp(suggestion)}
+						className="flex w-full items-center gap-3 border-t py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
+					>
+						<span className="min-w-0 flex-1 wrap-break-word text-sm">
+							{suggestion}
+						</span>
+						<Icon icon={ArrowRight} className="size-4 text-muted-foreground" />
+					</button>
+				))}
 			</div>
 		</div>
 	);
@@ -1452,7 +1512,9 @@ function sharedConversationNeedsPolling(
 
 function manifestOf(value: unknown) {
 	const manifest = recordOf(value);
-	const trigger = recordOf(manifest.trigger);
+	const triggers = Array.isArray(manifest.triggers)
+		? manifest.triggers.map(recordOf)
+		: [];
 	const dataScope = recordOf(manifest.dataScope);
 	const actions = Array.isArray(manifest.actions)
 		? manifest.actions.map(recordOf)
@@ -1471,9 +1533,16 @@ function manifestOf(value: unknown) {
 				? manifest.description.trim()
 				: null,
 		trigger:
-			trigger.type === "MANUAL"
-				? "On demand"
-				: compactSummary(trigger.summary, "On schedule"),
+			triggers
+				.map((trigger) =>
+					trigger.type === "MANUAL"
+						? "On demand"
+						: compactSummary(
+								trigger.summary,
+								trigger.type === "EVENT" ? "On CRM event" : "On schedule",
+							),
+				)
+				.join(" · ") || "On demand",
 		looksAt: textOf(dataScope.summary, "CRM records in the approved scope"),
 		action: compactSummary(
 			actions[0]?.summary,

@@ -1,7 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { listDeals } from "../lib/lookup";
-import { assertResearchPurpose } from "../lib/session-purpose";
 
 export default defineTool({
 	description:
@@ -22,8 +21,7 @@ export default defineTool({
 		limit: z.number().int().min(1).max(100).default(50),
 		cursor: z.string().optional(),
 	}),
-	async execute(input, ctx) {
-		assertResearchPurpose(ctx);
+	async execute(input) {
 		return listDeals(input);
 	},
 	toModelOutput(output) {

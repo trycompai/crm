@@ -1,87 +1,240 @@
+import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
+import SlackLogo from "@crm/ui/components/brand-logos/slack";
+import { Button } from "@crm/ui/components/button";
+import { Spinner } from "@crm/ui/components/spinner";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
-import {
-	PageShell,
-	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
-	PageShellLoading,
-	PageShellTitle,
-} from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { AddConnectionDialog } from "./add-connection-dialog";
 import { AiGatewayConnection } from "./ai-gateway-connection";
-import { GoogleConnection } from "./google-connection";
 import { InboundConnections } from "./inbound-connections";
-import { MicrosoftConnection } from "./microsoft-connection";
 
-export const metadata: Metadata = {
-	title: "Connections",
-};
+export const metadata: Metadata = { title: "Connections" };
 
-export default function ConnectionsSettingsPage({
-	searchParams,
-}: PageProps<"/[slug]/settings/connections">) {
+export default function ConnectionsSettingsPage(
+	props: PageProps<"/[slug]/settings/connections">,
+) {
 	return (
-		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>Connections</PageShellTitle>
-					<PageShellDescription>
-						Connection health, operator controls and replay status.
-					</PageShellDescription>
-				</PageShellHeading>
-			</PageShellHeader>
-
-			<PageShellContent>
-				<Suspense fallback={<PageShellLoading />}>
-					<Connections searchParams={searchParams} />
-				</Suspense>
-			</PageShellContent>
-		</PageShell>
+		<Suspense fallback={<ConnectionsFallback />}>
+			<ConnectionsSettingsPageContent {...props} />
+		</Suspense>
 	);
 }
 
-async function Connections({
+async function ConnectionsSettingsPageContent({
+	params,
 	searchParams,
-}: Pick<PageProps<"/[slug]/settings/connections">, "searchParams">) {
+}: PageProps<"/[slug]/settings/connections">) {
 	await requireSession();
-
-	const trpc = getServerTrpc();
+	const [{ slug }, query] = await Promise.all([params, searchParams]);
 	const queryClient = getServerQueryClient();
-
-	const [{ error, provider }] = await Promise.all([
-		searchParams,
-		queryClient.prefetchQuery(trpc.google.status.queryOptions()),
-		queryClient.prefetchQuery(trpc.microsoft.status.queryOptions()),
+	const trpc = getServerTrpc();
+	const [google, microsoft, slack] = await Promise.all([
+		queryClient.fetchQuery(trpc.google.status.queryOptions()),
+		queryClient.fetchQuery(trpc.microsoft.status.queryOptions()),
+		queryClient.fetchQuery(trpc.slack.status.queryOptions()),
 		queryClient.prefetchQuery(trpc.inbound.status.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.aiGatewayStatus.queryOptions()),
 	]);
-
-	const connectError = first(error);
-	const failed = first(provider);
+	const rows = [
+		...(google.linked
+			? [
+					{
+						name: "Google Workspace",
+						status: "Connected",
+						bringsIn: "Emails, meetings and the people on them",
+						sends: "Nothing yet",
+						href: `/${slug}/settings/connections/google`,
+						logo: GoogleLogo,
+					},
+				]
+			: []),
+		...(slack.connected
+			? [
+					{
+						name: "Slack",
+						status: slack.workspace
+							? `Connected to ${slack.workspace}`
+							: "Connected",
+						bringsIn: "Workspace members and channels the app has joined",
+						sends: "Messages to approved channels and people",
+						href: `/${slug}/settings/connections/slack`,
+						logo: SlackLogo,
+					},
+				]
+			: []),
+		...(microsoft.linked
+			? [
+					{
+						name: "Microsoft 365",
+						status: "Connected",
+						bringsIn: "Outlook email and the people on it",
+						sends: "Nothing yet",
+						href: `/${slug}/settings/connections/microsoft`,
+						logo: MicrosoftLogo,
+					},
+				]
+			: []),
+	];
 
 	return (
 		<HydrateClient>
-			<div className="flex max-w-3xl flex-col gap-6">
-				<AiGatewayConnection />
+			<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-(--spacing-page-inline) pt-(--spacing-page-top) pb-(--spacing-page-bottom)">
+				<div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-(--spacing-page-gap)">
+					<header className="flex items-start justify-between gap-4 px-(--spacing-block-inline)">
+						<div className="flex flex-col gap-2">
+							<h1 className="font-medium text-2xl tracking-tight">
+								Connections
+							</h1>
+							<p className="max-w-2xl text-muted-foreground text-sm">
+								Where your CRM gets its information, and what it is allowed to
+								send on your behalf.
+							</p>
+						</div>
+						<Button asChild variant="outline">
+							<Link href={`/${slug}/settings/connections?add=1`}>
+								Add connection
+							</Link>
+						</Button>
+					</header>
 
-				<GoogleConnection
-					connectError={failed === "google" ? connectError : undefined}
+					{rows.length > 0 ? (
+						<div className="flex flex-col gap-3">
+							{rows.map((row) => (
+								<ConnectionCard key={row.name} {...row} />
+							))}
+						</div>
+					) : (
+						<div className="flex flex-col gap-4 rounded-lg border bg-card px-(--spacing-block-inline)">
+							<div className="flex flex-col gap-2 pt-4 text-center">
+								<h2 className="font-medium text-lg">
+									Nothing is connected yet
+								</h2>
+								<p className="text-muted-foreground text-sm leading-relaxed">
+									Connect a tool and the CRM starts filling itself in from the
+									work your team already does.
+								</p>
+							</div>
+							<div className="flex flex-col divide-y">
+								<StarterRow
+									logo={GoogleLogo}
+									name="Google Workspace"
+									description="File email and meetings against the right company"
+									href={`/${slug}/settings/connections/google`}
+								/>
+								<StarterRow
+									logo={SlackLogo}
+									name="Slack"
+									description="Let deployed agents notify approved channels and people"
+									href={`/${slug}/settings/connections/slack`}
+								/>
+								<StarterRow
+									logo={MicrosoftLogo}
+									name="Microsoft 365"
+									description="File Outlook email against the right company"
+									href={`/${slug}/settings/connections/microsoft`}
+								/>
+							</div>
+						</div>
+					)}
+
+					<div className="flex flex-col gap-3">
+						<AiGatewayConnection />
+						<InboundConnections />
+					</div>
+				</div>
+
+				<AddConnectionDialog
+					slug={slug}
+					open={first(query.add) === "1"}
+					connected={rows.map((row) => row.name)}
 				/>
-
-				<MicrosoftConnection
-					connectError={failed === "microsoft" ? connectError : undefined}
-				/>
-
-				<InboundConnections />
-			</div>
+			</main>
 		</HydrateClient>
 	);
 }
 
-function first(value: string | string[] | undefined): string | undefined {
+function ConnectionsFallback() {
+	return (
+		<main className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-(--spacing-page-inline) pt-(--spacing-page-top) pb-(--spacing-page-bottom)">
+			<Spinner size="lg" />
+		</main>
+	);
+}
+
+function ConnectionCard({
+	name,
+	status,
+	bringsIn,
+	sends,
+	href,
+	logo: Logo,
+}: {
+	name: string;
+	status: string;
+	bringsIn: string;
+	sends: string;
+	href: string;
+	logo: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+}) {
+	return (
+		<section className="flex flex-col gap-4 rounded-lg border bg-card px-(--spacing-block-inline) py-4">
+			<div className="flex items-center gap-3">
+				<Logo className="size-5 shrink-0" />
+				<h2 className="font-medium text-sm">{name}</h2>
+				<p className="ml-auto text-right text-muted-foreground text-xs">
+					{status}
+				</p>
+				<Button asChild size="sm" variant="outline">
+					<Link href={href}>Manage</Link>
+				</Button>
+			</div>
+			<div className="flex flex-col gap-2 pl-8 text-sm">
+				<CapabilityRow label="Brings in" value={bringsIn} />
+				<CapabilityRow label="Sends" value={sends} />
+			</div>
+		</section>
+	);
+}
+
+function CapabilityRow({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex gap-4">
+			<span className="w-22 shrink-0 text-muted-foreground">{label}</span>
+			<span>{value}</span>
+		</div>
+	);
+}
+
+function StarterRow({
+	logo: Logo,
+	name,
+	description,
+	href,
+}: {
+	logo: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+	name: string;
+	description: string;
+	href: string;
+}) {
+	return (
+		<div className="flex items-center gap-3 py-4 text-left">
+			<Logo className="size-5 shrink-0" />
+			<div className="min-w-0 flex-1">
+				<h2 className="font-medium text-sm">{name}</h2>
+				<p className="text-muted-foreground text-xs">{description}</p>
+			</div>
+			<Button asChild variant="outline" size="sm">
+				<Link href={href}>Connect</Link>
+			</Button>
+		</div>
+	);
+}
+
+function first(value: string | string[] | undefined) {
 	return Array.isArray(value) ? value[0] : value;
 }

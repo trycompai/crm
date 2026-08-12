@@ -5,6 +5,7 @@ import {
 	PRIORITY,
 	RETIRED_OUTCOME,
 } from "@crm/db/agent-tasks";
+import { DISPATCH } from "./dispatch-config";
 
 export type LeasedTask = {
 	id: string;
@@ -15,6 +16,7 @@ export type LeasedTask = {
 	emailDraftId: string | null;
 	kind: string;
 	reason: string;
+	payload: Prisma.JsonValue | null;
 	budget: number;
 	attempts: number;
 	priority: number;
@@ -43,7 +45,7 @@ export type TaskLeaseScope = {
 	emailDraftId?: string | null;
 };
 
-const LEASE_MS = 10 * 60_000;
+const LEASE_MS = DISPATCH.task.leaseMs;
 
 export { DIRECT_KINDS, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 
@@ -95,55 +97,35 @@ export async function claimDue(
 	const now = new Date();
 	const until = new Date(now.getTime() + leaseMs);
 
-	const list = "only" in kinds ? kinds.only : kinds.except;
+	const list = "only" in kinds ? [...kinds.only] : [...kinds.except];
 	if ("only" in kinds && list.length === 0) return [];
+	const onlyMode = "only" in kinds;
 
-	const claimed =
-		"only" in kinds
-			? await db.$queryRaw<LeasedTask[]>`
-				UPDATE "agentTask" AS t
-				SET "leasedUntil" = ${until},
-					"startedAt" = COALESCE(t."startedAt", ${now}),
-					"attempts" = t."attempts" + 1,
-					"state" = 'LEASED'
-				FROM (
-					SELECT t2.id FROM "agentTask" AS t2
-					WHERE t2."finishedAt" IS NULL
-						AND t2."state" IN ('QUEUED', 'LEASED')
-						AND t2."dueAt" <= ${now}
-						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
-						AND t2."attempts" < ${MAX_ATTEMPTS}
-						AND t2.kind IN (${Prisma.join(list)})
-					ORDER BY t2."priority" DESC, t2."dueAt" ASC
-					LIMIT ${limit}
-					FOR UPDATE SKIP LOCKED
-				) AS due
-				WHERE t.id = due.id
-				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
-					t.budget, t.attempts, t.priority, t."dueAt", t.scopes;
-			`
-			: await db.$queryRaw<LeasedTask[]>`
-				UPDATE "agentTask" AS t
-				SET "leasedUntil" = ${until},
-					"startedAt" = COALESCE(t."startedAt", ${now}),
-					"attempts" = t."attempts" + 1,
-					"state" = 'LEASED'
-				FROM (
-					SELECT t2.id FROM "agentTask" AS t2
-					WHERE t2."finishedAt" IS NULL
-						AND t2."state" IN ('QUEUED', 'LEASED')
-						AND t2."dueAt" <= ${now}
-						AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
-						AND t2."attempts" < ${MAX_ATTEMPTS}
-						AND t2.kind NOT IN (${Prisma.join(list)})
-					ORDER BY t2."priority" DESC, t2."dueAt" ASC
-					LIMIT ${limit}
-					FOR UPDATE SKIP LOCKED
-				) AS due
-				WHERE t.id = due.id
-				RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason,
-					t.budget, t.attempts, t.priority, t."dueAt", t.scopes;
-			`;
+	const claimed = await db.$queryRaw<LeasedTask[]>`
+		UPDATE "agentTask" AS t
+	SET "leasedUntil" = ${until},
+		"startedAt" = COALESCE(t."startedAt", ${now}),
+		"attempts" = t."attempts" + 1,
+		"state" = 'LEASED'
+	FROM (
+		SELECT t2.id FROM "agentTask" AS t2
+		WHERE t2."finishedAt" IS NULL
+			AND t2."state" IN ('QUEUED', 'LEASED')
+				AND t2."dueAt" <= ${now}
+				AND (t2."leasedUntil" IS NULL OR t2."leasedUntil" < ${now})
+				AND t2."attempts" < ${MAX_ATTEMPTS}
+				AND CASE
+					WHEN ${onlyMode}::boolean THEN t2.kind = ANY(${list}::text[])
+					ELSE t2.kind <> ALL(${list}::text[])
+				END
+			ORDER BY t2."priority" DESC, t2."dueAt" ASC
+			LIMIT ${limit}
+			FOR UPDATE SKIP LOCKED
+	) AS due
+	WHERE t.id = due.id
+	RETURNING t.id, t."contactId", t."companyId", t."prospectId", t."dealId", t."emailDraftId", t.kind, t.reason, t.payload,
+		t.budget, t.attempts, t.priority, t."dueAt", t.scopes;
+	`;
 
 	return claimed.sort(
 		(a, b) => b.priority - a.priority || a.dueAt.getTime() - b.dueAt.getTime(),
@@ -294,6 +276,7 @@ export async function scheduleTask(input: {
 	emailDraftId?: string | null;
 	kind: string;
 	reason: string;
+	payload?: Prisma.InputJsonValue | null;
 	dueAt: Date;
 	priority?: number;
 	budget?: number;
@@ -322,12 +305,20 @@ export async function scheduleTask(input: {
 		if (!input.idempotencyKey || existing.finishedAt === null) {
 			await db.agentTask.update({
 				where: { id: existing.id },
-				data: { dueAt: input.dueAt, reason: input.reason },
+				data: {
+					dueAt: input.dueAt,
+					reason: input.reason,
+					...(input.payload !== undefined
+						? { payload: input.payload ?? Prisma.DbNull }
+						: {}),
+					...(input.scopes !== undefined
+						? { scopes: input.scopes ?? Prisma.DbNull }
+						: {}),
+				},
 			});
 		}
 		return existing;
 	}
-
 	try {
 		return await db.agentTask.create({
 			data: {
@@ -342,6 +333,9 @@ export async function scheduleTask(input: {
 				priority: input.priority ?? 0,
 				budget: input.budget ?? 4,
 				idempotencyKey: input.idempotencyKey ?? null,
+				...(input.payload !== undefined
+					? { payload: input.payload ?? Prisma.DbNull }
+					: {}),
 				...(input.scopes !== undefined
 					? {
 							scopes: input.scopes === null ? Prisma.DbNull : input.scopes,

@@ -34,10 +34,12 @@ import { ProspectsModule } from "./prospects/prospects.module";
 import { SearchModule } from "./search/search.module";
 import { ServiceModule } from "./service/service.module";
 import { SettingsModule } from "./settings/settings.module";
+import { SlackModule } from "./slack/slack.module";
 import { SsoModule } from "./sso/sso.module";
 import { SyncModule } from "./sync/sync.module";
 import { TelemetryModule } from "./telemetry/telemetry.module";
 import { TodayModule } from "./today/today.module";
+import { TrackingModule } from "./tracking/tracking.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 import { WorkModule } from "./work/work.module";
@@ -86,9 +88,11 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		WorkspaceModule,
 		WorkModule,
 		SsoModule,
+		SlackModule,
 		BackfillModule,
 		TelemetryModule,
 		TodayModule,
+		TrackingModule,
 	],
 })
 export class AppModule {}

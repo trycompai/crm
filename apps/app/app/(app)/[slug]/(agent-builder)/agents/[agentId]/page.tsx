@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { TeamAgentDetail } from "@/components/agent-builder/team-agent-detail";
 import { PageShellFallback } from "@/components/page-shell";
-import { HydrateClient } from "@/lib/trpc/hydrate";
-import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { getServerTrpcClient } from "@/lib/trpc/server";
+import { nullIfMissing } from "../../missing-record";
 
 export const metadata: Metadata = { title: "Team agent" };
 
@@ -28,32 +28,26 @@ async function PrefetchedTeamAgent({
 	const { agentId } = await params;
 	if (agentId === "team") notFound();
 
-	const trpc = getServerTrpc();
-	const queryClient = getServerQueryClient();
-	const agentQuery = trpc.agents.byId.queryOptions({ id: agentId });
-	const runsQuery = trpc.agents.history.queryOptions({
-		id: agentId,
-		limit: 50,
-	});
-	const activityQuery = trpc.agents.activity.queryOptions({
-		id: agentId,
-		limit: 100,
-	});
+	const client = getServerTrpcClient();
 
 	const [agent, runs, activity] = await Promise.all([
-		queryClient.fetchQuery(agentQuery),
-		queryClient.fetchQuery(runsQuery),
-		queryClient.fetchQuery(activityQuery),
+		client.agents.byId.query({ id: agentId }).catch(nullIfMissing),
+		client.agents.history
+			.query({ id: agentId, limit: 50 })
+			.catch(nullIfMissing),
+		client.agents.activity
+			.query({ id: agentId, limit: 100 })
+			.catch(nullIfMissing),
 	]);
 
+	if (!agent || !runs || !activity) notFound();
+
 	return (
-		<HydrateClient>
-			<TeamAgentDetail
-				agentId={agentId}
-				initialAgent={agent}
-				initialRuns={runs}
-				initialActivity={activity}
-			/>
-		</HydrateClient>
+		<TeamAgentDetail
+			agentId={agentId}
+			initialAgent={agent}
+			initialRuns={runs}
+			initialActivity={activity}
+		/>
 	);
 }

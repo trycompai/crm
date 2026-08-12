@@ -34,6 +34,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { dealStageLabel, OPEN_STAGES } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -80,7 +81,6 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const closeDateId = useId();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 	const me = useQuery(trpc.users.me.queryOptions());
 	const currencies = useQuery(trpc.currency.settings.queryOptions());
 
@@ -154,18 +154,11 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 
 						<Field>
 							<FieldLabel htmlFor="create-deal-company">Company</FieldLabel>
-							<Select value={company} onValueChange={setCompany}>
-								<SelectTrigger id="create-deal-company">
-									<SelectValue placeholder="Choose a company" />
-								</SelectTrigger>
-								<SelectContent>
-									{(companies.data ?? []).map((option) => (
-										<SelectItem key={option.id} value={option.id}>
-											{option.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							<CompanyPicker
+								id="create-deal-company"
+								value={company}
+								onValueChange={setCompany}
+							/>
 						</Field>
 
 						<Field>

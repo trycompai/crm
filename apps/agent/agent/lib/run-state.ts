@@ -27,7 +27,21 @@ export async function lockAgentRun(
 
 export function runTerminalEventId(
 	runId: string,
-	terminal: "completed" | "failed",
+	terminal: "completed" | "failed" | "cancelled",
 ) {
 	return `run-terminal:${runId}:${terminal}`;
+}
+
+export const TERMINAL_RUN_STATUSES = [
+	"SUCCEEDED",
+	"FAILED",
+	"CANCELLED",
+] as const satisfies readonly AgentRunStatus[];
+
+export function isTerminalRunStatus(
+	status: AgentRunStatus,
+): status is (typeof TERMINAL_RUN_STATUSES)[number] {
+	return TERMINAL_RUN_STATUSES.includes(
+		status as (typeof TERMINAL_RUN_STATUSES)[number],
+	);
 }

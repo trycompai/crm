@@ -13,10 +13,14 @@ import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { AgentDefinitionsService } from "./agent-definitions.service";
 import { AgentRunsService } from "./agent-runs.service";
 import {
+	agentCancelRunInput,
 	agentDeployInput,
 	agentHistoryInput,
 	agentIdInput,
+	agentRetryRunInput,
+	agentReviseInput,
 	agentRunNowInput,
+	agentSaveFileInput,
 	agentUpdateInput,
 } from "./agents.contracts";
 
@@ -33,6 +37,27 @@ export class AgentsRouter {
 	@Query()
 	async list(@Ctx() ctx: AuthedTrpcContext) {
 		return this.agents.list(ctx.user.id);
+	}
+
+	@Mutation({ input: agentReviseInput })
+	async revise(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentReviseInput>,
+	) {
+		return this.agents.revise(input, ctx.user.id);
+	}
+
+	@Query({ input: agentIdInput })
+	async files(@Ctx() ctx: AuthedTrpcContext, @Input("id") id: string) {
+		return this.agents.files(id, ctx.user.id);
+	}
+
+	@Mutation({ input: agentSaveFileInput })
+	async saveFile(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentSaveFileInput>,
+	) {
+		return this.agents.saveFile(input, ctx.user.id);
 	}
 
 	@Query({ input: agentIdInput })
@@ -103,5 +128,21 @@ export class AgentsRouter {
 		@Input() input: z.infer<typeof agentRunNowInput>,
 	) {
 		return this.runs.runNow(input, ctx.user.id);
+	}
+
+	@Mutation({ input: agentRetryRunInput })
+	async retryRun(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentRetryRunInput>,
+	) {
+		return this.runs.retryRun(input, ctx.user.id);
+	}
+
+	@Mutation({ input: agentCancelRunInput })
+	async cancelRun(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof agentCancelRunInput>,
+	) {
+		return this.runs.cancelRun(input, ctx.user.id);
 	}
 }

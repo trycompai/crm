@@ -32,6 +32,7 @@ const envKeys = [
 	"GRANOLA_API_KEY",
 	"AI_GATEWAY_API_KEY",
 	"VERCEL_OIDC_TOKEN",
+	"VERCEL_ENV",
 	"AI_GATEWAY_SPEND_PAUSED",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -299,5 +300,16 @@ describe("connection truth", () => {
 
 		process.env.AI_GATEWAY_SPEND_PAUSED = "FALSE";
 		expect((await settings.aiGatewayStatus()).paused).toBe(true);
+
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.VERCEL_ENV = "production";
+		delete process.env.AI_GATEWAY_API_KEY;
+		process.env.VERCEL_OIDC_TOKEN = "provider-injected";
+		expect(await settings.aiGatewayStatus()).toMatchObject({
+			configured: false,
+			paused: true,
+			canTest: false,
+			credentialSource: "vercel_oidc",
+		});
 	});
 });

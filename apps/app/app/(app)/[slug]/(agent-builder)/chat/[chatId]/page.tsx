@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AgentBuilderChat } from "@/components/agent-builder/agent-builder-chat";
 import { AgentBuilderChatFallback } from "@/components/agent-builder/agent-builder-route-fallback";
 import { isSharedChatToken } from "@/lib/chat-route";
-import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { getServerTrpcClient } from "@/lib/trpc/server";
+import { nullIfMissing } from "../../missing-record";
 
 export const metadata: Metadata = { title: "Agent chat" };
 
@@ -25,19 +27,23 @@ async function PrefetchedAgentChat({
 	params: Promise<{ chatId: string }>;
 }) {
 	const { chatId } = await params;
-	const trpc = getServerTrpc();
-	const queryClient = getServerQueryClient();
-	const sharedChat = isSharedChatToken(chatId);
+	const client = getServerTrpcClient();
 
-	const initialData = sharedChat
-		? await queryClient
-				.fetchQuery(trpc.conversations.shared.queryOptions({ token: chatId }))
-				.catch(() => null)
-		: await queryClient.fetchQuery(
-				trpc.conversations.builderById.queryOptions({
-					id: chatId,
-				}),
-			);
+	if (isSharedChatToken(chatId)) {
+		const shared = await client.conversations.shared
+			.query({ token: chatId })
+			.catch(nullIfMissing);
 
-	return <AgentBuilderChat conversationId={chatId} initialData={initialData} />;
+		return <AgentBuilderChat conversationId={chatId} initialData={shared} />;
+	}
+
+	const conversation = await client.conversations.builderById
+		.query({ id: chatId })
+		.catch(nullIfMissing);
+
+	if (!conversation) notFound();
+
+	return (
+		<AgentBuilderChat conversationId={chatId} initialData={conversation} />
+	);
 }

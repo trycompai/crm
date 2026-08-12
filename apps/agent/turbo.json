@@ -36,7 +36,8 @@
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
 				"PERPLEXITY_API_KEY",
-				"RAPIDAPI_KEY"
+				"RAPIDAPI_KEY",
+				"VERCEL_ENV"
 			]
 		},
 		"dev:headless": {
@@ -61,7 +62,8 @@
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
 				"PERPLEXITY_API_KEY",
-				"RAPIDAPI_KEY"
+				"RAPIDAPI_KEY",
+				"VERCEL_ENV"
 			]
 		},
 		/**

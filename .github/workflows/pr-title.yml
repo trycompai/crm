@@ -31,7 +31,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ACTION: ${{ github.event.action }}
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
           NUMBER: ${{ github.event.pull_request.number }}
@@ -42,14 +41,13 @@ jobs:
           set -euo pipefail
 
           body=$(printf '%s' "$BODY" | tr -d '\r')
-          written=$(printf '%s\n' "$body" | sed -n 's/^<!-- pr-title: \(.*\) -->$/\1/p' | head -1)
 
           if ! .github/scripts/pr-title.sh check "$TITLE"; then
             reason="it is not a release note"
-          elif [ "$ACTION" != "edited" ] && [ -n "$written" ] && [ "$written" = "$TITLE" ]; then
-            reason="the diff has moved and nobody has retitled it"
+          elif ! .github/scripts/pr-title.sh sufficient "$BASE_SHA" "$HEAD_SHA" "$TITLE"; then
+            reason="it releases less than the commits on the branch do"
           else
-            echo "\`$TITLE\` is yours — leaving it alone." >> "$GITHUB_STEP_SUMMARY"
+            echo "\`$TITLE\` still covers the diff — leaving it alone." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 

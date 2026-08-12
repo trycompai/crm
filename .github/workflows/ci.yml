@@ -29,17 +29,18 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: crm
+          POSTGRES_DB: crm_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d crm"
+          --health-cmd "pg_isready -U postgres -d crm_test"
           --health-interval 3s
           --health-timeout 5s
           --health-retries 20
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crm?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crm_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crm_test?schema=public
       ALLOWED_SIGN_IN: example.com
       BETTER_AUTH_SECRET: ci-only-secret-regenerate-for-any-real-deployment
       API_URL: http://localhost:3001

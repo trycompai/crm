@@ -1,4 +1,4 @@
-import { db } from "@crm/db";
+import { type Db, db } from "@crm/db";
 import { WORKSPACE_ID, workspaceSlug } from "@crm/db/workspace";
 
 export { WORKSPACE_ID };
@@ -26,6 +26,14 @@ export function canChangeRole(role: WorkspaceRole | null): boolean {
 }
 
 export function canManageCurrency(role: WorkspaceRole | null): boolean {
+	return isWorkspaceAdmin(role);
+}
+
+export function canManageConnections(role: WorkspaceRole | null): boolean {
+	return isWorkspaceAdmin(role);
+}
+
+export function canManageTracking(role: WorkspaceRole | null): boolean {
 	return isWorkspaceAdmin(role);
 }
 
@@ -100,4 +108,22 @@ export async function ensureWorkspaceMembership(
 		);
 		return undefined;
 	}
+}
+
+export function toWorkspaceRole(value: string): WorkspaceRole {
+	return isWorkspaceRole(value) ? value : "member";
+}
+
+export type WorkspaceMemberReader = Pick<Db, "member">;
+
+export async function workspaceRoleOf(
+	userId: string,
+	client: WorkspaceMemberReader = db,
+): Promise<WorkspaceRole | null> {
+	const member = await client.member.findUnique({
+		where: { organizationId_userId: { organizationId: WORKSPACE_ID, userId } },
+		select: { role: true },
+	});
+
+	return member ? toWorkspaceRole(member.role) : null;
 }

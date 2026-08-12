@@ -298,10 +298,10 @@ export class ContactsService {
 					})
 				: null);
 
-		const contact = await this.db.$transaction(async (tx) => {
+		const contact = await this.agent.withCrmEvents(async (tx, emit) => {
 			await this.allowAgain(tx, email);
 
-			return tx.contact.create({
+			const created = await tx.contact.create({
 				data: {
 					firstName: input.firstName.trim(),
 					lastName: blankToNull(input.lastName ?? ""),
@@ -311,8 +311,27 @@ export class ContactsService {
 					companyId,
 					ownerId: input.ownerId ?? null,
 				},
-				select: { id: true, firstName: true, lastName: true },
+				select: {
+					id: true,
+					firstName: true,
+					lastName: true,
+					email: true,
+					companyId: true,
+					createdAt: true,
+				},
 			});
+			await emit({
+				type: "contact.created",
+				record: { kind: "contact", id: created.id },
+				occurredAt: created.createdAt,
+				data: {
+					firstName: created.firstName,
+					lastName: created.lastName,
+					email: created.email,
+					companyId: created.companyId,
+				},
+			});
+			return created;
 		});
 
 		this.logger.log({ message: "Contact created", contactId: contact.id });
@@ -322,7 +341,11 @@ export class ContactsService {
 			"Added by a rep, with nothing on the record yet",
 		);
 
-		return contact;
+		return {
+			id: contact.id,
+			firstName: contact.firstName,
+			lastName: contact.lastName,
+		};
 	}
 
 	async delete(id: string): Promise<{ id: string; name: string }> {
@@ -637,7 +660,8 @@ export class ContactsService {
 					where: {
 						contactId: fact.contactId,
 						field: fact.field,
-						status: FactStatus.APPLIED,
+						id: { not: fact.id },
+						status: { in: [FactStatus.APPLIED, FactStatus.PROPOSED] },
 					},
 					data: { status: FactStatus.SUPERSEDED, supersededAt: new Date() },
 				});

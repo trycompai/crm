@@ -18,6 +18,7 @@
 		"@crm/env": "workspace:*",
 		"@crm/telemetry": "workspace:*",
 		"@crm/ui": "workspace:*",
+		"@crm/validation": "workspace:*",
 		"@pierre/diffs": "^1.2.12",
 		"@pierre/trees": "^1.0.0-beta.5",
 		"@tanstack/react-query": "^5.101.2",

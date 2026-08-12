@@ -10,6 +10,14 @@ import Filter from "@carbon/icons-react/es/Filter";
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@crm/ui/components/command";
+import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
@@ -19,6 +27,11 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@crm/ui/components/popover";
 import { Spinner } from "@crm/ui/components/spinner";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import {
@@ -35,6 +48,7 @@ import type { TableQueryState } from "@crm/ui/lib/table-query";
 import { cn } from "@crm/ui/lib/utils";
 import { parseAsArrayOf, parseAsString, useQueryState } from "nuqs";
 import {
+	type ComponentProps,
 	Fragment,
 	type KeyboardEvent,
 	type MouseEvent,
@@ -64,6 +78,11 @@ export type DataTableFacet = {
 	id: string;
 	label: string;
 	options: { value: string; label: string }[];
+	searchable?: boolean;
+	search?: string;
+	onSearchChange?: (search: string) => void;
+	stale?: boolean;
+	empty?: ReactNode;
 };
 
 export type DataTableTabs = {
@@ -156,6 +175,99 @@ function SortIndicator({
 				<ArrowsVertical size={12} className="opacity-40" />
 			)}
 		</span>
+	);
+}
+
+function FacetTrigger({
+	label,
+	...props
+}: ComponentProps<typeof Button> & { label: string }) {
+	return (
+		<Button variant="outline" size="sm" className="justify-between" {...props}>
+			<span className="truncate">{label}</span>
+			<ChevronDown data-icon="inline-end" className="opacity-60" />
+		</Button>
+	);
+}
+
+function SearchableFacet({
+	facet,
+	selected,
+	activeLabel,
+	onSelect,
+}: {
+	facet: DataTableFacet;
+	selected: string;
+	activeLabel?: string;
+	onSelect: (value: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [seen, setSeen] = useState<{ value: string; label: string } | null>(
+		null,
+	);
+
+	if (activeLabel && (seen?.value !== selected || seen.label !== activeLabel)) {
+		setSeen({ value: selected, label: activeLabel });
+	}
+
+	const label =
+		activeLabel ??
+		(seen?.value === selected ? seen.label : undefined) ??
+		facet.label;
+
+	const choose = (value: string) => {
+		setOpen(false);
+		facet.onSearchChange?.("");
+		onSelect(value);
+	};
+
+	return (
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				setOpen(next);
+				if (!next) facet.onSearchChange?.("");
+			}}
+		>
+			<PopoverTrigger asChild>
+				<FacetTrigger label={label} />
+			</PopoverTrigger>
+			<PopoverContent align="start" size="fit" className="w-64">
+				<Command shouldFilter={facet.onSearchChange === undefined}>
+					<CommandInput
+						placeholder={`Search ${facet.label.toLowerCase()}…`}
+						value={facet.search}
+						onValueChange={facet.onSearchChange}
+					/>
+					<CommandList>
+						<CommandEmpty>{facet.empty ?? "Nothing matches."}</CommandEmpty>
+						<CommandGroup>
+							{facet.search?.trim() ? null : (
+								<CommandItem
+									value={facet.label}
+									disabled={facet.stale}
+									data-checked={selected === "all"}
+									onSelect={() => choose("all")}
+								>
+									{facet.label}
+								</CommandItem>
+							)}
+							{facet.options.map((option) => (
+								<CommandItem
+									key={option.value}
+									value={option.label}
+									disabled={facet.stale}
+									data-checked={selected === option.value}
+									onSelect={() => choose(option.value)}
+								>
+									<span className="truncate">{option.label}</span>
+								</CommandItem>
+							))}
+						</CommandGroup>
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
 	);
 }
 
@@ -343,22 +455,23 @@ export function DataTable<TRow, TSub = unknown>({
 						{facets?.map((facet) => {
 							const selected = query.filters[facet.id] ?? "all";
 							const active = facet.options.find((o) => o.value === selected);
+
+							if (facet.searchable) {
+								return (
+									<SearchableFacet
+										key={facet.id}
+										facet={facet}
+										selected={selected}
+										activeLabel={active?.label}
+										onSelect={(value) => query.setFilter(facet.id, value)}
+									/>
+								);
+							}
+
 							return (
 								<DropdownMenu key={facet.id}>
 									<DropdownMenuTrigger asChild>
-										<Button
-											variant="outline"
-											size="sm"
-											className="justify-between"
-										>
-											<span className="truncate">
-												{active ? active.label : facet.label}
-											</span>
-											<ChevronDown
-												data-icon="inline-end"
-												className="opacity-60"
-											/>
-										</Button>
+										<FacetTrigger label={active ? active.label : facet.label} />
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="start" className="min-w-44">
 										<DropdownMenuRadioGroup

@@ -71,7 +71,24 @@ identities without admitting their entire domains.
 - **`API_URL`** (`:3001`) mints session cookies and serves `/api/auth/*`;
   `next.config.ts` republishes it as `NEXT_PUBLIC_API_URL`, so one variable does both
   sides. `BETTER_AUTH_URL` is a legacy fallback.
+- **Editing a file under `packages/` does not restart the API. Restart it by hand.**
+  `bun --watch src/main.ts` refuses to watch outside its project directory and
+  says so once at boot: `File ... is not in the project directory and will not be
+  watched`. So a change to `packages/auth` or `packages/db` leaves the API
+  serving the old module until someone kills it. This cost an hour once: the
+  Slack OAuth scope list was correct in source and stale in the process, and
+  every reconnect kept asking Slack for the old scopes.
+  Running the API from the repo root fixes the watch and breaks Nest, which
+  resolves its tsconfig paths from the current directory and then cannot build
+  its dependency graph. There is no fix in the dev script today.
 - **`APP_URL`** (`:3000`) is also the trusted-origin and `callbackURL` allow-list.
+- **Every OAuth `redirect_uri` is built from `API_URL`, never `APP_URL`.** Better
+  Auth serves `/api/auth/*` at `baseURL`, and `baseURL` is `apiUrl`. A redirect
+  built from `APP_URL` points at the web app, where `/api/auth/callback` does not
+  exist, and the provider rejects it with "redirect_uri did not match". This is
+  invisible until someone sets `APP_URL` to a tunnel or a LAN host, at which
+  point the redirect silently becomes that host. `ssoCallbackBase()` is the
+  pattern; `slackRedirectUri` in `auth.ts` once was not.
 - **`AUTH_COOKIE_DOMAIN`** only for API and app on different subdomains of one parent.
 - **`AGENT_URL`** is the agent's deployment, server-side only, and **must include the
   scheme** — validated at boot, or it throws when a task is queued instead.
@@ -112,8 +129,8 @@ single place that knows what is set.
 | `RAPIDAPI_KEY` | LinkedIn profiles via LinkDAPI |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
-| `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
-| `VERCEL_OIDC_TOKEN` | Provider-injected AI Gateway auth on Vercel; leave unset locally |
+| `AI_GATEWAY_API_KEY` | Dedicated Gateway credential. Required to open model spend in Vercel production |
+| `VERCEL_OIDC_TOKEN` | Provider-injected Gateway auth. It does not open the production spend gate by itself |
 | `AI_GATEWAY_SPEND_PAUSED` | Defaults to paused; set to `false` only when model-backed agent work is approved |
 | `OPENAI_API_KEY` | Optional direct OpenAI model access for the agent |
 | `TAVILY_API_KEY` | Current public-web discovery for prospect research |

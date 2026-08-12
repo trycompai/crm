@@ -1,12 +1,28 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ActivityType, db, type Prisma } from "@crm/db";
+import type { AgentActionStatus, AgentTriggerType } from "@crm/db/enums";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { readCompanyHistory, readDealHistory } from "./accounts";
+import {
+	AGENT_ACTION_EXECUTORS,
+	AGENT_ACTION_TYPES,
+	isAgentActionType,
+} from "./agent-actions";
+import { parseAgentManifest } from "./agent-manifest";
 import { readCrmHistory } from "./crm";
+import { DISPATCH } from "./dispatch-config";
 import { searchCrm } from "./lookup";
-import { lockAgentRun, runTerminalEventId } from "./run-state";
+import {
+	type LockedAgentRun,
+	lockAgentRun,
+	runTerminalEventId,
+} from "./run-state";
+import { slackAccessToken } from "./slack-connection";
 
-const ACTION_LEASE_MS = 5 * 60_000;
+const ACTION_LEASE_MS = DISPATCH.run.actionLeaseMs;
+const NO_ACTION_TRIGGER_TYPES = new Set<AgentTriggerType>(
+	DISPATCH.run.noActionTriggerTypes,
+);
 
 type RunResource = {
 	kind: "integration" | "company" | "contact" | "deal";
@@ -15,6 +31,31 @@ type RunResource = {
 };
 
 type RunRecordScope = "SELECTED" | "WORKSPACE";
+
+type RunActionRow = {
+	id: string;
+	status: AgentActionStatus;
+	externalId: string | null;
+	requestHash: string | null;
+	metadata: Prisma.JsonValue;
+};
+
+type RunActionClaim =
+	| { claimed: false; actionId: string; externalId: string | null }
+	| {
+			claimed: true;
+			actionId: string;
+			claimedAt: Date;
+			metadata: Prisma.JsonValue;
+	  };
+
+const RUN_ACTION_FIELDS = {
+	id: true,
+	status: true,
+	externalId: true,
+	requestHash: true,
+	metadata: true,
+} as const;
 
 export async function approvedRunInstructions(runId: string): Promise<string> {
 	const run = await db.agentRun.findUnique({
@@ -171,17 +212,7 @@ export async function createRunActivity(
 	});
 	const idempotencyKey = `${runId}:${callId}`;
 	const requestHash = actionRequestHash(input);
-	const existing = await db.agentAction.findUnique({
-		where: { idempotencyKey },
-		select: {
-			id: true,
-			status: true,
-			externalId: true,
-			errorMessage: true,
-			requestHash: true,
-		},
-	});
-	if (existing) assertActionRequestMatches(existing.requestHash, requestHash);
+	const existing = await findRunAction(idempotencyKey, requestHash);
 	if (existing?.status === "SUCCEEDED") {
 		return {
 			actionId: existing.id,
@@ -205,99 +236,36 @@ export async function createRunActivity(
 	const target = await targetRecord(input.targetKind, input.targetId);
 	if (!target) throw new Error("The requested CRM target no longer exists.");
 
-	let action = existing;
-	if (!action) {
-		action = await db.$transaction(async (tx) => {
-			await lockIdempotencyKey(tx, idempotencyKey);
-			const winner = await tx.agentAction.findUnique({
-				where: { idempotencyKey },
-				select: {
-					id: true,
-					status: true,
-					externalId: true,
-					errorMessage: true,
-					requestHash: true,
-				},
-			});
-			if (winner) {
-				assertActionRequestMatches(winner.requestHash, requestHash);
-				return winner;
-			}
-
-			return tx.agentAction.create({
-				data: {
-					agentId: run.agentId,
-					runId,
-					type: "crm.activity.create",
-					provider: "crm",
-					targetType: input.targetKind,
-					targetId: input.targetId,
-					targetLabel: target.label,
-					summary:
-						input.subject?.trim() ||
-						`Create a ${input.type.toLowerCase()} on ${target.label}`,
-					metadata: { activityType: input.type },
-					idempotencyKey,
-					requestHash,
-				},
-				select: {
-					id: true,
-					status: true,
-					externalId: true,
-					errorMessage: true,
-					requestHash: true,
-				},
-			});
-		});
-	}
-	if (action.status === "SUCCEEDED") {
+	const claim = await claimRunAction(existing, idempotencyKey, requestHash, {
+		agentId: run.agentId,
+		runId,
+		type: "crm.activity.create",
+		provider: "crm",
+		targetType: input.targetKind,
+		targetId: input.targetId,
+		targetLabel: target.label,
+		summary:
+			input.subject?.trim() ||
+			`Create a ${input.type.toLowerCase()} on ${target.label}`,
+		metadata: { activityType: input.type },
+	});
+	if (!claim.claimed) {
 		return {
-			actionId: action.id,
-			activityId: action.externalId,
+			actionId: claim.actionId,
+			activityId: claim.externalId,
 			replayed: true,
 		};
 	}
 
-	const claimed = await db.agentAction.updateMany({
-		where: {
-			id: action.id,
-			OR: [
-				{ status: { in: ["PLANNED", "FAILED"] } },
-				{
-					status: "RUNNING",
-					startedAt: { lt: new Date(Date.now() - ACTION_LEASE_MS) },
-				},
-			],
-		},
-		data: {
-			status: "RUNNING",
-			startedAt: new Date(),
-			completedAt: null,
-			attemptCount: { increment: 1 },
-			errorCode: null,
-			errorMessage: null,
-		},
-	});
-	if (claimed.count === 0) {
-		const current = await db.agentAction.findUnique({
-			where: { id: action.id },
-			select: { status: true, externalId: true },
-		});
-		if (current?.status === "SUCCEEDED") {
-			return {
-				actionId: action.id,
-				activityId: current.externalId,
-				replayed: true,
-			};
-		}
-		throw new Error("This agent action is already in progress.");
-	}
-
 	try {
-		const activityId = `agent-action-${action.id}`;
+		const activityId = `agent-action-${claim.actionId}`;
 		const now = new Date();
 
 		await db.$transaction(async (tx) => {
+			const activeRun = await lockAgentRun(tx, runId);
+			if (activeRun.status !== "RUNNING") {
+				throw new Error("This agent run is not active.");
+			}
 			await tx.activity.upsert({
 				where: { id: activityId },
 				create: {
@@ -315,7 +283,7 @@ export async function createRunActivity(
 						source: "agent",
 						agentId: run.agentId,
 						runId,
-						actionId: action.id,
+						actionId: claim.actionId,
 					},
 				},
 				update: {},
@@ -341,7 +309,7 @@ export async function createRunActivity(
 			}
 
 			await tx.agentAction.update({
-				where: { id: action.id },
+				where: { id: claim.actionId },
 				data: {
 					status: "SUCCEEDED",
 					externalId: activityId,
@@ -350,43 +318,415 @@ export async function createRunActivity(
 			});
 		});
 
-		return { actionId: action.id, activityId, replayed: false };
+		return { actionId: claim.actionId, activityId, replayed: false };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		await db.agentAction.updateMany({
-			where: { id: action.id, status: "RUNNING" },
-			data: {
-				status: "FAILED",
-				errorCode: "ACTION_REJECTED",
-				errorMessage: message,
-				completedAt: new Date(),
-			},
-		});
+		await failRunAction(claim, "ACTION_REJECTED", message);
 		throw error;
 	}
 }
 
+export async function postRunSlackMessage(
+	runId: string,
+	callId: string,
+	input: { text: string },
+	abortSignal?: AbortSignal,
+) {
+	const run = await db.agentRun.findUnique({
+		where: { id: runId },
+		select: {
+			id: true,
+			status: true,
+			agentId: true,
+			version: { select: { manifest: true } },
+		},
+	});
+	if (!run) throw new Error("This agent run is unavailable.");
+
+	const destination = approvedSlackDestination(run.version.manifest);
+	const text = input.text.trim();
+	if (!text) throw new Error("A Slack message needs text.");
+	const idempotencyKey = `${runId}:${callId}`;
+	const requestHash = hashRequest({ destinationId: destination.id, text });
+	const existing = await findRunAction(idempotencyKey, requestHash);
+	if (existing?.status === "SUCCEEDED") {
+		return {
+			actionId: existing.id,
+			messageId: existing.externalId,
+			destination: destination.label,
+			replayed: true,
+		};
+	}
+	if (run.status !== "RUNNING") {
+		throw new Error("This agent run is not active.");
+	}
+
+	const claim = await claimRunAction(existing, idempotencyKey, requestHash, {
+		agentId: run.agentId,
+		runId,
+		type: "slack.message.post",
+		provider: "slack",
+		targetType: destination.kind,
+		targetId: destination.id,
+		targetLabel: destination.label,
+		summary: `Post a message to ${destination.label}`,
+		metadata: { clientMessageId: randomUUID() },
+	});
+	if (!claim.claimed) {
+		return {
+			actionId: claim.actionId,
+			messageId: claim.externalId,
+			destination: destination.label,
+			replayed: true,
+		};
+	}
+
+	const { actionId, claimedAt } = claim;
+	try {
+		await assertRunActive(runId);
+		const clientMessageId = recordOf(claim.metadata).clientMessageId;
+		if (typeof clientMessageId !== "string" || !clientMessageId) {
+			throw new Error("This Slack action is missing its replay key.");
+		}
+		const accessToken = await slackAccessToken();
+		if (!accessToken) throw new Error("Slack is not connected.");
+
+		const posted = await sendSlackMessage(
+			accessToken,
+			destination,
+			text,
+			clientMessageId,
+			{
+				abortSignal,
+				beforePost: () => holdRunActionClaim(runId, actionId, claimedAt),
+			},
+		);
+		const messageId = `${posted.channel}:${posted.ts}`;
+		const completed = await db.agentAction.updateMany({
+			where: { id: actionId, status: "RUNNING", startedAt: claimedAt },
+			data: {
+				status: "SUCCEEDED",
+				externalId: messageId,
+				completedAt: new Date(),
+			},
+		});
+		if (completed.count === 0) {
+			await recordDeliveryOutsideClaim(actionId, messageId);
+			throw new Error(
+				"This agent run stopped while Slack was accepting the message.",
+			);
+		}
+
+		return {
+			actionId,
+			messageId,
+			destination: destination.label,
+			replayed: false,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		await failRunAction(claim, slackActionErrorCode(message), message);
+		throw error;
+	}
+}
+
+async function findRunAction(
+	idempotencyKey: string,
+	requestHash: string,
+): Promise<RunActionRow | null> {
+	const existing = await db.agentAction.findUnique({
+		where: { idempotencyKey },
+		select: RUN_ACTION_FIELDS,
+	});
+	if (existing) assertActionRequestMatches(existing.requestHash, requestHash);
+	return existing;
+}
+
+async function claimRunAction(
+	existing: RunActionRow | null,
+	idempotencyKey: string,
+	requestHash: string,
+	data: Omit<
+		Prisma.AgentActionUncheckedCreateInput,
+		"idempotencyKey" | "requestHash"
+	>,
+): Promise<RunActionClaim> {
+	const action =
+		existing ??
+		(await db.$transaction(async (tx) => {
+			await lockIdempotencyKey(tx, idempotencyKey);
+			const winner = await tx.agentAction.findUnique({
+				where: { idempotencyKey },
+				select: RUN_ACTION_FIELDS,
+			});
+			if (winner) {
+				assertActionRequestMatches(winner.requestHash, requestHash);
+				return winner;
+			}
+
+			return tx.agentAction.create({
+				data: { ...data, idempotencyKey, requestHash },
+				select: RUN_ACTION_FIELDS,
+			});
+		}));
+	if (action.status === "SUCCEEDED") {
+		return {
+			claimed: false,
+			actionId: action.id,
+			externalId: action.externalId,
+		};
+	}
+
+	const claimedAt = new Date();
+	const claimed = await db.agentAction.updateMany({
+		where: {
+			id: action.id,
+			OR: [
+				{ status: { in: ["PLANNED", "FAILED"] } },
+				{
+					status: "RUNNING",
+					startedAt: { lt: new Date(claimedAt.getTime() - ACTION_LEASE_MS) },
+				},
+			],
+		},
+		data: {
+			status: "RUNNING",
+			startedAt: claimedAt,
+			completedAt: null,
+			attemptCount: { increment: 1 },
+			errorCode: null,
+			errorMessage: null,
+		},
+	});
+	if (claimed.count === 0) {
+		const current = await db.agentAction.findUnique({
+			where: { id: action.id },
+			select: { status: true, externalId: true },
+		});
+		if (current?.status === "SUCCEEDED") {
+			return {
+				claimed: false,
+				actionId: action.id,
+				externalId: current.externalId,
+			};
+		}
+		throw new Error("This agent action is already in progress.");
+	}
+
+	return {
+		claimed: true,
+		actionId: action.id,
+		claimedAt,
+		metadata: action.metadata,
+	};
+}
+
+async function failRunAction(
+	claim: Extract<RunActionClaim, { claimed: true }>,
+	code: string,
+	message: string,
+): Promise<void> {
+	await db.agentAction.updateMany({
+		where: {
+			id: claim.actionId,
+			status: "RUNNING",
+			startedAt: claim.claimedAt,
+		},
+		data: {
+			status: "FAILED",
+			errorCode: code,
+			errorMessage: message,
+			completedAt: new Date(),
+		},
+	});
+}
+
+export async function sendSlackMessage(
+	accessToken: string,
+	destination: { kind: "channel" | "user"; id: string; label: string },
+	text: string,
+	clientMessageId: string,
+	options: {
+		fetcher?: typeof fetch;
+		abortSignal?: AbortSignal;
+		beforePost?: () => Promise<void>;
+	} = {},
+): Promise<{ channel: string; ts: string }> {
+	const { fetcher = fetch, abortSignal, beforePost } = options;
+	let channel = destination.id;
+	if (destination.kind === "user") {
+		const opened = await slackApiRequest(
+			fetcher,
+			accessToken,
+			"conversations.open",
+			{ users: destination.id, return_im: true },
+			abortSignal,
+		);
+		const conversation = recordOf(opened.channel);
+		if (typeof conversation.id !== "string" || !conversation.id) {
+			throw new Error("Slack did not return a direct-message channel.");
+		}
+		channel = conversation.id;
+	}
+	await beforePost?.();
+
+	const data = await slackApiRequest(
+		fetcher,
+		accessToken,
+		"chat.postMessage",
+		{
+			channel,
+			text,
+			client_msg_id: clientMessageId,
+		},
+		abortSignal,
+	);
+	if (typeof data.channel !== "string" || typeof data.ts !== "string") {
+		throw new Error("Slack returned an incomplete message receipt.");
+	}
+
+	return { channel: data.channel, ts: data.ts };
+}
+
+async function assertRunActive(runId: string): Promise<void> {
+	const run = await db.agentRun.findUnique({
+		where: { id: runId },
+		select: { status: true },
+	});
+	if (run?.status !== "RUNNING") {
+		throw new Error("This agent run is not active.");
+	}
+}
+
+async function holdRunActionClaim(
+	runId: string,
+	actionId: string,
+	claimedAt: Date,
+): Promise<void> {
+	await db.$transaction(async (tx) => {
+		const run = await lockAgentRun(tx, runId);
+		if (run.status !== "RUNNING") {
+			throw new Error("This agent run is not active.");
+		}
+		const held = await tx.agentAction.count({
+			where: { id: actionId, status: "RUNNING", startedAt: claimedAt },
+		});
+		if (held === 0) {
+			throw new Error("This agent action is no longer held by this run.");
+		}
+	});
+}
+
+async function recordDeliveryOutsideClaim(
+	actionId: string,
+	messageId: string,
+): Promise<void> {
+	const delivered =
+		"Slack accepted this message before the run stopped, and it cannot be withdrawn.";
+	const current = await db.agentAction.findUnique({
+		where: { id: actionId },
+		select: { status: true, externalId: true, errorMessage: true },
+	});
+	if (!current || current.status === "SUCCEEDED" || current.externalId) return;
+
+	await db.agentAction.updateMany({
+		where: { id: actionId, status: { not: "SUCCEEDED" }, externalId: null },
+		data: {
+			externalId: messageId,
+			errorMessage: current.errorMessage
+				? `${current.errorMessage} ${delivered}`
+				: delivered,
+		},
+	});
+}
+
+async function slackApiRequest(
+	fetcher: typeof fetch,
+	accessToken: string,
+	method: string,
+	body: Record<string, unknown>,
+	abortSignal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+	const response = await fetcher(`https://slack.com/api/${method}`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/json; charset=utf-8",
+		},
+		body: JSON.stringify(body),
+		signal: abortSignal,
+	});
+	if (!response.ok) throw new Error("Slack message delivery failed.");
+
+	const data = recordOf(await response.json());
+	if (data.ok !== true) {
+		const reason = typeof data.error === "string" ? data.error : "rejected";
+		if (reason === "not_in_channel") {
+			throw new Error(
+				"The Slack bot is not in the selected channel. Invite the app to that channel and retry the run.",
+			);
+		}
+		if (reason === "missing_scope") {
+			throw new Error(
+				"Slack needs an additional permission. Reconnect Slack, then retry the run.",
+			);
+		}
+		throw new Error(`Slack rejected the message (${reason}).`);
+	}
+	return data;
+}
+
+function slackActionErrorCode(message: string): string {
+	return message === "Slack is not connected." ||
+		message.includes("additional permission")
+		? "NOT_AUTHORISED"
+		: "PROVIDER_ERROR";
+}
+
 export async function stageRunResult(
 	runId: string,
-	input: { summary: string; result?: Record<string, unknown> | null },
+	input: {
+		summary: string;
+		result?: Record<string, unknown> | null;
+		noActionNeeded?: { reason: string } | null;
+	},
 ) {
 	return db.$transaction(async (tx) => {
 		const run = await lockAgentRun(tx, runId);
 		if (run.status !== "RUNNING") {
 			throw new Error(`This agent run already ended with ${run.status}.`);
 		}
+		if (input.noActionNeeded) {
+			const refusal = await noActionNeededRefusal(tx, run);
+			if (refusal) throw new Error(refusal);
+		}
 
-		await assertRunSummaryAllowed(tx, run.versionId);
+		const result = {
+			...(input.result ?? {}),
+			...(input.noActionNeeded
+				? { noActionNeeded: input.noActionNeeded.reason }
+				: {}),
+		};
+
 		await tx.agentRun.update({
 			where: { id: runId },
 			data: {
 				summary: input.summary,
-				result: (input.result ?? {}) as Prisma.InputJsonValue,
+				result: result as Prisma.InputJsonValue,
 			},
 		});
 
 		return { id: run.id, status: "RUNNING" as const };
 	});
+}
+
+export function runReportedNoActionNeeded(result: unknown): boolean {
+	return (
+		typeof result === "object" &&
+		result !== null &&
+		!Array.isArray(result) &&
+		typeof (result as Record<string, unknown>).noActionNeeded === "string"
+	);
 }
 
 export async function finishRun(
@@ -401,7 +741,15 @@ export async function finishRun(
 		if (run.status !== "RUNNING") {
 			throw new Error(`This agent run already ended with ${run.status}.`);
 		}
-		await assertRunSummaryAllowed(tx, run.versionId);
+		const noActionAccepted =
+			runReportedNoActionNeeded(input.result) &&
+			(await noActionNeededRefusal(tx, run)) === null;
+		const actionFailure = noActionAccepted
+			? null
+			: await requiredActionFailure(tx, run);
+		if (actionFailure) {
+			return failLockedRun(tx, run, actionFailure.code, actionFailure.message);
+		}
 
 		const sequence = run.nextEventSequence + 1;
 		const finishedAt = new Date();
@@ -449,50 +797,146 @@ export async function finishRun(
 	});
 }
 
-async function assertRunSummaryAllowed(
+async function noActionNeededRefusal(
 	tx: Prisma.TransactionClient,
-	versionId: string,
-): Promise<void> {
+	run: LockedAgentRun,
+): Promise<string | null> {
+	const { triggerType } = await tx.agentRun.findUniqueOrThrow({
+		where: { id: run.id },
+		select: { triggerType: true },
+	});
+	if (NO_ACTION_TRIGGER_TYPES.has(triggerType)) return null;
+
 	const version = await tx.agentVersion.findUniqueOrThrow({
-		where: { id: versionId },
+		where: { id: run.versionId },
 		select: { manifest: true },
 	});
-	if (
-		!manifestActions(version.manifest).some(
-			(action) => action.type === "run.summary",
-		)
-	) {
-		throw new Error("Agent version does not allow a run summary.");
+	if (externalManifestActions(version.manifest).length === 0) return null;
+
+	return `This ${triggerType.toLowerCase()} run cannot end with no action needed, because its agent declares an action. Perform the declared action, or report why it failed.`;
+}
+
+async function requiredActionFailure(
+	tx: Prisma.TransactionClient,
+	run: LockedAgentRun,
+): Promise<{ code: string; message: string } | null> {
+	const version = await tx.agentVersion.findUniqueOrThrow({
+		where: { id: run.versionId },
+		select: { manifest: true },
+	});
+	const external = externalManifestActions(version.manifest);
+	const recorded = await tx.agentAction.findMany({
+		where: { runId: run.id },
+		orderBy: [{ completedAt: "desc" }, { plannedAt: "desc" }],
+		select: {
+			type: true,
+			status: true,
+			errorCode: true,
+			errorMessage: true,
+		},
+	});
+
+	for (const action of external) {
+		const type = typeof action.type === "string" ? action.type : "unknown";
+		const rows = recorded.filter((row) => row.type === type);
+		if (rows.some((row) => row.status === "SUCCEEDED")) continue;
+
+		const executable =
+			isAgentActionType(type) && Object.hasOwn(AGENT_ACTION_EXECUTORS, type);
+		const latestFailure = rows.find((row) => row.status === "FAILED");
+		const code = executable
+			? (latestFailure?.errorCode ?? "ACTION_NOT_PERFORMED")
+			: "NO_EXECUTOR";
+		const message = executable
+			? (latestFailure?.errorMessage ??
+				`The declared ${type} action was not performed.`)
+			: `The declared ${type} action has no executor.`;
+
+		if (rows.length === 0) {
+			await tx.agentAction.create({
+				data: {
+					agentId: run.agentId,
+					runId: run.id,
+					type,
+					provider:
+						type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST ? "slack" : "crm",
+					summary:
+						typeof action.summary === "string"
+							? action.summary
+							: `Perform ${type}`,
+					status: "FAILED",
+					idempotencyKey: `run:${run.id}:required:${type}`,
+					requestHash: hashRequest({ type, required: true }),
+					errorCode: code,
+					errorMessage: message,
+					completedAt: new Date(),
+				},
+			});
+		}
+
+		return { code, message };
 	}
+
+	return null;
+}
+
+async function failLockedRun(
+	tx: Prisma.TransactionClient,
+	run: LockedAgentRun,
+	code: string,
+	message: string,
+) {
+	const sequence = run.nextEventSequence + 1;
+	const finishedAt = new Date();
+	await tx.agentRun.update({
+		where: { id: run.id },
+		data: {
+			status: "FAILED",
+			errorCode: code,
+			errorMessage: message,
+			finishedAt,
+			nextEventSequence: sequence,
+		},
+	});
+	await tx.agentRunEvent.create({
+		data: {
+			id: runTerminalEventId(run.id, "failed"),
+			runId: run.id,
+			sequence,
+			type: "run.failed",
+			data: { code, message },
+			emittedAt: finishedAt,
+		},
+	});
+	await tx.agentAuditEvent.upsert({
+		where: {
+			agentId_type_requestId: {
+				agentId: run.agentId,
+				type: "run.failed",
+				requestId: run.id,
+			},
+		},
+		create: {
+			agentId: run.agentId,
+			versionId: run.versionId,
+			actorType: "AGENT",
+			actorId: run.id,
+			type: "run.failed",
+			summary: message,
+			requestId: run.id,
+		},
+		update: {},
+	});
+
+	return { id: run.id, status: "FAILED" as const };
 }
 
 function manifestDataScope(value: unknown): {
 	mode: RunRecordScope;
 	resources: RunResource[];
 } {
-	const manifest = recordOf(value);
-	const scope = recordOf(manifest.dataScope);
-	if (scope.mode !== "SELECTED" && scope.mode !== "WORKSPACE") {
-		throw new Error("Agent version has no valid CRM record scope.");
-	}
-	if (!Array.isArray(scope.resources)) {
-		throw new Error("Agent version has no valid CRM resources.");
-	}
-
-	const resources = scope.resources.flatMap((resource) => {
-		if (!resource || typeof resource !== "object") return [];
-		const row = resource as Record<string, unknown>;
-		if (
-			!["integration", "company", "contact", "deal"].includes(
-				String(row.kind),
-			) ||
-			typeof row.id !== "string" ||
-			typeof row.label !== "string"
-		) {
-			return [];
-		}
-		return [resource as RunResource];
-	});
+	const scope = parseAgentManifest(value).dataScope;
+	const resources = scope.resources as RunResource[];
 	const records = resources.filter(
 		(resource) => resource.kind !== "integration",
 	);
@@ -506,8 +950,13 @@ function manifestDataScope(value: unknown): {
 }
 
 function manifestActions(value: unknown) {
-	const actions = recordOf(value).actions;
-	return Array.isArray(actions) ? actions.map(recordOf) : [];
+	return parseAgentManifest(value).actions;
+}
+
+function externalManifestActions(value: unknown) {
+	return manifestActions(value).filter(
+		(action) => action.type !== AGENT_ACTION_TYPES.RUN_SUMMARY,
+	);
 }
 
 function assertActivityAllowed(
@@ -525,6 +974,51 @@ function assertActivityAllowed(
 			`Agent version does not allow CRM ${activityType.toLowerCase()} activities.`,
 		);
 	}
+}
+
+export function approvedSlackDestination(manifest: unknown): {
+	kind: "channel" | "user";
+	id: string;
+	label: string;
+} {
+	const scope = manifestDataScope(manifest);
+	if (
+		!scope.resources.some(
+			(resource) =>
+				resource.kind === "integration" && resource.id === "slack:workspace",
+		)
+	) {
+		throw new Error("Agent version does not allow Slack.");
+	}
+
+	const destinations = manifestActions(manifest).flatMap((action) => {
+		if (action.type !== "slack.message.post") return [];
+		const destination = recordOf(action.destination);
+		if (
+			!["channel", "user"].includes(String(destination.kind)) ||
+			typeof destination.id !== "string" ||
+			!destination.id ||
+			typeof destination.label !== "string" ||
+			!destination.label
+		) {
+			return [];
+		}
+		return [
+			{
+				kind: destination.kind as "channel" | "user",
+				id: destination.id,
+				label: destination.label,
+			},
+		];
+	});
+	const [destination] = destinations;
+	if (!destination || destinations.length !== 1) {
+		throw new Error(
+			"Agent version needs exactly one approved Slack destination.",
+		);
+	}
+
+	return destination;
 }
 
 function assertResourceAllowed(
@@ -623,18 +1117,18 @@ function actionRequestHash(input: {
 	body?: string | null;
 	dueAt?: string | null;
 }): string {
-	return createHash("sha256")
-		.update(
-			JSON.stringify({
-				type: input.type,
-				targetKind: input.targetKind,
-				targetId: input.targetId,
-				subject: input.subject?.trim() || null,
-				body: input.body?.trim() || null,
-				dueAt: input.dueAt?.trim() || null,
-			}),
-		)
-		.digest("hex");
+	return hashRequest({
+		type: input.type,
+		targetKind: input.targetKind,
+		targetId: input.targetId,
+		subject: input.subject?.trim() || null,
+		body: input.body?.trim() || null,
+		dueAt: input.dueAt?.trim() || null,
+	});
+}
+
+function hashRequest(input: Record<string, unknown>): string {
+	return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
 function assertActionRequestMatches(

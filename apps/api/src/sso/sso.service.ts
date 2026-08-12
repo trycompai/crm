@@ -3,12 +3,11 @@ import {
 	canConfigureSso,
 	isGoogleConfigured,
 	isMicrosoftConfigured,
-	isWorkspaceRole,
 	ssoCallbackBase,
 	ssoCallbackURL,
 	ssoProviderName,
 	WORKSPACE_ID,
-	type WorkspaceRole,
+	workspaceRoleOf,
 } from "@crm/auth";
 import type { Db, Prisma } from "@crm/db";
 import {
@@ -155,7 +154,7 @@ export class SsoService {
 
 	async settings(userId: string): Promise<SsoSettings> {
 		return {
-			canConfigure: canConfigureSso(await this.roleOf(userId)),
+			canConfigure: canConfigureSso(await workspaceRoleOf(userId, this.db)),
 			callbackBase: ssoCallbackBase(),
 		};
 	}
@@ -291,23 +290,10 @@ export class SsoService {
 	}
 
 	private async requireConfigurer(userId: string): Promise<void> {
-		if (!canConfigureSso(await this.roleOf(userId))) {
+		if (!canConfigureSso(await workspaceRoleOf(userId, this.db))) {
 			throw new ForbiddenException(
 				"Only an owner or an admin can change how people sign in.",
 			);
 		}
-	}
-
-	private async roleOf(userId: string): Promise<WorkspaceRole | null> {
-		const member = await this.db.member.findUnique({
-			where: {
-				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
-			},
-			select: { role: true },
-		});
-
-		if (!member) return null;
-
-		return isWorkspaceRole(member.role) ? member.role : "member";
 	}
 }

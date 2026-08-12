@@ -18,6 +18,7 @@ import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
 import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
+import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "fields-spec";
 const domain = `fields-${suffix}.test`;
@@ -29,6 +30,7 @@ const agent = {
 	contactCreated: async () => undefined,
 	companyCreated: async () => undefined,
 	companyRequested: async () => undefined,
+	withCrmEvents: withDiscardedCrmEvents,
 	fieldBackfill: async (entity: FieldEntity, key: string, reason: string) => {
 		queued.push({ entity, key, reason });
 	},
@@ -52,14 +54,14 @@ const companies = new CompaniesService(
 );
 const contacts = new ContactsService(
 	db,
-	new CompanyDirectoryService(db, agent),
+	new CompanyDirectoryService(agent),
 	agent,
 	queue,
 	stamp,
 	fields,
 	cleanup,
 );
-const deals = new DealsService(db, stamp, conversion, fields, cleanup);
+const deals = new DealsService(db, agent, stamp, conversion, fields, cleanup);
 
 let companyId: string;
 let bridgeSecret: string | undefined;

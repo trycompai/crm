@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { CustomersService } from "../src/customers/customers.service";
@@ -12,6 +13,7 @@ const userId = `customer-owner-${suffix}`;
 const domain = `customer-${suffix}.example.test`;
 const deals = new DealsService(
 	db,
+	new AgentTriggerService(db),
 	new ActivityStampService(db),
 	new ConversionService(db),
 	new FieldsService(db, { fieldBackfill: async () => undefined } as never),

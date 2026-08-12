@@ -1,23 +1,39 @@
 import { timingSafeEqual } from "node:crypto";
-import { EnrichmentStatus } from "@crm/db";
-import { defineChannel, POST } from "eve/channels";
+import { EnrichmentStatus, Prisma } from "@crm/db";
+import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+import { schemas } from "@crm/validation";
+import { defineChannel, GET, POST } from "eve/channels";
+import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
 	builderIdFromToken,
+	builderToken,
+	cancelRun,
 	dispatchAgentRun,
 	dispatchBuilderSubmission,
 	drainAgentRuns,
 	drainBuilder,
 	failRun,
 	runIdFromToken,
+	runToken,
 } from "../lib/custom-agent-dispatch";
-import { brief, drainAll, taskAuth } from "../lib/dispatch";
+import {
+	brief,
+	DRAIN_TIMEOUT_MS,
+	dispatchHealth,
+	drainAll,
+	taskAuth,
+} from "../lib/dispatch";
+import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
 import { ensureInboundSyncTasks } from "../lib/inbound-sync";
 import { finishRun } from "../lib/run-runtime";
+import { attribute } from "../lib/session-purpose";
+import { createSlackChannel } from "../lib/slack-membership";
 import { completeTask, releaseTaskForRetry, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
+const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
 
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
@@ -64,20 +80,51 @@ export function taskFromToken(token: string | undefined): string | null {
 
 export default defineChannel({
 	routes: [
+		GET("/internal/crm/dispatch-health", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const health = dispatchHealth();
+			const { db } = await import("@crm/db");
+			const now = new Date();
+			const overdue = await db.agentTask.count({
+				where: {
+					finishedAt: null,
+					dueAt: { lte: new Date(now.getTime() - STALE_QUEUE_MS) },
+					attempts: { lt: MAX_ATTEMPTS },
+					OR: [{ leasedUntil: null }, { leasedUntil: { lt: now } }],
+				},
+			});
+
+			const wedged = health.stalledMs > DRAIN_TIMEOUT_MS;
+			return Response.json(
+				{
+					ok: !wedged && overdue === 0,
+					wedged,
+					overdueTasks: overdue,
+					...health,
+				},
+				{ status: wedged || overdue > 0 ? 503 : 200 },
+			);
+		}),
+
 		POST("/internal/crm/dispatch", async (request, { send, waitUntil }) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
 			}
 
 			waitUntil(
-				ensureInboundSyncTasks().then(() =>
-					drainAll((task) =>
+				(async () => {
+					await ensureInboundSyncTasks();
+					await drainAll((task) =>
 						send(brief(task), {
 							auth: taskAuth(task),
 							continuationToken: taskToken(task.id, task.attempts),
 						}),
-					),
-				),
+					);
+					await drainAgentRuns(send);
+				})(),
 			);
 
 			return new Response(null, { status: 202 });
@@ -107,6 +154,50 @@ export default defineChannel({
 			},
 		),
 
+		POST("/internal/crm/cancel-run", async (request, { cancel }) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const body = (await request.json().catch(() => null)) as {
+				runId?: unknown;
+			} | null;
+			const runId = typeof body?.runId === "string" ? body.runId.trim() : null;
+			if (!runId) {
+				return Response.json({ error: "No run id was sent." }, { status: 400 });
+			}
+
+			return Response.json(
+				await cancel({ continuationToken: runToken(runId) }),
+			);
+		}),
+
+		POST("/internal/crm/slack/create-channel", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = schemas.slack.createPayload.safeParse(
+				await request.json().catch(() => null),
+			);
+
+			if (!parsed.success) {
+				return Response.json(
+					{ error: "That channel name is not usable." },
+					{ status: 400 },
+				);
+			}
+
+			const outcome = await createSlackChannel(
+				parsed.data.channelName,
+				parsed.data.isPrivate,
+			);
+
+			return "error" in outcome
+				? Response.json({ error: outcome.error }, { status: 422 })
+				: Response.json({ channel: outcome });
+		}),
+
 		POST("/internal/crm/verify-key", async (request) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
@@ -131,6 +222,14 @@ export default defineChannel({
 	],
 
 	events: {
+		async "input.requested"(data, channel, ctx) {
+			await persistBuilderInputRequest(
+				data,
+				channel.continuationToken,
+				attribute(ctx, "conversationId"),
+			);
+		},
+
 		async "message.completed"(data, channel) {
 			const conversationId = builderIdFromToken(channel.continuationToken);
 			if (!conversationId || !data.message?.trim()) return;
@@ -246,7 +345,7 @@ export default defineChannel({
 			await import("@crm/db").then(({ db }) =>
 				db.agentConversation.updateMany({
 					where: { id: conversationId, kind: "BUILDER" },
-					data: { continuationToken: channel.continuationToken },
+					data: { continuationToken: builderToken(conversationId) },
 				}),
 			);
 		},
@@ -267,11 +366,34 @@ export default defineChannel({
 				return;
 			}
 
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
+					},
+				});
+				return;
+			}
+
 			const runId = runIdFromToken(channel.continuationToken);
 			if (runId) await failRun(runId, "TURN_FAILED", reason);
 		},
 
 		async "session.completed"(_data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: { pendingInputRequest: Prisma.DbNull },
+				});
+				return;
+			}
+
 			const runId = runIdFromToken(channel.continuationToken);
 			if (!runId) return;
 
@@ -280,11 +402,43 @@ export default defineChannel({
 				where: { id: runId },
 				select: { status: true, summary: true, result: true },
 			});
-			if (run?.status === "RUNNING") {
+			if (run?.status !== "RUNNING") return;
+
+			try {
 				await finishRun(runId, {
 					summary: run.summary ?? "The agent run completed.",
 					result: recordOf(run.result),
 				});
+			} catch (error) {
+				await failRun(
+					runId,
+					"NEVER_SETTLED",
+					error instanceof Error ? error.message : String(error),
+				).catch(() => {});
+			}
+		},
+
+		async "turn.cancelled"(_data, channel) {
+			const conversationId = builderIdFromToken(channel.continuationToken);
+			if (conversationId) {
+				const { db } = await import("@crm/db");
+				await db.agentConversation.updateMany({
+					where: { id: conversationId, kind: "BUILDER" },
+					data: {
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
+					},
+				});
+				return;
+			}
+
+			const runId = runIdFromToken(channel.continuationToken);
+			if (runId) {
+				await cancelRun(
+					runId,
+					"CANCELLED",
+					"The run was stopped before it finished.",
+				);
 			}
 		},
 
@@ -295,7 +449,8 @@ export default defineChannel({
 				await db.agentConversation.updateMany({
 					where: { id: conversationId, kind: "BUILDER" },
 					data: {
-						continuationToken: channel.continuationToken,
+						continuationToken: builderToken(conversationId),
+						pendingInputRequest: Prisma.DbNull,
 						lastAssistantAt: new Date(),
 						lastMessageAt: new Date(),
 					},

@@ -138,8 +138,8 @@ export function AiGatewayConnection() {
 				) : null}
 				{status.data.configured ? null : (
 					<p className="text-muted-foreground text-xs">
-						Set AI_GATEWAY_API_KEY locally, or run on Vercel with OIDC, before
-						starting model-backed agent work.
+						Set a dedicated AI_GATEWAY_API_KEY before production model work.
+						Vercel OIDC alone does not open the production spend gate.
 					</p>
 				)}
 			</CardContent>

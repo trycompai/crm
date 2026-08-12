@@ -1,9 +1,4 @@
-import {
-	canManageCurrency,
-	isWorkspaceRole,
-	WORKSPACE_ID,
-	type WorkspaceRole,
-} from "@crm/auth";
+import { canManageCurrency, workspaceRoleOf } from "@crm/auth";
 import type { Db } from "@crm/db";
 import { Prisma, RateSource } from "@crm/db";
 import {
@@ -133,25 +128,12 @@ export class CurrencyService {
 				),
 			unconverted,
 			catalog: [...CURRENCIES],
-			canManage: canManageCurrency(await this.roleOf(actingUserId)),
+			canManage: canManageCurrency(await workspaceRoleOf(actingUserId)),
 		};
 	}
 
-	private async roleOf(userId: string): Promise<WorkspaceRole | null> {
-		const member = await this.db.member.findUnique({
-			where: {
-				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
-			},
-			select: { role: true },
-		});
-
-		if (!member) return null;
-
-		return isWorkspaceRole(member.role) ? member.role : "member";
-	}
-
 	private async requireManager(userId: string): Promise<void> {
-		if (!canManageCurrency(await this.roleOf(userId))) {
+		if (!canManageCurrency(await workspaceRoleOf(userId))) {
 			throw new ForbiddenException(
 				"Only an owner or an admin can change how money is reported.",
 			);

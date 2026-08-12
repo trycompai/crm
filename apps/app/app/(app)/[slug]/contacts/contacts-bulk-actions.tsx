@@ -5,7 +5,6 @@ import TrashCan from "@carbon/icons-react/es/TrashCan";
 import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
-	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
@@ -13,7 +12,7 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import { formatCount } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	BulkActionsMenu,
@@ -21,6 +20,7 @@ import {
 	BulkOwnerMenu,
 	reportBulk,
 } from "@/components/crm/bulk-actions";
+import { CompanyMenuSearch } from "@/components/crm/company-picker";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -38,8 +38,9 @@ export function ContactsBulkActions({
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 	const [confirming, setConfirming] = useState(false);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const companySearch = useRef<HTMLInputElement>(null);
 
 	const onError = (error: { message: string }) => toast.error(error.message);
 
@@ -99,7 +100,11 @@ export function ContactsBulkActions({
 
 	return (
 		<>
-			<BulkActionsMenu pending={pending}>
+			<BulkActionsMenu
+				pending={pending}
+				open={menuOpen}
+				onOpenChange={setMenuOpen}
+			>
 				<BulkOwnerMenu
 					users={users.data ?? []}
 					unassignedLabel="Nobody"
@@ -107,28 +112,22 @@ export function ContactsBulkActions({
 				/>
 				<DropdownMenuSub>
 					<DropdownMenuSubTrigger>Move to company</DropdownMenuSubTrigger>
-					<DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-						<DropdownMenuGroup>
-							<DropdownMenuItem
-								onSelect={() => setCompany.mutate({ ids, companyId: null })}
-							>
-								No company
-							</DropdownMenuItem>
-							{companies.data?.length === 0 ? (
-								<DropdownMenuLabel>No companies yet.</DropdownMenuLabel>
-							) : (
-								companies.data?.map((company) => (
-									<DropdownMenuItem
-										key={company.id}
-										onSelect={() =>
-											setCompany.mutate({ ids, companyId: company.id })
-										}
-									>
-										{company.name}
-									</DropdownMenuItem>
-								))
-							)}
-						</DropdownMenuGroup>
+					<DropdownMenuSubContent
+						className="w-64 p-0"
+						onFocus={(event) => {
+							if (event.target === event.currentTarget) {
+								companySearch.current?.focus();
+							}
+						}}
+					>
+						<CompanyMenuSearch
+							none="No company"
+							inputRef={companySearch}
+							onSelect={(companyId) => {
+								setMenuOpen(false);
+								setCompany.mutate({ ids, companyId });
+							}}
+						/>
 					</DropdownMenuSubContent>
 				</DropdownMenuSub>
 				<DropdownMenuGroup>

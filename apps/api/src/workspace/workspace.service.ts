@@ -5,6 +5,7 @@ import {
 	isWorkspaceRole,
 	WORKSPACE_ID,
 	type WorkspaceRole,
+	workspaceRoleOf,
 } from "@crm/auth";
 import type { Db, Prisma } from "@crm/db";
 import { isOnboarded, markOnboarded, workspaceSlug } from "@crm/db/workspace";
@@ -101,7 +102,7 @@ export class WorkspaceService {
 			);
 		}
 
-		const role = await this.roleOf(userId);
+		const role = await workspaceRoleOf(userId);
 
 		return {
 			id: row.id,
@@ -119,7 +120,7 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateWorkspaceInput,
 	): Promise<Workspace> {
-		const role = await this.roleOf(userId);
+		const role = await workspaceRoleOf(userId);
 
 		if (!canRenameWorkspace(role)) {
 			throw new ForbiddenException(
@@ -198,7 +199,7 @@ export class WorkspaceService {
 		userId: string,
 		input: SetMemberRoleInput,
 	): Promise<WorkspaceMember> {
-		const role = await this.roleOf(userId);
+		const role = await workspaceRoleOf(userId);
 
 		if (!canChangeRole(role)) {
 			throw new ForbiddenException(
@@ -297,16 +298,5 @@ export class WorkspaceService {
 				metadata: true,
 			},
 		});
-	}
-
-	private async roleOf(userId: string): Promise<WorkspaceRole | null> {
-		const member = await this.db.member.findUnique({
-			where: {
-				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
-			},
-			select: { role: true },
-		});
-
-		return member ? toRole(member.role) : null;
 	}
 }

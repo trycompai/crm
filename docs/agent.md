@@ -86,6 +86,18 @@ it after writing any `AgentTask`.
 - **`drainAll` collapses** via `collapsing()` (`lib/pool.ts`) — forty new contacts poke
   forty times, and `claimDue` hands each a disjoint batch. Per-process; cross-process
   overlap is leases and `FOR UPDATE SKIP LOCKED`.
+- **An abandoned sweep is still in flight, and `dispatchHealth()` says so.** The
+  timeout aborts the lanes, which stop between items, but the sweep only leaves
+  `unsettledSweeps` when it truly settles. Until then health reports `running: true`
+  and the endpoint answers `503`, and a new sweep is refused rather than stacked on
+  top of stuck work.
+- **A slow `start(task)` is reconciled, never failed.** Past
+  `sweep.startTimeoutMs` the lane stops waiting, the record stays *Researching*, and
+  the late session id is attached by `noteSession` when the send lands. Only a send
+  that actually rejects settles the record `FAILED`; a send that never lands is
+  retired by `retireExhausted` after `MAX_ATTEMPTS`. A session id that never
+  reaches the row after `research.link.attempts` raises `unlinkedSessions` in
+  health, so a task running under a session nobody recorded is visible.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
 ### `POST /internal/crm/verify-key`
@@ -98,14 +110,41 @@ task row; exists because the API may not call Context.
 - **`classifyKey` rejects on `401` and nothing else.**
 - **The candidate key, never the stored one.**
 
+### Blank fields are filled on the dispatch tick
+
+`sweepBlankFacts` (`lib/blank-facts.ts`) applies every pending suggestion whose field is
+still empty and clears the ones that have stopped saying anything. It runs at the top of
+`schedules/dispatch.ts`, every minute, over **every contact in the workspace** — it is a
+database pass with no session, no model, no task row and no credits, so there is nothing
+to ration and nobody to scope it to.
+
+- **Scans 2000 suggestions and fills at most 500 a pass**, and reports what it did not
+  reach (`unscanned`) rather than a clean sweep it did not make.
+- **Idempotent** — a second pass fills nothing, because those fields are no longer blank.
+- **The suggestions left are conflicts**, every one against a value already on the
+  record. That number should stay small and reads as work for a rep.
+- **It does not belong on sign-in, and that is not a preference.** It lived there for one
+  release and never once ran. Two reasons, either fatal: `onSignedIn` fires on
+  `session.create`, so a rep already signed in never triggers it; and `BackfillService`
+  does its work in a detached `void (async () => …)()` after the response, on a Nest API
+  that is a Vercel **serverless function** (`apps/api/api/index.ts`) — the tail of that
+  chain is not guaranteed to run at all. A cron in the agent is the only trigger here
+  that is a fact rather than a hope.
+
 ### Backfills
 
 Sign-in sweep covers records never looked up (10 credits/company);
 `ImageMirrorService` in the same sweep re-hosts off-site pictures (free);
-`backfill:images` fixes enriched records missing only pictures (free).
+`backfill:images` fixes enriched records missing only pictures (free);
+`backfill:facts` is the blank-field sweep above run by hand, with `--dry` to read it
+first — the cron covers it, so this is for a machine pointed at another database.
 
 - **The image sweep keeps "every picture is ours" true**, not true-since-Tuesday.
   25 rows/table/sweep.
+- **Nobody clicks a suggestion into a blank field.** The rule is enforced at the write
+  path, so no queue forms; the sweep is for rows written before it existed and for the
+  field a rep clears while a suggestion is pending. **An unreachable agent leaves the
+  suggestions where they are** — the API cannot apply one itself.
 - **A finished `portrait` task stands that contact down for thirty days** — that third
   source costs credits and usually finds nothing.
 - **No button, deliberately** — a rep cannot know which records predate a resolver.
@@ -126,7 +165,29 @@ wrong in the direction that looks useful.
 - **`lib/facts.ts` is the only write path to a contact's fields.** Applies at
   `VERIFIED`, proposes below it, and enforces three things a prompt cannot: never
   overwrite a human, never re-offer a dismissal, never write without a primary source.
-- **Bands are behaviour.** `PROBABLE` means *a rep decides* — a correct outcome.
+- **A band decides only when there is something to lose.** An empty field is filled by
+  whatever cleared the floor for keeping, whatever the band — approving a sourced guess
+  into a blank is a click that can only say yes, and a rep with four hundred contacts
+  reads none of them. `fillsBlank` is the whole rule: no human value in the way and
+  nothing already found. **`PROBABLE` still means *a rep decides* when the field is
+  already filled**, which is the case where a wrong answer costs something. The dispatch
+  tick applies the same rule to rows that predate it — `sweepBlankFacts`, above.
+- **Applying settles the field's other suggestions.** They were all offers to fill the
+  same blank, and the sheet shows one at a time — so left alone, accepting one reveals
+  the next, forever. The same rule holds when a rep accepts one (`decideFact`).
+- **The same value is never offered twice.** A second `PROPOSED` row with a value
+  already waiting is refused at the write path, not deduplicated on read.
+- **"The same value" is `sameValue`, and a URL is compared as an address, not a
+  string.** `canonicalValue` lowercases, collapses whitespace, and for `http(s)` drops
+  the scheme, `www.`, a trailing slash and the query, and reads `twitter.com` as
+  `x.com`. Compared byte for byte, `…/in/pogrebs/` is not `…/in/pogrebs`, so the record
+  showed a suggestion offering back the URL already in the field — the exact click this
+  whole rule exists to remove. **The stored value is still what the source said**; only
+  the comparison normalises. **The refusal
+  is for offers only** — the check runs after `applies` is decided, so evidence that has
+  reached `VERIFIED` since the offer was made still lands, settles the suggestion it
+  matches, and replaces the older value. Refusing it there left a weaker value on the
+  record with the answer sitting unread beneath it.
 - **A new fact field goes in `FIELDS` (`lib/facts.ts`) *and* `FACT_COLUMNS`**
   (`apps/api/src/contacts/contacts.service.ts`).
 
@@ -244,8 +305,17 @@ delegation paths for custom agents.
   `NOTE`, `TASK`, or both. Runtime enforcement never infers a grant from the action's
   prose summary. Every action is ledgered before execution and keyed by eve's call id
   for replay safety.
+- **CRM events are shared domain contracts.** `@crm/db/crm-events` owns the event
+  vocabulary, record kind, and builder-facing description used by the API, builder,
+  and worker. API writes enqueue a durable `agent-event` task; the agent worker alone
+  matches live triggers and creates runs. Do not duplicate event lists in prompts or
+  feature code.
+- **Versions can have multiple triggers.** The manifest stores a `triggers` array and
+  each entry becomes its own `AgentTrigger` row. Deployment enables every trigger on
+  the approved version, so one agent can react to several independent lifecycle
+  moments without polling or duplicate agents.
 - **Deployment is the human approval boundary.** Saving produces a private READY
-  version and never deploys it. The review screen shows its trigger, scope, actions,
+  version and never deploys it. The review screen shows its triggers, scope, actions,
   access and exact files. A user's Deploy action pins that immutable version for the
   team. Scheduled runner sessions use task mode and therefore cannot pause for a
   per-action approval; the deployed permission and idempotent runtime checks are the
@@ -254,6 +324,22 @@ delegation paths for custom agents.
   version instructions at `session.started`, then calls `inspect_run` for the manifest
   and current run state. Every runner tool also checks the `team-agent` purpose and
   revalidates scope and action permission.
+- **Stopping a run is a row, not a signal.** `agents.cancelRun` settles the
+  `AgentRun` to `CANCELLED` inside one transaction — terminal event, outstanding
+  `AgentAction` rows, audit entry — and *then* pokes
+  `POST /internal/crm/cancel-run`, which calls eve's `cancel({ continuationToken })`
+  for `run:<id>`. **The row is what stops the work**: every run tool refuses a run
+  that is not `RUNNING`, so a cancel that never reaches the agent still means
+  nothing further is written. The poke only stops it spending tokens, and an unset
+  `AGENT_BRIDGE_SECRET` costs exactly that and nothing more.
+- **Cancelling is not undoing.** eve keeps side effects that already completed, so
+  a note, task or Slack message the run already made stays. The dialog says so.
+- **Whoever started it can stop it**, plus the creator and workspace admins.
+  `canCancel` is computed server-side per run and is what the button reads, so the
+  control and the 403 cannot disagree.
+- **`turn.cancelled` settles the run too**, keyed off `run:` in the continuation
+  token, so a cancel from any other path still reaches `finishedAt` rather than
+  leaving the run reading *Running* forever.
 - **No generic execution surface.** Both specialists disable shell, file, arbitrary
   web and todo built-ins. The runner also disables direct questions; the builder keeps
   only `ask_question` for durable clarification. CRM access exists only through their
@@ -586,6 +672,20 @@ byte-identical to the one it sent.** Parse for your own marker.
 `bun run --filter=agent test`. The integration specs need `DATABASE_URL` and run
 against a real Postgres, which is the point — "never overwrite a human" is only
 true if the transaction says so.
+
+The `test/e2e` scripts are separate and you run them by hand. Three of them cost
+money or change something outside the database, so each one is off unless you
+switch it on:
+
+| Variable | What it does |
+| --- | --- |
+| `E2E_LIVE_MODEL=1` | `live-run.e2e.ts` calls the real model. It spends credits. |
+| `E2E_SLACK_JOIN=1` | `slack-join.e2e.ts` joins real Slack channels. It does not leave them. |
+| `E2E_LOAD_COUNT` | How many tasks `load.e2e.ts` queues. The default is 300. |
+
+Stop the local agent before you run an e2e script against a dev database. A
+running agent leases the rows the script seeds and retires exhausted tasks the
+script did not create.
 **`taskFromToken` keys on the `task:` marker, not a fixed prefix**
 (`test/crm-token.spec.ts`). **A channel handler must not assume the token it receives
 is byte-identical to the one it sent.**

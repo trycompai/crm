@@ -54,6 +54,7 @@ model User {
   conversationShares      AgentConversationShare[]      @relation("ConversationShareCreator")
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
+  slackMemberMatch        SlackMemberMatch?
 
   ownedWorkItems            WorkItem[]              @relation("WorkItemOwner")
   requestedApprovals        ApprovalRequest[]       @relation("ApprovalRequestRequestor")
@@ -75,6 +76,60 @@ model User {
 
   @@unique([email])
   @@map("user")
+}
+
+model SlackMemberMatch {
+  id                  String   @id @default(cuid())
+  crmUserId           String   @unique
+  crmUser             User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
+  slackUserId         String?
+  slackHandle         String?
+  slackEmail          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([slackUserId])
+  @@map("slackMemberMatch")
+}
+
+model SlackChannel {
+  id                String    @id
+  name              String
+  memberCount       Int?
+  available         Boolean   @default(true)
+  isPrivate         Boolean   @default(false)
+  isMember          Boolean   @default(false)
+  inviteRequestedAt DateTime?
+  classifiedAt      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([available, name])
+  @@index([updatedAt])
+  @@map("slackChannel")
+}
+
+model SlackInstallation {
+  installerId String   @id
+  teamId      String
+  teamName    String?
+  userToken   String?
+  userScopes  String
+  createdAt   DateTime @default(now())
+
+  @@map("slackInstallation")
+}
+
+model SlackWorkspaceGrant {
+  id         String   @id @default(cuid())
+  teamId     String   @unique
+  teamName   String?
+  userToken  String
+  userScopes String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("slackWorkspaceGrant")
 }
 
 model Session {
@@ -173,6 +228,7 @@ enum RecordSource {
   AGENTMAIL
   GRANOLA
   WEBSITE
+  TRACKING
 }
 
 enum EmailProvider {
@@ -761,8 +817,10 @@ model Contact {
   prospects          Prospect[]
   candidateProposals ContactCandidate[]  @relation("CandidateProposedContact")
   discoveryLearnings DiscoveryLearning[] @relation("DiscoveryLearningContact")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  visitors           TrackedVisitor[]   @relation("VisitorContact")
+  submissions        FormSubmission[]   @relation("SubmissionContact")
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -949,8 +1007,9 @@ model AgentTask {
   subjectId    String?
   subjectLabel String?
 
-  kind   String
-  reason String
+  kind    String
+  reason  String
+  payload Json?
 
   priority Int            @default(0)
   budget   Int            @default(4)
@@ -981,6 +1040,8 @@ model AgentTask {
   finishedAt DateTime?
   outcome    String?
 
+  subject String?
+
   createdAt DateTime @default(now())
 
   @@index([dueAt, leasedUntil])
@@ -992,20 +1053,24 @@ model AgentTask {
   @@index([operationKey])
   @@index([approvalRequestId, approvalContentDigest], map: "agentTask_approval_scope_idx")
   @@index([channel, provider])
+  @@index([kind, subject], where: { finishedAt: null })
   @@map("agentTask")
 }
 
 model AgentEvent {
-  id        String  @id
-  sessionId String
-  contactId String?
-  type      String
-  data      Json
+  id             String             @id
+  sessionId      String
+  contactId      String?
+  conversationId String?
+  conversation   AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  type           String
+  data           Json
 
   emittedAt DateTime
 
   @@index([sessionId, emittedAt])
   @@index([contactId, emittedAt])
+  @@index([conversationId, emittedAt])
   @@map("agentEvent")
 }
 
@@ -1027,9 +1092,10 @@ model AgentConversation {
   agentId String?
   agent   AgentDefinition? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
-  sessionId         String? @unique
-  continuationToken String?
-  streamIndex       Int     @default(0)
+  sessionId           String? @unique
+  continuationToken   String?
+  streamIndex         Int     @default(0)
+  pendingInputRequest Json?
 
   title        String?
   messageCount Int     @default(0)
@@ -1043,6 +1109,7 @@ model AgentConversation {
   shares           AgentConversationShare[]
   submissions      AgentConversationSubmission[]
   feedback         AgentConversationFeedback[]
+  events           AgentEvent[]
   createdVersions  AgentVersion[]                @relation("AgentVersionSourceConversation")
   builderArtifacts AgentBuilderArtifact[]
 
@@ -1323,6 +1390,9 @@ model AgentRun {
   createdAt  DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
+
+  cancelRequestedAt DateTime?
+  cancelDeliveredAt DateTime?
 
   events  AgentRunEvent[]
   actions AgentAction[]
@@ -2061,8 +2131,7 @@ model CalendarEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([iCalUid, originalStartTime])
-  @@unique([syncedByUserId, iCalUid, originalStartTime])
+	@@unique([syncedByUserId, iCalUid, originalStartTime])
   @@index([companyId, startsAt])
   @@index([contactId, startsAt])
   @@map("calendarEvent")
@@ -2169,9 +2238,140 @@ model AppSetting {
 
   ratesRefreshedAt DateTime?
 
+  trackingSiteId           String?  @unique
+  trackingCrossDomain      Boolean  @default(true)
+  trackingLimitToDomains   Boolean  @default(true)
+  trackingCookieSubdomains Boolean  @default(false)
+  trackingSecureCookies    Boolean  @default(true)
+  trackingHonourDnt        Boolean  @default(true)
+  trackingCookieDays       Int      @default(395)
+  trackingConfigHash       String?
+  trackingPaused           Boolean  @default(false)
+
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+enum DomainScope {
+  SITE_AND_SUBDOMAINS
+  EXACT_HOST
+}
+
+model TrackedDomain {
+  id    String      @id @default(cuid())
+  host  String      @unique
+  scope DomainScope @default(EXACT_HOST)
+
+  pageViews  Int       @default(0)
+  lastSeenAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("trackedDomain")
+}
+
+model TrackedVisitor {
+  id String @id
+
+  contactId String?
+  contact   Contact? @relation("VisitorContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  firstSource     String?
+  firstMedium     String?
+  firstCampaign   String?
+  firstTerm       String?
+  firstContent    String?
+  firstReferrer   String?
+  firstLanding    String?
+  firstTouchAt    DateTime?
+
+  lastSource   String?
+  lastMedium   String?
+  lastCampaign String?
+  lastTerm     String?
+  lastContent  String?
+  lastReferrer String?
+  lastLanding  String?
+  lastTouchAt  DateTime?
+
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @updatedAt
+
+  @@index([contactId])
+  @@index([firstSource])
+  @@map("trackedVisitor")
+}
+
+model TrackedEvent {
+  id String @id @default(cuid())
+
+  visitorId String
+  type      String
+  host      String
+  path      String
+  referrer  String?
+  label     String?
+
+  source   String?
+  medium   String?
+  campaign String?
+
+  occurredAt DateTime
+
+  @@index([visitorId, occurredAt])
+  @@index([occurredAt])
+  @@index([host, occurredAt])
+  @@index([source, occurredAt])
+  @@map("trackedEvent")
+}
+
+model TrackingCounter {
+  key       String   @id
+  value     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("trackingCounter")
+}
+
+model TrackedPageDaily {
+  day      DateTime
+  host     String
+  path     String
+  views    Int      @default(0)
+  visitors Int      @default(0)
+
+  @@id([day, host, path])
+  @@index([host, day])
+  @@map("trackedPageDaily")
+}
+
+model FormSubmission {
+  id String @id @default(cuid())
+
+  visitorId String?
+  contactId String?
+  contact   Contact? @relation("SubmissionContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  host  String
+  path  String
+  email String?
+
+  fields Json
+
+  firstTouch Json?
+  lastTouch  Json?
+
+  dedupeKey  String    @unique
+  filedAt    DateTime?
+  skipReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([contactId])
+  @@index([createdAt])
+  @@map("formSubmission")
 }
 
 model Install {

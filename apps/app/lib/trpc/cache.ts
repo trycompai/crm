@@ -32,8 +32,10 @@ export type CrmCache = {
 	settings(options?: Options): Promise<void>;
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
+	slack(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
 	approval(id?: string, options?: Options): Promise<void>;
+	tracking(options?: Options): Promise<void>;
 	everything(): Promise<void>;
 };
 
@@ -303,6 +305,13 @@ export function useCrmCache(): CrmCache {
 				options,
 			),
 
+		slack: (options) =>
+			run(
+				[trpc.slack.status.queryKey(), trpc.slack.matches.queryKey()],
+				[],
+				options,
+			),
+
 		sso: (options) =>
 			run(
 				[trpc.sso.list.pathKey()],
@@ -318,6 +327,13 @@ export function useCrmCache(): CrmCache {
 						: trpc.approval.detail.queryKey(),
 				],
 				[trpc.approval.list.queryKey(), trpc.today.get.queryKey()],
+				options,
+			),
+
+		tracking: (options) =>
+			run(
+				[trpc.tracking.settings.queryKey()],
+				[trpc.tracking.sources.queryKey()],
 				options,
 			),
 

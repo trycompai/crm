@@ -2,7 +2,7 @@
 	"name": "crm",
 	"private": true,
 	"license": "MIT",
-	"version": "1.5.1",
+	"version": "1.12.0",
 	"scripts": {
 		"prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
 		"build": "turbo run build",
@@ -10,7 +10,7 @@
 		"lint": "turbo run lint",
 		"format": "biome format --write .",
 		"check-types": "turbo run check-types",
-		"test": "turbo run test",
+		"test": "turbo run test --concurrency=1",
 		"auth:generate": "turbo run auth:generate",
 		"db:deploy": "turbo run db:deploy",
 		"db:generate": "turbo run db:generate",
@@ -18,7 +18,8 @@
 		"db:push": "turbo run db:push",
 		"db:reset": "turbo run db:reset",
 		"db:seed": "turbo run db:seed",
-		"db:studio": "turbo run db:studio"
+		"db:studio": "turbo run db:studio",
+		"db:test": "bun run --filter=@crm/db db:test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",

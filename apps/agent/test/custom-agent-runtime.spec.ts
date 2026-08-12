@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { builderTaskMarkdown } from "../agent/instructions/task";
+import { AGENT_ACTION_EXECUTORS } from "../agent/lib/agent-actions";
 import { recordBuilderDelegation } from "../agent/lib/builder-delegation";
+import {
+	actionIntegrationIssues,
+	type DraftAction,
+	slackDestinationIssues,
+} from "../agent/lib/builder-runtime";
 import {
 	builderCommandType,
 	builderDeliveryMessage,
@@ -9,7 +15,11 @@ import {
 	runIdFromToken,
 	runToken,
 } from "../agent/lib/custom-agent-dispatch";
-import { allowedHistorySources } from "../agent/lib/run-runtime";
+import {
+	allowedHistorySources,
+	approvedSlackDestination,
+	sendSlackMessage,
+} from "../agent/lib/run-runtime";
 import {
 	assertResearchPurpose,
 	attribute,
@@ -56,27 +66,51 @@ describe("custom agent continuation tokens", () => {
 });
 
 describe("builder delivery messages", () => {
-	it("keeps clarification answers in agent-creation mode", () => {
+	it("keeps clarification answers in agent-creation mode without coercing chat", () => {
 		expect(
 			builderCommandType("CHAT", {
-				inputResponse: { requestId: "question-1", answer: "crm-task" },
+				inputResponse: { requestId: "question-1", optionId: "crm-task" },
 			}),
 		).toBe("CREATE_AGENT");
+		expect(builderCommandType("CHAT", { text: "Also add a note" })).toBe(
+			"CHAT",
+		);
 		expect(builderCommandType("CHAT", { text: "Research this company" })).toBe(
 			"CHAT",
 		);
 	});
 
-	it("delivers a question response without submission wrapper text", () => {
+	it("routes a selected answer back to the parked Eve input request", () => {
 		expect(
 			builderDeliveryMessage("submission-1", {
 				text: "Use a CRM task instead",
 				inputResponse: {
 					requestId: "question-1",
-					answer: "crm-task",
+					optionId: "crm-task",
 				},
 			}),
-		).toBe("crm-task");
+		).toEqual({
+			inputResponses: [{ requestId: "question-1", optionId: "crm-task" }],
+		});
+	});
+
+	it("routes a written answer back to the parked Eve input request", () => {
+		expect(
+			builderDeliveryMessage("submission-1", {
+				text: "Use the private renewals channel",
+				inputResponse: {
+					requestId: "question-2",
+					text: "Use the private renewals channel",
+				},
+			}),
+		).toEqual({
+			inputResponses: [
+				{
+					requestId: "question-2",
+					text: "Use the private renewals channel",
+				},
+			],
+		});
 	});
 
 	it("delivers persisted attachment bytes with model-visible metadata", () => {
@@ -124,6 +158,15 @@ describe("session purpose boundaries", () => {
 		expect(() => assertResearchPurpose(context("team-agent"))).toThrow();
 	});
 
+	it("leaves the read-only deal list open to the assistant chat that is told to use it", async () => {
+		const source = await Bun.file(
+			new URL("../agent/tools/list_deals.ts", import.meta.url),
+		).text();
+
+		expect(source).not.toContain("assertResearchPurpose");
+		expect(builderTaskMarkdown(null)).toContain("list_deals");
+	});
+
 	it("binds specialist tools to their explicit session purpose", () => {
 		expect(
 			requireBuilderAttribute(
@@ -154,10 +197,138 @@ describe("deployed agent data sources", () => {
 	});
 });
 
+describe("deployed Slack actions", () => {
+	const manifest = {
+		triggers: [
+			{
+				type: "MANUAL",
+				name: "Run now",
+				summary: "Run on demand",
+				config: {},
+			},
+		],
+		dataScope: {
+			mode: "WORKSPACE",
+			summary: "Workspace CRM records",
+			resources: [
+				{ kind: "integration", id: "slack:workspace", label: "Slack" },
+			],
+		},
+		actions: [
+			{
+				type: "slack.message.post",
+				provider: "slack",
+				summary: "Direct message the deal owner",
+				destination: {
+					kind: "user",
+					resolution: "chosen",
+					id: "U123",
+					label: "@grim",
+				},
+			},
+			{
+				type: "run.summary",
+				provider: "crm",
+				summary: "Summarize the Slack delivery",
+			},
+		],
+	};
+
+	it("derives the destination from the deployed manifest", () => {
+		expect(approvedSlackDestination(manifest)).toEqual({
+			kind: "user",
+			id: "U123",
+			label: "@grim",
+		});
+		expect(() =>
+			approvedSlackDestination({
+				...manifest,
+				dataScope: { ...manifest.dataScope, resources: [] },
+			}),
+		).toThrow("does not allow Slack");
+	});
+
+	it("posts with a stable Slack replay id", async () => {
+		const requests: Array<{ url: string; body: unknown }> = [];
+		const order: string[] = [];
+		const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			order.push(String(input));
+			requests.push({
+				url: String(input),
+				body: JSON.parse(String(init?.body)),
+			});
+			return requests.length === 1
+				? Response.json({ ok: true, channel: { id: "D123" } })
+				: Response.json({ ok: true, channel: "D123", ts: "123.456" });
+		}) as typeof fetch;
+
+		expect(
+			await sendSlackMessage(
+				"xoxb-test",
+				{ kind: "user", id: "U123", label: "@grim" },
+				"A deal just closed.",
+				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
+				{
+					fetcher,
+					beforePost: async () => {
+						order.push("guard");
+					},
+				},
+			),
+		).toEqual({ channel: "D123", ts: "123.456" });
+		expect(requests).toEqual([
+			{
+				url: "https://slack.com/api/conversations.open",
+				body: { users: "U123", return_im: true },
+			},
+			{
+				url: "https://slack.com/api/chat.postMessage",
+				body: {
+					channel: "D123",
+					text: "A deal just closed.",
+					client_msg_id: "7d3e8854-79f9-48dd-a933-8cfb5994f99e",
+				},
+			},
+		]);
+		expect(order).toEqual([
+			"https://slack.com/api/conversations.open",
+			"guard",
+			"https://slack.com/api/chat.postMessage",
+		]);
+	});
+
+	it("surfaces an actionable missing-channel error", async () => {
+		const fetcher = (async () =>
+			Response.json({ ok: false, error: "not_in_channel" })) as typeof fetch;
+
+		expect(
+			sendSlackMessage(
+				"xoxb-test",
+				{ kind: "channel", id: "C123", label: "#alerts" },
+				"A deal just closed.",
+				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
+				{ fetcher },
+			),
+		).rejects.toThrow("Invite the app");
+	});
+});
+
+describe("deployed action executors", () => {
+	it("registers an executor for every draftable action", () => {
+		const draftable = builderDraftToolInput.shape.actions.element.options.map(
+			(option) => option.shape.type.value,
+		);
+		expect(Object.keys(AGENT_ACTION_EXECUTORS).sort()).toEqual(
+			draftable.sort(),
+		);
+	});
+});
+
 describe("builder command routing", () => {
 	it("delegates only the explicit creation command to the agent builder", () => {
 		const creation = builderTaskMarkdown("CREATE_AGENT");
 		expect(creation).toContain("Call agent_builder exactly once");
+		expect(creation).toContain("do not ask the user a clarification yourself");
 		expect(creation).toContain("Never retry agent_builder in the same turn");
 		expect(creation).toContain("asks any essential clarification directly");
 		const chat = builderTaskMarkdown("CHAT");
@@ -333,11 +504,13 @@ describe("agent builder draft input", () => {
 			description: "Prepare a renewal call brief.",
 			instructions:
 				"Run manually. Read the selected deal and summarize renewal risks for review.",
-			trigger: {
-				type: "MANUAL",
-				name: "Prepare renewal brief",
-				summary: "Run before a renewal call",
-			},
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "Prepare renewal brief",
+					summary: "Run before a renewal call",
+				},
+			],
 			recordScope: "SELECTED",
 			resources: [{ kind: "deal", id: "deal-1", label: "Acme renewal" }],
 			integrations: ["gmail", "calendar"],
@@ -374,11 +547,13 @@ describe("agent builder draft input", () => {
 			description: "Prepare a renewal call brief.",
 			instructions:
 				"Run manually. Read the selected deal and summarize renewal risks for review.",
-			trigger: {
-				type: "MANUAL",
-				name: "Prepare renewal brief",
-				summary: "Run before a renewal call",
-			},
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "Prepare renewal brief",
+					summary: "Run before a renewal call",
+				},
+			],
 			recordScope: "SELECTED",
 			resources: [{ kind: "integration", id: "gmail", label: "gmail" }],
 			integrations: [],
@@ -398,11 +573,13 @@ describe("agent builder draft input", () => {
 				description: "Prepare a renewal call brief.",
 				instructions:
 					"Run manually. Read workspace deals and summarize renewal risks for review.",
-				trigger: {
-					type: "MANUAL",
-					name: "Prepare renewal brief",
-					summary: "Run before a renewal call",
-				},
+				triggers: [
+					{
+						type: "MANUAL",
+						name: "Prepare renewal brief",
+						summary: "Run before a renewal call",
+					},
+				],
 				recordScope: "WORKSPACE",
 				resources: [],
 				integrations: ["crm"],
@@ -415,6 +592,165 @@ describe("agent builder draft input", () => {
 				],
 			}).success,
 		).toBe(false);
+	});
+
+	it("keeps the approved Slack destination and its resolution mode", () => {
+		const parsed = builderDraftToolInput.parse({
+			name: "Demo welcome",
+			description: "Tell sales when a demo is booked.",
+			instructions:
+				"When a demo is booked, post the approved summary to the chosen sales channel and stop after one message.",
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "Welcome demo",
+					summary: "Run for a booked demo",
+				},
+			],
+			recordScope: "WORKSPACE",
+			resources: [],
+			integrations: ["slack"],
+			actions: [
+				{
+					type: "slack.message.post",
+					provider: "slack",
+					summary: "Tell sales the prospect arrived",
+					destination: {
+						kind: "channel",
+						resolution: "chosen",
+						id: "C123",
+						label: "#sales",
+					},
+				},
+			],
+		});
+
+		expect(draftInputFromTool(parsed)).toMatchObject({
+			resources: [
+				{ kind: "integration", id: "slack:workspace", label: "Slack" },
+			],
+			actions: [
+				{
+					type: "slack.message.post",
+					destination: {
+						kind: "channel",
+						resolution: "chosen",
+						id: "C123",
+						label: "#sales",
+					},
+				},
+			],
+			access: [
+				"Read workspace CRM records",
+				"Post to approved Slack destinations",
+			],
+		});
+	});
+
+	it("keeps an approved Slack person destination", () => {
+		const parsed = builderDraftToolInput.parse({
+			name: "Deal alert",
+			description: "Tell Grim when a deal is created.",
+			instructions:
+				"When a deal is created, send one direct Slack message to the approved workspace member and stop.",
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "New deal alert",
+					summary: "Run for every new deal",
+				},
+			],
+			recordScope: "WORKSPACE",
+			resources: [],
+			integrations: ["slack"],
+			actions: [
+				{
+					type: "slack.message.post",
+					provider: "slack",
+					summary: "Direct message Grim",
+					destination: {
+						kind: "user",
+						resolution: "chosen",
+						id: "U123",
+						label: "@grim",
+					},
+				},
+			],
+		});
+
+		expect(draftInputFromTool(parsed).actions[0]).toMatchObject({
+			type: "slack.message.post",
+			destination: {
+				kind: "user",
+				resolution: "chosen",
+				id: "U123",
+				label: "@grim",
+			},
+		});
+	});
+
+	it("rejects Slack destinations outside the inspected choices", () => {
+		const connections = {
+			slackChannels: [{ id: "C123", label: "#sales", memberCount: 8 }],
+			slackPeople: [
+				{
+					id: "U123",
+					label: "@grim",
+					name: "Grim",
+					email: "grim@example.com",
+					slackEmail: "grim@example.com",
+				},
+			],
+		};
+
+		expect(
+			slackDestinationIssues(
+				{
+					kind: "user",
+					resolution: "chosen",
+					id: "U999",
+					label: "@invented",
+				},
+				connections,
+			),
+		).toEqual(["The Slack person is not available to this workspace."]);
+		expect(
+			slackDestinationIssues(
+				{
+					kind: "user",
+					resolution: "chosen",
+					id: "U123",
+					label: "@wrong",
+				},
+				connections,
+			),
+		).toEqual(["The Slack person must use its exact inspected label."]);
+	});
+
+	it("requires the Slack integration for a Slack post action", () => {
+		const actions: DraftAction[] = [
+			{ type: "run.summary", provider: "crm", summary: "Report the run" },
+			{
+				type: "slack.message.post",
+				provider: "slack",
+				summary: "Direct message Grim",
+				destination: {
+					kind: "user",
+					resolution: "chosen",
+					id: "U123",
+					label: "@grim",
+				},
+			},
+		];
+
+		expect(actionIntegrationIssues(actions, [])).toEqual([
+			"Posting to Slack needs Slack in this agent's integrations.",
+		]);
+		expect(
+			actionIntegrationIssues(actions, [
+				{ kind: "integration", id: "slack:workspace", label: "Slack" },
+			]),
+		).toEqual([]);
 	});
 
 	it("trims trigger metadata and rejects blank text", () => {
@@ -438,25 +774,73 @@ describe("agent builder draft input", () => {
 		expect(
 			builderDraftToolInput.safeParse({
 				...base,
-				trigger: {
-					type: "MANUAL",
-					name: "   ",
-					summary: "Run before a renewal call",
-				},
+				triggers: [
+					{
+						type: "MANUAL",
+						name: "   ",
+						summary: "Run before a renewal call",
+					},
+				],
 			}).success,
 		).toBe(false);
 
 		const parsed = builderDraftToolInput.parse({
 			...base,
-			trigger: {
-				type: "MANUAL",
-				name: "  Prepare renewal brief  ",
-				summary: "  Run before a renewal call  ",
-			},
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "  Prepare renewal brief  ",
+					summary: "  Run before a renewal call  ",
+				},
+			],
 		});
-		expect(parsed.trigger.name).toBe("Prepare renewal brief");
-		expect(parsed.trigger.summary).toBe("Run before a renewal call");
+		expect(parsed.triggers[0]?.name).toBe("Prepare renewal brief");
+		expect(parsed.triggers[0]?.summary).toBe("Run before a renewal call");
 		expect(parsed.actions[0]?.summary).toBe("Write a reviewable renewal brief");
+	});
+
+	it("accepts multiple supported CRM events without a polling schedule", () => {
+		const parsed = builderDraftToolInput.parse({
+			name: "Closed deal alert",
+			description: "Alert the team whenever a deal closes.",
+			instructions:
+				"When the triggering deal closes, read that deal, prepare one concise alert, and stop after the approved action.",
+			triggers: [
+				{
+					type: "EVENT",
+					name: "When a deal is created",
+					summary: "Runs when a deal is created",
+					event: "deal.created",
+				},
+				{
+					type: "EVENT",
+					name: "When a deal opens",
+					summary: "Runs when a closed deal returns to the open pipeline",
+					event: "deal.opened",
+				},
+				{
+					type: "EVENT",
+					name: "When a deal closes",
+					summary: "Runs when a deal first enters a closed stage",
+					event: "deal.closed",
+				},
+			],
+			recordScope: "WORKSPACE",
+			resources: [],
+			integrations: [],
+			actions: [
+				{
+					type: "run.summary",
+					provider: "crm",
+					summary: "Record the closed-deal alert",
+				},
+			],
+		});
+
+		expect(draftInputFromTool(parsed).triggers).toHaveLength(3);
+		expect(
+			draftInputFromTool(parsed).triggers.map((trigger) => trigger.event),
+		).toEqual(["deal.created", "deal.opened", "deal.closed"]);
 	});
 });
 
@@ -467,11 +851,13 @@ describe("agent builder draft access", () => {
 			description: "Hand new customers to onboarding.",
 			instructions:
 				"Run on demand. Read closed-won deals and record the handoff for onboarding.",
-			trigger: {
-				type: "MANUAL",
-				name: "Run handoff",
-				summary: "Run for new customers",
-			},
+			triggers: [
+				{
+					type: "MANUAL",
+					name: "Run handoff",
+					summary: "Run for new customers",
+				},
+			],
 			recordScope: "WORKSPACE",
 			resources: [],
 			integrations: [],

@@ -1,5 +1,6 @@
 import type { Db, Prisma } from "@crm/db";
 import type { AgentDefinitionStatus } from "@crm/db/enums";
+import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
 	Injectable,
@@ -7,14 +8,24 @@ import {
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
+import { AgentTriggerService } from "./agent-trigger.service";
 import { TEAM_AGENT_STATUSES } from "./agent-visibility";
-import type { AgentDeployInput, AgentUpdateInput } from "./agents.contracts";
+import {
+	type AgentDeployInput,
+	type AgentReviseInput,
+	type AgentSaveFileInput,
+	type AgentUpdateInput,
+	agentManifest,
+} from "./agents.contracts";
+
+const INSTRUCTIONS_PATH = "agent/instructions.md";
 
 @Injectable()
 export class AgentDefinitionsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly access: AgentAccessService,
+		private readonly trigger: AgentTriggerService,
 	) {}
 
 	async list(userId: string) {
@@ -140,6 +151,9 @@ export class AgentDefinitionsService {
 				lastRunAt: trigger.lastRunAt?.toISOString() ?? null,
 			})),
 			runCount: agent._count.runs,
+			capabilities: readCapabilities(
+				agent.currentVersion?.manifest ?? versions[0]?.manifest,
+			),
 		};
 	}
 
@@ -172,6 +186,304 @@ export class AgentDefinitionsService {
 		});
 
 		return updated;
+	}
+
+	async files(id: string, userId: string) {
+		await this.access.assertCanRead(id, userId);
+
+		const agent = await this.db.agentDefinition.findFirst({
+			where: { id, status: { not: "DELETED" } },
+			select: { currentVersionId: true },
+		});
+		if (!agent?.currentVersionId) return { versionId: null, files: [] };
+
+		const rows = await this.db.agentBuilderArtifact.findMany({
+			where: { versionId: agent.currentVersionId },
+			orderBy: [{ path: "asc" }, { revision: "desc" }],
+			select: {
+				path: true,
+				language: true,
+				content: true,
+				previousContent: true,
+				revision: true,
+			},
+		});
+
+		const latest = new Map<string, (typeof rows)[number]>();
+		for (const row of rows)
+			if (!latest.has(row.path)) latest.set(row.path, row);
+
+		return {
+			versionId: agent.currentVersionId,
+			files: [...latest.values()],
+		};
+	}
+
+	async saveFile(input: AgentSaveFileInput, userId: string) {
+		return this.db.$transaction(async (tx) => {
+			await this.access.assertCanManageInTransaction(tx, input.id, userId);
+			const agent = await this.lockAgent(tx, input.id);
+
+			const replay = await tx.agentAuditEvent.findFirst({
+				where: {
+					agentId: input.id,
+					type: "agent.file.saved",
+					requestId: input.clientRequestId,
+				},
+				select: { versionId: true },
+			});
+			if (replay) return { saved: false, versionId: replay.versionId };
+
+			if (!agent.currentVersionId) {
+				throw new BadRequestException("This agent has no deployed version.");
+			}
+
+			const current = await tx.agentVersion.findFirstOrThrow({
+				where: { id: agent.currentVersionId },
+				select: {
+					status: true,
+					instructions: true,
+					manifest: true,
+					modelId: true,
+					modelContextWindowTokens: true,
+					sandboxPolicy: true,
+					validation: true,
+					sourceConversationId: true,
+					deployedAt: true,
+					approvedAt: true,
+				},
+			});
+
+			const file = await tx.agentBuilderArtifact.findFirst({
+				where: { versionId: agent.currentVersionId, path: input.path },
+				orderBy: { revision: "desc" },
+			});
+			if (!file) throw new NotFoundException(`No file at ${input.path}.`);
+			if (file.content === input.content) {
+				return { saved: false, versionId: agent.currentVersionId };
+			}
+
+			const version = await tx.agentVersion.create({
+				data: {
+					agentId: input.id,
+					number: await nextVersionNumber(tx, input.id),
+					status: current.status,
+					instructions:
+						input.path === INSTRUCTIONS_PATH
+							? input.content
+							: current.instructions,
+					manifest: current.manifest as Prisma.InputJsonValue,
+					modelId: current.modelId,
+					modelContextWindowTokens: current.modelContextWindowTokens,
+					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
+					validation: current.validation as Prisma.InputJsonValue,
+					sourceConversationId: current.sourceConversationId,
+					approvedAt: current.approvedAt,
+					deployedAt: current.deployedAt,
+					createdById: userId,
+				},
+				select: { id: true },
+			});
+
+			await carryArtifactsForward(tx, agent.currentVersionId, version.id);
+
+			await tx.agentBuilderArtifact.updateMany({
+				where: { versionId: version.id, path: input.path },
+				data: { previousContent: file.content, content: input.content },
+			});
+
+			await tx.agentDefinition.update({
+				where: { id: input.id },
+				data: { currentVersionId: version.id },
+			});
+
+			const repointed = await tx.agentTrigger.updateMany({
+				where: { agentId: input.id, versionId: agent.currentVersionId },
+				data: { versionId: version.id },
+			});
+
+			await tx.agentAuditEvent.create({
+				data: {
+					agentId: input.id,
+					versionId: version.id,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "agent.file.saved",
+					summary: `Edited ${input.path}`,
+					before: { path: input.path, bytes: file.content.length },
+					after: {
+						path: input.path,
+						bytes: input.content.length,
+						triggers: repointed.count,
+					},
+					requestId: input.clientRequestId,
+				},
+			});
+
+			return { saved: true, versionId: version.id };
+		});
+	}
+
+	async revise(input: AgentReviseInput, userId: string) {
+		const versionId = await this.trigger.withTasks(async (tx, queue) => {
+			await this.access.assertCanManageInTransaction(tx, input.id, userId);
+			const agent = await this.lockAgent(tx, input.id);
+
+			const replay = await tx.agentAuditEvent.findFirst({
+				where: {
+					agentId: input.id,
+					type: "agent.revised",
+					requestId: input.clientRequestId,
+				},
+				select: { versionId: true },
+			});
+			if (replay) return replay.versionId;
+
+			if (!agent.currentVersionId) {
+				throw new BadRequestException("This agent has no deployed version.");
+			}
+
+			const current = await tx.agentVersion.findFirstOrThrow({
+				where: { id: agent.currentVersionId },
+				select: {
+					status: true,
+					instructions: true,
+					manifest: true,
+					modelId: true,
+					modelContextWindowTokens: true,
+					sandboxPolicy: true,
+					validation: true,
+					sourceConversationId: true,
+					deployedAt: true,
+					approvedAt: true,
+				},
+			});
+
+			const parsed = agentManifest.safeParse(current.manifest);
+			if (!parsed.success) {
+				throw new BadRequestException(
+					"This version's manifest cannot be read, so it cannot be changed.",
+				);
+			}
+
+			const manifest = parsed.data;
+			const before = manifest.actions.find(
+				(action) => action.destination !== undefined,
+			);
+
+			let actions = manifest.actions;
+
+			if (input.actions) {
+				const keep = new Set(input.actions);
+				actions = actions.filter((action) => keep.has(action.type));
+				if (actions.length === 0) {
+					throw new BadRequestException("An agent needs at least one action.");
+				}
+			}
+
+			const channel = input.channel;
+
+			if (channel) {
+				if (!actions.some((action) => action.destination !== undefined)) {
+					throw new BadRequestException(
+						"None of this agent's actions post to a channel, so its channel cannot be changed.",
+					);
+				}
+
+				actions = actions.map((action) =>
+					action.destination
+						? {
+								...action,
+								destination: {
+									...action.destination,
+									id: channel.id,
+									label: `#${channel.name}`,
+								},
+							}
+						: action,
+				);
+			}
+
+			const dataScope = input.resources
+				? {
+						...manifest.dataScope,
+						mode: input.resources.length > 0 ? "SELECTED" : "WORKSPACE",
+						resources: input.resources,
+					}
+				: manifest.dataScope;
+
+			const version = await tx.agentVersion.create({
+				data: {
+					agentId: input.id,
+					number: await nextVersionNumber(tx, input.id),
+					status: current.status,
+					instructions: current.instructions,
+					manifest: {
+						...manifest,
+						actions,
+						dataScope,
+					} as Prisma.InputJsonValue,
+					modelId: current.modelId,
+					modelContextWindowTokens: current.modelContextWindowTokens,
+					sandboxPolicy: current.sandboxPolicy as Prisma.InputJsonValue,
+					validation: reviseValidation(
+						current.validation,
+						manifest.actions.map((action) => action.type),
+						actions.map((action) => action.type),
+					),
+					sourceConversationId: current.sourceConversationId,
+					approvedAt: current.approvedAt,
+					deployedAt: current.deployedAt,
+					createdById: userId,
+				},
+				select: { id: true },
+			});
+
+			await carryArtifactsForward(tx, agent.currentVersionId, version.id);
+
+			await tx.agentDefinition.update({
+				where: { id: input.id },
+				data: { currentVersionId: version.id },
+			});
+
+			const repointed = await tx.agentTrigger.updateMany({
+				where: { agentId: input.id, versionId: agent.currentVersionId },
+				data: { versionId: version.id },
+			});
+
+			if (channel && channel.id !== before?.destination?.id) {
+				await queue.slackChannelJoinRequested(channel.id, channel.name);
+			}
+
+			await tx.agentAuditEvent.create({
+				data: {
+					agentId: input.id,
+					versionId: version.id,
+					actorUserId: userId,
+					actorType: "USER",
+					actorId: userId,
+					type: "agent.revised",
+					summary: reviseSummary(input),
+					before: {
+						channel: before?.destination?.label ?? null,
+						actions: manifest.actions.map((action) => action.type),
+						resources: manifest.dataScope.resources.length,
+					},
+					after: {
+						channel: channel ? `#${channel.name}` : null,
+						actions: input.actions ?? null,
+						resources: input.resources?.length ?? null,
+						triggers: repointed.count,
+					},
+					requestId: input.clientRequestId,
+				},
+			});
+
+			return version.id;
+		});
+
+		return { versionId };
 	}
 
 	async deploy(input: AgentDeployInput, userId: string) {
@@ -459,9 +771,10 @@ export class AgentDefinitionsService {
 				status: AgentDefinitionStatus;
 				name: string;
 				description: string | null;
+				currentVersionId: string | null;
 			}>
 		>`
-			SELECT id, status, name, description
+			SELECT id, status, name, description, "currentVersionId"
 			FROM "agentDefinition"
 			WHERE id = ${id}
 			FOR UPDATE
@@ -499,4 +812,112 @@ function versionMetadata(manifest: unknown): {
 		...(name ? { name } : {}),
 		...(description !== undefined ? { description } : {}),
 	};
+}
+
+function readCapabilities(manifest: unknown) {
+	const parsed = schemas.agents.capabilities.safeParse(manifest);
+
+	if (!parsed.success) {
+		return {
+			readable: false as const,
+			problem: parsed.error.issues
+				.map(
+					(issue) => `${issue.path.join(".") || "manifest"} ${issue.message}`,
+				)
+				.join("; "),
+			actions: [],
+			dataScope: null,
+			channel: null,
+		};
+	}
+
+	const slack = parsed.data.actions.find(
+		(action) => action.destination !== undefined,
+	);
+
+	return {
+		readable: true as const,
+		problem: null,
+		actions: parsed.data.actions,
+		dataScope: parsed.data.dataScope,
+		channel: slack?.destination ?? null,
+	};
+}
+
+function reviseSummary(input: {
+	channel?: { name: string };
+	actions?: string[];
+	resources?: unknown[];
+}): string {
+	const parts: string[] = [];
+	if (input.channel) parts.push(`moved to #${input.channel.name}`);
+	if (input.actions) parts.push(`${input.actions.length} actions`);
+	if (input.resources) parts.push(`${input.resources.length} records`);
+	return parts.length > 0 ? `Changed ${parts.join(", ")}` : "Changed settings";
+}
+
+function reviseValidation(
+	validation: unknown,
+	before: string[],
+	after: string[],
+): Prisma.InputJsonValue {
+	const removed = before.filter((type) => !after.includes(type));
+	const base =
+		validation && typeof validation === "object" && !Array.isArray(validation)
+			? (validation as Record<string, unknown>)
+			: {};
+
+	const capabilities = Array.isArray(base.capabilities)
+		? base.capabilities.filter(
+				(entry) => typeof entry === "string" && !removed.includes(entry),
+			)
+		: [];
+
+	return {
+		...base,
+		status: "passed",
+		checkedAt: new Date().toISOString(),
+		capabilities,
+	} as Prisma.InputJsonValue;
+}
+
+async function nextVersionNumber(
+	tx: Prisma.TransactionClient,
+	agentId: string,
+): Promise<number> {
+	const latest = await tx.agentVersion.findFirst({
+		where: { agentId },
+		orderBy: { number: "desc" },
+		select: { number: true },
+	});
+
+	return (latest?.number ?? 0) + 1;
+}
+
+async function carryArtifactsForward(
+	tx: Prisma.TransactionClient,
+	fromVersionId: string,
+	toVersionId: string,
+): Promise<void> {
+	const rows = await tx.agentBuilderArtifact.findMany({
+		where: { versionId: fromVersionId },
+		orderBy: [{ path: "asc" }, { revision: "desc" }],
+	});
+
+	const latest = new Map<string, (typeof rows)[number]>();
+	for (const row of rows) if (!latest.has(row.path)) latest.set(row.path, row);
+
+	if (latest.size === 0) return;
+
+	await tx.agentBuilderArtifact.createMany({
+		data: [...latest.values()].map((row) => ({
+			versionId: toVersionId,
+			path: row.path,
+			language: row.language,
+			content: row.content,
+			previousContent: row.previousContent,
+			revision: row.revision,
+			status: row.status,
+		})),
+	});
 }

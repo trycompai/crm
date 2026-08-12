@@ -140,14 +140,19 @@ export class ConversationSharingService {
 		}
 
 		const { conversation } = share;
-		const events = conversation.sessionId
-			? await this.db.agentEvent.findMany({
-					where: { sessionId: conversation.sessionId },
-					orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
-					take: 5000,
-					select: { id: true, type: true, data: true, emittedAt: true },
-				})
-			: [];
+		const events = await this.db.agentEvent.findMany({
+			where: {
+				OR: [
+					{ conversationId: conversation.id },
+					...(conversation.sessionId
+						? [{ sessionId: conversation.sessionId }]
+						: []),
+				],
+			},
+			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
+			take: 5000,
+			select: { id: true, type: true, data: true, emittedAt: true },
+		});
 
 		return {
 			id: conversation.id,

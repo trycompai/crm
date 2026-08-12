@@ -7,9 +7,10 @@ import {
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
+import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -130,7 +131,16 @@ export function ContactsTable() {
 		placeholderData: (previous) => previous,
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
+
+	const [companyQuery, setCompanyQuery] = useState("");
+	const [companyText, setCompanyText] = useSearchInput(
+		companyQuery,
+		setCompanyQuery,
+	);
+	const companies = useQuery({
+		...trpc.companies.options.queryOptions({ q: companyQuery }),
+		placeholderData: (previous) => previous,
+	});
 
 	const rows = contacts.data?.rows ?? [];
 	const selection = useTableSelection(
@@ -154,8 +164,15 @@ export function ContactsTable() {
 		{
 			id: "company",
 			label: "Company",
+			searchable: true,
+			search: companyText,
+			onSearchChange: setCompanyText,
+			stale: companies.isFetching || companyText.trim() !== companyQuery.trim(),
+			empty: companies.isFetching ? "Searching…" : "No company matches.",
 			options: [
-				{ value: "none", label: "No company" },
+				...(companyQuery.trim()
+					? []
+					: [{ value: "none", label: "No company" }]),
 				...(companies.data ?? []).map((company) => ({
 					value: company.id,
 					label: company.name,

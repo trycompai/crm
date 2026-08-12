@@ -14,7 +14,7 @@ import { z } from "zod";
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
 import { timelineInput, timelineCountsInput, myTasksInput, granolaNotesInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
-import { agentIdInput, agentHistoryInput, agentUpdateInput, agentDeployInput, agentRunNowInput } from "../agent/agents.contracts";
+import { agentReviseInput, agentIdInput, agentSaveFileInput, agentHistoryInput, agentUpdateInput, agentDeployInput, agentRunNowInput, agentRetryRunInput, agentCancelRunInput } from "../agent/agents.contracts";
 import { approvalListInput, approvalIdInput, approvalMutationInput } from "../approval/approval.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, companyBulkOwnerInput, companyBulkInput, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, contactBulkOwnerInput, contactBulkCompanyInput, contactBulkInput, factDecisionInput } from "../contacts/contacts.contracts";
@@ -33,8 +33,10 @@ import { leadDiscoveryInput, leadDiscoveryTaskInput, outreachProspectMutationInp
 import { prospectListInput, prospectIdInput, prospectIdsInput, prospectGapInput, prospectDraftInput } from "../prospects/prospects.contracts";
 import { serviceListInput, serviceCaseIdInput, serviceRecoverInboundInput } from "../service/service.contracts";
 import { setAgentModelInput, setResearchKeyInput } from "../settings/settings.contracts";
+import { slackChannelsInput, slackJoinChannelInput, slackCreateChannelInput } from "../slack/slack.contracts";
 import { ssoProviderListInput, registerSsoProviderInput, deleteSsoProviderInput } from "../sso/sso.contracts";
 import { todayInput } from "../today/today.contracts";
+import { trackingFlagInput, cookieLifetimeInput, addDomainInput, removeDomainInput, verifyInput, companyActivityInput, contactActivityInput } from "../tracking/tracking.contracts";
 import { workListInput, workIdInput, workMutationInput, workAssignInput, workWaitInput, workReasonInput } from "../work/work.contracts";
 import { memberListInput, updateWorkspaceInput, setMemberRoleInput } from "../workspace/workspace.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
@@ -59,8 +61,10 @@ import type { ProspectsRouter } from "../prospects/prospects.router";
 import type { SearchRouter } from "../search/search.router";
 import type { ServiceRouter } from "../service/service.router";
 import type { SettingsRouter } from "../settings/settings.router";
+import type { SlackRouter } from "../slack/slack.router";
 import type { SsoRouter } from "../sso/sso.router";
 import type { TodayRouter } from "../today/today.router";
+import type { TrackingRouter } from "../tracking/tracking.router";
 import type { UsersRouter } from "../users/users.router";
 import type { WorkRouter } from "../work/work.router";
 import type { WorkspaceRouter } from "../workspace/workspace.router";
@@ -89,6 +93,15 @@ const appRouter = t.router({
   agents: t.router({
     list: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["list"]>>),
+    revise: publicProcedure
+      .input(agentReviseInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["revise"]>>),
+    files: publicProcedure
+      .input(agentIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["files"]>>),
+    saveFile: publicProcedure
+      .input(agentSaveFileInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["saveFile"]>>),
     byId: publicProcedure
       .input(agentIdInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["byId"]>>),
@@ -121,7 +134,13 @@ const appRouter = t.router({
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["remove"]>>),
     runNow: publicProcedure
       .input(agentRunNowInput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["runNow"]>>)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["runNow"]>>),
+    retryRun: publicProcedure
+      .input(agentRetryRunInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["retryRun"]>>),
+    cancelRun: publicProcedure
+      .input(agentCancelRunInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<AgentsRouter["cancelRun"]>>)
     }),
   approval: t.router({
     list: publicProcedure
@@ -549,6 +568,25 @@ const appRouter = t.router({
       .input(setResearchKeyInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SettingsRouter["setResearchKey"]>>)
     }),
+  slack: t.router({
+    status: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["status"]>>),
+    matches: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["matches"]>>),
+    channels: publicProcedure
+      .input(slackChannelsInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["channels"]>>),
+    joinChannel: publicProcedure
+      .input(slackJoinChannelInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["joinChannel"]>>),
+    refreshPeople: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["refreshPeople"]>>),
+    createChannel: publicProcedure
+      .input(slackCreateChannelInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["createChannel"]>>),
+    disconnect: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SlackRouter["disconnect"]>>)
+    }),
   sso: t.router({
     signInOptions: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SsoRouter["signInOptions"]>>),
@@ -568,6 +606,35 @@ const appRouter = t.router({
     get: publicProcedure
       .input(todayInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TodayRouter["get"]>>)
+    }),
+  tracking: t.router({
+    settings: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["settings"]>>),
+    setFlag: publicProcedure
+      .input(trackingFlagInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["setFlag"]>>),
+    setCookieLifetime: publicProcedure
+      .input(cookieLifetimeInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["setCookieLifetime"]>>),
+    addDomain: publicProcedure
+      .input(addDomainInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["addDomain"]>>),
+    removeDomain: publicProcedure
+      .input(removeDomainInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["removeDomain"]>>),
+    rotateSiteId: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["rotateSiteId"]>>),
+    verify: publicProcedure
+      .input(verifyInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["verify"]>>),
+    sources: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["sources"]>>),
+    companyActivity: publicProcedure
+      .input(companyActivityInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["companyActivity"]>>),
+    contactActivity: publicProcedure
+      .input(contactActivityInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TrackingRouter["contactActivity"]>>)
     }),
   users: t.router({
     me: publicProcedure

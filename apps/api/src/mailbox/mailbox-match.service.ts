@@ -1,5 +1,6 @@
 import { workspaceDomains, workspaceEmailAliases } from "@crm/auth/workspace";
 import { type Db, RecordSource } from "@crm/db";
+import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
@@ -214,26 +215,56 @@ export class MailboxMatchService {
 
 		const { firstName, lastName } = splitName(person.name, person.email);
 
-		const existing = await this.db.contact.findUnique({
-			where: { email: person.email },
-			select: { id: true },
-		});
+		const outcome = await this.agent.withCrmEvents(async (tx, emit) => {
+			await lockIdempotencyKey(tx, `mailbox-contact:${person.email}`);
+			const existing = await tx.contact.findUnique({
+				where: { email: person.email },
+				select: {
+					id: true,
+					firstName: true,
+					lastName: true,
+					email: true,
+					companyId: true,
+					createdAt: true,
+				},
+			});
+			if (existing) return { contact: existing, created: false as const };
 
-		const contact = await this.db.contact.upsert({
-			where: { email: person.email },
-			create: {
-				firstName,
-				lastName,
-				email: person.email,
-				companyId,
-				source: request.source,
-				ownerId: request.ownerId,
-			},
-			update: {},
-			select: { id: true, firstName: true, lastName: true },
+			const contact = await tx.contact.create({
+				data: {
+					firstName,
+					lastName,
+					email: person.email,
+					companyId,
+					source: request.source,
+					ownerId: request.ownerId,
+				},
+				select: {
+					id: true,
+					firstName: true,
+					lastName: true,
+					email: true,
+					companyId: true,
+					createdAt: true,
+				},
+			});
+			await emit({
+				type: "contact.created",
+				record: { kind: "contact", id: contact.id },
+				occurredAt: contact.createdAt,
+				data: {
+					firstName: contact.firstName,
+					lastName: contact.lastName,
+					email: contact.email,
+					companyId: contact.companyId,
+					source: request.source,
+				},
+			});
+			return { contact, created: true as const };
 		});
+		const { contact } = outcome;
 
-		if (!existing) {
+		if (outcome.created) {
 			await this.log.record({
 				contactId: contact.id,
 				companyId,

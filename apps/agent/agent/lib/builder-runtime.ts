@@ -1,6 +1,14 @@
 import { isDeepStrictEqual } from "node:util";
 import { db, type Prisma } from "@crm/db";
+import {
+	CRM_EVENT_CATALOG,
+	CRM_EVENT_TYPES,
+	type CrmEventType,
+} from "@crm/db/crm-events";
 import { readAgentModel } from "@crm/db/settings";
+import { WORKSPACE_ID } from "@crm/db/workspace";
+import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
+import { requestStaleSlackInventorySync } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
@@ -12,31 +20,43 @@ export type BuilderResource = {
 };
 
 export type DraftTrigger = {
-	type: "MANUAL" | "SCHEDULE";
+	type: "MANUAL" | "SCHEDULE" | "EVENT";
 	name: string;
 	summary: string;
+	event?: CrmEventType | null;
 	nextRunAt?: string | null;
 	intervalMinutes?: number | null;
 };
 
 export type DraftAction =
 	| {
-			type: "crm.activity.create";
+			type: typeof AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE;
 			provider: "crm";
 			summary: string;
 			activityTypes: ("NOTE" | "TASK")[];
 	  }
 	| {
-			type: "run.summary";
+			type: typeof AGENT_ACTION_TYPES.RUN_SUMMARY;
 			provider: "crm";
 			summary: string;
+	  }
+	| {
+			type: typeof AGENT_ACTION_TYPES.SLACK_MESSAGE_POST;
+			provider: "slack";
+			summary: string;
+			destination: {
+				kind: "channel" | "user";
+				resolution: "chosen";
+				id: string;
+				label: string;
+			};
 	  };
 
 export type DraftAgentInput = {
 	name: string;
 	description: string;
 	instructions: string;
-	trigger: DraftTrigger;
+	triggers: DraftTrigger[];
 	recordScope: "SELECTED" | "WORKSPACE";
 	resources: BuilderResource[];
 	actions: DraftAction[];
@@ -152,6 +172,10 @@ export async function builderContext(conversationId: string, userId: string) {
 			title: conversation.title,
 		},
 		availableConnections: await connectionStatus(userId),
+		crmEvents: CRM_EVENT_TYPES.map((type) => ({
+			type,
+			...CRM_EVENT_CATALOG[type],
+		})),
 		resources: await describeResources(resources),
 		existingDraft: conversation.agent,
 		now: new Date().toISOString(),
@@ -190,23 +214,25 @@ export async function saveBuilderDraft(
 
 	const model = await readAgentModel(db);
 	const now = new Date();
-	const nextRunAt = scheduleDate(input.trigger, now);
+	const manifestTriggers = input.triggers.map((trigger) => ({
+		type: trigger.type,
+		name: trigger.name,
+		summary: trigger.summary,
+		config:
+			trigger.type === "SCHEDULE"
+				? {
+						intervalMinutes: trigger.intervalMinutes,
+						nextRunAt: scheduleDate(trigger, now)?.toISOString(),
+					}
+				: trigger.type === "EVENT"
+					? { event: trigger.event }
+					: {},
+	}));
 	const manifest = {
 		kind: "crm-team-agent",
 		name: input.name,
 		description: input.description,
-		trigger: {
-			type: input.trigger.type,
-			name: input.trigger.name,
-			summary: input.trigger.summary,
-			config:
-				input.trigger.type === "SCHEDULE"
-					? {
-							intervalMinutes: input.trigger.intervalMinutes,
-							nextRunAt: nextRunAt?.toISOString(),
-						}
-					: {},
-		},
+		triggers: manifestTriggers,
 		dataScope: {
 			mode: input.recordScope,
 			summary: scopeSummary(input.recordScope, input.resources),
@@ -334,16 +360,16 @@ export async function saveBuilderDraft(
 
 		await persistArtifactSnapshots(tx, conversationId, version.id, files);
 
-		await tx.agentTrigger.create({
-			data: {
+		await tx.agentTrigger.createMany({
+			data: input.triggers.map((trigger, index) => ({
 				agentId,
 				versionId: version.id,
-				type: input.trigger.type,
-				name: input.trigger.name,
-				config: manifest.trigger.config as Prisma.InputJsonValue,
+				type: trigger.type,
+				name: trigger.name,
+				config: manifestTriggers[index]?.config as Prisma.InputJsonValue,
 				createdById: userId,
-				nextRunAt,
-			},
+				nextRunAt: scheduleDate(trigger, now),
+			})),
 		});
 
 		if (created) {
@@ -493,20 +519,39 @@ async function validateDraft(
 		if (resource.id === "google:calendar" && !connections.calendar) {
 			issues.push("Google Calendar is not connected for the chat owner.");
 		}
-		if (!["google:gmail", "google:calendar"].includes(resource.id)) {
+		if (resource.id === "slack:workspace" && !connections.slack) {
+			issues.push("Slack is not connected for this workspace.");
+		}
+		if (
+			!["google:gmail", "google:calendar", "slack:workspace"].includes(
+				resource.id,
+			)
+		) {
 			issues.push(`${resource.label} is not an available integration.`);
 			continue;
 		}
 		capabilities.add(`${resource.id}.read`);
 	}
 
+	const actionTypes = new Set<string>();
 	for (const action of input.actions) {
+		if (actionTypes.has(action.type)) {
+			issues.push(`The ${action.type} action is listed more than once.`);
+		}
+		actionTypes.add(action.type);
 		capabilities.add(action.type);
-		if (action.type !== "crm.activity.create") continue;
+		if (action.type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST) {
+			issues.push(...slackDestinationIssues(action.destination, connections));
+		}
+		if (action.type !== AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE) continue;
 		if (new Set(action.activityTypes).size !== action.activityTypes.length) {
 			issues.push("CRM activity permissions must not repeat an activity type.");
 		}
 	}
+	if (!actionTypes.has(AGENT_ACTION_TYPES.RUN_SUMMARY)) {
+		issues.push("An agent needs one run summary action.");
+	}
+	issues.push(...actionIntegrationIssues(input.actions, input.resources));
 
 	const missingRecords = await missingResourceIds(input.resources);
 	issues.push(
@@ -515,20 +560,43 @@ async function validateDraft(
 		),
 	);
 
-	if (input.trigger.type === "SCHEDULE") {
-		const next = Date.parse(input.trigger.nextRunAt ?? "");
-		if (!Number.isFinite(next) || next <= Date.now()) {
-			issues.push("A scheduled agent needs a future next run time.");
+	const eventTypes = new Set<CrmEventType>();
+	let manualTriggers = 0;
+	if (input.triggers.length === 0) {
+		issues.push("An agent needs at least one trigger.");
+	}
+	for (const trigger of input.triggers) {
+		if (trigger.type === "MANUAL") manualTriggers += 1;
+		if (trigger.type === "SCHEDULE") {
+			const next = Date.parse(trigger.nextRunAt ?? "");
+			if (!Number.isFinite(next) || next <= Date.now()) {
+				issues.push("A scheduled trigger needs a future next run time.");
+			}
+			if (
+				!trigger.intervalMinutes ||
+				trigger.intervalMinutes < 1 ||
+				trigger.intervalMinutes > 525_600
+			) {
+				issues.push(
+					"A scheduled trigger needs a recurrence from 1 minute to 1 year.",
+				);
+			}
 		}
-		if (
-			!input.trigger.intervalMinutes ||
-			input.trigger.intervalMinutes < 1 ||
-			input.trigger.intervalMinutes > 525_600
-		) {
-			issues.push(
-				"A scheduled agent needs a recurrence from 1 minute to 1 year.",
-			);
+		if (trigger.type === "EVENT") {
+			if (!trigger.event) {
+				issues.push("An event trigger needs a supported CRM event.");
+			} else if (eventTypes.has(trigger.event)) {
+				issues.push(`The ${trigger.event} event is already a trigger.`);
+			} else {
+				eventTypes.add(trigger.event);
+			}
+			if (input.recordScope !== "WORKSPACE") {
+				issues.push("Event triggers need workspace CRM scope.");
+			}
 		}
+	}
+	if (manualTriggers > 1) {
+		issues.push("An agent needs at most one manual trigger.");
 	}
 
 	return {
@@ -540,19 +608,115 @@ async function validateDraft(
 }
 
 async function connectionStatus(userId: string) {
-	const accounts = await db.account.findMany({
-		where: { userId, providerId: "google" },
-		select: { scope: true },
+	const [googleAccounts, slackAccount, workspaceMembers] = await Promise.all([
+		db.account.findMany({
+			where: { userId, providerId: "google" },
+			select: { providerId: true, scope: true },
+		}),
+		db.account.findFirst({
+			where: { providerId: "slack", accessToken: { not: null } },
+			orderBy: { updatedAt: "desc" },
+			select: { id: true },
+		}),
+		db.member.findMany({
+			where: { organizationId: WORKSPACE_ID },
+			orderBy: { user: { name: "asc" } },
+			select: {
+				user: {
+					select: {
+						name: true,
+						email: true,
+						slackMemberMatch: {
+							select: {
+								slackUserId: true,
+								slackHandle: true,
+								slackEmail: true,
+							},
+						},
+					},
+				},
+			},
+		}),
+	]);
+	if (slackAccount) void requestStaleSlackInventorySync();
+
+	const slackChannels = await db.slackChannel.findMany({
+		where: { available: true },
+		orderBy: { name: "asc" },
+		take: 100,
+		select: { id: true, name: true, memberCount: true },
 	});
 	const scopes = new Set(
-		accounts.flatMap((account) => (account.scope ?? "").split(/[,\s]+/)),
+		googleAccounts.flatMap((account) => (account.scope ?? "").split(/[,\s]+/)),
 	);
+	const slackPeople = workspaceMembers.flatMap(({ user }) => {
+		const match = user.slackMemberMatch;
+		return match?.slackUserId && match.slackHandle
+			? [
+					{
+						id: match.slackUserId,
+						label: match.slackHandle,
+						name: user.name,
+						email: user.email,
+						slackEmail: match.slackEmail,
+					},
+				]
+			: [];
+	});
 
 	return {
 		gmail: scopes.has(GMAIL_SCOPE),
 		calendar: scopes.has(CALENDAR_SCOPE),
+		slack: Boolean(slackAccount),
+		slackChannels: slackChannels.map((channel) => ({
+			id: channel.id,
+			label: `#${channel.name}`,
+			memberCount: channel.memberCount,
+		})),
+		slackPeople,
 		crm: true,
 	};
+}
+
+type SlackConnections = Awaited<ReturnType<typeof connectionStatus>>;
+
+export function actionIntegrationIssues(
+	actions: DraftAction[],
+	resources: BuilderResource[],
+): string[] {
+	const integrations = new Set(
+		resources
+			.filter((resource) => resource.kind === "integration")
+			.map((resource) => resource.id),
+	);
+
+	return actions.flatMap((action) => {
+		const dependency = actionDependency(action.type);
+		if (!dependency || integrations.has(dependency.resourceId)) return [];
+		return [
+			`Posting to ${dependency.label} needs ${dependency.label} in this agent's integrations.`,
+		];
+	});
+}
+
+export function slackDestinationIssues(
+	destination: Extract<
+		DraftAction,
+		{ type: typeof AGENT_ACTION_TYPES.SLACK_MESSAGE_POST }
+	>["destination"],
+	connections: Pick<SlackConnections, "slackChannels" | "slackPeople">,
+): string[] {
+	const noun = destination.kind === "user" ? "person" : "channel";
+	const options =
+		destination.kind === "user"
+			? connections.slackPeople
+			: connections.slackChannels;
+	const option = options.find((entry) => entry.id === destination.id);
+	if (!option) return [`The Slack ${noun} is not available to this workspace.`];
+	if (option.label !== destination.label) {
+		return [`The Slack ${noun} must use its exact inspected label.`];
+	}
+	return [];
 }
 
 async function describeResources(resources: BuilderResource[]) {
@@ -652,11 +816,14 @@ function scheduleDate(trigger: DraftTrigger, now: Date): Date | null {
 }
 
 function artifactFiles(input: DraftAgentInput, manifest: object) {
+	const triggerSummary = input.triggers
+		.map((trigger) => `- ${trigger.summary}`)
+		.join("\n");
 	return [
 		{
 			path: "agent/README.md" as const,
 			language: ARTIFACT_LANGUAGES["agent/README.md"],
-			content: `# ${input.name}\n\n${input.description}\n\n## Trigger\n\n${input.trigger.summary}\n\n## Access\n\n${input.access.map((item) => `- ${item}`).join("\n") || "- CRM data in the approved scope"}\n`,
+			content: `# ${input.name}\n\n${input.description}\n\n## Triggers\n\n${triggerSummary}\n\n## Access\n\n${input.access.map((item) => `- ${item}`).join("\n") || "- CRM data in the approved scope"}\n`,
 		},
 		{
 			path: "agent/instructions.md" as const,

@@ -179,7 +179,7 @@ export class ConversationsService {
 			? { contains: search, mode: "insensitive" as const }
 			: undefined;
 
-		const [companies, contacts, deals] = await Promise.all([
+		const [companies, contacts, deals, slackAccount] = await Promise.all([
 			this.db.company.findMany({
 				where: contains ? { name: contains } : undefined,
 				orderBy: { lastActivityAt: { sort: "desc", nulls: "last" } },
@@ -217,9 +217,24 @@ export class ConversationsService {
 					company: { select: { name: true, logoUrl: true } },
 				},
 			}),
+			this.db.account.findFirst({
+				where: { providerId: "slack", accessToken: { not: null } },
+				select: { id: true },
+			}),
 		]);
 
 		return [
+			...(slackAccount && (!search || "slack".includes(search.toLowerCase()))
+				? [
+						{
+							kind: "integration" as const,
+							id: "slack:workspace",
+							label: "Slack",
+							detail: "Connected workspace",
+							imageUrl: null,
+						},
+					]
+				: []),
 			...companies.map((company) => ({
 				kind: "company" as const,
 				id: company.id,
@@ -252,6 +267,7 @@ export class ConversationsService {
 				id: true,
 				sessionId: true,
 				continuationToken: true,
+				pendingInputRequest: true,
 				streamIndex: true,
 				title: true,
 				messageCount: true,
@@ -354,8 +370,11 @@ export class ConversationsService {
 			throw new NotFoundException(`No builder conversation with id ${id}.`);
 		}
 
+		const { pendingInputRequest, ...conversation } = row;
+
 		return {
-			...row,
+			...conversation,
+			pendingQuestion: pendingBuilderQuestionOf(pendingInputRequest),
 			lastMessageAt: row.lastMessageAt.toISOString(),
 			lastAssistantAt: row.lastAssistantAt?.toISOString() ?? null,
 			lastReadAt: row.lastReadAt?.toISOString() ?? null,
@@ -511,7 +530,12 @@ export class ConversationsService {
 
 		const conversation = await this.db.agentConversation.findFirst({
 			where: { id: input.id, userId, kind: "BUILDER" },
-			select: { id: true, sessionId: true, continuationToken: true },
+			select: {
+				id: true,
+				sessionId: true,
+				continuationToken: true,
+				pendingInputRequest: true,
+			},
 		});
 
 		if (!conversation) {
@@ -526,42 +550,19 @@ export class ConversationsService {
 			);
 		}
 
-		const boundary = await this.db.agentEvent.findFirst({
-			where: {
-				sessionId: conversation.sessionId,
-				type: {
-					in: [
-						"input.requested",
-						"message.received",
-						"turn.cancelled",
-						"session.completed",
-						"session.failed",
-					],
-				},
-			},
-			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
-			select: { type: true, data: true },
-		});
-
-		if (boundary?.type !== "input.requested") {
+		const question = pendingBuilderQuestionOf(conversation.pendingInputRequest);
+		if (!question) {
 			throw new BadRequestException(
 				"The agent is no longer waiting for that answer.",
 			);
 		}
-
-		const requests = arrayOf(recordOf(boundary.data).requests).map(recordOf);
-		const question = requests.find(
-			(request) =>
-				request.kind === "question" && request.requestId === input.requestId,
-		);
-
-		if (!question) {
+		if (question.requestId !== input.requestId) {
 			throw new BadRequestException(
 				"That follow-up question is no longer active.",
 			);
 		}
 
-		const options = arrayOf(question.options).map(recordOf);
+		const options = question.options;
 		const selected = input.optionId
 			? options.find((option) => option.id === input.optionId)
 			: null;
@@ -572,10 +573,7 @@ export class ConversationsService {
 			);
 		}
 
-		const acceptsText =
-			question.allowFreeform === true ||
-			question.display === "text" ||
-			options.length === 0;
+		const acceptsText = question.allowFreeform || question.display === "text";
 		if (input.text && !acceptsText) {
 			throw new BadRequestException(
 				"Choose one of the available answers for this question.",
@@ -589,6 +587,9 @@ export class ConversationsService {
 
 		const displayText =
 			typeof selected?.label === "string" ? selected.label : answer;
+		const inputResponse = input.optionId
+			? { requestId: input.requestId, optionId: input.optionId }
+			: { requestId: input.requestId, text: input.text };
 		try {
 			const submission = await this.db.$transaction(async (tx) => {
 				const created = await tx.agentConversationSubmission.create({
@@ -597,12 +598,12 @@ export class ConversationsService {
 						submittedById: userId,
 						clientRequestId: input.clientRequestId,
 						inputRequestId: input.requestId,
-						commandType: "CHAT",
+						commandType: "CREATE_AGENT",
 						message: {
 							text: displayText,
 							resources: [],
 							attachments: [],
-							inputResponse: { requestId: input.requestId, answer },
+							inputResponse,
 						},
 					},
 					select: { id: true },
@@ -873,10 +874,22 @@ export class ConversationsService {
 			await this.assertWorkspaceMember(userId);
 		}
 
-		if (!conversation.sessionId) return [];
+		const eventWhere: Prisma.AgentEventWhereInput =
+			conversation.kind === "BUILDER"
+				? {
+						OR: [
+							{ conversationId: input.id },
+							...(conversation.sessionId
+								? [{ sessionId: conversation.sessionId }]
+								: []),
+						],
+					}
+				: conversation.sessionId
+					? { sessionId: conversation.sessionId }
+					: { id: { in: [] } };
 
 		const events = await this.db.agentEvent.findMany({
-			where: { sessionId: conversation.sessionId },
+			where: eventWhere,
 			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
 			take: input.limit,
 			select: { id: true, type: true, data: true, emittedAt: true },
@@ -911,11 +924,16 @@ export class ConversationsService {
 			await tx.agentBuilderArtifact.deleteMany({
 				where: { conversationId: id, versionId: null },
 			});
-			if (conversation.sessionId) {
-				await tx.agentEvent.deleteMany({
-					where: { sessionId: conversation.sessionId },
-				});
-			}
+			await tx.agentEvent.deleteMany({
+				where: {
+					OR: [
+						{ conversationId: id },
+						...(conversation.sessionId
+							? [{ sessionId: conversation.sessionId }]
+							: []),
+					],
+				},
+			});
 
 			await tx.agentConversation.delete({ where: { id } });
 		});
@@ -1106,4 +1124,62 @@ function recordOf(value: unknown): Record<string, unknown> {
 
 function arrayOf(value: unknown): unknown[] {
 	return Array.isArray(value) ? value : [];
+}
+
+function pendingBuilderQuestionOf(value: unknown) {
+	const request = recordOf(value);
+	if (
+		request.kind !== "question" ||
+		typeof request.requestId !== "string" ||
+		!request.requestId ||
+		typeof request.prompt !== "string" ||
+		!request.prompt
+	) {
+		return null;
+	}
+
+	const display = ["confirmation", "select", "text"].includes(
+		String(request.display),
+	)
+		? (request.display as "confirmation" | "select" | "text")
+		: undefined;
+	const options = arrayOf(request.options).flatMap((value) => {
+		const option = recordOf(value);
+		if (
+			typeof option.id !== "string" ||
+			!option.id ||
+			typeof option.label !== "string" ||
+			!option.label
+		) {
+			return [];
+		}
+		const style = ["danger", "default", "primary"].includes(
+			String(option.style),
+		)
+			? (option.style as "danger" | "default" | "primary")
+			: undefined;
+
+		return [
+			{
+				id: option.id,
+				label: option.label,
+				...(typeof option.description === "string"
+					? { description: option.description }
+					: {}),
+				...(style ? { style } : {}),
+			},
+		];
+	});
+
+	return {
+		kind: "question" as const,
+		requestId: request.requestId,
+		prompt: request.prompt,
+		...(display ? { display } : {}),
+		options,
+		allowFreeform:
+			request.allowFreeform === true ||
+			display === "text" ||
+			options.length === 0,
+	};
 }

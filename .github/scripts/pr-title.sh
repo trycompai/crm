@@ -15,6 +15,59 @@ check() {
 	return 0
 }
 
+bump_of() {
+	local title=${1-} head type
+	head=${title%%:*}
+	case "$head" in *'!') printf '3'; return ;; esac
+	type=${head%%(*}
+	case "$type" in
+	feat) printf '2' ;;
+	fix | perf | revert) printf '1' ;;
+	*) printf '0' ;;
+	esac
+}
+
+floor_of() {
+	local base=$1 head=$2 subject best=0 bump
+	if git log "$base..$head" --no-merges --format=%B | grep -q '^BREAKING[ -]CHANGE'; then
+		printf '3'
+		return
+	fi
+	while IFS= read -r subject; do
+		bump=$(bump_of "$subject")
+		[ "$bump" -gt "$best" ] && best=$bump
+	done < <(git log "$base..$head" --no-merges --format=%s)
+	printf '%s' "$best"
+}
+
+retype() {
+	local title=$1 want=$2 head scope rest
+	rest=${title#*: }
+	head=${title%%:*}
+	scope=''
+	case "$head" in *'('*')'*) scope=$(printf '%s' "$head" | sed -e 's/^[^(]*(//' -e 's/).*$//') ;; esac
+
+	case "$want" in
+	3) head='feat!' ;;
+	2) head='feat' ;;
+	*) printf '%s' "$title"; return ;;
+	esac
+
+	if [ -n "$scope" ]; then
+		case "$want" in
+		3) printf 'feat(%s)!: %s' "$scope" "$rest" ;;
+		*) printf 'feat(%s): %s' "$scope" "$rest" ;;
+		esac
+	else
+		printf '%s: %s' "$head" "$rest"
+	fi
+}
+
+sufficient() {
+	local base=$1 head=$2 title=$3
+	[ "$(bump_of "$title")" -ge "$(floor_of "$base" "$head")" ]
+}
+
 scope_for() {
 	local files=$1 scopes
 	scopes=$(printf '%s\n' "$files" | sed -n \
@@ -96,6 +149,14 @@ Reply with the title on one line and nothing else." \
 }
 
 generate() {
+	local base=$1 head=$2 branch=${3-} floor
+	floor=$(floor_of "$base" "$head")
+
+	retype "$(propose "$base" "$head" "$branch")" "$floor"
+	printf '\n'
+}
+
+propose() {
 	local base=$1 head=$2 branch=${3-} files scope subject conventional title
 
 	files=$(git diff --name-only "$base..$head")
@@ -137,8 +198,9 @@ generate() {
 case "${1-}" in
 check) check "${2-}" ;;
 generate) generate "${2:?base ref}" "${3:?head ref}" "${4-}" ;;
+sufficient) sufficient "${2:?base ref}" "${3:?head ref}" "${4-}" ;;
 *)
-	echo "usage: pr-title.sh check <title> | pr-title.sh generate <base> <head> [branch]" >&2
+	echo "usage: pr-title.sh check <title> | pr-title.sh generate <base> <head> [branch] | pr-title.sh sufficient <base> <head> <title>" >&2
 	exit 2
 	;;
 esac

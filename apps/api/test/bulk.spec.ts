@@ -11,6 +11,7 @@ import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
 import { OperatingKernelCleanupService } from "../src/operating-kernel/operating-kernel-cleanup.service";
+import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "bulk-spec";
 const domain = `bulk-${suffix}.test`;
@@ -22,13 +23,14 @@ const agent = {
 	contactCreated: async () => undefined,
 	companyCreated: async () => undefined,
 	companyRequested: async () => undefined,
+	withCrmEvents: withDiscardedCrmEvents,
 } as unknown as AgentTriggerService;
 
 const stamp = new ActivityStampService(db);
 const queue = new AgentQueueService(db);
 const conversion = new ConversionService(db);
-const directory = new CompanyDirectoryService(db, agent);
 const cleanup = new OperatingKernelCleanupService();
+const directory = new CompanyDirectoryService(agent);
 
 const fields = new FieldsService(db, agent);
 const contacts = new ContactsService(
@@ -50,7 +52,7 @@ const companies = new CompaniesService(
 	fields,
 	cleanup,
 );
-const deals = new DealsService(db, stamp, conversion, fields, cleanup);
+const deals = new DealsService(db, agent, stamp, conversion, fields, cleanup);
 
 let companyId: string;
 
