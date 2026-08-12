@@ -819,3 +819,51 @@ with `class-validator` decorators, and to `docs/environment.md`.
    an account that will not grant the scopes cannot use the CRM anyway. Revisit
    only if someone needs "keep my login, stop reading my mail", which the policy
    currently says is not a state we support.
+
+---
+
+## 16. Status and handoff (Auto-create — phase 4)
+
+### Shipped (phase 4 rules on the existing substrate)
+
+Phase **4** reuses the Gmail and Calendar sync path. Nest matches and creates
+rows only. Intelligence still lives in `apps/agent` via `company.created` /
+`contact.created` tasks. No generic agent-copy and no auto-send.
+
+| Concern | Where |
+| --- | --- |
+| Two-way Gmail gate | `ThreadWriterService.store` — `allowCreate: row.autoCreate && repliedTo` |
+| Calendar gate | `CalendarSyncService.apply` — `allowCreate: row.autoCreate && !declinedByUs` |
+| Create + provenance | `MailboxMatchService` stamps `RecordSource.EMAIL` / `CALENDAR` on company and contact |
+| Defaults | `GoogleConnectionService.onConnected` — calendar `autoCreate: true`, gmail `false` |
+| Toggles | `google.setAutoCreate` / settings connection card |
+| Undo | companies/contacts `source` filter + `bulkDelete`; `google.suppressDomain` (+ optional purge) |
+| Noise filters | free hosts, no-reply local parts, `SuppressedDomain`, own Workspace domain |
+| Acceptance tests | `apps/api/test/mailbox-auto-create.spec.ts` |
+
+Rules locked by tests:
+
+- Inbound-only (newsletter) never creates, even when Gmail auto-create is on.
+- Rep-sent mail with auto-create on creates company + contact with `source = EMAIL`.
+- Auto-create off: unknown domains create nothing; known companies still attach.
+- Calendar allowCreate stamps `source = CALENDAR`; declined-by-us does not create.
+- Free hosts, no-reply, and suppressed domains create nothing.
+
+### Ops note (not a code gate)
+
+Plan §12 still prefers a week of real-mailbox soak before flipping Gmail
+auto-create on by default. The product default stays **calendar on, gmail off**.
+
+### Out of scope here
+
+- Phase 5 Pub/Sub real-time (`users.watch`).
+- Sending mail from the CRM.
+- Lifecycle specialist agents (qualify/engage) — separate Deploy-gated work.
+- Changing the Gmail default to on.
+
+### Done when (this lane)
+
+A meeting with an unknown work domain creates a company and contact tagged
+`CALENDAR`. A newsletter creates nothing. Gmail creates only on two-way
+engagement when the toggle is on. Provenance filters and suppress-domain undo
+remain available. The suite in `mailbox-auto-create.spec.ts` is green.
