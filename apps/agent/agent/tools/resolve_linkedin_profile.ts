@@ -1,33 +1,30 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { enabled, unavailable } from "../lib/capabilities";
+import { CONTEXT_DEV, enabled, unavailable } from "../lib/capabilities";
 import { spend } from "../lib/focus";
-import { searchTerms } from "../lib/names";
-import { findProfileUrls } from "../lib/perplexity";
+import { findLinkedInCandidates } from "../lib/linkedin-candidates";
 
 export default defineTool({
 	description:
-		"Find candidate LinkedIn profile slugs for a work email address. Returns CANDIDATES ONLY — you must verify each with get_linkedin_profile before believing any of them.",
+		"Find candidate LinkedIn profile slugs for a work email via Context web search (site:linkedin.com/in). Returns CANDIDATES ONLY — never a match. Verify each with get_linkedin_profile. LinkDAPI is not used here; it enriches a known slug only.",
 	inputSchema: z.object({
 		email: z.string().describe("The contact's work email address."),
 		companyName: z.string().describe("The company the CRM has them at."),
 	}),
 	async execute({ email, companyName }) {
-		if (!(await enabled("PERPLEXITY_API_KEY"))) {
-			return { candidateSlugs: [], ...unavailable("PERPLEXITY_API_KEY") };
+		if (!(await enabled(CONTEXT_DEV))) {
+			return { candidateSlugs: [], ...unavailable(CONTEXT_DEV) };
 		}
 
 		const charge = spend();
 		if (!charge.ok) return { candidateSlugs: [], note: charge.reason };
 
-		const local = email.split("@")[0] ?? "";
-		const terms = searchTerms(local);
-		const slugs = await findProfileUrls(terms, companyName);
+		const found = await findLinkedInCandidates(email, companyName);
 
 		return {
-			searchedFor: terms,
-			candidateSlugs: slugs.slice(0, 5),
-			note: "Unverified. Each slug must be checked with get_linkedin_profile.",
+			searchedFor: found.searchedFor,
+			candidateSlugs: found.candidateSlugs,
+			note: found.note,
 		};
 	},
 });

@@ -2,13 +2,17 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { enabled, unavailable } from "../lib/capabilities";
 import { spend } from "../lib/focus";
+import {
+	identityChecks,
+	identityEvidence,
+	identityNextStep,
+} from "../lib/identity-verdict";
 import { getExperience, getProfile } from "../lib/linkdapi";
-import { looksLikeSameCompany, nameMatchesLocalPart } from "../lib/names";
 import { storePortrait } from "../lib/portrait";
 
 export default defineTool({
 	description:
-		"Read a LinkedIn profile by slug and check whether it is really the person behind an email address. Returns the profile plus an explicit verdict.",
+		"Read a LinkedIn profile by slug (LinkDAPI enricher) and check whether it is really the person behind an email address. Returns the profile, a code verdict, and priced evidence. Do not invent evidence kinds — use the evidence array as returned.",
 	inputSchema: z.object({
 		slug: z.string().describe("The linkedin.com/in/<slug> handle."),
 		email: z.string().describe("The address we are trying to identify."),
@@ -48,20 +52,24 @@ export default defineTool({
 		}
 
 		const profile = result.data;
-		const local = email.split("@")[0] ?? "";
-
-		const employerMatches = profile.positions.some((position) =>
-			looksLikeSameCompany(position.name, companyName, companyDomain),
+		const verdict = identityChecks(
+			profile,
+			email,
+			companyName,
+			companyDomain,
 		);
-		const nameMatches = nameMatchesLocalPart(profile, local);
+		const evidence = identityEvidence(
+			profile,
+			verdict,
+			email,
+			companyName,
+		);
 
 		const history =
 			includeHistory && profile.urn ? await getExperience(profile.urn) : null;
 
-		const isSamePerson = employerMatches && nameMatches;
-
 		const portrait =
-			contactId && isSamePerson
+			contactId && verdict.isSamePerson
 				? await storePortrait({
 						contactId,
 						sourceUrl: profile.photoUrl,
@@ -74,17 +82,9 @@ export default defineTool({
 			profile,
 			experience: history?.ok ? history.data : null,
 			photo: portrait ?? undefined,
-			verdict: {
-				employerMatches,
-				nameMatches,
-				isSamePerson,
-				confidence:
-					employerMatches && nameMatches
-						? ("high" as const)
-						: employerMatches || nameMatches
-							? ("medium" as const)
-							: ("low" as const),
-			},
+			verdict,
+			evidence,
+			next: identityNextStep(verdict),
 		};
 	},
 });

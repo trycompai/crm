@@ -111,7 +111,7 @@ single place that knows what is set.
 
 | Variable | What it adds |
 | --- | --- |
-| `PERPLEXITY_API_KEY` | Open-web research with citations; finds a LinkedIn slug |
+| `PERPLEXITY_API_KEY` | Open-web research with citations (not identity slug search) |
 | `RAPIDAPI_KEY` | LinkedIn profiles via LinkDAPI |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |

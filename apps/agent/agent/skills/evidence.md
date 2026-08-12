@@ -52,12 +52,21 @@ arithmetic this system exists to avoid.
 
 ## What happens next, so you can stop guessing about it
 
-- Primary source and a high score → **written to the record.**
-- Otherwise → **stored as a suggestion** under the empty field, for a rep.
-- Weak → kept but never shown.
-- Nothing → not stored.
+The write path is `record_fact` / `identify_contact`. It scores evidence, then
+applies `fillsBlank` — you do not choose the outcome.
 
-A suggestion is a good outcome. It is often the *correct* outcome: four Marchettis
-work at Fernhill and a human settles that in three seconds. Do not go looking for
+- Below the floor (no band) → **not stored.** A miss stays a miss.
+- Clears the floor and the field is blank (or a derived placeholder name) →
+  **written**, any band that cleared the floor. Approving a sourced guess into
+  an empty field is free for the rep; the system does that write.
+- Clears the floor but a human or prior value already fills the field, and the
+  band is not VERIFIED → **proposal** for a rep. Only VERIFIED replaces a filled
+  field.
+- A human-typed value always wins; dismissed values are never re-offered.
+
+`employer-only` alone is deliberately below the floor. That is how a colleague
+at the same company is kept off the record.
+
+A proposal is a good outcome when the field already has a value. Do not hunt for
 extra evidence to push a claim over a line — that is how a wrong answer gets
 dressed up as a right one.
