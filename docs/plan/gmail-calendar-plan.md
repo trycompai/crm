@@ -819,3 +819,65 @@ with `class-validator` decorators, and to `docs/environment.md`.
    an account that will not grant the scopes cannot use the CRM anyway. Revisit
    only if someone needs "keep my login, stop reading my mail", which the policy
    currently says is not a state we support.
+
+---
+
+## 16. Status and handoff (Gmail threads on timeline)
+
+### Shipped (phases 0–3)
+
+Phases **0–3** are in the tree. Calendar substrate was already present; this
+lane locks **Gmail threads on the record timeline** without auto-create.
+
+| Concern | Where |
+| --- | --- |
+| Scopes + offline access | `packages/auth/src/scopes.ts`, `packages/auth/src/auth.ts` |
+| App shell gate | `apps/app/lib/session.ts` → `requireMailboxAccess()`, `/grant-access` |
+| `EmailThread` / `EmailMessage` + `Activity.emailThreadId` | `packages/db/prisma/schema.prisma` |
+| Gmail history client + MIME parse | `apps/api/src/google/gmail.client.ts`, `gmail-mime.ts` |
+| Forward-only sync (`historyId`) | `apps/api/src/google/gmail-sync.service.ts` |
+| Thread write + EMAIL activity projection | `apps/api/src/mailbox/thread-writer.service.ts` |
+| Match (contact → company; create only if allowed) | `apps/api/src/mailbox/mailbox-match.service.ts` |
+| Expand path with full bodies | `google.thread` → `ConversationService.thread` |
+| Timeline filter `email` + accordion UI | `activities.contracts.ts`, `timeline-search-params.ts`, `email-thread-entry.tsx` |
+| Acceptance tests | `apps/api/test/gmail-sync.spec.ts` (plus `mailbox-thread-writer`, `mailbox-message-text`) |
+
+Rules already enforced for Gmail:
+
+- Identity is RFC 822 `Message-ID` (normalised) for messages and the root of
+  `References` / `In-Reply-To` / own id for threads — not Gmail `threadId`.
+- Cross-mailbox copies of one conversation produce one `EmailThread` and one
+  projected `Activity`.
+- Only threads that resolve to a tracked company/contact are stored when
+  `autoCreate` is off (this lane leaves Gmail auto-create off).
+- Timeline list payloads carry a snippet on `Activity.body` and thread summary
+  fields only. Full message bodies load on expand via `google.thread`.
+- First sight of a mailbox stores the current `historyId` and imports nothing.
+- History 404 clears the cursor and resumes from now (no backfill).
+
+### Remaining handoff — Auto-create (phase 4)
+
+Do **not** flip Gmail `autoCreate` on by default in this lane.
+
+1. **Defaults** — calendar may stay true on connect; gmail stays false
+   (`GoogleConnectionService.onConnected`) until matching is observed on real
+   mailboxes.
+2. **Rules** — two-way engagement for Gmail (rep must have sent); calendar
+   external attendee + not declined.
+3. **Undo surfaces** — `RecordSource` filter, bulk delete, `SuppressedDomain` /
+   `google.suppressDomain`.
+4. **Real-mailbox soak** — run phase 3 on production traffic for a week before
+   tightening auto-create defaults for email.
+
+### Out of scope here
+
+- Phase 5 Pub/Sub real-time (`users.watch`).
+- Sending mail from the CRM.
+- Meeting-prep agent work (`crm-meeting-prep`).
+- Auto-create product closure (phase 4).
+
+### Done when (this lane)
+
+A thread with an existing company is projected as one `EMAIL` activity, expands
+to readable messages, dedupes across mailboxes on `rfcMessageId`, and the
+acceptance suite in `gmail-sync.spec.ts` is green. Auto-create stays off.
