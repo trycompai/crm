@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.13.0](https://github.com/trycompai/crm/compare/v1.12.0...v1.13.0) (2026-08-12)
+
+
+### Features
+
+* **app:** search company dropdowns instead of scrolling them ([#125](https://github.com/trycompai/crm/issues/125)) ([3b558a8](https://github.com/trycompai/crm/commit/3b558a82155d556aa4ff2860121ddf314e2ae88c))
+
+
+### Fixes
+
+* **agent:** let the assistant chat read the deal list it is told to use (CMP-77) ([#139](https://github.com/trycompai/crm/issues/139)) ([e86a0fb](https://github.com/trycompai/crm/commit/e86a0fbe4076ec3ead43f9ab24c3ac805070819a))
+* **app:** show select field values in record tables ([#133](https://github.com/trycompai/crm/issues/133)) ([1d89b43](https://github.com/trycompai/crm/commit/1d89b43e2d0ad376970be09f9446f1903203ec09))
+
 ## [1.12.0](https://github.com/trycompai/crm/compare/v1.11.0...v1.12.0) (2026-08-11)
 
 
