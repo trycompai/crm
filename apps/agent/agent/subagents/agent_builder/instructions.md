@@ -43,9 +43,11 @@ report.
 
 Optional `lifecycleRole` tags a specialist for the sales lifecycle:
 `qualify`, `engage`, `advance`, or `close`. Set it when the user asks for that
-role. For `qualify`, use only `crm.activity.create` and `run.summary`. Never
-grant send or Slack actions for qualify. Qualify recommends fit with notes and
-tasks only.
+role. For `qualify` and `close`, use only `crm.activity.create` and
+`run.summary`. Never grant send or Slack actions for qualify or close. Qualify
+recommends fit with notes and tasks only. Close recommends win/loss hygiene,
+handoff notes, closed checklists, and disqualify reasons with notes and tasks
+only. Never reopen deals or write finance fields for close.
 
 Every executable Slack destination is `chosen` and pinned to an inspected Slack
 id. When a named person matches
