@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { builderTaskMarkdown } from "../agent/instructions/task";
 import { AGENT_ACTION_EXECUTORS } from "../agent/lib/agent-actions";
 import { recordBuilderDelegation } from "../agent/lib/builder-delegation";
@@ -35,6 +35,16 @@ import {
 	finishBuilderDraftSave,
 	recordBuilderActions,
 } from "../agent/subagents/agent_builder/lib/execution-state";
+
+const originalProviderPause = process.env.PROVIDER_MUTATIONS_PAUSED;
+
+afterEach(() => {
+	if (originalProviderPause === undefined) {
+		delete process.env.PROVIDER_MUTATIONS_PAUSED;
+	} else {
+		process.env.PROVIDER_MUTATIONS_PAUSED = originalProviderPause;
+	}
+});
 
 const context = (purpose?: string, commandType?: string) => ({
 	session: {
@@ -249,6 +259,7 @@ describe("deployed Slack actions", () => {
 	});
 
 	it("posts with a stable Slack replay id", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "false";
 		const requests: Array<{ url: string; body: unknown }> = [];
 		const order: string[] = [];
 		const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -298,6 +309,7 @@ describe("deployed Slack actions", () => {
 	});
 
 	it("surfaces an actionable missing-channel error", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "false";
 		const fetcher = (async () =>
 			Response.json({ ok: false, error: "not_in_channel" })) as typeof fetch;
 
@@ -310,6 +322,56 @@ describe("deployed Slack actions", () => {
 				{ fetcher },
 			),
 		).rejects.toThrow("Invite the app");
+	});
+
+	it("stops every Slack destination before a provider request", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "true";
+		let requests = 0;
+		const fetcher = (async () => {
+			requests += 1;
+			return Response.json({ ok: true });
+		}) as typeof fetch;
+
+		for (const destination of [
+			{ kind: "channel", id: "C123", label: "#alerts" },
+			{ kind: "user", id: "U123", label: "@grim" },
+		] as const) {
+			await expect(
+				sendSlackMessage(
+					"xoxb-test",
+					destination,
+					"Do not send this.",
+					"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
+					{ fetcher },
+				),
+			).rejects.toThrow("Provider mutations are paused.");
+		}
+		expect(requests).toBe(0);
+	});
+
+	it("rechecks the pause after resolving a direct-message channel", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "false";
+		const requests: string[] = [];
+		const fetcher = (async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			return Response.json({ ok: true, channel: { id: "D123" } });
+		}) as typeof fetch;
+
+		await expect(
+			sendSlackMessage(
+				"xoxb-test",
+				{ kind: "user", id: "U123", label: "@grim" },
+				"Do not send this.",
+				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
+				{
+					fetcher,
+					beforePost: async () => {
+						process.env.PROVIDER_MUTATIONS_PAUSED = "true";
+					},
+				},
+			),
+		).rejects.toThrow("Provider mutations are paused.");
+		expect(requests).toEqual(["https://slack.com/api/conversations.open"]);
 	});
 });
 

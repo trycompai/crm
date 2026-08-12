@@ -21,6 +21,7 @@ const keys = [
 	"PERPLEXITY_API_KEY",
 	"VERCEL_ENV",
 	"LODE_AGENT_OPENAI_MODEL",
+	"NODE_ENV",
 	"OPENAI_API_KEY",
 ] as const;
 const originalEnv = new Map(keys.map((key) => [key, process.env[key]]));
@@ -70,6 +71,16 @@ describe("model spend gate", () => {
 		expect(modelSpendPaused()).toBe(false);
 		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
 		process.env.OPENAI_API_KEY = "configured";
+		expect(directOpenAiAllowed()).toBe(false);
+	});
+
+	it("never selects direct OpenAI in self-hosted production", () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		delete process.env.VERCEL_ENV;
+		process.env.NODE_ENV = "production";
+		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
+		process.env.OPENAI_API_KEY = "configured";
+
 		expect(directOpenAiAllowed()).toBe(false);
 	});
 

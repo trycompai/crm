@@ -107,6 +107,26 @@ describe("joining a Slack channel", () => {
 		expect(requested).toEqual([]);
 	});
 
+	it("rechecks the pause immediately before joining", async () => {
+		replies((url) => {
+			if (url.includes("conversations.info")) {
+				process.env.PROVIDER_MUTATIONS_PAUSED = "true";
+				return {
+					ok: true,
+					channel: { is_private: false, is_member: false },
+				};
+			}
+			return { ok: true };
+		});
+
+		await expect(joinSlackChannel(CHANNEL_ID)).rejects.toThrow(
+			"Provider mutations are paused.",
+		);
+		expect(requested).toEqual([
+			"https://slack.com/api/conversations.info?channel=CJOINSPEC1",
+		]);
+	});
+
 	it("does not claim membership of an archived channel", async () => {
 		answers("is_archived");
 

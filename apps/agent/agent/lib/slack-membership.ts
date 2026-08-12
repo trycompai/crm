@@ -1,7 +1,10 @@
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
 import { z } from "zod";
-import { providerMutationsPaused } from "./autonomy";
+import {
+	assertProviderMutationsAllowed,
+	providerMutationsPaused,
+} from "./autonomy";
 import { SLACK } from "./slack-config";
 import { slackAccessToken, slackUserToken } from "./slack-connection";
 import { requestSlackInventorySync } from "./slack-people";
@@ -31,6 +34,7 @@ async function call(
 	body: Record<string, string>,
 	attempt = 1,
 ): Promise<{ ok: boolean; error?: string }> {
+	assertProviderMutationsAllowed();
 	const response = await fetch(`https://slack.com/api/${method}`, {
 		method: "POST",
 		headers: {
@@ -251,6 +255,7 @@ export async function createSlackChannel(
 		};
 	}
 
+	assertProviderMutationsAllowed();
 	const response = await fetch("https://slack.com/api/conversations.create", {
 		method: "POST",
 		headers: {

@@ -6,6 +6,12 @@ export function providerMutationsPaused(): boolean {
 	return !isExplicitlyEnabled(process.env.PROVIDER_MUTATIONS_PAUSED);
 }
 
+export function assertProviderMutationsAllowed(): void {
+	if (providerMutationsPaused()) {
+		throw new Error("Provider mutations are paused.");
+	}
+}
+
 export function outreachSendsPaused(): boolean {
 	return (
 		providerMutationsPaused() ||
@@ -31,6 +37,7 @@ export function directOpenAiAllowed(): boolean {
 	return Boolean(
 		!modelSpendPaused() &&
 			process.env.VERCEL_ENV !== "production" &&
+			process.env.NODE_ENV !== "production" &&
 			process.env.LODE_AGENT_OPENAI_MODEL?.trim() &&
 			process.env.OPENAI_API_KEY?.trim(),
 	);

@@ -4,6 +4,7 @@ import { SlackChannelsService } from "../src/slack/slack-channels.service";
 const service = new SlackChannelsService();
 const realFetch = globalThis.fetch;
 const realSecret = process.env.AGENT_BRIDGE_SECRET;
+const realProviderPaused = process.env.PROVIDER_MUTATIONS_PAUSED;
 
 function agentAnswers(status: number, body: string | null) {
 	globalThis.fetch = (async (_url: unknown, _init?: RequestInit) =>
@@ -15,6 +16,7 @@ function agentAnswers(status: number, body: string | null) {
 
 beforeEach(() => {
 	process.env.AGENT_BRIDGE_SECRET = "slack-channel-test";
+	process.env.PROVIDER_MUTATIONS_PAUSED = "false";
 });
 
 afterEach(() => {
@@ -23,6 +25,11 @@ afterEach(() => {
 		delete process.env.AGENT_BRIDGE_SECRET;
 	} else {
 		process.env.AGENT_BRIDGE_SECRET = realSecret;
+	}
+	if (realProviderPaused === undefined) {
+		delete process.env.PROVIDER_MUTATIONS_PAUSED;
+	} else {
+		process.env.PROVIDER_MUTATIONS_PAUSED = realProviderPaused;
 	}
 });
 
@@ -65,5 +72,19 @@ describe("creating a Slack channel", () => {
 		await expect(service.create("deals", false)).rejects.toThrow(
 			"This install has no AGENT_BRIDGE_SECRET, so nothing can reach Slack.",
 		);
+	});
+
+	it("stops before the agent while provider mutations are paused", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "true";
+		let requests = 0;
+		globalThis.fetch = (async (_url: unknown, _init?: RequestInit) => {
+			requests += 1;
+			return Response.json({ channel: { id: "C1", name: "deals" } });
+		}) as typeof fetch;
+
+		await expect(service.create("deals", false)).rejects.toThrow(
+			"Provider mutations are paused, so the channel was not created.",
+		);
+		expect(requests).toBe(0);
 	});
 });

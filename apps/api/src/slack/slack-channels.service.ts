@@ -11,11 +11,22 @@ const CREATE_TIMEOUT_MS = 20_000;
 
 const SERVER_ERROR_STATUS = 500;
 
+function providerMutationsPaused(): boolean {
+	return (
+		process.env.PROVIDER_MUTATIONS_PAUSED?.trim().toLowerCase() !== "false"
+	);
+}
+
 @Injectable()
 export class SlackChannelsService {
 	private readonly logger = new Logger(SlackChannelsService.name);
 
 	async create(name: string, isPrivate: boolean) {
+		if (providerMutationsPaused()) {
+			throw new ServiceUnavailableException(
+				"Provider mutations are paused, so the channel was not created.",
+			);
+		}
 		const agent = bridge();
 
 		if (!agent) {

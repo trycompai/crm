@@ -9,6 +9,7 @@ import {
 	isAgentActionType,
 } from "./agent-actions";
 import { parseAgentManifest } from "./agent-manifest";
+import { assertProviderMutationsAllowed } from "./autonomy";
 import { readCrmHistory } from "./crm";
 import { DISPATCH } from "./dispatch-config";
 import { searchCrm } from "./lookup";
@@ -357,6 +358,7 @@ export async function postRunSlackMessage(
 			replayed: true,
 		};
 	}
+	assertProviderMutationsAllowed();
 	if (run.status !== "RUNNING") {
 		throw new Error("This agent run is not active.");
 	}
@@ -555,6 +557,7 @@ export async function sendSlackMessage(
 	const { fetcher = fetch, abortSignal, beforePost } = options;
 	let channel = destination.id;
 	if (destination.kind === "user") {
+		assertProviderMutationsAllowed();
 		const opened = await slackApiRequest(
 			fetcher,
 			accessToken,
@@ -569,6 +572,7 @@ export async function sendSlackMessage(
 		channel = conversation.id;
 	}
 	await beforePost?.();
+	assertProviderMutationsAllowed();
 
 	const data = await slackApiRequest(
 		fetcher,
