@@ -14,6 +14,7 @@ import {
 	normalizeHost,
 	normalizePath,
 	originAllowed,
+	rateWindowKey,
 	stripQuery,
 	type TrackingConfig,
 	trackingReady,
@@ -262,6 +263,30 @@ describe("a stored referrer", () => {
 		for (const value of ["", "  ", null, undefined, "?token=abc"]) {
 			expect(stripQuery(value)).toBeNull();
 		}
+	});
+
+	test("drops credentials, queries, and fragments before persistence", () => {
+		expect(
+			stripQuery(
+				"https://attacker:secret@referrer.example/reset?token=secret#fragment",
+			),
+		).toBe("https://referrer.example/reset");
+		expect(
+			stripQuery(
+				"https://utm.example/pricing?utm_source=ad&utm_campaign=launch",
+			),
+		).toBe("https://utm.example/pricing");
+		expect(stripQuery("mailto:person@example.com?subject=secret")).toBeNull();
+	});
+});
+
+describe("the collector rate window", () => {
+	test("isolates each site inside the same minute", () => {
+		const at = new Date("2026-08-12T12:00:00.000Z");
+
+		expect(rateWindowKey("cmp_11111111", at)).not.toBe(
+			rateWindowKey("cmp_22222222", at),
+		);
 	});
 });
 

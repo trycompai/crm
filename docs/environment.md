@@ -119,6 +119,15 @@ and lists every variable the API reads and nothing else.
 
 ## Optional: what the agent can do
 
+## Gateway spend and lead discovery units
+
+`leadDiscoveryInput.budgetUsd` uses USD approval-envelope units. Its maximum value is
+`250`. It creates a paused review task with `providerExecutionDisabled: true` and
+`costUsd: 0`. It cannot authorize Gateway provider spend.
+
+The Gateway provider credential has a hard USD 50 monthly cap. Keep this cap in the
+Gateway provider. The lead discovery approval envelope cannot change that cap.
+
 Every outside source is optional and the agent runs with none. A missing key removes a
 place to look; **never an error, never throws**. `agent/lib/capabilities.ts` is the
 single place that knows what is set.

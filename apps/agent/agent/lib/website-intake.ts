@@ -7,13 +7,13 @@ import {
 import { scheduleTask } from "./tasks";
 
 const PAGE_SIZE = 200;
-const OVERLAP_MS = 5 * 60_000;
 const DEFAULT_SUPABASE_URL = "https://ctybpybafpzpxmdxuroo.supabase.co";
 const DEFAULT_TABLE = "marketing_leads";
 
 const leadSchema = z.object({
 	id: z.string().min(1),
 	created_at: z.string().datetime({ offset: true }),
+	updated_at: z.string().datetime({ offset: true }).nullable().optional(),
 	name: z.string().nullable().optional(),
 	email: z.string().email(),
 	company: z.string().nullable().optional(),
@@ -62,25 +62,28 @@ export async function runWebsiteIntakeSync(
 		throw new Error("LODE_WEBSITE_LEADS_TABLE is not a valid table name.");
 	}
 
-	const latest = await database.websiteEnquiry.findFirst({
-		orderBy: { createdAtSource: "desc" },
-		select: { createdAtSource: true },
+	const cursor = await database.websiteEnquiry.findFirst({
+		orderBy: [{ updatedAtSource: "desc" }, { externalId: "desc" }],
+		select: { updatedAtSource: true, externalId: true },
 	});
-	const after = latest
-		? new Date(latest.createdAtSource.getTime() - OVERLAP_MS)
-		: null;
 	const rows: WebsiteLead[] = [];
 
 	for (let offset = 0; ; offset += PAGE_SIZE) {
 		const url = new URL(`/rest/v1/${table}`, base);
 		url.searchParams.set(
 			"select",
-			"id,created_at,name,email,company,country,biggest_pain,source,source_path,utm,qa_tag,notes",
+			"id,created_at,updated_at,name,email,company,country,biggest_pain,source,source_path,utm,qa_tag,notes",
 		);
-		url.searchParams.set("order", "created_at.asc");
+		url.searchParams.set("order", "updated_at.asc,id.asc");
 		url.searchParams.set("limit", String(PAGE_SIZE));
 		url.searchParams.set("offset", String(offset));
-		if (after) url.searchParams.set("created_at", `gte.${after.toISOString()}`);
+		if (cursor) {
+			const updatedAt = cursor.updatedAtSource.toISOString();
+			url.searchParams.set(
+				"or",
+				`(updated_at.gt.${updatedAt},and(updated_at.eq.${updatedAt},id.gt.${cursor.externalId}))`,
+			);
+		}
 
 		const response = await request(url, {
 			headers: { apikey: key, authorization: `Bearer ${key}` },
@@ -146,6 +149,7 @@ async function importLead(
 			select: {
 				externalId: true,
 				createdAtSource: true,
+				updatedAtSource: true,
 				name: true,
 				email: true,
 				company: true,
@@ -182,6 +186,7 @@ function websiteEnquiryData(row: WebsiteLead) {
 	return {
 		externalId: row.id,
 		createdAtSource: new Date(row.created_at),
+		updatedAtSource: new Date(row.updated_at ?? row.created_at),
 		name: clean(row.name),
 		email: row.email.trim().toLowerCase(),
 		company: clean(row.company),

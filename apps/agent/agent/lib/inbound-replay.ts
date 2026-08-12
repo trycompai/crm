@@ -179,6 +179,7 @@ function sourceMetadata(
 export function websiteSourceDigest(row: {
 	externalId: string;
 	createdAtSource: Date;
+	updatedAtSource: Date;
 	name: string | null;
 	email: string;
 	company: string | null;
@@ -191,6 +192,7 @@ export function websiteSourceDigest(row: {
 }): string {
 	return digest({
 		createdAtSource: row.createdAtSource.toISOString(),
+		updatedAtSource: row.updatedAtSource.toISOString(),
 		email: clean(row.email),
 		externalId: row.externalId,
 		name: clean(row.name),
@@ -776,6 +778,7 @@ export async function runInboundCandidateReplay(
 			select: {
 				externalId: true,
 				createdAtSource: true,
+				updatedAtSource: true,
 				name: true,
 				email: true,
 				company: true,
@@ -805,7 +808,7 @@ export async function runInboundCandidateReplay(
 				objectType: "website-enquiry",
 				objectId: row.externalId,
 				createdAt: row.createdAtSource,
-				updatedAt: null,
+				updatedAt: row.updatedAtSource,
 				versionDigest: sourceDigest,
 				metadata: {},
 			};

@@ -2077,6 +2077,7 @@ model WebsiteEnquiry {
   id              String   @id @default(cuid())
   externalId      String   @unique
   createdAtSource DateTime
+  updatedAtSource DateTime @default(now())
   name            String?
   email           String
   company         String?
@@ -2103,6 +2104,7 @@ model WebsiteEnquiry {
   @@index([email])
   @@index([candidateId])
   @@index([createdAtSource])
+  @@index([updatedAtSource, externalId])
   @@index([test])
   @@map("websiteEnquiry")
 }

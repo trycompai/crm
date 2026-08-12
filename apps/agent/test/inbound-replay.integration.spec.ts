@@ -96,6 +96,7 @@ beforeAll(async () => {
 		data: {
 			externalId: websiteExternalId,
 			createdAtSource: new Date("2026-08-01T12:00:00.000Z"),
+			updatedAtSource: new Date("2026-08-01T12:00:00.000Z"),
 			name: null,
 			email: externalEmail,
 			company: "Replay Landscapes",
@@ -110,6 +111,7 @@ beforeAll(async () => {
 			data: {
 				externalId,
 				createdAtSource: new Date(`2026-08-01T12:0${index + 1}:00.000Z`),
+				updatedAtSource: new Date(`2026-08-01T12:0${index + 1}:00.000Z`),
 				name: "Internal Website Sender",
 				email: [
 					workspaceMemberEmail,
@@ -228,6 +230,7 @@ describe("inbound replay pure contracts", () => {
 			websiteSourceDigest({
 				externalId: "source",
 				createdAtSource: new Date("2026-01-01T00:00:00.000Z"),
+				updatedAtSource: new Date("2026-01-01T00:00:00.000Z"),
 				name: null,
 				email: "person@example.test",
 				company: "Company",
@@ -242,6 +245,7 @@ describe("inbound replay pure contracts", () => {
 		const baseWebsiteDigest = websiteSourceDigest({
 			externalId: "source",
 			createdAtSource: new Date("2026-01-01T00:00:00.000Z"),
+			updatedAtSource: new Date("2026-01-01T00:00:00.000Z"),
 			name: null,
 			email: "person@example.test",
 			company: "Company",
@@ -256,6 +260,7 @@ describe("inbound replay pure contracts", () => {
 			websiteSourceDigest({
 				externalId: "source",
 				createdAtSource: new Date("2026-01-01T00:00:00.000Z"),
+				updatedAtSource: new Date("2026-01-01T00:00:00.000Z"),
 				name: null,
 				email: "person@example.test",
 				company: "Company",
@@ -403,6 +408,7 @@ describe("persisted inbound replay", () => {
 			websiteSourceDigest({
 				externalId: websiteExternalId,
 				createdAtSource: new Date("2026-08-01T12:00:00.000Z"),
+				updatedAtSource: new Date("2026-08-01T12:00:00.000Z"),
 				name: null,
 				email: externalEmail,
 				company: "Replay Landscapes",

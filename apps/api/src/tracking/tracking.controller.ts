@@ -38,8 +38,6 @@ const MAX_SWEEP_PASSES = 50;
 
 @Controller("api/t")
 export class TrackingController {
-	private readonly logger = new Logger(TrackingController.name);
-
 	constructor(
 		private readonly config: TrackingConfigService,
 		private readonly ingest: TrackingIngestService,
@@ -86,12 +84,7 @@ export class TrackingController {
 				origin: origin ?? null,
 				userAgent: userAgent ?? null,
 			});
-		} catch (error) {
-			this.logger.error(
-				{ message: "Tracking event was not stored" },
-				error instanceof Error ? error.stack : String(error),
-			);
-		}
+		} catch {}
 	}
 }
 

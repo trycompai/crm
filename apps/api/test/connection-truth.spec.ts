@@ -14,6 +14,7 @@ import { SettingsService } from "../src/settings/settings.service";
 
 const suffix = crypto.randomUUID();
 const ownerId = `connection-owner-${suffix}`;
+const adminId = `connection-admin-${suffix}`;
 const memberId = `connection-member-${suffix}`;
 const websiteExternalId = `connection-website-${suffix}`;
 const agentMailInboxId = `connection-agentmail-${suffix}`;
@@ -45,9 +46,12 @@ const agent = {
 	},
 } as unknown as AgentTriggerService;
 const inbound = new InboundService(db, agent);
+const catalog = {
+	find: async () => null,
+} as unknown as ModelCatalogService;
 const settings = new SettingsService(
 	db,
-	{} as ModelCatalogService,
+	catalog,
 	{} as ResearchKeyService,
 	{} as BackfillService,
 );
@@ -84,6 +88,7 @@ beforeAll(async () => {
 	await db.user.createMany({
 		data: [
 			{ id: ownerId, name: "Connection Owner", email: `${ownerId}@test.dev` },
+			{ id: adminId, name: "Connection Admin", email: `${adminId}@test.dev` },
 			{
 				id: memberId,
 				name: "Connection Member",
@@ -93,6 +98,13 @@ beforeAll(async () => {
 	});
 	await db.member.createMany({
 		data: [
+			{
+				id: `connection-admin-member-${suffix}`,
+				organizationId: WORKSPACE_ID,
+				userId: adminId,
+				role: "admin",
+				createdAt: new Date(),
+			},
 			{
 				id: `connection-owner-member-${suffix}`,
 				organizationId: WORKSPACE_ID,
@@ -217,12 +229,28 @@ afterAll(async () => {
 		where: { externalId: websiteExternalId },
 	});
 	await db.member.deleteMany({
-		where: { userId: { in: [ownerId, memberId] } },
+		where: { userId: { in: [ownerId, adminId, memberId] } },
 	});
 	await db.user.deleteMany({ where: { id: { in: [ownerId, memberId] } } });
 });
 
 describe("connection truth", () => {
+	it("limits global settings mutations to owners and admins", async () => {
+		await expect(settings.setAgentModel(memberId, null)).rejects.toMatchObject({
+			status: 403,
+		});
+		await expect(
+			settings.setResearchKey(memberId, "member-key-not-used"),
+		).rejects.toMatchObject({ status: 403 });
+		await expect(settings.setAgentModel(ownerId, null)).resolves.toMatchObject({
+			selectedId: null,
+		});
+		await expect(settings.setAgentModel(adminId, null)).resolves.toMatchObject({
+			selectedId: null,
+		});
+		expect((await settings.aiGatewayStatus()).configured).toBe(false);
+	});
+
 	it("does not turn preserved historical rows into live configured connectors", async () => {
 		clearConnectionEnv();
 

@@ -1,4 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
+import { Logger } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 import { ContextLogger } from "../src/logging/context-logger";
 import {
@@ -171,5 +172,54 @@ describe("RequestLoggerMiddleware", () => {
 
 		expect(requestId).not.toContain("\n");
 		expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+	});
+
+	it("redacts collector request data and mints its request id", () => {
+		const middleware = new RequestLoggerMiddleware();
+		let requestId = "";
+		let finished: (() => void) | undefined;
+		const logs: unknown[] = [];
+		const logger = spyOn(Logger.prototype, "log").mockImplementation(
+			(value) => {
+				logs.push(value);
+			},
+		);
+		const request = {
+			method: "POST",
+			path: "/api/t/e",
+			originalUrl: "/api/t/e?site=cmp_1234abcd&token=secret",
+			ip: "198.51.100.9",
+			body: { siteId: "cmp_1234abcd", token: "secret" },
+			get: (name: string) =>
+				name.toLowerCase() === "user-agent" ? "sensitive-agent" : undefined,
+		} as unknown as Request;
+		const response = {
+			statusCode: 204,
+			setHeader: (_name: string, value: string) => {
+				requestId = value;
+			},
+			on: (_event: string, callback: () => void) => {
+				finished = callback;
+				return response;
+			},
+		} as unknown as Response;
+
+		try {
+			middleware.use(request, response, (() => undefined) as NextFunction);
+			finished?.();
+
+			expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+			expect(requestId).not.toBe("trace-abc.1");
+			expect(logs).toEqual([
+				{
+					message: "Tracking collector request completed",
+					route: "/api/t/e",
+					statusCode: 204,
+					durationMs: expect.any(Number),
+				},
+			]);
+		} finally {
+			logger.mockRestore();
+		}
 	});
 });

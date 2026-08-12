@@ -138,3 +138,167 @@ describe("the loader finds the site id however the page was built", () => {
 		expect(source).toContain("marketing|newsletter|privacy|terms");
 	});
 });
+
+type Listener = {
+	target: "document" | "window";
+	type: string;
+	handler: (event: { target?: unknown }) => void;
+	capture: boolean | undefined;
+};
+
+function trackerRuntime(consent: string | null) {
+	const cookies = new Map<string, string>();
+	const listeners: Listener[] = [];
+	const sent: string[] = [];
+	const originalPush = () => undefined;
+	const originalReplace = () => undefined;
+	const document = {
+		documentElement: {
+			getAttribute: (name: string) =>
+				name === "data-crm-consent" ? consent : null,
+		},
+		visibilityState: "visible",
+		referrer: "",
+		body: {},
+		get cookie() {
+			return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
+		},
+		set cookie(value: string) {
+			const [pair, ...attributes] = value.split(";");
+			const [name, stored = ""] = pair?.trim().split("=") ?? [];
+			if (!name) return;
+			if (attributes.some((attribute) => /max-age=0/i.test(attribute))) {
+				cookies.delete(name);
+				return;
+			}
+			cookies.set(name, stored);
+		},
+		addEventListener: (
+			type: string,
+			handler: Listener["handler"],
+			capture?: boolean,
+		) => listeners.push({ target: "document", type, handler, capture }),
+		removeEventListener: (
+			type: string,
+			handler: Listener["handler"],
+			capture?: boolean,
+		) => {
+			const index = listeners.findIndex(
+				(listener) =>
+					listener.target === "document" &&
+					listener.type === type &&
+					listener.handler === handler &&
+					listener.capture === capture,
+			);
+			if (index >= 0) listeners.splice(index, 1);
+		},
+	};
+	const window = {
+		location: {
+			hostname: "trycomp.ai",
+			protocol: "https:",
+			search: "",
+			hash: "",
+			href: "https://trycomp.ai/",
+			origin: "https://trycomp.ai",
+			pathname: "/",
+		},
+		history: { pushState: originalPush, replaceState: originalReplace },
+		crypto: { randomUUID: () => "12345678-1234-1234-1234-123456789012" },
+		addEventListener: (
+			type: string,
+			handler: Listener["handler"],
+			capture?: boolean,
+		) => listeners.push({ target: "window", type, handler, capture }),
+		removeEventListener: (
+			type: string,
+			handler: Listener["handler"],
+			capture?: boolean,
+		) => {
+			const index = listeners.findIndex(
+				(listener) =>
+					listener.target === "window" &&
+					listener.type === type &&
+					listener.handler === handler &&
+					listener.capture === capture,
+			);
+			if (index >= 0) listeners.splice(index, 1);
+		},
+		requestIdleCallback: (callback: () => void) => {
+			callback();
+			return 1;
+		},
+		cancelIdleCallback: () => undefined,
+	};
+	const navigator = {
+		sendBeacon: (_endpoint: string, body: Blob) => {
+			sent.push(String(body.size));
+			return true;
+		},
+	};
+
+	return {
+		cookies,
+		document,
+		listeners,
+		navigator,
+		originalPush,
+		originalReplace,
+		sent,
+		window,
+	};
+}
+
+function runTracker(runtime: ReturnType<typeof trackerRuntime>) {
+	new Function(
+		"document",
+		"window",
+		"navigator",
+		"Blob",
+		trackerSource(CONFIG, "https://crm.example.com/api/t/e"),
+	)(runtime.document, runtime.window, runtime.navigator, Blob);
+}
+
+describe("the tracker lifecycle", () => {
+	test("requires root consent before it exposes a lifecycle", () => {
+		const runtime = trackerRuntime(null);
+
+		runTracker(runtime);
+
+		expect(runtime.window).not.toHaveProperty("LodeCRMTracker");
+		expect(runtime.cookies.size).toBe(0);
+		expect(runtime.listeners).toHaveLength(0);
+	});
+
+	test("destroys all runtime state and permits a clean restart", () => {
+		const runtime = trackerRuntime("granted");
+
+		runTracker(runtime);
+		const tracker = (
+			runtime.window as {
+				LodeCRMTracker?: { active: boolean; destroy: () => void };
+			}
+		).LodeCRMTracker;
+
+		expect(tracker?.active).toBe(true);
+		expect(runtime.cookies.size).toBeGreaterThan(0);
+		expect(runtime.listeners.length).toBeGreaterThan(0);
+		expect(runtime.window.history.pushState).not.toBe(runtime.originalPush);
+
+		tracker?.destroy();
+
+		expect(tracker?.active).toBe(false);
+		expect(runtime.cookies.size).toBe(0);
+		expect(runtime.listeners).toHaveLength(0);
+		expect(runtime.window.history.pushState).toBe(runtime.originalPush);
+		expect(runtime.window.history.replaceState).toBe(runtime.originalReplace);
+		expect(runtime.sent).toEqual([]);
+
+		runTracker(runtime);
+
+		expect(
+			(runtime.window as { LodeCRMTracker?: { active: boolean } })
+				.LodeCRMTracker?.active,
+		).toBe(true);
+	});
+});

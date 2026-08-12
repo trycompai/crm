@@ -58,8 +58,8 @@ export interface TrackingConfig {
 
 export const LINKER_MAX_AGE_SECONDS = 120;
 
-export function rateWindowKey(at: Date = new Date()): string {
-	return `rate:${Math.floor(at.getTime() / 60_000)}`;
+export function rateWindowKey(siteId: string, at: Date = new Date()): string {
+	return `rate:${siteId}:${Math.floor(at.getTime() / 60_000)}`;
 }
 
 export function contactWindowKey(at: Date = new Date()): string {
@@ -68,7 +68,7 @@ export function contactWindowKey(at: Date = new Date()): string {
 
 export function windowExpiry(key: string, at: Date = new Date()): Date {
 	const span = key.startsWith("rate:") ? 60_000 : 3_600_000;
-	const bucket = Number(key.split(":")[1]);
+	const bucket = Number(key.split(":").at(-1));
 
 	if (!Number.isFinite(bucket)) return new Date(at.getTime() + span * 2);
 
@@ -187,9 +187,18 @@ export function stripQuery(input: string | null | undefined): string | null {
 	const raw = input?.trim();
 	if (!raw) return null;
 
-	const cut = raw.split(/[?#]/)[0] ?? "";
+	try {
+		const url = new URL(raw);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+		url.username = "";
+		url.password = "";
+		url.search = "";
+		url.hash = "";
 
-	return cut === "" ? null : cut;
+		return url.toString();
+	} catch {
+		return null;
+	}
 }
 
 export function matchedHost(

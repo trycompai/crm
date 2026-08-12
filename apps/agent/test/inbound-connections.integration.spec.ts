@@ -16,12 +16,14 @@ import {
 import {
 	importWebsiteLeads,
 	isWebsiteTestLead,
+	runWebsiteIntakeSync,
 	type WebsiteLead,
 } from "../agent/lib/website-intake";
 
 const suffix = `${process.env.TEST_RUN_ID ?? "inbound"}-${crypto.randomUUID()}`;
 const userId = `inbound-user-${suffix}`;
 const websiteExternalId = crypto.randomUUID();
+const websiteUpdatedExternalId = crypto.randomUUID();
 const websiteQaExternalId = crypto.randomUUID();
 const websiteSuppressedExternalId = crypto.randomUUID();
 const websiteDomain = `website-${suffix}.example.test`;
@@ -101,6 +103,7 @@ afterAll(async () => {
 			externalId: {
 				in: [
 					websiteExternalId,
+					websiteUpdatedExternalId,
 					websiteQaExternalId,
 					websiteSuppressedExternalId,
 				],
@@ -128,6 +131,7 @@ afterAll(async () => {
 			externalId: {
 				in: [
 					websiteExternalId,
+					websiteUpdatedExternalId,
 					websiteQaExternalId,
 					websiteSuppressedExternalId,
 				],
@@ -193,6 +197,7 @@ function websiteLead(overrides: Partial<WebsiteLead> = {}): WebsiteLead {
 	return {
 		id: websiteExternalId,
 		created_at: "2026-08-12T12:00:00.000Z",
+		updated_at: "2026-08-12T12:00:00.000Z",
 		name: "Alex Green",
 		email: `alex@${websiteDomain}`,
 		company: "Website Test Landscapes",
@@ -271,6 +276,87 @@ describe("website enquiry intake", () => {
 		expect(
 			await db.agentTask.count({ where: { kind: "email-draft-send" } }),
 		).toBe(sendTasks);
+	});
+
+	it("replays one older record after its source update", async () => {
+		const priorKey = process.env.LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY;
+		const priorUrl = process.env.LODE_WEBSITE_SUPABASE_URL;
+		const [contacts, companies, activities, drafts, sendTasks] =
+			await Promise.all([
+				db.contact.count(),
+				db.company.count(),
+				db.activity.count(),
+				db.emailDraft.count(),
+				db.agentTask.count({ where: { kind: "email-draft-send" } }),
+			]);
+		const lead = websiteLead({
+			id: websiteUpdatedExternalId,
+			created_at: "2026-01-01T00:00:00.000Z",
+			updated_at: "2026-08-12T12:00:00.000Z",
+			biggest_pain: "The original source value",
+		});
+		const requestUrls: URL[] = [];
+
+		process.env.LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY = "test-key";
+		process.env.LODE_WEBSITE_SUPABASE_URL = "https://website.test";
+		try {
+			const first = await runWebsiteIntakeSync(db, async (url) => {
+				requestUrls.push(url);
+				return Response.json([lead]);
+			});
+			const changed = {
+				...lead,
+				updated_at: "2026-08-12T12:05:00.000Z",
+				biggest_pain: "The source updated this older record",
+			};
+			const second = await runWebsiteIntakeSync(db, async (url) => {
+				requestUrls.push(url);
+				return Response.json([changed]);
+			});
+			const third = await runWebsiteIntakeSync(db, async () =>
+				Response.json([]),
+			);
+			const stored = await db.websiteEnquiry.findUniqueOrThrow({
+				where: { externalId: websiteUpdatedExternalId },
+				select: {
+					biggestPain: true,
+					updatedAtSource: true,
+					contactId: true,
+					companyId: true,
+				},
+			});
+
+			expect(first).toMatchObject({ imported: 1, updated: 0, duplicates: 0 });
+			expect(second).toMatchObject({ imported: 0, updated: 1, duplicates: 0 });
+			expect(third).toMatchObject({ imported: 0, updated: 0, duplicates: 0 });
+			expect(requestUrls[1]?.searchParams.get("order")).toBe(
+				"updated_at.asc,id.asc",
+			);
+			expect(requestUrls[1]?.searchParams.get("or")).toContain(
+				"updated_at.gt.2026-08-12T12:00:00.000Z",
+			);
+			expect(stored).toMatchObject({
+				biggestPain: "The source updated this older record",
+				updatedAtSource: new Date("2026-08-12T12:05:00.000Z"),
+				contactId: null,
+				companyId: null,
+			});
+			expect(await db.contact.count()).toBe(contacts);
+			expect(await db.company.count()).toBe(companies);
+			expect(await db.activity.count()).toBe(activities);
+			expect(await db.emailDraft.count()).toBe(drafts);
+			expect(
+				await db.agentTask.count({ where: { kind: "email-draft-send" } }),
+			).toBe(sendTasks);
+		} finally {
+			if (priorKey === undefined) {
+				delete process.env.LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY;
+			} else {
+				process.env.LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY = priorKey;
+			}
+			if (priorUrl === undefined) delete process.env.LODE_WEBSITE_SUPABASE_URL;
+			else process.env.LODE_WEBSITE_SUPABASE_URL = priorUrl;
+		}
 	});
 
 	it("isolates tagged website tests from live CRM records", async () => {

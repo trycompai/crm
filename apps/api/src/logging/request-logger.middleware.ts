@@ -7,25 +7,30 @@ const REQUEST_ID_HEADER = "x-request-id";
 
 const QUIET_PATHS = new Set(["/health"]);
 
+const TRACKING_COLLECTOR_PATH = "/api/t/e";
+
 @Injectable()
 export class RequestLoggerMiddleware implements NestMiddleware {
 	private readonly logger = new Logger("HTTP");
 
 	use(request: Request, response: Response, next: NextFunction): void {
-		const requestId = incomingRequestId(request) ?? randomUUID();
+		const collector = request.path === TRACKING_COLLECTOR_PATH;
+		const requestId = collector
+			? randomUUID()
+			: (incomingRequestId(request) ?? randomUUID());
 		response.setHeader(REQUEST_ID_HEADER, requestId);
 
 		const context: RequestContext = {
 			requestId,
 			method: request.method,
-			path: request.originalUrl,
+			path: collector ? TRACKING_COLLECTOR_PATH : request.originalUrl,
 		};
 		const startedAt = process.hrtime.bigint();
 
 		runInRequestContext(context, () => {
 			response.on("finish", () => {
 				runInRequestContext(context, () => {
-					this.logCompleted(request, response, context, startedAt);
+					this.logCompleted(request, response, context, startedAt, collector);
 				});
 			});
 
@@ -38,9 +43,21 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 		response: Response,
 		context: RequestContext,
 		startedAt: bigint,
+		collector: boolean,
 	): void {
 		const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 		const { statusCode } = response;
+		const roundedDurationMs = Number(durationMs.toFixed(1));
+
+		if (collector) {
+			this.logger.log({
+				message: "Tracking collector request completed",
+				route: TRACKING_COLLECTOR_PATH,
+				statusCode,
+				durationMs: roundedDurationMs,
+			});
+			return;
+		}
 
 		const userId = sessionUserId(request);
 
@@ -53,7 +70,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 			method: context.method,
 			path: context.path,
 			statusCode,
-			durationMs: Number(durationMs.toFixed(1)),
+			durationMs: roundedDurationMs,
 			ip: request.ip,
 			userAgent: request.get("user-agent"),
 		};

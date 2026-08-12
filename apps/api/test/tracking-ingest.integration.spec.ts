@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import { db } from "@crm/db";
 import { EVENTS_PER_MINUTE, type TrackingConfig } from "@crm/db/tracking";
+import { TrackingService } from "../src/tracking/tracking.service";
 import type { TrackingConfigService } from "../src/tracking/tracking-config.service";
 import { TrackingCounterService } from "../src/tracking/tracking-counter.service";
 import type { TrackingFilingService } from "../src/tracking/tracking-filing.service";
@@ -15,6 +16,7 @@ import {
 	type IncomingEvent,
 	TrackingIngestService,
 } from "../src/tracking/tracking-ingest.service";
+import { TrackingRollupService } from "../src/tracking/tracking-rollup.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "ingest-spec";
 const parent = `sites-${suffix}.test`;
@@ -63,6 +65,7 @@ const filing = {
 
 const counters = new TrackingCounterService(db);
 const ingest = new TrackingIngestService(db, configService, counters, filing);
+const analytics = new TrackingService(db, configService);
 
 const REQUEST = {
 	origin: `https://${child}`,
@@ -99,6 +102,12 @@ async function clean() {
 
 	await db.trackedDomain.deleteMany({
 		where: { host: { in: [parent, exact] } },
+	});
+	await db.trackedPageDaily.deleteMany({
+		where: { host: { in: [parent, exact] } },
+	});
+	await db.trackedVisitor.deleteMany({
+		where: { id: { startsWith: "ingest" } },
 	});
 	await db.trackingCounter.deleteMany({ where: {} });
 }
@@ -173,7 +182,7 @@ describe("the rate limit", () => {
 	it("stops writing once the window is spent", async () => {
 		await db.trackingCounter.deleteMany({ where: {} });
 
-		for (const key of spendableWindows()) {
+		for (const key of spendableWindows(SITE_ID)) {
 			await counters.take(key, EVENTS_PER_MINUTE, EVENTS_PER_MINUTE);
 		}
 
@@ -185,7 +194,7 @@ describe("the rate limit", () => {
 	it("does not spend the window on a batch it refuses", async () => {
 		await db.trackingCounter.deleteMany({ where: {} });
 
-		for (const key of spendableWindows()) {
+		for (const key of spendableWindows(SITE_ID)) {
 			await counters.take(key, EVENTS_PER_MINUTE, EVENTS_PER_MINUTE - 1);
 		}
 
@@ -194,6 +203,107 @@ describe("the rate limit", () => {
 
 		await accept([view(parent)]);
 		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(1);
+	});
+
+	it("does not let one site starve another site", async () => {
+		await db.trackingCounter.deleteMany({ where: {} });
+
+		for (const key of spendableWindows(SITE_ID)) {
+			await counters.take(key, EVENTS_PER_MINUTE, EVENTS_PER_MINUTE);
+		}
+
+		const otherSiteId = "cmp_5678efab";
+		const otherConfig = {
+			forSite: async (siteId: string) =>
+				siteId === otherSiteId
+					? { config: { ...config, siteId: otherSiteId }, hash: "other" }
+					: null,
+		} as unknown as TrackingConfigService;
+		const otherIngest = new TrackingIngestService(
+			db,
+			otherConfig,
+			counters,
+			filing,
+		);
+
+		await otherIngest.accept(
+			{ siteId: otherSiteId, visitorId: visitorId(), events: [view(parent)] },
+			REQUEST,
+		);
+
+		expect(await db.trackedEvent.count({ where: { host: parent } })).toBe(1);
+	});
+});
+
+describe("anonymous tracked visitors", () => {
+	it("stores anonymous state without creating a CRM record", async () => {
+		const [contacts, companies, activities] = await Promise.all([
+			db.contact.count(),
+			db.company.count(),
+			db.activity.count(),
+		]);
+		const id = await accept([
+			{
+				...view(parent),
+				touch: {
+					source: "Search",
+					medium: "organic",
+					landing: "https://example.test/pricing?utm_source=search",
+				},
+			},
+		]);
+
+		const tracked = await db.trackedVisitor.findUniqueOrThrow({
+			where: { id },
+			select: { contactId: true, firstSource: true, lastLanding: true },
+		});
+
+		expect(tracked).toEqual({
+			contactId: null,
+			firstSource: "Search",
+			lastLanding: "https://example.test/pricing",
+		});
+		expect(await db.contact.count()).toBe(contacts);
+		expect(await db.company.count()).toBe(companies);
+		expect(await db.activity.count()).toBe(activities);
+	});
+});
+
+describe("tracking analytics after retention", () => {
+	it("combines durable daily rollups with live events once", async () => {
+		const old = new Date("2026-08-01T12:00:00.000Z");
+		const before = new Date("2026-08-02T00:00:00.000Z");
+		await db.trackedEvent.createMany({
+			data: Array.from({ length: 4 }, (_, index) => ({
+				visitorId: `retained-${suffix}-${index}`,
+				type: "page_view",
+				host: parent,
+				path: "/archive",
+				occurredAt: old,
+			})),
+		});
+		await new TrackingRollupService(db).run(before);
+		await db.trackedEvent.deleteMany({ where: { occurredAt: { lt: before } } });
+		await db.trackedEvent.create({
+			data: {
+				visitorId: `live-${suffix}`,
+				type: "page_view",
+				host: parent,
+				path: "/pricing",
+				occurredAt: new Date("2026-08-12T12:00:00.000Z"),
+			},
+		});
+
+		const settings = await analytics.settings(`analytics-${suffix}`);
+
+		expect(settings.pageViews).toBe(5);
+		expect(settings.pageDaily).toContainEqual({
+			host: parent,
+			path: "/archive",
+			views: 4,
+			lastSeenAt: "2026-08-01T00:00:00.000Z",
+		});
+		expect(settings.receivingSince).toBe("2026-08-12T12:00:00.000Z");
 	});
 });
 
@@ -405,8 +515,8 @@ describe("a batch that looks scripted", () => {
 	});
 });
 
-function spendableWindows(): string[] {
+function spendableWindows(siteId: string): string[] {
 	const bucket = Math.floor(Date.now() / 60_000);
 
-	return [`rate:${bucket}`, `rate:${bucket + 1}`];
+	return [`rate:${siteId}:${bucket}`, `rate:${siteId}:${bucket + 1}`];
 }

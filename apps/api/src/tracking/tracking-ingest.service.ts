@@ -12,7 +12,7 @@ import {
 	stripQuery,
 	type TrackingConfig,
 } from "@crm/db/tracking";
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { normalizeEmail } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
@@ -80,8 +80,6 @@ interface AcceptedEvent {
 
 @Injectable()
 export class TrackingIngestService {
-	private readonly logger = new Logger(TrackingIngestService.name);
-
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly config: TrackingConfigService,
@@ -121,7 +119,9 @@ export class TrackingIngestService {
 		});
 
 		if (accepted.length === 0) return;
-		if (!(await this.withinRate(accepted.length))) return;
+		if (!(await this.withinRate(batch.siteId, accepted.length))) return;
+
+		await this.visitor(visitorId, accepted);
 
 		const pageViews = accepted.filter(
 			({ event }) => event.type === "page_view" || event.type === "click",
@@ -243,7 +243,7 @@ export class TrackingIngestService {
 		if (!submission) return;
 		if (created.count === 0 && !unfiled(submission)) return;
 
-		const outcome = await this.filing.file({
+		await this.filing.file({
 			id: submission.id,
 			email,
 			host,
@@ -252,19 +252,63 @@ export class TrackingIngestService {
 			firstTouch,
 			lastTouch,
 		});
-
-		if (!outcome.filed) {
-			this.logger.log({
-				message: "Form submission stored but not filed",
-				host,
-				reason: outcome.reason,
-			});
-		}
 	}
 
-	private async withinRate(events: number): Promise<boolean> {
-		return this.counters.take(rateWindowKey(), EVENTS_PER_MINUTE, events);
+	private async visitor(
+		visitorId: string,
+		accepted: AcceptedEvent[],
+	): Promise<void> {
+		const touches = accepted.flatMap(({ event }) => {
+			if (event.type !== "page_view") return [];
+
+			return [
+				classifyTouch(arriving(cleanTouch(event.touch)), occurredAt(event.at)),
+			];
+		});
+		const first = touches[0];
+		const last = touches.at(-1);
+
+		await this.db.trackedVisitor.createMany({
+			data: [
+				{
+					id: visitorId,
+					...visitorTouch("first", first),
+					...visitorTouch("last", last),
+				},
+			],
+			skipDuplicates: true,
+		});
+		if (!last) return;
+
+		await this.db.trackedVisitor.update({
+			where: { id: visitorId },
+			data: visitorTouch("last", last),
+		});
 	}
+
+	private async withinRate(siteId: string, events: number): Promise<boolean> {
+		return this.counters.take(rateWindowKey(siteId), EVENTS_PER_MINUTE, events);
+	}
+}
+
+function visitorTouch(
+	position: "first" | "last",
+	touch: Touch | undefined,
+): Record<string, string | Date | null> {
+	if (!touch) return {};
+
+	const prefix = position === "first" ? "first" : "last";
+
+	return {
+		[`${prefix}Source`]: touch.source,
+		[`${prefix}Medium`]: touch.medium,
+		[`${prefix}Campaign`]: touch.campaign,
+		[`${prefix}Term`]: touch.term,
+		[`${prefix}Content`]: touch.content,
+		[`${prefix}Referrer`]: touch.referrer,
+		[`${prefix}Landing`]: touch.landing,
+		[`${prefix}TouchAt`]: touch.at,
+	};
 }
 
 function unfiled(submission: {

@@ -37,6 +37,9 @@ not a request and then a config fetch before anything can be recorded.
   `data-crm-consent="granted"` on its root element. A consent manager owns that
   change. The tracker records the signal as unverified evidence with no lawful
   basis; it never turns analytics consent into outreach permission.
+- **The tracker has an explicit lifecycle.** `window.LodeCRMTracker.destroy()` is
+  idempotent. It removes listeners, timers, queued work, and history hooks. It
+  deletes CRM tracking cookies, blocks later requests, and allows a clean restart.
 - **Five minutes is a promise.** Pause tracking and every browser stops within
   `CONFIG_MAX_AGE_SECONDS`. That is why `/t/[site]` carries **no
   `stale-while-revalidate`** — a revalidation window is exactly a licence to keep
@@ -93,7 +96,8 @@ The gauntlet, in order, in `TrackingIngestService.accept`:
 6. **Host** — each event's own host against the allow list. The batch is filtered,
    not refused, because one bad host in twenty is a bug in somebody's SPA.
 7. **Rate** — `EVENTS_PER_MINUTE` charged **per accepted event, atomically**,
-   through `TrackingCounter`.
+   through `TrackingCounter`. Each live site uses its own counter key. One site
+   cannot exhaust another site's quota.
 
 > **The rate limit counts events, not requests, and it counts them in the
 > database.** A per-request counter with a full batch behind it admits twenty times
@@ -126,6 +130,13 @@ limit under that silently drops the submission this whole feature exists to catc
 - **No mailbox or meeting content.** The public payload contract accepts only the
   three tracking event types, bounded page/label/touch values, bounded form
   fields, and the analytics-consent signal. Collector logs never include the body.
+  Collector completion logs include only the fixed route, status, duration, and a
+  generated request identifier. They exclude source address, user agent, URL query,
+  site id, and request body.
+
+The application does not read source IP addresses. Edge WAF rules are an activation
+gate when source-IP enforcement is required. Configure those rules before tracking
+activation.
 
 ## Attribution
 
@@ -176,6 +187,8 @@ identity proposals, and review permission all stay in the agent boundary.
   A matching form keeps its own receipt and observation on that candidate. A changed
   website source creates a new receipt and observation without creating a second
   candidate.
+- **Website source order is stable.** Intake reads `updated_at,id`. It stores the
+  source update time and identifier. A historical row that changes later replays once.
 - **No model runs in ingestion.** The API only validates, stores, and queues. Any
   future enrichment, scoring, or identity judgement stays in `apps/agent`; see
   `docs/api.md`.
@@ -198,6 +211,9 @@ change.
 - **Roll before you delete.** `TrackingRollupService` aggregates `page_view` rows
   only; a click is not a page view, and counting visitors over both produces a row
   reading `views = 0, visitors = 3`.
+- **Readbacks combine daily rows and live rows.** A live event covered by a durable
+  daily row is excluded from the live total. This prevents double counting during
+  retention and after event deletion.
 - **Deleting is batched and bounded** — `SWEEP_BATCH` × `MAX_SWEEP_PASSES`. A sweep
   that hits the ceiling **says so**, in the log and in the response, because
   silently leaving events behind reads exactly like having deleted them.

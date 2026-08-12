@@ -1,6 +1,14 @@
 import { Inject } from "@nestjs/common";
-import { Input, Mutation, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import {
+	Ctx,
+	Input,
+	Mutation,
+	Query,
+	Router,
+	UseMiddlewares,
+} from "nestjs-trpc";
 import type { z } from "zod";
+import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { setAgentModelInput, setResearchKeyInput } from "./settings.contracts";
 import { SettingsService } from "./settings.service";
@@ -28,8 +36,11 @@ export class SettingsRouter {
 	}
 
 	@Mutation({ input: setAgentModelInput })
-	async setAgentModel(@Input() input: z.infer<typeof setAgentModelInput>) {
-		return this.settings.setAgentModel(input.modelId);
+	async setAgentModel(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof setAgentModelInput>,
+	) {
+		return this.settings.setAgentModel(ctx.user.id, input.modelId);
 	}
 
 	@Query()
@@ -38,7 +49,10 @@ export class SettingsRouter {
 	}
 
 	@Mutation({ input: setResearchKeyInput })
-	async setResearchKey(@Input() input: z.infer<typeof setResearchKeyInput>) {
-		return this.settings.setResearchKey(input.apiKey);
+	async setResearchKey(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof setResearchKeyInput>,
+	) {
+		return this.settings.setResearchKey(ctx.user.id, input.apiKey);
 	}
 }

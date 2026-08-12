@@ -57,6 +57,7 @@ export interface TrackingSettings {
 	domains: TrackedDomainRow[];
 	receivingSince: string | null;
 	pageViews: number;
+	pageDaily: VisitedPage[];
 	submissions: number;
 	canManage: boolean;
 }
@@ -125,7 +126,7 @@ export class TrackingService {
 	) {}
 
 	async settings(userId: string): Promise<TrackingSettings> {
-		const [row, domains, latest, pageViews, submissions] = await Promise.all([
+		const [row, domains, totals, pageDaily, submissions] = await Promise.all([
 			this.db.appSetting.findUnique({
 				where: { id: SETTINGS_ID },
 				select: {
@@ -140,11 +141,29 @@ export class TrackingService {
 				},
 			}),
 			this.db.trackedDomain.findMany({ orderBy: { createdAt: "asc" } }),
-			this.db.trackedEvent.findFirst({
-				orderBy: { occurredAt: "desc" },
-				select: { occurredAt: true },
+			this.db.$queryRaw<{ latest: Date | null; views: bigint }[]>`
+				WITH "daily" AS (
+					SELECT max("day") AS "latest", coalesce(sum("views"), 0) AS "views"
+					FROM "trackedPageDaily"
+				), "live" AS (
+					SELECT max(e."occurredAt") AS "latest", count(*) AS "views"
+					FROM "trackedEvent" AS e
+					WHERE e."type" = 'page_view'
+					AND NOT EXISTS (
+						SELECT 1 FROM "trackedPageDaily" AS d
+						WHERE d."day" = date_trunc('day', e."occurredAt")
+						AND d."host" = e."host" AND d."path" = e."path"
+					)
+				)
+				SELECT greatest("daily"."latest", "live"."latest") AS "latest",
+					("daily"."views" + "live"."views")::bigint AS "views"
+				FROM "daily" CROSS JOIN "live";
+			`,
+			this.db.trackedPageDaily.findMany({
+				orderBy: [{ views: "desc" }, { day: "desc" }],
+				take: 10,
+				select: { host: true, path: true, views: true, day: true },
 			}),
-			this.db.trackedEvent.count({ where: { type: "page_view" } }),
 			this.db.formSubmission.count(),
 		]);
 
@@ -176,8 +195,14 @@ export class TrackingService {
 				pageViews: domain.pageViews,
 				lastSeenAt: domain.lastSeenAt?.toISOString() ?? null,
 			})),
-			receivingSince: latest?.occurredAt.toISOString() ?? null,
-			pageViews,
+			receivingSince: totals[0]?.latest?.toISOString() ?? null,
+			pageViews: Number(totals[0]?.views ?? 0),
+			pageDaily: pageDaily.map((page) => ({
+				host: page.host,
+				path: page.path,
+				views: page.views,
+				lastSeenAt: page.day.toISOString(),
+			})),
 			submissions,
 			canManage: canManageTracking(await this.roleOf(userId)),
 		};
