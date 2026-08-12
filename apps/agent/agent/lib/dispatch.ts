@@ -413,7 +413,7 @@ function work(kind: string, reason: string): string {
 			return "Work out who this contact actually is, and record what you find. Read what we already have before spending anything.";
 		case "profile":
 		case "recheck":
-			return "Bring this contact's record up to date: their background, their current role, and anything that has changed since we last looked.";
+			return "Bring this contact's record up to date: their background, their current role, and anything that has changed since we last looked. If their employer has moved, load job-change, record the new employer, then call record_job_change without moveToCompanyId.";
 		case "meeting-prep":
 			return "There is a meeting with this person soon. Make sure whoever is taking it opens the record knowing who they are dealing with.";
 		case "company-profile":

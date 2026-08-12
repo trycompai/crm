@@ -381,3 +381,34 @@ export async function writeTimelineNote(
 
 	return activity.id;
 }
+
+export async function writeOwnerTask(
+	contactId: string,
+	subject: string,
+	body: string,
+	dueAt: Date,
+	meta: Record<string, unknown> = {},
+): Promise<string | null> {
+	const contact = await db.contact.findUnique({
+		where: { id: contactId },
+		select: { companyId: true, ownerId: true },
+	});
+	if (!contact?.ownerId) return null;
+
+	const activity = await db.activity.create({
+		data: {
+			type: "TASK",
+			subject,
+			body,
+			occurredAt: new Date(),
+			dueAt,
+			contactId,
+			companyId: contact.companyId,
+			createdById: contact.ownerId,
+			meta: { ...meta, agent: "people-research" },
+		},
+		select: { id: true },
+	});
+
+	return activity.id;
+}

@@ -27,3 +27,20 @@ export function sensitiveWrite(instead: string): Approval {
 				}
 			: "user-approval";
 }
+
+export function sensitiveWhen<TInput>(
+	needsApproval: (input: TInput | undefined) => boolean,
+	instead: string,
+): Approval<TInput> {
+	return ({ session, toolInput }) => {
+		if (!needsApproval(toolInput as TInput | undefined)) {
+			return "not-applicable";
+		}
+		return isAutomated(session)
+			? {
+					type: "denied" as const,
+					reason: `Not something to do unattended. ${instead}`,
+				}
+			: "user-approval";
+	};
+}
