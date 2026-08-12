@@ -9,6 +9,11 @@ const optional = (key: string): string | undefined => {
 	return value && value.length > 0 ? value : undefined;
 };
 
+const flag = (key: string): boolean => {
+	const value = optional(key)?.toLowerCase();
+	return value === "true" || value === "1";
+};
+
 const pair = (
 	idKey: string,
 	secretKey: string,
@@ -65,6 +70,10 @@ export const env = {
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",
+	/** Opt-in: set EMAIL_PASSWORD_ENABLED=true on a deploy to allow email/password auth. */
+	emailAndPasswordEnabled: flag("EMAIL_PASSWORD_ENABLED"),
+	/** Opt-in: set GOOGLE_DISABLE_HD=true to omit Google hosted-domain restriction. */
+	googleDisableHd: flag("GOOGLE_DISABLE_HD"),
 } as const;
 
 export function isGoogleConfigured(): boolean {
