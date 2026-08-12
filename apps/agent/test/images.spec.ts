@@ -1,5 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { profilePhotoUrl, slugFromProfileUrl } from "../agent/lib/linkdapi";
+import { runPortrait, storePortrait } from "../agent/lib/portrait";
 import { findPortrait } from "../agent/lib/portrait-sources";
 
 const OVERVIEW = {
@@ -127,5 +128,77 @@ describe("the portrait source chain", () => {
 
 		expect(result.found).toBe(false);
 		if (!result.found) expect(result.reason).toBe("Out of budget.");
+	});
+
+	it("does not charge for a free GitHub headshot", async () => {
+		let spent = 0;
+		const result = await findPortrait(
+			{ ...NOBODY, githubUrl: "https://github.com/pmarchetti" },
+			(units = 1) => {
+				spent += units;
+				return { ok: true };
+			},
+		);
+
+		expect(result.found).toBe(true);
+		expect(spent).toBe(0);
+	});
+
+	it("never treats a bare name as a place to look", async () => {
+		const result = await findPortrait(
+			{ ...NOBODY, name: "Paula Marchetti", companyName: "Acme" },
+			free,
+		);
+
+		expect(result.found).toBe(false);
+		if (!result.found) expect(result.tried).toEqual([]);
+	});
+});
+
+describe("portrait soft-fail without BLOB_READ_WRITE_TOKEN", () => {
+	const saved = process.env.BLOB_READ_WRITE_TOKEN;
+
+	beforeEach(() => {
+		delete process.env.BLOB_READ_WRITE_TOKEN;
+	});
+
+	afterEach(() => {
+		if (saved === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+		else process.env.BLOB_READ_WRITE_TOKEN = saved;
+	});
+
+	it("storePortrait refuses to keep an origin URL and does not throw", async () => {
+		const result = await storePortrait({
+			contactId: "c-no-blob",
+			sourceUrl: "https://media.licdn.com/dms/image/x.jpg",
+			verified: true,
+		});
+
+		expect(result.stored).toBe(false);
+		expect(result.imageUrl).toBe(null);
+		expect(result.reason).toContain("BLOB_READ_WRITE_TOKEN");
+		expect(result.reason?.toLowerCase()).toContain("retrying will not help");
+	});
+
+	it("runPortrait stops before looking when there is nowhere to store a copy", async () => {
+		const result = await runPortrait({
+			contactId: "c-no-blob",
+			spend: () => ({ ok: true }),
+		});
+
+		expect(result.stored).toBe(false);
+		expect(result.imageUrl).toBe(null);
+		expect(result.reason).toContain("BLOB_READ_WRITE_TOKEN");
+	});
+
+	it("storePortrait still refuses an unverified face without needing storage", async () => {
+		const result = await storePortrait({
+			contactId: "c-no-blob",
+			sourceUrl: "https://media.licdn.com/dms/image/x.jpg",
+			verified: false,
+		});
+
+		expect(result.stored).toBe(false);
+		expect(result.reason).toContain("not established");
 	});
 });

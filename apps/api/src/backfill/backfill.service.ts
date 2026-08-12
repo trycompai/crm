@@ -1,6 +1,7 @@
 import { onSignedIn } from "@crm/auth";
 import { type Db, EnrichmentStatus, type Prisma } from "@crm/db";
-import { PRIORITY } from "@crm/db/agent-tasks";
+import { PORTRAIT_STAND_DOWN_MS, PRIORITY } from "@crm/db/agent-tasks";
+import { blobEnabled } from "@crm/db/blob";
 import { readWorkspaceIdentity } from "@crm/db/workspace";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
@@ -31,14 +32,7 @@ const AUTO_KEY = "backfill:auto";
 
 const AUTO_EVERY_MS = 5 * 60_000;
 
-/**
- * How long a fruitless photo search stands the contact down for.
- *
- * Long, because the answer rarely changes: somebody with no LinkedIn account
- * and no headshot on their employer's site is unlikely to acquire either this
- * week, and the team-page read costs credits every time it is asked.
- */
-const RECHECK_PHOTO_AFTER_MS = 30 * 24 * 60 * 60_000;
+const RECHECK_PHOTO_AFTER_MS = PORTRAIT_STAND_DOWN_MS;
 
 const RECHECK_BRAND_AFTER_MS = 30 * 24 * 60 * 60_000;
 
@@ -182,25 +176,32 @@ export class BackfillService implements OnModuleInit {
 	}
 
 	private async runContacts(): Promise<BackfillResult> {
-		const needsPhoto = await this.contactsNeedingPhoto();
+		const photosEnabled = blobEnabled();
+		const needsPhoto = photosEnabled
+			? await this.contactsNeedingPhoto()
+			: null;
 
-		const [photoTotal, photoRows] = await Promise.all([
-			this.db.contact.count({ where: needsPhoto }),
-			this.db.contact.findMany({
-				where: needsPhoto,
-				orderBy: { createdAt: "asc" },
-				take: MAX_PER_RUN,
-				select: { id: true },
-			}),
-		]);
+		const [photoTotal, photoRows] = needsPhoto
+			? await Promise.all([
+					this.db.contact.count({ where: needsPhoto }),
+					this.db.contact.findMany({
+						where: needsPhoto,
+						orderBy: { createdAt: "asc" },
+						take: MAX_PER_RUN,
+						select: { id: true },
+					}),
+				])
+			: [0, [] as { id: string }[]];
 
-		const photos = await this.agent.backfill({
-			kind: "portrait",
-			reason: "Backfill — somewhere to look for a picture, and no picture",
-			contactIds: photoRows.map((row) => row.id),
-			budget: 1,
-			priority: PRIORITY.portrait,
-		});
+		const photos = needsPhoto
+			? await this.agent.backfill({
+					kind: "portrait",
+					reason: "Backfill — somewhere to look for a picture, and no picture",
+					contactIds: photoRows.map((row) => row.id),
+					budget: 1,
+					priority: PRIORITY.portrait,
+				})
+			: { queued: 0, alreadyQueued: 0 };
 
 		const headroom = MAX_PER_RUN - photoRows.length;
 
