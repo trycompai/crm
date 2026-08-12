@@ -819,3 +819,74 @@ with `class-validator` decorators, and to `docs/environment.md`.
    an account that will not grant the scopes cannot use the CRM anyway. Revisit
    only if someone needs "keep my login, stop reading my mail", which the policy
    currently says is not a state we support.
+
+---
+
+## 16. Status and handoff (calendar substrate)
+
+### Shipped (calendar-before-gmail substrate)
+
+Phases **0–2** are in the tree. Code map:
+
+| Concern | Where |
+| --- | --- |
+| Scopes + offline access | `packages/auth/src/scopes.ts`, `packages/auth/src/auth.ts` |
+| App shell gate | `apps/app/lib/session.ts` → `requireMailboxAccess()`, `/grant-access` |
+| `MailboxSync` + event tables + `Activity` FK | `packages/db/prisma/schema.prisma` |
+| Calendar list client + pure helpers | `apps/api/src/google/calendar.client.ts` |
+| Forward-only sync, relevance, projection | `apps/api/src/google/calendar-sync.service.ts` |
+| Match (contact → company domain; optional create) | `apps/api/src/mailbox/mailbox-match.service.ts` |
+| Cron tick + dispatch | `apps/api/src/sync/mailbox-sync.service.ts`, `sync.controller.ts` |
+| Timeline filter `meetings` | `apps/api/src/activities/activities.contracts.ts` |
+| Connection / status / purge | `apps/api/src/google/google-connection.service.ts` |
+| Acceptance tests | `apps/api/test/calendar-sync.spec.ts`, `calendar-client.spec.ts` |
+
+Rules already enforced for calendar:
+
+- Identity is `(iCalUid, originalStartTime)` unique.
+- Only events that resolve to a tracked company/contact are stored when
+  `autoCreate` is off (phase-1 relevance).
+- Cancellations delete the `CalendarEvent` and cascade the projected `Activity`.
+- Cursor invalidation (410) clears the cursor and resumes from `now` (no backfill).
+- `timeMin` is now; horizon is 180 days.
+
+### Remaining handoff — Gmail (phase 3 polish)
+
+Gmail write path already exists (`gmail-sync.service.ts`, `ThreadWriterService`).
+Work still owned by a Gmail-focused lane, not this substrate:
+
+1. **Prove phase-3 acceptance on real mailboxes** for a week before tightening
+   auto-create defaults for email.
+2. **Cross-mailbox dedupe tests** on `rfcMessageId` / root `Message-ID` if not
+   already covered for the Gmail path specifically.
+3. **Body privacy checks** — list payloads stay snippet-only; expand uses
+   `google.thread`. No subjects/bodies in logs (`docs/api.md`).
+4. **UI** — thread accordion + Email filter on the record sheet if any surface
+   still lacks expand-to-messages.
+
+### Remaining handoff — Auto-create (phase 4)
+
+Infrastructure is present; product hardening is not closed:
+
+1. **Defaults** — calendar rows get `autoCreate: true` on first connect; gmail
+   stays false (`GoogleConnectionService.onConnected`). Keep that until Gmail
+   matching is observed on production traffic.
+2. **Rules** — two-way engagement for Gmail (rep must have sent); calendar
+   external attendee + not declined. Table-driven tests for declined meetings,
+   free-host, no-reply, dual external domains.
+3. **Undo surfaces** — `RecordSource` filter + bulk delete + `SuppressedDomain`
+   / `google.suppressDomain` (and contact suppress) must stay usable when junk
+   appears.
+4. **Do not** flip Gmail auto-create on by default in this calendar lane.
+
+### Out of scope here (other lanes)
+
+- Meeting-prep agent copy / `meetingSoon` brief generation (`crm-meeting-prep`).
+- Gmail body storage policy changes beyond the plan.
+- Phase 5 Pub/Sub real-time (`users.watch`).
+
+### Done when (this lane)
+
+Calendar events for relevant companies appear on the timeline, deduped by
+`(iCalUID, originalStartTime)`, with tests green on the feature branch. Gmail
+and auto-create product closure are the next owners above.
