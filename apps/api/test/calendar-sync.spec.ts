@@ -193,7 +193,7 @@ describe("CalendarSyncService", () => {
 		expect(stored?.activity?.type).toBe(ActivityType.MEETING);
 		expect(stored?.activity?.subject).toBe("Pricing review");
 		expect(stored?.activity?.companyId).toBe(companyId);
-		expect(stored?.activity?.occurredAt.toISOString()).toBe(startsAt);
+		expect(stored?.activity?.occurredAt?.toISOString()).toBe(startsAt);
 		expect(stored?.attendees.map((a) => a.email)).toEqual(
 			[mailbox, person].sort(),
 		);
