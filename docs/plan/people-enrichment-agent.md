@@ -157,7 +157,7 @@ markets, and anyone who does not keep a profile. §5.
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Framework | eve, `apps/agent`, own Vercel project | Durable sessions, approval gating, schedules and evals are all things we would otherwise hand-roll. |
-| Model | `anthropic/claude-sonnet-5` via AI Gateway | The default. Routes over project OIDC, so no provider key to manage. Matching is not a frontier-model problem; revisit if eval scores say otherwise. |
+| Model | `anthropic/claude-sonnet-5` via AI Gateway | The default. Gateway-only routing requires a dedicated capped key and the fail-closed spend switch. Matching is not a frontier-model problem; revisit if eval scores say otherwise. |
 | LinkedIn access | LinkDAPI over RapidAPI, **profile + company endpoints only** | Its people *search* is broken — §0. Profile-by-slug and company-by-name are excellent. |
 | Finding the person | Context.dev web search resolves the LinkedIn slug | §0. The one thing LinkDAPI cannot do, and the thing a real search engine is good at. |
 | Tool surface | Curated tools, not an OpenAPI connection | Not cost — *predictability*. Half the advertised endpoints do not exist under the documented names (§0), so the surface has to be pinned to what is verified. |
@@ -220,9 +220,9 @@ and you never write a `name` field.
 
 **Deployment.** `eve link` creates/links a Vercel project and pulls its env.
 Schedules become Vercel Cron Jobs, evaluated in UTC. A string model id routes
-through the AI Gateway authenticated by project OIDC, so there is no Anthropic
-key to rotate. Note that `eve dev` never fires schedules on their cadence —
-there is a dispatch route for triggering one while iterating.
+through the AI Gateway. The spend gate also requires a dedicated capped Gateway
+key; project OIDC alone is insufficient. Note that `eve dev` never fires schedules
+on their cadence — there is a dispatch route for triggering one while iterating.
 
 **Monorepo wiring.** `apps/agent` joins the bun workspace and gets a
 `turbo.json` declaring `passThroughEnv` for `DATABASE_URL` and the RapidAPI key,

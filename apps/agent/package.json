@@ -19,7 +19,6 @@
 		"clean": "rm -rf .turbo .eve node_modules"
 	},
 	"dependencies": {
-		"@ai-sdk/openai": "4.0.25",
 		"@crm/auth": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",

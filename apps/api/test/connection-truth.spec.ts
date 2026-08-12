@@ -303,9 +303,16 @@ describe("connection truth", () => {
 		expect((await settings.aiGatewayStatus()).paused).toBe(true);
 
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
-		process.env.VERCEL_ENV = "production";
 		delete process.env.AI_GATEWAY_API_KEY;
 		process.env.VERCEL_OIDC_TOKEN = "provider-injected";
+		expect(await settings.aiGatewayStatus()).toMatchObject({
+			configured: false,
+			paused: true,
+			canTest: false,
+			credentialSource: "vercel_oidc",
+		});
+
+		process.env.VERCEL_ENV = "production";
 		expect(await settings.aiGatewayStatus()).toMatchObject({
 			configured: false,
 			paused: true,

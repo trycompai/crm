@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import rootGate from "../agent/hooks/model-spend";
 import {
 	assertModelSpendAllowed,
-	directOpenAiAllowed,
 	modelSpendPaused,
 } from "../agent/lib/autonomy";
 import {
@@ -20,9 +19,7 @@ const keys = [
 	"AI_GATEWAY_SPEND_PAUSED",
 	"PERPLEXITY_API_KEY",
 	"VERCEL_ENV",
-	"LODE_AGENT_OPENAI_MODEL",
 	"NODE_ENV",
-	"OPENAI_API_KEY",
 ] as const;
 const originalEnv = new Map(keys.map((key) => [key, process.env[key]]));
 const originalFetch = globalThis.fetch;
@@ -47,6 +44,7 @@ afterEach(() => {
 describe("model spend gate", () => {
 	it("requires the exact false value", () => {
 		delete process.env.VERCEL_ENV;
+		process.env.AI_GATEWAY_API_KEY = "configured";
 		for (const value of [undefined, "true", "FALSE", " false "]) {
 			if (value === undefined) delete process.env.AI_GATEWAY_SPEND_PAUSED;
 			else process.env.AI_GATEWAY_SPEND_PAUSED = value;
@@ -69,36 +67,30 @@ describe("model spend gate", () => {
 
 		process.env.AI_GATEWAY_API_KEY = "configured";
 		expect(modelSpendPaused()).toBe(false);
-		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
-		process.env.OPENAI_API_KEY = "configured";
-		expect(directOpenAiAllowed()).toBe(false);
+	});
+
+	it("requires a dedicated capped Gateway key in every environment", () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.NODE_ENV = "development";
+		delete process.env.VERCEL_ENV;
+		delete process.env.AI_GATEWAY_API_KEY;
+
+		expect(modelSpendPaused()).toBe(true);
+
+		process.env.AI_GATEWAY_API_KEY = "configured";
+		expect(modelSpendPaused()).toBe(false);
 	});
 
 	it("requires a dedicated Gateway key in self-hosted production", () => {
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
 		delete process.env.VERCEL_ENV;
 		process.env.NODE_ENV = "production";
-		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
-		process.env.OPENAI_API_KEY = "configured";
 		delete process.env.AI_GATEWAY_API_KEY;
 
 		expect(modelSpendPaused()).toBe(true);
-		expect(directOpenAiAllowed()).toBe(false);
 
 		process.env.AI_GATEWAY_API_KEY = "configured";
 		expect(modelSpendPaused()).toBe(false);
-		expect(directOpenAiAllowed()).toBe(false);
-	});
-
-	it("allows direct OpenAI only for configured local development", () => {
-		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
-		delete process.env.VERCEL_ENV;
-		process.env.NODE_ENV = "development";
-		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
-		process.env.OPENAI_API_KEY = "configured";
-
-		expect(modelSpendPaused()).toBe(false);
-		expect(directOpenAiAllowed()).toBe(true);
 	});
 
 	it("passes Vercel environment truth through Turbo", () => {

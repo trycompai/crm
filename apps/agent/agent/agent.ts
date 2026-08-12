@@ -1,6 +1,5 @@
 import "@crm/env/load";
 
-import { openai } from "@ai-sdk/openai";
 import { DEFAULT_AGENT_MODEL } from "@crm/db/settings";
 import { onTelemetryProblem, syncVersion } from "@crm/telemetry";
 import {
@@ -9,7 +8,6 @@ import {
 	defineAgent,
 	defineDynamic,
 } from "eve";
-import { directOpenAiAllowed } from "./lib/autonomy";
 import { logCapabilities } from "./lib/capabilities";
 import { selectedModel } from "./lib/model";
 
@@ -18,9 +16,6 @@ void logCapabilities();
 onTelemetryProblem((message) => console.debug(`[telemetry] ${message}`));
 
 void syncVersion();
-
-const directModel = process.env.LODE_AGENT_OPENAI_MODEL?.trim();
-const useDirectOpenAI = directOpenAiAllowed();
 
 const reasoning = [
 	"provider-default",
@@ -41,12 +36,10 @@ const reasoning = [
 			| "xhigh")
 	: "provider-default";
 
-const model: AgentModelDefinition = useDirectOpenAI
-	? openai(directModel as string)
-	: defineDynamic({
-			fallback: DEFAULT_AGENT_MODEL.id,
-			events: { "session.started": () => selectedModel() },
-		});
+const model: AgentModelDefinition = defineDynamic({
+	fallback: DEFAULT_AGENT_MODEL.id,
+	events: { "session.started": () => selectedModel() },
+});
 
 export default defineAgent<AgentDefinition>({
 	model,

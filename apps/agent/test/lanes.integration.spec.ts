@@ -10,6 +10,7 @@ const TEST_PRIORITY_OFFSET = 1_000_000;
 const VISIBLE = { only: DIRECT_KINDS } as const;
 const RESEARCH = { except: DIRECT_KINDS } as const;
 const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
+const aiGatewayKey = process.env.AI_GATEWAY_API_KEY;
 
 async function clear() {
 	await db.agentTask.deleteMany({ where: { reason: REASON } });
@@ -18,14 +19,20 @@ async function clear() {
 function restoreEnv() {
 	if (aiGatewaySpendPause === undefined) {
 		delete process.env.AI_GATEWAY_SPEND_PAUSED;
-		return;
+	} else {
+		process.env.AI_GATEWAY_SPEND_PAUSED = aiGatewaySpendPause;
 	}
-	process.env.AI_GATEWAY_SPEND_PAUSED = aiGatewaySpendPause;
+	if (aiGatewayKey === undefined) {
+		delete process.env.AI_GATEWAY_API_KEY;
+	} else {
+		process.env.AI_GATEWAY_API_KEY = aiGatewayKey;
+	}
 }
 
 beforeEach(async () => {
 	await clear();
 	process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+	process.env.AI_GATEWAY_API_KEY = "configured";
 });
 
 afterEach(async () => {

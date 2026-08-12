@@ -28,10 +28,12 @@ let otherCompanyId = "";
 let triggerId = "";
 const builderConversationIds: string[] = [];
 const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
+const aiGatewayKey = process.env.AI_GATEWAY_API_KEY;
 const vercelEnv = process.env.VERCEL_ENV;
 
 beforeAll(async () => {
 	process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+	process.env.AI_GATEWAY_API_KEY = "configured";
 	delete process.env.VERCEL_ENV;
 	await db.user.create({
 		data: {
@@ -183,6 +185,11 @@ afterAll(async () => {
 		delete process.env.AI_GATEWAY_SPEND_PAUSED;
 	} else {
 		process.env.AI_GATEWAY_SPEND_PAUSED = aiGatewaySpendPause;
+	}
+	if (aiGatewayKey === undefined) {
+		delete process.env.AI_GATEWAY_API_KEY;
+	} else {
+		process.env.AI_GATEWAY_API_KEY = aiGatewayKey;
 	}
 	if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
 	else process.env.VERCEL_ENV = vercelEnv;

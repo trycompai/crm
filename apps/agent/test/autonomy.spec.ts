@@ -12,6 +12,7 @@ import { claimDue } from "../agent/lib/tasks";
 const providerPause = process.env.PROVIDER_MUTATIONS_PAUSED;
 const outreachPause = process.env.OUTREACH_SENDS_PAUSED;
 const aiGatewaySpendPause = process.env.AI_GATEWAY_SPEND_PAUSED;
+const aiGatewayKey = process.env.AI_GATEWAY_API_KEY;
 const taskIds: string[] = [];
 const contactIds: string[] = [];
 
@@ -27,6 +28,7 @@ afterEach(async () => {
 	restoreEnv("PROVIDER_MUTATIONS_PAUSED", providerPause);
 	restoreEnv("OUTREACH_SENDS_PAUSED", outreachPause);
 	restoreEnv("AI_GATEWAY_SPEND_PAUSED", aiGatewaySpendPause);
+	restoreEnv("AI_GATEWAY_API_KEY", aiGatewayKey);
 	if (taskIds.length > 0) {
 		await db.agentTask.deleteMany({ where: { id: { in: taskIds.splice(0) } } });
 	}
@@ -94,6 +96,7 @@ describe("outbound autonomy", () => {
 		).toEqual({ state: "QUEUED", leasedUntil: null, finishedAt: null });
 
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.AI_GATEWAY_API_KEY = "configured";
 		expect(modelSpendPaused()).toBe(false);
 	});
 

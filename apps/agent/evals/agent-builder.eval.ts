@@ -14,7 +14,7 @@ export default defineEval({
 			!process.env.DATABASE_URL ||
 			!secret ||
 			modelSpendPaused() ||
-			(!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN)
+			!process.env.AI_GATEWAY_API_KEY
 		) {
 			t.skip(
 				"Requires DATABASE_URL, AGENT_BRIDGE_SECRET, an AI Gateway credential, and open model spend.",

@@ -3,7 +3,6 @@ import { sendApprovedAgentMailDraft } from "./agentmail-send";
 import { runAgentMailSync } from "./agentmail-sync";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import {
-	directOpenAiAllowed,
 	directTaskKinds,
 	modelSpendPaused,
 	outreachSendsPaused,
@@ -62,7 +61,6 @@ export const VISIBLE_BATCH = DISPATCH.visible.batch;
 export const VISIBLE_CONCURRENCY = DISPATCH.visible.concurrency;
 export const VISIBLE_LEASE_MS = DISPATCH.visible.leaseMs;
 
-export const RESEARCH_BATCH = DISPATCH.research.batch;
 export const RESEARCH_LEASE_MS = DISPATCH.research.leaseMs;
 
 export async function retireAbandoned(): Promise<void> {
@@ -307,7 +305,7 @@ export async function runResearchLane(
 ): Promise<number> {
 	if (signal?.aborted || modelSpendPaused()) return 0;
 
-	const capacity = directOpenAiEnabled() ? RESEARCH_BATCH : 1;
+	const capacity = 1;
 	const available = Math.max(
 		0,
 		capacity - (await researchInFlightCount(DETERMINISTIC_DIRECT_KINDS)),
@@ -431,10 +429,6 @@ export async function linkSession(
 
 function reasonOf(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-function directOpenAiEnabled(): boolean {
-	return directOpenAiAllowed();
 }
 
 export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {

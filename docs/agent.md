@@ -622,13 +622,12 @@ bun run --filter=agent dispatch
 
 It drains **both lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
 `brand` and `portrait` rows six at a time, handled in the process with no session
-at all, and `RESEARCH_BATCH` (12) research rows, one session each. So the
-`sessionIds` it prints are the research rows only — a run that resolved forty
-logos prints an empty list and was not idle. Either way it spends real credits, a
-vendor call per visible row and a model session per research one; that is the
-point of it, and the reason it is a command you run rather than a ticker somebody
-leaves on. Watch the agent pane; the session ids it returns are also streamable at
-`GET /eve/v1/session/:id/stream`.
+at all, and at most one Gateway-backed research row at a time. So the `sessionIds`
+it prints are the research rows only — a run that resolved forty logos prints an
+empty list and was not idle. The model lane remains idle while the spend switch is
+paused. When its gates are open, the command spends real credits: a vendor call per
+visible row and a model session per research one. Watch the agent pane; the session
+ids it returns are also streamable at `GET /eve/v1/session/:id/stream`.
 
 `eve start` on a built app *does* run the schedule, and so does Vercel, where
 each `defineSchedule` becomes a Cron Job. Dev is the only place the clock is
