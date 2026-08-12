@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import type { Evidence } from "../agent/lib/evidence";
 import {
+	type ContactIdentitySnapshot,
 	contactIdentityIsTrustworthy,
 	evidenceProvesIdentity,
 	refuseBriefReason,
-	type ContactIdentitySnapshot,
 } from "../agent/lib/brief-identity";
+import type { Evidence } from "../agent/lib/evidence";
 
 const of = (...kinds: Evidence["kind"][]): Evidence[] =>
 	kinds.map((kind) => ({ kind, detail: `saw ${kind}` }));
@@ -28,9 +28,7 @@ const known: ContactIdentitySnapshot = {
 
 describe("evidenceProvesIdentity", () => {
 	it("accepts employer-and-name and thread reply", () => {
-		expect(evidenceProvesIdentity(of("linkedin.employer-and-name"))).toBe(
-			true,
-		);
+		expect(evidenceProvesIdentity(of("linkedin.employer-and-name"))).toBe(true);
 		expect(evidenceProvesIdentity(of("crm.thread-reply"))).toBe(true);
 	});
 

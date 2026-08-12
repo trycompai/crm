@@ -291,7 +291,9 @@ describe("writeBrief", () => {
 		});
 
 		expect(result.written).toBe(false);
-		expect(result.reason).toMatch(/Identity is not trustworthy|sourced well enough/);
+		expect(result.reason).toMatch(
+			/Identity is not trustworthy|sourced well enough/,
+		);
 	});
 
 	it("refuses meeting-attendance alone as garbage identity", async () => {
@@ -307,4 +309,3 @@ describe("writeBrief", () => {
 		expect(result.reason).toMatch(/Identity is not trustworthy/);
 	});
 });
-

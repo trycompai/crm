@@ -60,8 +60,7 @@ export async function runBrand({
 	if (!(await contextDevEnabled())) {
 		return {
 			enriched: false,
-			reason:
-				"Context.dev is not configured, so there is nowhere to look.",
+			reason: "Context.dev is not configured, so there is nowhere to look.",
 		};
 	}
 

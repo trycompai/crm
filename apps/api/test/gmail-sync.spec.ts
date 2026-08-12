@@ -84,7 +84,11 @@ const gmail = {
 	async getMessage(_token: string, id: string) {
 		const data = messagesById.get(id);
 		if (!data) {
-			return { outcome: "failed" as const, reason: "missing", retryable: false };
+			return {
+				outcome: "failed" as const,
+				reason: "missing",
+				retryable: false,
+			};
 		}
 		return { outcome: "ok" as const, data };
 	},
@@ -115,7 +119,12 @@ function gmailMessage(options: {
 }): GmailMessage {
 	const headers = [
 		{ name: "Message-ID", value: options.rfcMessageId },
-		{ name: "From", value: options.fromName ? `${options.fromName} <${options.from}>` : options.from },
+		{
+			name: "From",
+			value: options.fromName
+				? `${options.fromName} <${options.from}>`
+				: options.from,
+		},
 		{ name: "To", value: options.to },
 		{ name: "Subject", value: options.subject },
 		{ name: "Date", value: options.sentAt },

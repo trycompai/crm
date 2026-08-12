@@ -52,9 +52,7 @@ beforeAll(async () => {
 			instructions: "Report health only.",
 			manifest: {
 				lifecycleRole: "qualify",
-				actions: [
-					{ type: "run.summary", provider: "crm", summary: "done" },
-				],
+				actions: [{ type: "run.summary", provider: "crm", summary: "done" }],
 				dataScope: { mode: "WORKSPACE", summary: "workspace", resources: [] },
 			},
 			modelId: "test/model",

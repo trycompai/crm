@@ -1,4 +1,4 @@
-import { search, type SearchResult } from "./context-dev";
+import { type SearchResult, search } from "./context-dev";
 import { slugFromProfileUrl } from "./linkdapi";
 import { searchTerms } from "./names";
 

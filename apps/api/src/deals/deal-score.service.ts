@@ -1,11 +1,11 @@
 import { onSignedIn } from "@crm/auth";
 import type { Db } from "@crm/db";
-import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import {
 	DEAL_SCORE,
 	needsDealScore,
 	scoreRescoreCutoff,
 } from "@crm/db/deal-score";
+import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { Cache } from "cache-manager";

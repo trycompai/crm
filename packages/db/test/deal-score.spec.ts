@@ -47,7 +47,9 @@ describe("deal score helpers", () => {
 			}),
 		).toBe(true);
 		expect(scoreRescoreCutoff(now).toISOString()).toBe(
-			new Date(now.getTime() - DEAL_SCORE.rescoreAfterDays * 86_400_000).toISOString(),
+			new Date(
+				now.getTime() - DEAL_SCORE.rescoreAfterDays * 86_400_000,
+			).toISOString(),
 		);
 	});
 });

@@ -47,9 +47,7 @@ export async function raiseJobChange(
 	});
 	if (!contact) return { raised: false, reason: "No such contact." };
 
-	const name = [contact.firstName, contact.lastName]
-		.filter(Boolean)
-		.join(" ");
+	const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
 
 	const subject = `${name} has moved to ${change.to}`;
 	const body = [

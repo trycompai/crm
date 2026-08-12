@@ -177,9 +177,7 @@ export class BackfillService implements OnModuleInit {
 
 	private async runContacts(): Promise<BackfillResult> {
 		const photosEnabled = blobEnabled();
-		const needsPhoto = photosEnabled
-			? await this.contactsNeedingPhoto()
-			: null;
+		const needsPhoto = photosEnabled ? await this.contactsNeedingPhoto() : null;
 
 		const [photoTotal, photoRows] = needsPhoto
 			? await Promise.all([

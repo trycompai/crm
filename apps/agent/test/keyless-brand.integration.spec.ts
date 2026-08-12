@@ -1,11 +1,4 @@
-import {
-	afterAll,
-	afterEach,
-	beforeAll,
-	describe,
-	expect,
-	it,
-} from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
 import { SETTINGS_ID } from "@crm/db/settings";
 import { runBrand } from "../agent/lib/brand";

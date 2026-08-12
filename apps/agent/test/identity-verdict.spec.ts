@@ -34,7 +34,12 @@ const wrongCompany = {
 describe("identityChecks", () => {
 	it("requires employer and name together", () => {
 		expect(
-			identityChecks(tomi, "tokonkwo@northwind.com", "Northwind", "northwind.com"),
+			identityChecks(
+				tomi,
+				"tokonkwo@northwind.com",
+				"Northwind",
+				"northwind.com",
+			),
 		).toEqual({
 			employerMatches: true,
 			nameMatches: true,

@@ -70,9 +70,9 @@ describe("sensitiveWhen", () => {
 
 	it("lets automated runs raise a job change without re-parenting", async () => {
 		expect(await decide(policy, appSession, {})).toBe("not-applicable");
-		expect(
-			await decide(policy, appSession, { contactId: "c1" }),
-		).toBe("not-applicable");
+		expect(await decide(policy, appSession, { contactId: "c1" })).toBe(
+			"not-applicable",
+		);
 	});
 
 	it("denies automated re-parenting of a contact company", async () => {

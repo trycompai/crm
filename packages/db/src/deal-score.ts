@@ -42,9 +42,7 @@ export function scoreRescoreCutoff(
 	now: Date,
 	rescoreAfterDays: number = DEAL_SCORE.rescoreAfterDays,
 ): Date {
-	return new Date(
-		now.getTime() - Math.max(rescoreAfterDays, 0) * DAY_MS,
-	);
+	return new Date(now.getTime() - Math.max(rescoreAfterDays, 0) * DAY_MS);
 }
 
 export function needsDealScore(input: {

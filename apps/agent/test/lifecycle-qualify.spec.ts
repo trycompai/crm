@@ -27,9 +27,9 @@ describe("lifecycle qualify specialist", () => {
 			"EVENT",
 			"MANUAL",
 		]);
-		expect(draft.triggers.map((trigger) => trigger.event).filter(Boolean)).toEqual(
-			["contact.created", "company.created"],
-		);
+		expect(
+			draft.triggers.map((trigger) => trigger.event).filter(Boolean),
+		).toEqual(["contact.created", "company.created"]);
 		expect(draft.actions.map((action) => action.type).sort()).toEqual(
 			[...QUALIFY_RECOMMEND_ONLY_ACTION_TYPES].sort(),
 		);
@@ -66,9 +66,11 @@ describe("lifecycle qualify specialist", () => {
 
 		expect(manifest.lifecycleRole).toBe("qualify");
 		expect(manifest.dataScope.mode).toBe("WORKSPACE");
-		expect(manifest.actions.every((action) => isRecommendOnlyActionType(action.type))).toBe(
-			true,
-		);
+		expect(
+			manifest.actions.every((action) =>
+				isRecommendOnlyActionType(action.type),
+			),
+		).toBe(true);
 		expect(
 			manifest.actions.some(
 				(action) => action.type === AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE,
@@ -123,9 +125,7 @@ describe("lifecycle qualify specialist", () => {
 							type: "EVENT" as const,
 							name: trigger.name,
 							summary: trigger.summary,
-							event: trigger.event as
-								| "contact.created"
-								| "company.created",
+							event: trigger.event as "contact.created" | "company.created",
 						}
 					: {
 							type: "MANUAL" as const,
@@ -148,8 +148,7 @@ describe("lifecycle qualify specialist", () => {
 					type: trigger.type,
 					name: trigger.name,
 					summary: trigger.summary,
-					config:
-						trigger.type === "EVENT" ? { event: trigger.event } : {},
+					config: trigger.type === "EVENT" ? { event: trigger.event } : {},
 				})),
 				dataScope: {
 					mode: draft.recordScope,

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	CONTEXT_DEV,
+	capabilitiesFrom,
+	enableChecklistMarkdown,
+	enabled,
 	FULL_AGENTIC_CHECKLIST,
 	FULL_AGENTIC_ENV_VARS,
-	capabilitiesFrom,
-	enabled,
-	enableChecklistMarkdown,
 	markdownFor,
 	unavailable,
 } from "../agent/lib/capabilities";

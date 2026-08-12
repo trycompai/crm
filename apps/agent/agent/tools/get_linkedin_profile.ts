@@ -52,18 +52,8 @@ export default defineTool({
 		}
 
 		const profile = result.data;
-		const verdict = identityChecks(
-			profile,
-			email,
-			companyName,
-			companyDomain,
-		);
-		const evidence = identityEvidence(
-			profile,
-			verdict,
-			email,
-			companyName,
-		);
+		const verdict = identityChecks(profile, email, companyName, companyDomain);
+		const evidence = identityEvidence(profile, verdict, email, companyName);
 
 		const history =
 			includeHistory && profile.urn ? await getExperience(profile.urn) : null;

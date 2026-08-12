@@ -42,9 +42,9 @@ describe("lifecycle close specialist", () => {
 			"EVENT",
 			"MANUAL",
 		]);
-		expect(draft.triggers.map((trigger) => trigger.event).filter(Boolean)).toEqual(
-			["deal.closed"],
-		);
+		expect(
+			draft.triggers.map((trigger) => trigger.event).filter(Boolean),
+		).toEqual(["deal.closed"]);
 		expect(draft.resources).toEqual([]);
 	});
 

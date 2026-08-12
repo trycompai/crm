@@ -131,7 +131,9 @@ export class AgentObservabilityService {
 		return {
 			windowHours: WINDOW_HOURS,
 			since: since.toISOString(),
-			runsByStatus: counts(statusRows.map((row) => [row.status, row._count._all])),
+			runsByStatus: counts(
+				statusRows.map((row) => [row.status, row._count._all]),
+			),
 			runsByTrigger: counts(
 				triggerRows.map((row) => [row.triggerType, row._count._all]),
 			),

@@ -114,13 +114,21 @@ async function clean() {
 	await db.calendarAttendee.deleteMany({
 		where: {
 			event: {
-				OR: [{ iCalUid }, { iCalUid: `${iCalUid}-other` }, { syncedByUserId: userId }],
+				OR: [
+					{ iCalUid },
+					{ iCalUid: `${iCalUid}-other` },
+					{ syncedByUserId: userId },
+				],
 			},
 		},
 	});
 	await db.calendarEvent.deleteMany({
 		where: {
-			OR: [{ iCalUid }, { iCalUid: `${iCalUid}-other` }, { syncedByUserId: userId }],
+			OR: [
+				{ iCalUid },
+				{ iCalUid: `${iCalUid}-other` },
+				{ syncedByUserId: userId },
+			],
 		},
 	});
 	await db.contact.deleteMany({ where: { email: person } });
@@ -208,9 +216,7 @@ describe("CalendarSyncService", () => {
 	it("dedupes on (iCalUID, originalStartTime) when the same window re-runs", async () => {
 		pages = [
 			{
-				items: [
-					event({ summary: "Pricing review (updated)", location: "HQ" }),
-				],
+				items: [event({ summary: "Pricing review (updated)", location: "HQ" })],
 				nextSyncToken: "sync-2",
 			},
 		];

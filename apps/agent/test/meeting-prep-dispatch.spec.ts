@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { PRIORITY } from "@crm/db/agent-tasks";
 import { brief } from "../agent/lib/dispatch";
 import type { LeasedTask } from "../agent/lib/tasks";
-import { PRIORITY } from "@crm/db/agent-tasks";
 
 function task(kind: string, attempts = 1): LeasedTask {
 	return {

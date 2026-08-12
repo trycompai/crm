@@ -31,9 +31,14 @@ describe("lifecycle advance specialist", () => {
 			"SCHEDULE",
 		]);
 		expect(
-			draft.triggers.map((trigger) => trigger.event).filter(Boolean).sort(),
+			draft.triggers
+				.map((trigger) => trigger.event)
+				.filter(Boolean)
+				.sort(),
 		).toEqual(["deal.opened", "deal.stage.changed"]);
-		const schedule = draft.triggers.find((trigger) => trigger.type === "SCHEDULE");
+		const schedule = draft.triggers.find(
+			(trigger) => trigger.type === "SCHEDULE",
+		);
 		expect(schedule?.intervalMinutes).toBe(24 * 60);
 		expect(schedule?.nextRunAt).toBe(FIXED_NOW);
 		expect(draft.actions.map((action) => action.type).sort()).toEqual(

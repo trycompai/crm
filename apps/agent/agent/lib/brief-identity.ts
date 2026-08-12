@@ -1,9 +1,5 @@
 import { FactBand } from "@crm/db";
-import {
-	type Evidence,
-	type EvidenceKind,
-	scoreEvidence,
-} from "./evidence";
+import { type Evidence, type EvidenceKind, scoreEvidence } from "./evidence";
 import { isDerivedName } from "./names";
 
 export const IDENTITY_PROOF_KINDS = [
@@ -56,10 +52,7 @@ export function refuseBriefReason(input: {
 
 	const scored = scoreEvidence(input.evidence);
 
-	if (
-		scored.band === null ||
-		scored.band === FactBand.POSSIBLE
-	) {
+	if (scored.band === null || scored.band === FactBand.POSSIBLE) {
 		return "Nothing here is sourced well enough to put on the record.";
 	}
 

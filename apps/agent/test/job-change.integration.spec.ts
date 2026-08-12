@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ActivityType, db } from "@crm/db";
 import type { Evidence } from "../agent/lib/evidence";
-import { recordFact, lastEmployerChange } from "../agent/lib/facts";
+import { lastEmployerChange, recordFact } from "../agent/lib/facts";
 import { raiseJobChange } from "../agent/lib/job-change";
 
 const suffix = process.env.TEST_RUN_ID ?? "job-change-spec";
@@ -21,10 +21,7 @@ const seen = (kind: Evidence["kind"], detail = "observed"): Evidence => ({
 async function cleanup() {
 	await db.activity.deleteMany({
 		where: {
-			OR: [
-				{ contact: { email } },
-				{ createdBy: { email: ownerEmail } },
-			],
+			OR: [{ contact: { email } }, { createdBy: { email: ownerEmail } }],
 		},
 	});
 	await db.contactFact.deleteMany({ where: { contact: { email } } });

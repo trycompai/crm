@@ -41,7 +41,10 @@ describe("lifecycle engage specialist", () => {
 			"MANUAL",
 		]);
 		expect(
-			draft.triggers.map((trigger) => trigger.event).filter(Boolean).sort(),
+			draft.triggers
+				.map((trigger) => trigger.event)
+				.filter(Boolean)
+				.sort(),
 		).toEqual(["deal.opened", "deal.stage.changed"]);
 	});
 

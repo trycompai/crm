@@ -103,12 +103,7 @@ async function clean() {
 	await db.emailThread.deleteMany({
 		where: {
 			rootMessageId: {
-				in: [
-					rootNewsletter,
-					rootOutbound,
-					rootInboundReply,
-					rootKnown,
-				],
+				in: [rootNewsletter, rootOutbound, rootInboundReply, rootKnown],
 			},
 		},
 	});
