@@ -40,6 +40,9 @@ yarn-error.log*
 # Agent worktrees
 .claude/worktrees/
 
+# Skills are installed to .agents/skills; .claude/skills mirrors them per-tool
+.claude/skills/
+
 # eve build output
 .eve
 .output
