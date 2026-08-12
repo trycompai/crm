@@ -192,7 +192,7 @@ afterAll(async () => {
 function websiteLead(overrides: Partial<WebsiteLead> = {}): WebsiteLead {
 	return {
 		id: websiteExternalId,
-		created_at: new Date().toISOString(),
+		created_at: "2026-08-12T12:00:00.000Z",
 		name: "Alex Green",
 		email: `alex@${websiteDomain}`,
 		company: "Website Test Landscapes",
@@ -221,33 +221,56 @@ describe("website enquiry intake", () => {
 		).toBe(true);
 	});
 
-	it("creates rich CRM records once and queues safe enrichment", async () => {
+	it("persists raw evidence and queues proposal-only replay", async () => {
+		const [activities, drafts, sendTasks] = await Promise.all([
+			db.activity.count(),
+			db.emailDraft.count(),
+			db.agentTask.count({ where: { kind: "email-draft-send" } }),
+		]);
 		const first = await importWebsiteLeads([websiteLead()]);
 		const second = await importWebsiteLeads([websiteLead()]);
 
-		expect(first).toMatchObject({ imported: 1, duplicates: 0, tests: 0 });
-		expect(second).toMatchObject({ imported: 0, duplicates: 1, tests: 0 });
+		expect(first).toMatchObject({
+			imported: 1,
+			updated: 0,
+			duplicates: 0,
+			tests: 0,
+		});
+		expect(second).toMatchObject({
+			imported: 0,
+			updated: 0,
+			duplicates: 1,
+			tests: 0,
+		});
 
 		const enquiry = await db.websiteEnquiry.findUnique({
 			where: { externalId: websiteExternalId },
-			include: { companyRecord: true, contact: true },
-		});
-		expect(enquiry?.companyRecord?.domain).toBe(websiteDomain);
-		expect(enquiry?.contact?.email).toBe(`alex@${websiteDomain}`);
-		expect(enquiry?.biggestPain).toContain("Coordinating crews");
-
-		const tasks = await db.agentTask.findMany({
-			where: {
-				OR: [
-					{ companyId: enquiry?.companyId ?? "missing" },
-					{ contactId: enquiry?.contactId ?? "missing" },
-				],
+			select: {
+				companyId: true,
+				contactId: true,
+				candidateId: true,
+				receiptId: true,
+				biggestPain: true,
 			},
-			select: { kind: true },
 		});
-		expect(new Set(tasks.map((task) => task.kind))).toEqual(
-			new Set(["brand", "company-profile", "identify"]),
+		expect(enquiry).toMatchObject({
+			companyId: null,
+			contactId: null,
+			candidateId: null,
+			receiptId: null,
+		});
+		expect(enquiry?.biggestPain).toContain("Coordinating crews");
+		expect(
+			await db.contact.count({ where: { email: `alex@${websiteDomain}` } }),
+		).toBe(0);
+		expect(await db.company.count({ where: { domain: websiteDomain } })).toBe(
+			0,
 		);
+		expect(await db.activity.count()).toBe(activities);
+		expect(await db.emailDraft.count()).toBe(drafts);
+		expect(
+			await db.agentTask.count({ where: { kind: "email-draft-send" } }),
+		).toBe(sendTasks);
 	});
 
 	it("isolates tagged website tests from live CRM records", async () => {
@@ -261,7 +284,7 @@ describe("website enquiry intake", () => {
 			}),
 		]);
 
-		expect(result).toMatchObject({ imported: 1, tests: 1 });
+		expect(result).toMatchObject({ imported: 1, updated: 0, tests: 1 });
 		expect(
 			await db.websiteEnquiry.findUnique({
 				where: { externalId: websiteQaExternalId },
@@ -285,7 +308,12 @@ describe("website enquiry intake", () => {
 			}),
 		]);
 
-		expect(result).toMatchObject({ imported: 1, duplicates: 0, tests: 0 });
+		expect(result).toMatchObject({
+			imported: 1,
+			updated: 0,
+			duplicates: 0,
+			tests: 0,
+		});
 		expect(
 			await db.websiteEnquiry.findUnique({
 				where: { externalId: websiteSuppressedExternalId },

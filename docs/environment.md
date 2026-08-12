@@ -166,8 +166,10 @@ General — an admin who cannot redeploy cannot set a variable.
 `LODE_WEBSITE_SUPABASE_SERVICE_ROLE_KEY` enables a server-side, read-only import
 from the website lead table. `LODE_WEBSITE_SUPABASE_URL` and
 `LODE_WEBSITE_LEADS_TABLE` select the source and default to `marketing_leads`.
-Imported live enquiries create or match CRM records and queue agent enrichment;
-tagged QA records remain isolated from CRM records.
+Imported enquiries persist as raw `WebsiteEnquiry` records. A deterministic replay
+creates review-only candidate evidence. The importer creates no CRM record, activity,
+enrichment task, draft, permission, or send task. Tagged QA records remain outside
+candidate replay.
 
 `AGENTMAIL_API_KEY` and `AGENTMAIL_INBOX_ID` enable AgentMail polling and
 human-approved outreach.

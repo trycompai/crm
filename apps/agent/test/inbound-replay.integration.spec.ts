@@ -172,6 +172,13 @@ afterAll(async () => {
 		select: { id: true },
 	});
 	const receiptIds = receipts.map((receipt) => receipt.id);
+	await db.websiteEnquiry.deleteMany({
+		where: {
+			externalId: {
+				in: [websiteExternalId, ...internalWebsiteExternalIds],
+			},
+		},
+	});
 	await db.contactCandidateObservation.deleteMany({
 		where: { receiptId: { in: receiptIds } },
 	});
@@ -185,9 +192,6 @@ afterAll(async () => {
 	});
 	await db.emailMessage.deleteMany({ where: { id: emailMessageId } });
 	await db.emailThread.deleteMany({ where: { id: emailThreadId } });
-	await db.websiteEnquiry.deleteMany({
-		where: { externalId: websiteExternalId },
-	});
 	await db.suppressedDomain.deleteMany({ where: { domain: suppressedDomain } });
 	await db.member.deleteMany({ where: { id: memberId } });
 	await db.user.deleteMany({ where: { id: workspaceUserId } });
@@ -541,19 +545,21 @@ describe("persisted inbound replay", () => {
 				where: { candidateId: candidate.id },
 			});
 		}
-		await db.contactCandidate.deleteMany({ where: { id: candidate?.id } });
 		await db.websiteEnquiry.deleteMany({
 			where: { externalId: `000000-replay-exact-${suffix}` },
 		});
+		await db.contactCandidate.deleteMany({ where: { id: candidate?.id } });
 		if (terminalCandidate?.id) {
 			await db.contactCandidateObservation.deleteMany({
 				where: { candidateId: terminalCandidate.id },
 			});
-			await db.contactCandidate.delete({ where: { id: terminalCandidate.id } });
 		}
 		await db.websiteEnquiry.deleteMany({
 			where: { externalId: terminalExternalId },
 		});
+		if (terminalCandidate?.id) {
+			await db.contactCandidate.delete({ where: { id: terminalCandidate.id } });
+		}
 	});
 
 	it("does not create a task storm for a completed bucket", async () => {

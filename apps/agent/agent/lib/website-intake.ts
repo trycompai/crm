@@ -1,6 +1,9 @@
-import { ActivityType, type Db, db, type Prisma, RecordSource } from "@crm/db";
-import { PRIORITY } from "@crm/db/agent-tasks";
+import { type Db, db, type Prisma } from "@crm/db";
 import { z } from "zod";
+import {
+	INBOUND_CANDIDATE_REPLAY_TASK_KIND,
+	websiteSourceDigest,
+} from "./inbound-replay";
 import { scheduleTask } from "./tasks";
 
 const PAGE_SIZE = 200;
@@ -28,19 +31,13 @@ export type WebsiteLead = z.infer<typeof leadSchema>;
 export type WebsiteIntakeOutcome = {
 	status: "synced" | "skipped";
 	imported: number;
+	updated: number;
 	duplicates: number;
 	tests: number;
 	reason?: string;
 };
 
-type ImportedLead = {
-	created: boolean;
-	test: boolean;
-	companyId: string | null;
-	contactId: string | null;
-	companyNeedsEnrichment: boolean;
-	contactNeedsEnrichment: boolean;
-};
+type ImportedLead = "created" | "updated" | "duplicate";
 
 export async function runWebsiteIntakeSync(
 	database: Db = db,
@@ -51,6 +48,7 @@ export async function runWebsiteIntakeSync(
 		return {
 			status: "skipped",
 			imported: 0,
+			updated: 0,
 			duplicates: 0,
 			tests: 0,
 			reason: "Website lead access is not configured.",
@@ -105,53 +103,34 @@ export async function importWebsiteLeads(
 	database: Db = db,
 ): Promise<WebsiteIntakeOutcome> {
 	let imported = 0;
+	let updated = 0;
 	let duplicates = 0;
 	let tests = 0;
 
 	for (const candidate of input) {
 		const row = leadSchema.parse(candidate);
 		const result = await importLead(row, database);
-		if (!result.created) {
+		if (result === "duplicate") {
 			duplicates += 1;
-		} else {
+		} else if (result === "created") {
 			imported += 1;
-			if (result.test) tests += 1;
-		}
-
-		const now = new Date();
-		if (result.companyNeedsEnrichment && result.companyId) {
-			await Promise.all([
-				scheduleTask({
-					companyId: result.companyId,
-					kind: "brand",
-					reason: "Company requested access on the Lode website",
-					dueAt: now,
-					priority: PRIORITY.brand,
-					budget: 2,
-				}),
-				scheduleTask({
-					companyId: result.companyId,
-					kind: "company-profile",
-					reason: "Enrich a company that requested access on the Lode website",
-					dueAt: now,
-					priority: PRIORITY.requested,
-					budget: 8,
-				}),
-			]);
-		}
-		if (result.contactNeedsEnrichment && result.contactId) {
-			await scheduleTask({
-				contactId: result.contactId,
-				kind: "identify",
-				reason: "Enrich a person who requested access on the Lode website",
-				dueAt: now,
-				priority: PRIORITY.requested,
-				budget: 8,
-			});
+			if (isWebsiteTestLead(row)) tests += 1;
+		} else {
+			updated += 1;
 		}
 	}
 
-	return { status: "synced", imported, duplicates, tests };
+	if (imported + updated > 0) {
+		await scheduleTask({
+			kind: INBOUND_CANDIDATE_REPLAY_TASK_KIND,
+			reason:
+				"Replay persisted website enquiries into reviewable candidate evidence",
+			dueAt: new Date(),
+			budget: 0,
+		});
+	}
+
+	return { status: "synced", imported, updated, duplicates, tests };
 }
 
 async function importLead(
@@ -159,166 +138,62 @@ async function importLead(
 	database: Db,
 ): Promise<ImportedLead> {
 	return database.$transaction(async (tx) => {
+		await tx.$executeRaw`
+			SELECT pg_advisory_xact_lock(hashtextextended(${`website-intake:${row.id}`}, 0))
+		`;
 		const existing = await tx.websiteEnquiry.findUnique({
 			where: { externalId: row.id },
 			select: {
-				companyId: true,
-				contactId: true,
-				companyRecord: { select: { enrichmentStatus: true } },
-				contact: { select: { enrichmentStatus: true } },
+				externalId: true,
+				createdAtSource: true,
+				name: true,
+				email: true,
+				company: true,
+				country: true,
+				biggestPain: true,
+				notes: true,
+				utm: true,
+				source: true,
+				sourcePath: true,
+				qaTag: true,
+				test: true,
 			},
 		});
+		const data = websiteEnquiryData(row);
+		if (
+			existing &&
+			websiteSourceDigest(existing) === websiteSourceDigest(data)
+		) {
+			return "duplicate";
+		}
 		if (existing) {
-			return {
-				created: false,
-				test: Boolean(row.qa_tag),
-				companyId: existing.companyId,
-				contactId: existing.contactId,
-				companyNeedsEnrichment:
-					existing.companyRecord?.enrichmentStatus !== "COMPLETE",
-				contactNeedsEnrichment:
-					existing.contact?.enrichmentStatus !== "COMPLETE",
-			};
-		}
-
-		const email = row.email.trim().toLowerCase();
-		const test = isWebsiteTestLead(row);
-		const suppressed = await isSuppressed(email, tx);
-		let companyId: string | null = null;
-		let contactId: string | null = null;
-		let companyNeedsEnrichment = false;
-		let contactNeedsEnrichment = false;
-
-		if (!test && !suppressed) {
-			const owner = await tx.user.findFirst({
-				orderBy: { createdAt: "asc" },
-				select: { id: true },
+			await tx.websiteEnquiry.update({
+				where: { externalId: row.id },
+				data: { ...data, candidateId: null, receiptId: null },
 			});
-			const existingContact = await tx.contact.findFirst({
-				where: { email: { equals: email, mode: "insensitive" } },
-				select: {
-					id: true,
-					companyId: true,
-					enrichmentStatus: true,
-					company: { select: { enrichmentStatus: true } },
-				},
-			});
-
-			contactId = existingContact?.id ?? null;
-			companyId = existingContact?.companyId ?? null;
-			contactNeedsEnrichment =
-				Boolean(existingContact) &&
-				existingContact?.enrichmentStatus !== "COMPLETE";
-			companyNeedsEnrichment =
-				Boolean(existingContact?.company) &&
-				existingContact?.company?.enrichmentStatus !== "COMPLETE";
-			if (!companyId) {
-				const domain = workDomain(email);
-				const company = domain
-					? await tx.company.findUnique({
-							where: { domain },
-							select: { id: true, enrichmentStatus: true },
-						})
-					: row.company
-						? await tx.company.findFirst({
-								where: {
-									name: { equals: row.company.trim(), mode: "insensitive" },
-								},
-								select: { id: true, enrichmentStatus: true },
-							})
-						: null;
-
-				if (company) {
-					companyId = company.id;
-					companyNeedsEnrichment = company.enrichmentStatus !== "COMPLETE";
-				} else if (row.company?.trim()) {
-					const created = await tx.company.create({
-						data: {
-							name: row.company.trim(),
-							domain,
-							website: domain ? `https://${domain}` : null,
-							country: clean(row.country),
-							ownerId: owner?.id,
-							source: RecordSource.WEBSITE,
-						},
-						select: { id: true },
-					});
-					companyId = created.id;
-					companyNeedsEnrichment = true;
-				}
-			}
-
-			if (!contactId) {
-				const name = splitName(row.name, email);
-				const contact = await tx.contact.create({
-					data: {
-						firstName: name.firstName,
-						lastName: name.lastName,
-						email,
-						companyId,
-						ownerId: owner?.id,
-						source: RecordSource.WEBSITE,
-					},
-					select: { id: true },
-				});
-				contactId = contact.id;
-				contactNeedsEnrichment = true;
-			} else if (companyId && !existingContact?.companyId) {
-				await tx.contact.update({
-					where: { id: contactId },
-					data: { companyId },
-				});
-			}
-
-			if (owner) {
-				await tx.activity.create({
-					data: {
-						type: ActivityType.NOTE,
-						subject: "Website access request",
-						body: enquiryBody(row),
-						occurredAt: new Date(row.created_at),
-						companyId,
-						contactId,
-						createdById: owner.id,
-						meta: {
-							source: "website",
-							externalId: row.id,
-							sourcePath: row.source_path ?? null,
-						} satisfies Prisma.InputJsonObject,
-					},
-				});
-			}
+			return "updated";
 		}
-
-		await tx.websiteEnquiry.create({
-			data: {
-				externalId: row.id,
-				createdAtSource: new Date(row.created_at),
-				name: clean(row.name),
-				email,
-				company: clean(row.company),
-				country: clean(row.country),
-				biggestPain: clean(row.biggest_pain),
-				source: row.source,
-				sourcePath: clean(row.source_path),
-				utm: json(row.utm),
-				qaTag: clean(row.qa_tag),
-				notes: clean(row.notes),
-				test,
-				companyId,
-				contactId,
-			},
-		});
-
-		return {
-			created: true,
-			test,
-			companyId,
-			contactId,
-			companyNeedsEnrichment,
-			contactNeedsEnrichment,
-		};
+		await tx.websiteEnquiry.create({ data });
+		return "created";
 	});
+}
+
+function websiteEnquiryData(row: WebsiteLead) {
+	return {
+		externalId: row.id,
+		createdAtSource: new Date(row.created_at),
+		name: clean(row.name),
+		email: row.email.trim().toLowerCase(),
+		company: clean(row.company),
+		country: clean(row.country),
+		biggestPain: clean(row.biggest_pain),
+		source: row.source,
+		sourcePath: clean(row.source_path),
+		utm: json(row.utm),
+		qaTag: clean(row.qa_tag),
+		notes: clean(row.notes),
+		test: isWebsiteTestLead(row),
+	};
 }
 
 function clean(value: string | null | undefined): string | null {
@@ -326,66 +201,10 @@ function clean(value: string | null | undefined): string | null {
 	return result ? result : null;
 }
 
-function splitName(
-	value: string | null | undefined,
-	email: string,
-): { firstName: string; lastName: string | null } {
-	const parts = value?.trim().split(/\s+/).filter(Boolean) ?? [];
-	if (parts.length === 0) {
-		return {
-			firstName: email.split("@")[0] || "Website enquiry",
-			lastName: null,
-		};
-	}
-	return {
-		firstName: parts[0] ?? "Website enquiry",
-		lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
-	};
-}
-
-function workDomain(email: string): string | null {
-	const domain = email.split("@")[1]?.toLowerCase() ?? null;
-	if (!domain) return null;
-	return FREE_MAIL.has(domain) ? null : domain;
-}
-
-async function isSuppressed(
-	email: string,
-	database: Prisma.TransactionClient,
-): Promise<boolean> {
-	const domain = email.split("@")[1]?.toLowerCase();
-	const [contact, domainRow] = await Promise.all([
-		database.suppressedContact.findUnique({ where: { email } }),
-		domain ? database.suppressedDomain.findUnique({ where: { domain } }) : null,
-	]);
-	return Boolean(contact || domainRow);
-}
-
-function enquiryBody(row: WebsiteLead): string {
-	return [
-		clean(row.country) ? `Country: ${clean(row.country)}` : null,
-		clean(row.biggest_pain) ? `Biggest pain: ${clean(row.biggest_pain)}` : null,
-	]
-		.filter((value): value is string => Boolean(value))
-		.join("\n");
-}
-
 function json(value: unknown): Prisma.InputJsonValue {
 	if (value === undefined || value === null) return {};
 	return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
-
-const FREE_MAIL = new Set([
-	"gmail.com",
-	"googlemail.com",
-	"hotmail.com",
-	"icloud.com",
-	"live.com",
-	"outlook.com",
-	"proton.me",
-	"protonmail.com",
-	"yahoo.com",
-]);
 
 const RESERVED_TEST_DOMAINS = new Set([
 	"example.com",

@@ -171,6 +171,11 @@ identity proposals, and review permission all stay in the agent boundary.
 - **Raw-to-canonical linkage is explicit.** `FormSubmission.receiptId` points to
   its source receipt and `candidateId` points to the review proposal. The source
   digest covers fields, attribution, consent evidence, visitor id, and timestamp.
+- **Website history uses the same proposal chain.** `marketing_leads.id` persists as
+  `WebsiteEnquiry.externalId`. The replay links its current receipt and candidate.
+  A matching form keeps its own receipt and observation on that candidate. A changed
+  website source creates a new receipt and observation without creating a second
+  candidate.
 - **No model runs in ingestion.** The API only validates, stores, and queues. Any
   future enrichment, scoring, or identity judgement stays in `apps/agent`; see
   `docs/api.md`.

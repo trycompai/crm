@@ -14,6 +14,7 @@ import {
 	type Prisma,
 } from "@crm/db";
 import {
+	previewInboundCanonicalIdentityKey,
 	retainedContactCandidateHash,
 	retainedContactCandidateObservationHash,
 	sanitizeInboundRedactedMetadata,
@@ -439,6 +440,12 @@ async function ensureCandidate(
 		canonicalBusinessName: input.businessName,
 		canonicalDomain: domain,
 	});
+	const canonicalIdentityKey = previewInboundCanonicalIdentityKey({
+		canonicalEmail: input.email,
+		canonicalName: input.name,
+		canonicalBusinessName: input.businessName,
+		canonicalDomain: domain,
+	});
 	const suppressed = excludedParticipant(
 		{ email: input.email, name: input.name },
 		rules,
@@ -455,8 +462,8 @@ async function ensureCandidate(
 
 	return database.$transaction(async (transaction) => {
 		await lock(transaction, `inbound-candidate-email:${input.email}`);
-		const existing = await transaction.contactCandidate.findFirst({
-			where: { canonicalEmail: input.email },
+		const existing = await transaction.contactCandidate.findUnique({
+			where: { canonicalIdentityKey },
 			select: {
 				id: true,
 				status: true,
@@ -778,6 +785,8 @@ export async function runInboundCandidateReplay(
 				utm: true,
 				source: true,
 				sourcePath: true,
+				candidateId: true,
+				receiptId: true,
 			},
 		});
 		const page = websites.slice(0, pageLimit);
@@ -804,6 +813,10 @@ export async function runInboundCandidateReplay(
 				const receipt = await ensureReceipt(database, source);
 				if (receipt.created) outcome.receipts += 1;
 				else duplicate(outcome, "receipt");
+				await database.websiteEnquiry.update({
+					where: { externalId: row.externalId },
+					data: { receiptId: receipt.id, candidateId: null },
+				});
 				outcome.excluded += 1;
 				continue;
 			}
@@ -815,10 +828,14 @@ export async function runInboundCandidateReplay(
 				const receipt = await ensureReceipt(database, source);
 				if (receipt.created) outcome.receipts += 1;
 				else duplicate(outcome, "receipt");
+				await database.websiteEnquiry.update({
+					where: { externalId: row.externalId },
+					data: { receiptId: receipt.id, candidateId: null },
+				});
 				outcome.excluded += 1;
 				continue;
 			}
-			await processCandidate(
+			const linked = await processCandidate(
 				database,
 				{
 					email,
@@ -830,6 +847,13 @@ export async function runInboundCandidateReplay(
 				rules,
 				outcome,
 			);
+			await database.websiteEnquiry.update({
+				where: { externalId: row.externalId },
+				data: {
+					candidateId: linked.candidateId,
+					receiptId: linked.receiptId,
+				},
+			});
 		}
 		if (websites.length < take || websiteRead >= INBOUND_REPLAY_MAX_RECORDS)
 			break;

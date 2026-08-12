@@ -2090,12 +2090,18 @@ model WebsiteEnquiry {
   test            Boolean  @default(false)
   importedAt      DateTime @default(now())
 
+  candidateId String?
+  candidate   ContactCandidate? @relation("WebsiteEnquiryCandidate", fields: [candidateId], references: [id], onDelete: Restrict)
+  receiptId String? @unique
+  receipt   InboundSourceReceipt? @relation("WebsiteEnquiryReceipt", fields: [receiptId], references: [id], onDelete: Restrict)
+
   companyId     String?
   companyRecord Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   contactId     String?
   contact       Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([email])
+  @@index([candidateId])
   @@index([createdAtSource])
   @@index([test])
   @@map("websiteEnquiry")
@@ -3805,6 +3811,7 @@ model InboundSourceReceipt {
   linkProvenance    EntityLinkProvenance[]        @relation("InboundReceiptLinkProvenance")
   recordQuarantines RecordQuarantine[]            @relation("InboundReceiptQuarantine")
   formSubmissions   FormSubmission[]              @relation("TrackingSubmissionReceipt")
+  websiteEnquiries  WebsiteEnquiry[]              @relation("WebsiteEnquiryReceipt")
 
   @@unique([connector, provider, accountId, sourceObjectType, sourceObjectId, sourceDigest], map: "inboundSourceReceipt_source_identity_key")
   @@unique([id, sourceDigest], map: "inboundSourceReceipt_id_sourceDigest_key")
@@ -3841,6 +3848,7 @@ model ContactCandidate {
 
   observations ContactCandidateObservation[]
   formSubmissions FormSubmission[] @relation("TrackingSubmissionCandidate")
+  websiteEnquiries WebsiteEnquiry[] @relation("WebsiteEnquiryCandidate")
 
   @@index([status, permissionState, updatedAt])
   @@index([identityKey], map: "contactCandidate_identityKey_idx")

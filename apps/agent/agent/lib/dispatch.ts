@@ -218,7 +218,7 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 			task.attempts,
 			result.status === "skipped"
 				? (result.reason ?? "Website intake is not configured.")
-				: `Imported ${result.imported} website enquiries; ${result.duplicates} already present; ${result.tests} test records.`,
+				: `Imported ${result.imported} website enquiries; updated ${result.updated}; ${result.duplicates} already present; ${result.tests} test records.`,
 		);
 		return;
 	}
