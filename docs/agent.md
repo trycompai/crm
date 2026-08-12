@@ -57,8 +57,14 @@ behind sixty LLM runs for 25 minutes (`test/lanes.integration.spec.ts`). **The r
 what the work is; the lane only says whether it needs a conversation.**
 
 **Priority**: `brand` 900 · `portrait` 800 · `workspace` 500 · `requested` 300 ·
-`meeting` 200 · `identify` 100 · `sweep` 50 · `companyProfile` 40 · `recheck` 0. The
-top two are what a rep reads *before* deciding what to open.
+`meeting` 200 · `identify` 100 · `dealScore` 80 · `sweep` 50 · `companyProfile` 40 ·
+`recheck` 0. The top two are what a rep reads *before* deciding what to open.
+
+**`deal-score`** is a research-lane kind. Nest enqueues it on stage change and on a
+nightly open-deal sweep. The session reads the deal timeline and calls
+`write_deal_intelligence` once. That tool writes `dealScore`, `dealScoreSummary`,
+`dealScoredAt`, and `forecastContext`. It never overwrites `forecastContextManual`.
+The sheet shows the manual forecast when set.
 
 **`claimDue` sorts what it claims** — Postgres does not order `UPDATE … RETURNING` by
 its sub-select's `ORDER BY`.

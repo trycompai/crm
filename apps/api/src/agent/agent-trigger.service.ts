@@ -246,6 +246,16 @@ export class AgentTriggerService {
 		});
 	}
 
+	async dealScore(dealId: string, reason: string): Promise<boolean> {
+		return this.enqueue({
+			dealId,
+			kind: "deal-score",
+			reason,
+			priority: PRIORITY.dealScore,
+			budget: 6,
+		});
+	}
+
 	builderConversationQueued(): void {
 		this.pokeRoute("/internal/crm/builder-dispatch");
 	}
@@ -364,6 +374,7 @@ export class AgentTriggerService {
 		task: {
 			contactId?: string;
 			companyId?: string;
+			dealId?: string;
 			kind: string;
 			reason: string;
 			priority: number;
@@ -378,7 +389,7 @@ export class AgentTriggerService {
 			const write = async (tx: Prisma.TransactionClient) => {
 				await lockIdempotencyKey(
 					tx,
-					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.subject?.value ?? ""}`,
+					`agent-task:${task.kind}:${task.contactId ?? ""}:${task.companyId ?? ""}:${task.dealId ?? ""}:${task.subject?.value ?? ""}`,
 				);
 				const pending = await tx.agentTask.findFirst({
 					where: {
@@ -386,6 +397,7 @@ export class AgentTriggerService {
 						finishedAt: null,
 						...(task.contactId ? { contactId: task.contactId } : {}),
 						...(task.companyId ? { companyId: task.companyId } : {}),
+						...(task.dealId ? { dealId: task.dealId } : {}),
 						...(task.subject
 							? {
 									payload: {
@@ -403,6 +415,7 @@ export class AgentTriggerService {
 					data: {
 						contactId: task.contactId ?? null,
 						companyId: task.companyId ?? null,
+						dealId: task.dealId ?? null,
 						kind: task.kind,
 						reason: task.reason,
 						priority: task.priority,
@@ -424,6 +437,7 @@ export class AgentTriggerService {
 				kind: task.kind,
 				contactId: task.contactId,
 				companyId: task.companyId,
+				dealId: task.dealId,
 			});
 
 			if (!client) this.poke();

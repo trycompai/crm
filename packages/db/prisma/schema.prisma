@@ -927,6 +927,12 @@ model Deal {
 
   lastActivityAt DateTime?
 
+  dealScore          Int?
+  dealScoreSummary   String?
+  dealScoredAt       DateTime?
+  forecastContext    String?
+  forecastContextManual String?
+
   contacts    DealContact[]
   activities  Activity[]
   fieldValues FieldValue[]
@@ -938,6 +944,7 @@ model Deal {
   @@index([stage])
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
+  @@index([dealScoredAt])
   @@index([baseAmount])
   @@index([currency])
   @@map("deal")

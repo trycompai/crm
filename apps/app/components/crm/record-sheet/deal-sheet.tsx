@@ -221,6 +221,13 @@ export function DealSheet({ dealId }: { dealId: string }) {
 								</span>
 							)}
 						</DetailSheetStat>
+						<DetailSheetStat label="Deal score">
+							{deal.dealScore === null ? (
+								<EmptyCellValue />
+							) : (
+								<span className="tabular-nums">{deal.dealScore}</span>
+							)}
+						</DetailSheetStat>
 						<DetailSheetStat label="Expected close">
 							{deal.expectedCloseDate ? (
 								<LocalDay date={deal.expectedCloseDate} />
@@ -368,8 +375,87 @@ function DealOverview({ deal }: { deal: Deal }) {
 				/>
 			</DetailSheetSection>
 
+			<DealScoreCard deal={deal} />
+			<ForecastContextCard
+				deal={deal}
+				saving={isSaving("forecastContextManual")}
+				onSave={(forecastContextManual) => save({ forecastContextManual })}
+			/>
+
 			<WhereItStands deal={deal} />
 		</DetailSheetBody>
+	);
+}
+
+function DealScoreCard({ deal }: { deal: Deal }) {
+	return (
+		<DetailSheetSection title="Deal score">
+			{deal.dealScore === null ? (
+				<p className="text-sm text-muted-foreground">
+					No score yet. The agent scores open deals after a stage change and on
+					the nightly pass.
+				</p>
+			) : (
+				<DetailSheetProperties>
+					<DetailSheetProperty label="Score">
+						<span className="tabular-nums font-medium">{deal.dealScore}</span>
+						<span className="text-muted-foreground"> / 100</span>
+					</DetailSheetProperty>
+					{deal.dealScoredAt ? (
+						<DetailSheetProperty label="Scored">
+							<LocalRelativeTime date={deal.dealScoredAt} />
+						</DetailSheetProperty>
+					) : null}
+					{deal.dealScoreSummary ? (
+						<DetailSheetProperty label="Why" wide>
+							{deal.dealScoreSummary}
+						</DetailSheetProperty>
+					) : null}
+				</DetailSheetProperties>
+			)}
+		</DetailSheetSection>
+	);
+}
+
+function ForecastContextCard({
+	deal,
+	saving,
+	onSave,
+}: {
+	deal: Deal;
+	saving: boolean;
+	onSave: (value: string | null) => void;
+}) {
+	const manual = deal.forecastContextManual?.trim() ?? "";
+	const ai = deal.forecastContext?.trim() ?? "";
+
+	return (
+		<DetailSheetSection title="Forecast context">
+			{ai ? (
+				<div className="mb-3 space-y-1">
+					<p className="text-xs font-medium text-muted-foreground">
+						From the agent
+					</p>
+					<p className="text-sm whitespace-pre-wrap">{ai}</p>
+				</div>
+			) : (
+				<p className="mb-3 text-sm text-muted-foreground">
+					No agent forecast yet.
+				</p>
+			)}
+			{manual ? (
+				<p className="mb-2 text-xs text-muted-foreground">
+					Your note wins when set. Clear it to show the agent text again.
+				</p>
+			) : null}
+			<InlineTextArea
+				label="Forecast context (manual)"
+				value={deal.forecastContextManual}
+				placeholder="Optional override the team trusts over the agent summary."
+				saving={saving}
+				onSave={(next) => onSave(next === "" ? null : next)}
+			/>
+		</DetailSheetSection>
 	);
 }
 

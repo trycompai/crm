@@ -58,6 +58,7 @@ const dealUpdateInput = z.object({
 	amountCents,
 	currency: currencyCode.optional(),
 	expectedCloseDate: z.string().nullable().optional(),
+	forecastContextManual: z.string().max(2_000).nullable().optional(),
 	fields: recordFieldValues.optional(),
 });
 

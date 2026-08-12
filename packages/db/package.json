@@ -11,6 +11,7 @@
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",
 		"./crm-events": "./src/crm-events.ts",
+		"./deal-score": "./src/deal-score.ts",
 		"./deal-stage": "./src/deal-stage.ts",
 		"./enums": "./src/generated/prisma/enums.ts",
 		"./favicon": "./src/favicon.ts",
