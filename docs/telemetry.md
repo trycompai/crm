@@ -121,6 +121,29 @@ has been minted — never the id itself. No key, value or last-four is sent.
 | `recheck_interval_days` | Their intervals, in day bands |
 | `agent_conversations` | How many `AgentConversation` rows exist |
 
+#### Team agents (Deploy-gated fleet)
+
+Aggregate counts from `AgentRun` and `AgentAction` in the same 24h window. Never a summary,
+prompt, action body, Slack text, or email draft.
+
+| Property | What it is |
+| --- | --- |
+| `team_runs_by_status` | Counts by `AgentRunStatus` |
+| `team_runs_by_trigger` | Counts by `AgentTriggerType` (`MANUAL` / `SCHEDULE` / `EVENT` / `WEBHOOK`) |
+| `team_runs_by_lifecycle_role` | Counts by manifest `lifecycleRole` (`qualify` / `engage` / `advance` / `close`), or `none` when untagged. Unknown values are `other` |
+| `team_actions_by_type` | Counts by action type allowlist (`crm.activity.create`, `run.summary`, `slack.message.post`, `crm.outreach.recommend`). Anything else is `other` |
+| `team_actions_by_status` | Counts by `AgentActionStatus` |
+| `team_runs_cancelled` | Runs cancelled or with `cancelRequestedAt` set |
+| `team_runs_cancel_after_action` | Of those, runs that already completed at least one ledgered action (side effects stay) |
+| `team_dependency_failures` | Runs whose `errorCode` is `DEPENDENCY_UNAVAILABLE` |
+| `team_input_tokens` | Sum of `AgentRun.inputTokens` |
+| `team_output_tokens` | Sum of `AgentRun.outputTokens` |
+| `team_cost_usd` | Sum of `AgentRun.costUsd` (two decimal places) |
+
+In-product fleet health for the same aggregates lives on `agents.observability` (tRPC) and the
+team agents index. Per-run cost, tokens, and session event counts render in the run history
+drawer. Neither surface sends free text about a named person.
+
 Tool names are matched against the authored tools in `apps/agent/agent/tools/` and eve's own
 builtins. Anything else is counted as `other`. Task kinds are matched against `TASK_KINDS`.
 
@@ -291,6 +314,8 @@ default and the page has no field to type in.
 - `EmailThread` and `EmailMessage` subjects or bodies, `CalendarEvent` titles, `CalendarAttendee` rows
 - `Deal` names and amounts. Stage distribution is fine; amounts are not.
 - `AgentEvent.data`, `AgentConversation` content, prompts, completions, reasoning traces
+- `AgentRun.summary`, `AgentRun.input`, `AgentRun.result`, `AgentAction.summary`, action
+  metadata, or outreach draft bodies — team-agent telemetry is counts, tokens and cost only
 - `ALLOWED_SIGN_IN`, `AppSetting.contextDevApiKey`, any key, secret, token or connection string
 - `SuppressedDomain` and `SuppressedContact` values — counts only
 - **IP address.** Set `$ip: null` and disable geoip. n8n collects IP and has to caveat their

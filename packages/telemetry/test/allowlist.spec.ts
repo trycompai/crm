@@ -10,12 +10,17 @@ import {
 	EVIDENCE_KINDS,
 	OTHER,
 	permitted,
+	permittedAgentActionStatus,
+	permittedAgentRunStatus,
+	permittedAgentTriggerType,
 	permittedErrorClass,
 	permittedEvidenceKind,
+	permittedLifecycleRole,
 	permittedMethod,
 	permittedModelId,
 	permittedRoute,
 	permittedTaskKind,
+	permittedTeamActionType,
 	permittedTool,
 } from "../src/allowlist";
 
@@ -56,6 +61,39 @@ describe("permitted", () => {
 
 	it("names every property exactly once", () => {
 		expect(new Set(ALLOWED_PROPERTIES).size).toBe(ALLOWED_PROPERTIES.length);
+	});
+
+	it("keeps team-agent fleet properties", () => {
+		expect(
+			permitted({
+				team_runs_by_status: { SUCCEEDED: 2 },
+				team_cost_usd: 0.12,
+				contact_email: "hidden@example.test",
+			}),
+		).toEqual({
+			team_runs_by_status: { SUCCEEDED: 2 },
+			team_cost_usd: 0.12,
+		});
+	});
+});
+
+describe("team agent permits", () => {
+	it("keeps known run statuses, trigger types, and roles", () => {
+		expect(permittedAgentRunStatus("SUCCEEDED")).toBe("SUCCEEDED");
+		expect(permittedAgentTriggerType("EVENT")).toBe("EVENT");
+		expect(permittedLifecycleRole("qualify")).toBe("qualify");
+		expect(permittedTeamActionType("crm.activity.create")).toBe(
+			"crm.activity.create",
+		);
+		expect(permittedAgentActionStatus("FAILED")).toBe("FAILED");
+	});
+
+	it("buckets unknown team keys as other", () => {
+		expect(permittedAgentRunStatus("HACKED")).toBe(OTHER);
+		expect(permittedAgentTriggerType("sms")).toBe(OTHER);
+		expect(permittedLifecycleRole("send")).toBe(OTHER);
+		expect(permittedTeamActionType("crm.email.send")).toBe(OTHER);
+		expect(permittedAgentActionStatus("DONE")).toBe(OTHER);
 	});
 });
 

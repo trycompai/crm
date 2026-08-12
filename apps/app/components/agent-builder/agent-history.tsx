@@ -247,7 +247,19 @@ function ExpandedRun({ run }: { run: RunRow }) {
 					value={run.initiatedBy?.name ?? "Eve scheduler"}
 				/>
 				<RunMeta label="Model" value={run.modelId ?? "Gateway default"} />
-				<RunMeta label="Version" value={String(run.version.number)} last />
+				<RunMeta label="Version" value={String(run.version.number)} />
+				<RunMeta label="Input tokens" value={formatCount(run.inputTokens)} />
+				<RunMeta label="Output tokens" value={formatCount(run.outputTokens)} />
+				<RunMeta label="Cost" value={formatCost(run.costUsd)} />
+				<RunMeta
+					label="Trace steps"
+					value={
+						run.totalEvents > 0
+							? `${run.events.length}/${run.totalEvents}`
+							: "—"
+					}
+					last
+				/>
 			</div>
 
 			<div>
@@ -432,6 +444,18 @@ function duration(startedAt: string | null, finishedAt: string | null): string {
 	const milliseconds =
 		new Date(finishedAt).getTime() - new Date(startedAt).getTime();
 	return `${Math.max(0, milliseconds / 1000).toFixed(1)}s`;
+}
+
+function formatCount(value: number | null | undefined): string {
+	if (value === null || value === undefined) return "—";
+	return value.toLocaleString("en-US");
+}
+
+function formatCost(value: string | null | undefined): string {
+	if (value === null || value === undefined || value === "") return "—";
+	const amount = Number(value);
+	if (!Number.isFinite(amount)) return "—";
+	return `$${amount.toFixed(4)}`;
 }
 
 function eventLabel(type: string, data: unknown): string {

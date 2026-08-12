@@ -44,6 +44,18 @@ export const ALLOWED_PROPERTIES = [
 	"sandbox_used",
 	"agent_conversations",
 
+	"team_runs_by_status",
+	"team_runs_by_trigger",
+	"team_runs_by_lifecycle_role",
+	"team_actions_by_type",
+	"team_actions_by_status",
+	"team_runs_cancelled",
+	"team_runs_cancel_after_action",
+	"team_dependency_failures",
+	"team_input_tokens",
+	"team_output_tokens",
+	"team_cost_usd",
+
 	"facts_by_status",
 	"facts_by_band",
 	"facts_by_method",
@@ -225,6 +237,84 @@ const TASK_KIND_SET = new Set<string>(TASK_KINDS);
 
 export function permittedTaskKind(kind: string | null | undefined): string {
 	return kind && TASK_KIND_SET.has(kind) ? kind : OTHER;
+}
+
+export const LIFECYCLE_ROLES = [
+	"qualify",
+	"engage",
+	"advance",
+	"close",
+] as const;
+
+const LIFECYCLE_ROLE_SET = new Set<string>(LIFECYCLE_ROLES);
+
+export function permittedLifecycleRole(
+	role: string | null | undefined,
+): string {
+	return role && LIFECYCLE_ROLE_SET.has(role) ? role : OTHER;
+}
+
+export const AGENT_RUN_STATUSES = [
+	"QUEUED",
+	"RUNNING",
+	"WAITING_FOR_APPROVAL",
+	"SUCCEEDED",
+	"FAILED",
+	"CANCELLED",
+] as const;
+
+const AGENT_RUN_STATUS_SET = new Set<string>(AGENT_RUN_STATUSES);
+
+export function permittedAgentRunStatus(
+	status: string | null | undefined,
+): string {
+	return status && AGENT_RUN_STATUS_SET.has(status) ? status : OTHER;
+}
+
+export const AGENT_TRIGGER_TYPES = [
+	"MANUAL",
+	"SCHEDULE",
+	"EVENT",
+	"WEBHOOK",
+] as const;
+
+const AGENT_TRIGGER_TYPE_SET = new Set<string>(AGENT_TRIGGER_TYPES);
+
+export function permittedAgentTriggerType(
+	type: string | null | undefined,
+): string {
+	return type && AGENT_TRIGGER_TYPE_SET.has(type) ? type : OTHER;
+}
+
+export const TEAM_ACTION_TYPES = [
+	"crm.activity.create",
+	"run.summary",
+	"slack.message.post",
+	"crm.outreach.recommend",
+] as const;
+
+const TEAM_ACTION_TYPE_SET = new Set<string>(TEAM_ACTION_TYPES);
+
+export function permittedTeamActionType(
+	type: string | null | undefined,
+): string {
+	return type && TEAM_ACTION_TYPE_SET.has(type) ? type : OTHER;
+}
+
+export const AGENT_ACTION_STATUSES = [
+	"PLANNED",
+	"RUNNING",
+	"SUCCEEDED",
+	"FAILED",
+	"CANCELLED",
+] as const;
+
+const AGENT_ACTION_STATUS_SET = new Set<string>(AGENT_ACTION_STATUSES);
+
+export function permittedAgentActionStatus(
+	status: string | null | undefined,
+): string {
+	return status && AGENT_ACTION_STATUS_SET.has(status) ? status : OTHER;
 }
 
 export const SYNC_SOURCES = ["gmail", "calendar", "outlook"] as const;
