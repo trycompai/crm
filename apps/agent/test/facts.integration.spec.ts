@@ -291,5 +291,20 @@ describe("writeBrief", () => {
 		});
 
 		expect(result.written).toBe(false);
+		expect(result.reason).toMatch(/Identity is not trustworthy|sourced well enough/);
+	});
+
+	it("refuses meeting-attendance alone as garbage identity", async () => {
+		const result = await writeBrief({
+			contactId,
+			narrative:
+				"Subject is someone we met once and should prepare carefully for.",
+			sections: {},
+			evidence: [seen("crm.meeting-attendance")],
+		});
+
+		expect(result.written).toBe(false);
+		expect(result.reason).toMatch(/Identity is not trustworthy/);
 	});
 });
+

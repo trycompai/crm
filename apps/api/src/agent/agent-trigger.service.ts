@@ -240,7 +240,7 @@ export class AgentTriggerService {
 		await this.enqueue({
 			contactId,
 			kind: "meeting-prep",
-			reason: `Meeting on ${when.toDateString()} with someone we know nothing about`,
+			reason: `Meeting on ${when.toDateString()} — prepare a brief only if identity is trustworthy`,
 			priority: PRIORITY.meeting,
 			budget: 10,
 		});

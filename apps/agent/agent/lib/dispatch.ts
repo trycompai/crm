@@ -421,7 +421,7 @@ function work(kind: string, reason: string): string {
 		case "recheck":
 			return "Bring this contact's record up to date: their background, their current role, and anything that has changed since we last looked. If their employer has moved, load job-change, record the new employer, then call record_job_change without moveToCompanyId.";
 		case "meeting-prep":
-			return "There is a meeting with this person soon. Make sure whoever is taking it opens the record knowing who they are dealing with.";
+			return "There is a meeting with this person soon. Load meeting-prep and identity-matching. If identity is not trustworthy, identify them first. Only then write a brief with write_brief — the tool refuses garbage identity. Leave the panel empty rather than invent.";
 		case "company-profile":
 			return "This company's brand, industry, location and links are filled in separately and may already be there. Read the account, fill anything still missing, and write a brief if there is something worth saying.";
 		case "workspace-profile":
