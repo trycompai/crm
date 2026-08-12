@@ -49,16 +49,21 @@ agent and the API both need it.
 
 | | Kinds | How | Per tick |
 | --- | --- | --- | --- |
-| **Visible** | `brand`, `portrait` | Directly — no `receive`, no model | 60, six at a time |
+| **Direct** | `brand`, `portrait`, `slack-people-match`, `slack-channel-join`, `agent-event` | Directly — no `receive`, no model | 60, six at a time |
 | **Research** | everything else | One eve session per row | 12 |
 
-**Neither visible kind has anything to decide**, and through a session they queued
-behind sixty LLM runs for 25 minutes (`test/lanes.integration.spec.ts`). **The row says
-what the work is; the lane only says whether it needs a conversation.**
+**None of the direct kinds have anything to decide**, and through a session they
+queued behind sixty LLM runs for 25 minutes (`test/lanes.integration.spec.ts`).
+**The row says what the work is; the lane only says whether it needs a
+conversation.** Company brand and contact portrait are what a rep reads *before*
+opening a record. The Slack and event kinds are ops work on the same fast lane so
+they never wait behind research sessions either.
 
-**Priority**: `brand` 900 · `portrait` 800 · `workspace` 500 · `requested` 300 ·
-`meeting` 200 · `identify` 100 · `sweep` 50 · `companyProfile` 40 · `recheck` 0. The
-top two are what a rep reads *before* deciding what to open.
+**Priority**: `slackJoin` 950 · `brand` 900 · `portrait` 800 · `event` 700 ·
+`workspace` 500 · `requested` 300 · `meeting` 200 · `slackPeople` 150 ·
+`identify` 100 · `sweep` 50 · `companyProfile` 40 · `fieldBackfill` 20 ·
+`recheck` 0. Brand stays at 900 so company visual identity claims ahead of every
+research kind.
 
 **`claimDue` sorts what it claims** — Postgres does not order `UPDATE … RETURNING` by
 its sub-select's `ORDER BY`.
@@ -612,13 +617,14 @@ bun run --filter=agent dispatch
 ```
 
 It drains **both lanes**, exactly as the cron does: up to `VISIBLE_BATCH` (60)
-`brand` and `portrait` rows six at a time, handled in the process with no session
-at all, and `RESEARCH_BATCH` (12) research rows, one session each. So the
-`sessionIds` it prints are the research rows only — a run that resolved forty
-logos prints an empty list and was not idle. Either way it spends real credits, a
-vendor call per visible row and a model session per research one; that is the
-point of it, and the reason it is a command you run rather than a ticker somebody
-leaves on. Watch the agent pane; the session ids it returns are also streamable at
+direct rows (`brand`, `portrait`, and the other `DIRECT_KINDS`) six at a time,
+handled in the process with no session at all, and `RESEARCH_BATCH` (12)
+research rows, one session each. So the `sessionIds` it prints are the research
+rows only — a run that resolved forty logos prints an empty list and was not
+idle. Either way it spends real credits, a vendor call per brand row and a model
+session per research one; that is the point of it, and the reason it is a
+command you run rather than a ticker somebody leaves on. Watch the agent pane;
+the session ids it returns are also streamable at
 `GET /eve/v1/session/:id/stream`.
 
 `eve start` on a built app *does* run the schedule, and so does Vercel, where
