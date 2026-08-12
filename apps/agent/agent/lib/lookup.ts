@@ -77,24 +77,23 @@ export async function listDeals(options: DealListOptions = {}) {
 
 	const rows = await db.deal.findMany({
 		where: {
-			...(stages ? { stage: { in: stages } } : {}),
-			...(options.companyId ? { companyId: options.companyId } : {}),
-			...(options.ownerId ? { ownerId: options.ownerId } : {}),
-			...(cutoff
-				? {
-						OR: [
-							{ lastActivityAt: { lte: cutoff } },
-							{ lastActivityAt: null, createdAt: { lte: cutoff } },
-						],
-					}
-				: {}),
+			stage: stages ? { in: stages } : undefined,
+			companyId: options.companyId ?? undefined,
+			ownerId: options.ownerId ?? undefined,
+			OR: cutoff
+				? [
+						{ lastActivityAt: { lte: cutoff } },
+						{ lastActivityAt: null, createdAt: { lte: cutoff } },
+					]
+				: undefined,
 		},
 		orderBy: [
 			{ lastActivityAt: { sort: "asc", nulls: "first" } },
 			{ createdAt: "asc" },
 			{ id: "asc" },
 		],
-		...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
+		cursor: options.cursor ? { id: options.cursor } : undefined,
+		skip: options.cursor ? 1 : undefined,
 		take: limit + 1,
 		select: {
 			id: true,

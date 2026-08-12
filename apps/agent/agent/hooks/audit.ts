@@ -116,13 +116,9 @@ async function persistRunEvent(
 		where: { id: run.id },
 		data: {
 			nextEventSequence: sequence,
-			...(mayStart
-				? {
-						sessionId: ctx.session.id,
-						status: "RUNNING",
-						startedAt: run.startedAt ?? new Date(),
-					}
-				: {}),
+			sessionId: mayStart ? ctx.session.id : undefined,
+			status: mayStart ? "RUNNING" : undefined,
+			startedAt: mayStart ? (run.startedAt ?? new Date()) : undefined,
 		},
 	});
 
@@ -150,15 +146,16 @@ async function persistRunEvent(
 		await tx.agentRun.update({
 			where: { id: runId },
 			data: {
-				...(inputTokens !== null
-					? { inputTokens: (current.inputTokens ?? 0) + inputTokens }
-					: {}),
-				...(outputTokens !== null
-					? { outputTokens: (current.outputTokens ?? 0) + outputTokens }
-					: {}),
-				...(costUsd !== null
-					? { costUsd: Number(current.costUsd ?? 0) + costUsd }
-					: {}),
+				inputTokens:
+					inputTokens === null
+						? undefined
+						: (current.inputTokens ?? 0) + inputTokens,
+				outputTokens:
+					outputTokens === null
+						? undefined
+						: (current.outputTokens ?? 0) + outputTokens,
+				costUsd:
+					costUsd === null ? undefined : Number(current.costUsd ?? 0) + costUsd,
 			},
 		});
 	}

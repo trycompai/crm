@@ -384,16 +384,11 @@ export class AgentTriggerService {
 					where: {
 						kind: task.kind,
 						finishedAt: null,
-						...(task.contactId ? { contactId: task.contactId } : {}),
-						...(task.companyId ? { companyId: task.companyId } : {}),
-						...(task.subject
-							? {
-									payload: {
-										path: task.subject.path,
-										equals: task.subject.value,
-									},
-								}
-							: {}),
+						contactId: task.contactId ?? undefined,
+						companyId: task.companyId ?? undefined,
+						payload: task.subject
+							? { path: task.subject.path, equals: task.subject.value }
+							: undefined,
 					},
 					select: { id: true },
 				});
@@ -408,7 +403,7 @@ export class AgentTriggerService {
 						priority: task.priority,
 						budget: task.budget,
 						dueAt: new Date(),
-						...(task.payload ? { payload: task.payload } : {}),
+						payload: task.payload ?? undefined,
 					},
 				});
 				return true;
@@ -493,13 +488,15 @@ export class AgentTriggerService {
 		if (!agent) return false;
 
 		try {
+			const headers = new Headers({
+				authorization: `Bearer ${agent.secret}`,
+			});
+			if (body) headers.set("content-type", "application/json");
+
 			const response = await fetch(agent.url(path), {
 				method: "POST",
-				headers: {
-					authorization: `Bearer ${agent.secret}`,
-					...(body ? { "content-type": "application/json" } : {}),
-				},
-				...(body ? { body: JSON.stringify(body) } : {}),
+				headers,
+				body: body ? JSON.stringify(body) : undefined,
 				signal: AbortSignal.timeout(AGENT_DISPATCH.poke.timeoutMs),
 			});
 
