@@ -91,7 +91,19 @@ export const capabilityResource = z.object({
 	label: z.string().trim().min(1).max(160),
 });
 
+export const LIFECYCLE_ROLES = [
+	"qualify",
+	"engage",
+	"advance",
+	"close",
+] as const;
+
+export type LifecycleRole = (typeof LIFECYCLE_ROLES)[number];
+
+export const lifecycleRole = z.enum(LIFECYCLE_ROLES);
+
 export const capabilities = z.object({
+	lifecycleRole: lifecycleRole.optional(),
 	actions: z.array(capabilityAction),
 	dataScope: z.object({
 		mode: z.enum(["SELECTED", "WORKSPACE"]),
@@ -103,3 +115,12 @@ export const capabilities = z.object({
 export type Capabilities = z.infer<typeof capabilities>;
 export type CapabilityAction = z.infer<typeof capabilityAction>;
 export type CapabilityResource = z.infer<typeof capabilityResource>;
+
+export function readLifecycleRole(manifest: unknown): LifecycleRole | null {
+	if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+		return null;
+	}
+	const role = (manifest as { lifecycleRole?: unknown }).lifecycleRole;
+	const parsed = lifecycleRole.safeParse(role);
+	return parsed.success ? parsed.data : null;
+}

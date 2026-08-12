@@ -8,6 +8,7 @@ import {
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
+import type { LifecycleRole } from "./lifecycle-roles";
 import { requestStaleSlackInventorySync } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -56,6 +57,7 @@ export type DraftAgentInput = {
 	name: string;
 	description: string;
 	instructions: string;
+	lifecycleRole?: LifecycleRole;
 	triggers: DraftTrigger[];
 	recordScope: "SELECTED" | "WORKSPACE";
 	resources: BuilderResource[];
@@ -232,6 +234,7 @@ export async function saveBuilderDraft(
 		kind: "crm-team-agent",
 		name: input.name,
 		description: input.description,
+		...(input.lifecycleRole ? { lifecycleRole: input.lifecycleRole } : {}),
 		triggers: manifestTriggers,
 		dataScope: {
 			mode: input.recordScope,
