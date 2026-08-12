@@ -129,7 +129,7 @@ single place that knows what is set.
 | `RAPIDAPI_KEY` | LinkedIn profiles via LinkDAPI |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
-| `AI_GATEWAY_API_KEY` | Dedicated Gateway credential. Required to open model spend in Vercel production |
+| `AI_GATEWAY_API_KEY` | Dedicated Gateway credential. Required to open model spend in every production deployment |
 | `VERCEL_OIDC_TOKEN` | Provider-injected Gateway auth. It does not open the production spend gate by itself |
 | `AI_GATEWAY_SPEND_PAUSED` | Defaults to paused; set to `false` only when model-backed agent work is approved |
 | `OPENAI_API_KEY` | Optional direct OpenAI model access for local agent development only; production always uses AI Gateway |

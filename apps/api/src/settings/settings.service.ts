@@ -52,10 +52,17 @@ function hasEnv(key: string): boolean {
 	return Boolean(process.env[key]?.trim());
 }
 
+function isProduction(): boolean {
+	return (
+		process.env.VERCEL_ENV === "production" ||
+		process.env.NODE_ENV === "production"
+	);
+}
+
 function aiGatewaySpendPaused(): boolean {
 	return (
 		process.env.AI_GATEWAY_SPEND_PAUSED !== "false" ||
-		(process.env.VERCEL_ENV === "production" && !hasEnv("AI_GATEWAY_API_KEY"))
+		(isProduction() && !hasEnv("AI_GATEWAY_API_KEY"))
 	);
 }
 
@@ -146,9 +153,7 @@ export class SettingsService {
 		]);
 		const keyConfigured = hasEnv("AI_GATEWAY_API_KEY");
 		const oidcConfigured = hasEnv("VERCEL_OIDC_TOKEN");
-		const configured =
-			keyConfigured ||
-			(oidcConfigured && process.env.VERCEL_ENV !== "production");
+		const configured = keyConfigured || (oidcConfigured && !isProduction());
 		const paused = aiGatewaySpendPaused();
 
 		return {

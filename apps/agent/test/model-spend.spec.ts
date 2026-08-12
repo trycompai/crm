@@ -74,14 +74,31 @@ describe("model spend gate", () => {
 		expect(directOpenAiAllowed()).toBe(false);
 	});
 
-	it("never selects direct OpenAI in self-hosted production", () => {
+	it("requires a dedicated Gateway key in self-hosted production", () => {
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
 		delete process.env.VERCEL_ENV;
 		process.env.NODE_ENV = "production";
 		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
 		process.env.OPENAI_API_KEY = "configured";
+		delete process.env.AI_GATEWAY_API_KEY;
 
+		expect(modelSpendPaused()).toBe(true);
 		expect(directOpenAiAllowed()).toBe(false);
+
+		process.env.AI_GATEWAY_API_KEY = "configured";
+		expect(modelSpendPaused()).toBe(false);
+		expect(directOpenAiAllowed()).toBe(false);
+	});
+
+	it("allows direct OpenAI only for configured local development", () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		delete process.env.VERCEL_ENV;
+		process.env.NODE_ENV = "development";
+		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
+		process.env.OPENAI_API_KEY = "configured";
+
+		expect(modelSpendPaused()).toBe(false);
+		expect(directOpenAiAllowed()).toBe(true);
 	});
 
 	it("passes Vercel environment truth through Turbo", () => {

@@ -33,6 +33,7 @@ const envKeys = [
 	"AI_GATEWAY_API_KEY",
 	"VERCEL_OIDC_TOKEN",
 	"VERCEL_ENV",
+	"NODE_ENV",
 	"AI_GATEWAY_SPEND_PAUSED",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -310,6 +311,23 @@ describe("connection truth", () => {
 			paused: true,
 			canTest: false,
 			credentialSource: "vercel_oidc",
+		});
+
+		delete process.env.VERCEL_ENV;
+		process.env.NODE_ENV = "production";
+		expect(await settings.aiGatewayStatus()).toMatchObject({
+			configured: false,
+			paused: true,
+			canTest: false,
+			credentialSource: "vercel_oidc",
+		});
+
+		process.env.AI_GATEWAY_API_KEY = "configured";
+		expect(await settings.aiGatewayStatus()).toMatchObject({
+			configured: true,
+			paused: false,
+			canTest: true,
+			credentialSource: "ai_gateway_key",
 		});
 	});
 });

@@ -16,6 +16,7 @@ const CAPABILITY_KEYS = [
 ] as const;
 const KEYS = [
 	...CAPABILITY_KEYS,
+	"AI_GATEWAY_API_KEY",
 	"AI_GATEWAY_SPEND_PAUSED",
 	"LODE_AGENT_OPENAI_MODEL",
 	"NODE_ENV",
@@ -70,6 +71,7 @@ describe("capabilities", () => {
 
 	it("never advertises direct OpenAI in production", async () => {
 		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.AI_GATEWAY_API_KEY = "configured";
 		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
 		process.env.OPENAI_API_KEY = "configured";
 		process.env.NODE_ENV = "production";
