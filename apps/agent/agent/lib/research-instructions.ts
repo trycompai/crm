@@ -22,5 +22,6 @@ Only vendor calls spend the session research budget. When it is gone, write up
 what you have and stop, or schedule a recheck when another look is justified.
 
 Load identity-matching before deciding whether a candidate is the same person,
-evidence before recording facts, writing-a-brief before a background brief, and
-data-boundaries before moving data outside the CRM.`;
+evidence before recording facts, writing-a-brief before a background brief,
+meeting-prep for an upcoming-meeting task, and data-boundaries before moving
+data outside the CRM.`;

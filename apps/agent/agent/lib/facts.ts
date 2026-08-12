@@ -1,4 +1,5 @@
 import { db, FactBand, FactStatus } from "@crm/db";
+import { refuseBriefReason } from "./brief-identity";
 import { type Evidence, scoreEvidence } from "./evidence";
 import { currentFocus } from "./focus";
 import { isDerivedName, splitName } from "./names";
@@ -277,11 +278,45 @@ export async function writeBrief(input: {
 }): Promise<{ written: boolean; score: number; reason?: string }> {
 	const scored = scoreEvidence(input.evidence);
 
-	if (scored.band === null) {
+	const contact = await db.contact.findUnique({
+		where: { id: input.contactId },
+		select: {
+			email: true,
+			firstName: true,
+			lastName: true,
+			linkedinUrl: true,
+			facts: {
+				where: { field: "name", status: FactStatus.APPLIED },
+				select: { id: true },
+				take: 1,
+			},
+		},
+	});
+
+	if (!contact) {
 		return {
 			written: false,
 			score: scored.score,
-			reason: "Nothing here is sourced well enough to put on the record.",
+			reason: "No such contact.",
+		};
+	}
+
+	const refused = refuseBriefReason({
+		contact: {
+			email: contact.email,
+			firstName: contact.firstName,
+			lastName: contact.lastName,
+			linkedinUrl: contact.linkedinUrl,
+			hasAppliedName: contact.facts.length > 0,
+		},
+		evidence: input.evidence,
+	});
+
+	if (refused) {
+		return {
+			written: false,
+			score: scored.score,
+			reason: refused,
 		};
 	}
 
