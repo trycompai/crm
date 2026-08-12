@@ -1,5 +1,7 @@
 import { ActivityType } from "@crm/db";
 import { z } from "zod";
+import { listInput } from "../trpc/list-input";
+import { taskDueDayInput } from "./task-due-date";
 
 const COMPOSABLE_TYPES = [
 	ActivityType.NOTE,
@@ -46,7 +48,7 @@ export const activityCreateInput = z
 		subject: z.string().trim().optional(),
 		body: z.string().trim().optional(),
 		occurredAt: z.string().optional(),
-		dueAt: z.string().nullable().optional(),
+		dueAt: taskDueDayInput.nullable().optional(),
 		companyId: z.string().optional(),
 		contactId: z.string().optional(),
 		dealId: z.string().optional(),
@@ -64,14 +66,26 @@ export const activityCreateInput = z
 
 export type ActivityCreateInput = z.infer<typeof activityCreateInput>;
 
+export const activityUpdateInput = z.object({
+	id: z.string(),
+	subject: z.string().trim().min(1, {
+		message: "A task needs a subject — it is the thing to do.",
+	}),
+	dueAt: taskDueDayInput.nullable(),
+});
+
+export type ActivityUpdateInput = z.infer<typeof activityUpdateInput>;
+
 export const completeInput = z.object({
 	id: z.string(),
 	completed: z.boolean().default(true),
 });
 
-export const myTasksInput = z.object({
-	window: z.enum(["overdue", "upcoming", "all"]).default("all"),
-	limit: z.number().int().min(1).max(100).default(25),
+export const taskListInput = listInput.extend({
+	status: z.string().default("all"),
+	due: z.string().default("all"),
+	createdBy: z.string().default("all"),
+	today: taskDueDayInput,
 });
 
-export type MyTasksInput = z.infer<typeof myTasksInput>;
+export type TaskListInput = z.infer<typeof taskListInput>;

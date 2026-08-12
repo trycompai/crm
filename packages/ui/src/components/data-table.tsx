@@ -62,6 +62,7 @@ export type DataTableColumn<TRow> = {
 	header: ReactNode;
 	cell: (row: TRow) => ReactNode;
 	label?: string;
+	srLabel?: string;
 	sortable?: boolean;
 	width?: string;
 	align?: "left" | "right" | "center";
@@ -612,6 +613,7 @@ export function DataTable<TRow, TSub = unknown>({
 							return (
 								<TableHead
 									key={column.id}
+									aria-label={column.header ? undefined : column.srLabel}
 									className={cn(
 										"h-11 overflow-hidden px-3 font-normal text-muted-foreground",
 										column.width,

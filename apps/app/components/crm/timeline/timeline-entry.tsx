@@ -1,12 +1,18 @@
 "use client";
 
+import Edit from "@carbon/icons-react/es/Edit";
+import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
+import { Icon } from "@crm/ui/components/icon";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import { isDayBefore } from "@crm/ui/lib/format";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
-import { LocalDateTime, LocalRelativeTime } from "@/components/local-date-time";
+import { LocalDateTime, LocalRelativeDay } from "@/components/local-date-time";
+import { useViewerDay } from "@/components/viewer-day";
 import { activityLabel } from "@/lib/activity-presentation";
 import { dealStageLabel } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -15,6 +21,7 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import { ActivityIcon } from "./activity-icon";
 import { EmailThreadEntry } from "./email-thread-entry";
 import { MeetingEntry } from "./meeting-entry";
+import { TaskEditor } from "./task-editor";
 import type { TimelineAnchor } from "./timeline";
 
 export type TimelineEntryData =
@@ -46,6 +53,9 @@ export function TimelineEntry({
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const today = useViewerDay();
+
+	const [editing, setEditing] = useState(false);
 
 	const complete = useMutation(
 		trpc.activities.complete.mutationOptions({
@@ -56,11 +66,27 @@ export function TimelineEntry({
 
 	const isTask = entry.type === "TASK";
 	const done = entry.completedAt !== null;
+
+	if (editing) {
+		return (
+			<li className="flex gap-2.5 py-2">
+				<span className="mt-0.5 shrink-0 text-muted-foreground">
+					<Checkbox
+						checked={done}
+						disabled
+						aria-label={done ? "Mark as not done" : "Mark as done"}
+					/>
+				</span>
+
+				<div className="flex min-w-0 flex-1 flex-col gap-1">
+					<TaskEditor task={entry} onClose={() => setEditing(false)} />
+				</div>
+			</li>
+		);
+	}
+
 	const overdue =
-		isTask &&
-		!done &&
-		entry.dueAt !== null &&
-		new Date(entry.dueAt) < new Date();
+		isTask && !done && entry.dueAt !== null && isDayBefore(entry.dueAt, today);
 
 	const change = entry.type === "STAGE_CHANGE" ? stageChange(entry.meta) : null;
 	const when = entry.occurredAt ?? entry.createdAt;
@@ -142,6 +168,19 @@ export function TimelineEntry({
 							<LocalDateTime date={when} options={TIME_OPTIONS} />
 						</span>
 					</span>
+
+					{isTask ? (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							className="self-center"
+							disabled={complete.isPending}
+							onClick={() => setEditing(true)}
+						>
+							<Icon icon={Edit} />
+							<span className="sr-only">Edit task</span>
+						</Button>
+					) : null}
 				</div>
 
 				{entry.calendarEvent ? (
@@ -170,7 +209,7 @@ export function TimelineEntry({
 								label={
 									<>
 										{overdue ? "Overdue" : "Due"}{" "}
-										<LocalRelativeTime date={entry.dueAt} />
+										<LocalRelativeDay date={entry.dueAt} />
 									</>
 								}
 							/>

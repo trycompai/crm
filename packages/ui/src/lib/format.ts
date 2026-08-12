@@ -74,6 +74,10 @@ export function toDay(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+export function isDayBefore(value: string, day: string): boolean {
+	return value.slice(0, 10) < day.slice(0, 10);
+}
+
 export function fromDay(value: string | null | undefined): Date | undefined {
 	if (!value) return undefined;
 	const [year, month, day] = value.slice(0, 10).split("-").map(Number);

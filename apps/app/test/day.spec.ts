@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatDay, fromDay, toDay } from "@crm/ui/lib/format";
+import { formatDay, fromDay, isDayBefore, toDay } from "@crm/ui/lib/format";
 
 describe("day strings", () => {
 	it("round-trips a date through its local parts", () => {
@@ -22,5 +22,11 @@ describe("day strings", () => {
 		expect(fromDay("")).toBeUndefined();
 		expect(fromDay("someday")).toBeUndefined();
 		expect(formatDay(null)).toBe("—");
+	});
+
+	it("compares calendar days without interpreting them as instants", () => {
+		expect(isDayBefore("2026-08-11", "2026-08-12")).toBe(true);
+		expect(isDayBefore("2026-08-12", "2026-08-12")).toBe(false);
+		expect(isDayBefore("2026-08-13", "2026-08-12")).toBe(false);
 	});
 });

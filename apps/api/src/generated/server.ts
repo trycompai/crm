@@ -13,7 +13,7 @@ import { z } from "zod";
 
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
-import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
+import { timelineInput, timelineCountsInput, taskListInput, activityCreateInput, activityUpdateInput, completeInput } from "../activities/activities.contracts";
 import { agentReviseInput, agentIdInput, agentSaveFileInput, agentHistoryInput, agentUpdateInput, agentDeployInput, agentRunNowInput, agentRetryRunInput, agentCancelRunInput } from "../agent/agents.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, companyBulkOwnerInput, companyBulkInput, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, contactBulkOwnerInput, contactBulkCompanyInput, contactBulkInput, factDecisionInput } from "../contacts/contacts.contracts";
@@ -56,12 +56,15 @@ const appRouter = t.router({
     timelineCounts: publicProcedure
       .input(timelineCountsInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["timelineCounts"]>>),
-    myTasks: publicProcedure
-      .input(myTasksInput)
-      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["myTasks"]>>),
+    tasks: publicProcedure
+      .input(taskListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["tasks"]>>),
     create: publicProcedure
       .input(activityCreateInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["create"]>>),
+    update: publicProcedure
+      .input(activityUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["update"]>>),
     complete: publicProcedure
       .input(completeInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["complete"]>>)

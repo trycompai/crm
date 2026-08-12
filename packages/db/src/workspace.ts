@@ -21,6 +21,7 @@ export const RESERVED_SLUGS: readonly string[] = [
 	"onboarding",
 	"settings",
 	"sign-in",
+	"tasks",
 ];
 
 export function workspaceSlug(name: string): string {

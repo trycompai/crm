@@ -45,6 +45,11 @@ function daysFromNow(days: number, jitterHours = 0): Date {
 	return new Date(NOW + days * DAY_MS + jitter);
 }
 
+function dueDay(days: number): Date {
+	const day = daysFromNow(days);
+	return new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()));
+}
+
 const OWNERS = [
 	{ name: "Ada Okafor", email: "ada@trycomp.ai" },
 	{ name: "Marcus Lindqvist", email: "marcus@trycomp.ai" },
@@ -734,16 +739,14 @@ async function seedActivities(
 			const roll = random();
 			const overdue = roll < 0.3;
 			const done = roll >= 0.3 && roll < 0.6;
-			const dueAt = overdue
-				? daysFromNow(-integer(1, 14), 6)
-				: daysFromNow(integer(1, 21), 6);
+			const dueAt = overdue ? dueDay(-integer(1, 14)) : dueDay(integer(1, 21));
 
 			rows.push({
 				...base(deal.companyId, deal.ownerId, daysFromNow(-integer(1, 30), 12)),
 				type: ActivityType.TASK,
 				dealId: deal.id,
 				subject: pick(TASK_SUBJECTS),
-				dueAt: done ? daysFromNow(-integer(1, 20), 6) : dueAt,
+				dueAt: done ? dueDay(-integer(1, 20)) : dueAt,
 				completedAt: done ? daysFromNow(-integer(1, 10), 6) : null,
 			});
 		}

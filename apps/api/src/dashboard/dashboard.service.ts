@@ -1,6 +1,10 @@
 import { ActivityType, type Db, DealStage } from "@crm/db";
 import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import { Injectable } from "@nestjs/common";
+import {
+	serializeTaskDueDay,
+	taskWindowFilter,
+} from "../activities/task-due-date";
 import { toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -135,8 +139,8 @@ export class DashboardService {
 				where: {
 					type: ActivityType.TASK,
 					completedAt: null,
-					dueAt: { lt: now },
 					createdById: actingUserId,
+					...taskWindowFilter("overdue", input.today),
 				},
 				orderBy: [{ dueAt: "asc" }],
 				take: 10,
@@ -277,7 +281,7 @@ export class DashboardService {
 				.sort((a, b) => (b.baseAmountCents ?? -1) - (a.baseAmountCents ?? -1)),
 			overdueTasks: overdueTasks.map(({ dueAt, ...task }) => ({
 				...task,
-				dueAt: dueAt?.toISOString() ?? null,
+				dueAt: serializeTaskDueDay(dueAt),
 			})),
 			recentActivity: recentActivity.map(({ createdAt, meta, ...entry }) => ({
 				...entry,

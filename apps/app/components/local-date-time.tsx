@@ -14,7 +14,7 @@ const LOCAL_DAY_OPTIONS = {
 	day: "numeric",
 	year: "numeric",
 } as const;
-const LOCAL_DATE_TIME_SCRIPT = `{var s="time[data-local-date-kind]",f=function(n){try{var k=n.dataset.localDateKind,v=n.dataset.localDateValue,e=n.dataset.localDateEnd,o=JSON.parse(n.dataset.localDateOptions||"{}"),d=new Date(v),t=d.getTime(),x=Date.now()-t,a=Math.abs(x),r;if(k==="date-time")r=new Intl.DateTimeFormat(void 0,o).format(d);else if(k==="date-range")r=new Intl.DateTimeFormat(void 0,o).formatRange(d,new Date(e));else if(k==="day")r=new Intl.DateTimeFormat(void 0,o).format(new Date(v+"T00:00:00"));else if(k==="relative-date"){var z=new Date(),q=(Date.UTC(z.getFullYear(),z.getMonth(),z.getDate())-Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()))/${DAY_MS};r=new Intl.RelativeTimeFormat(void 0,{numeric:"auto"}).format(-q,"day")}else if(!Number.isFinite(t))r="—";else if(a<${MINUTE_MS})r="just now";else if(a>=${30 * DAY_MS})r=new Intl.DateTimeFormat(void 0,{month:"short",day:"numeric"}).format(d);else{var u=a<${HOUR_MS}?Math.floor(a/${MINUTE_MS})+"m":a<${DAY_MS}?Math.floor(a/${HOUR_MS})+"h":Math.floor(a/${DAY_MS})+"d";r=x<0?"in "+u:u+" ago"}n.textContent=r}catch{}};var c=function(r){if(r.nodeType===1&&r.matches&&r.matches(s))f(r);if(r.querySelectorAll)r.querySelectorAll(s).forEach(f)};c(document);new MutationObserver(function(m){m.forEach(function(r){r.addedNodes.forEach(c)})}).observe(document.documentElement,{childList:true,subtree:true})}`;
+const LOCAL_DATE_TIME_SCRIPT = `{var s="time[data-local-date-kind]",f=function(n){try{var k=n.dataset.localDateKind,v=n.dataset.localDateValue,e=n.dataset.localDateEnd,o=JSON.parse(n.dataset.localDateOptions||"{}"),d=new Date(v),t=d.getTime(),x=Date.now()-t,a=Math.abs(x),r;if(k==="date-time")r=new Intl.DateTimeFormat(void 0,o).format(d);else if(k==="date-range")r=new Intl.DateTimeFormat(void 0,o).formatRange(d,new Date(e));else if(k==="day")r=new Intl.DateTimeFormat(void 0,o).format(new Date(v+"T00:00:00"));else if(k==="relative-day"||k==="relative-date"){if(k==="relative-day")d=new Date(v+"T00:00:00");var z=new Date(),q=(Date.UTC(z.getFullYear(),z.getMonth(),z.getDate())-Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()))/${DAY_MS};r=new Intl.RelativeTimeFormat(void 0,{numeric:"auto"}).format(-q,"day")}else if(!Number.isFinite(t))r="—";else if(a<${MINUTE_MS})r="just now";else if(a>=${30 * DAY_MS})r=new Intl.DateTimeFormat(void 0,{month:"short",day:"numeric"}).format(d);else{var u=a<${HOUR_MS}?Math.floor(a/${MINUTE_MS})+"m":a<${DAY_MS}?Math.floor(a/${HOUR_MS})+"h":Math.floor(a/${DAY_MS})+"d";r=x<0?"in "+u:u+" ago"}n.textContent=r}catch{}};var c=function(r){if(r.nodeType===1&&r.matches&&r.matches(s))f(r);if(r.querySelectorAll)r.querySelectorAll(s).forEach(f)};c(document);new MutationObserver(function(m){m.forEach(function(r){r.addedNodes.forEach(c)})}).observe(document.documentElement,{childList:true,subtree:true})}`;
 
 export function LocalDateTime({
 	date,
@@ -61,7 +61,18 @@ export function LocalRelativeDate({ date }: { date: string }) {
 		<LocalTime
 			kind="relative-date"
 			date={date}
-			fallback={formatRelativeDate(date)}
+			fallback={formatRelativeDay(new Date(date))}
+		/>
+	);
+}
+
+export function LocalRelativeDay({ date }: { date: string }) {
+	const day = date.slice(0, 10);
+	return (
+		<LocalTime
+			kind="relative-day"
+			date={day}
+			fallback={formatRelativeDay(dayDate(day))}
 		/>
 	);
 }
@@ -99,7 +110,13 @@ function LocalTime({
 	options,
 	fallback,
 }: {
-	kind: "date-time" | "date-range" | "day" | "relative-date" | "relative-time";
+	kind:
+		| "date-time"
+		| "date-range"
+		| "day"
+		| "relative-day"
+		| "relative-date"
+		| "relative-time";
 	date: string;
 	end?: string;
 	options?: Intl.DateTimeFormatOptions;
@@ -119,10 +136,8 @@ function LocalTime({
 	);
 }
 
-function formatRelativeDate(date: string): string {
-	const now = new Date();
-	const then = new Date(date);
-	const days = (calendarDay(now) - calendarDay(then)) / DAY_MS;
+function formatRelativeDay(then: Date): string {
+	const days = (calendarDay(new Date()) - calendarDay(then)) / DAY_MS;
 	return relativeDateFormatter.format(-days, "day");
 }
 

@@ -8,12 +8,27 @@ import {
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import {
+	countsByKey,
+	FACET_ALL,
+	type ListResult,
+	paginate,
+	resolveOrderBy,
+} from "../trpc/list-input";
 import type {
 	ActivityCreateInput,
-	MyTasksInput,
+	ActivityUpdateInput,
+	TaskListInput,
 	TimelineFilter,
 	TimelineInput,
 } from "./activities.contracts";
+import {
+	isTaskWindow,
+	parseTaskDueDay,
+	serializeTaskDueDay,
+	TASK_WINDOWS,
+	taskWindowFilter,
+} from "./task-due-date";
 
 const AUTHOR_SELECT = {
 	id: true,
@@ -63,6 +78,52 @@ const NOTE_TYPES = [
 	ActivityType.EMAIL,
 	ActivityType.MEETING,
 ];
+
+const TASK_SELECT = {
+	id: true,
+	subject: true,
+	dueAt: true,
+	completedAt: true,
+	createdAt: true,
+	createdBy: { select: AUTHOR_SELECT },
+	company: {
+		select: {
+			id: true,
+			name: true,
+			domain: true,
+			iconUrl: true,
+			iconDarkUrl: true,
+			iconTone: true,
+			logoUrl: true,
+		},
+	},
+	contact: { select: { id: true, firstName: true, lastName: true } },
+	deal: { select: { id: true, name: true } },
+} as const;
+
+const TASK_SORTABLE: Record<
+	string,
+	(dir: Prisma.SortOrder) => Prisma.ActivityOrderByWithRelationInput[]
+> = {
+	subject: (dir) => [{ subject: { sort: dir, nulls: "last" } }],
+	dueAt: (dir) => [
+		{ dueAt: { sort: dir, nulls: "last" } },
+		{ createdAt: "desc" },
+	],
+	status: (dir) => [
+		{ completedAt: { sort: dir, nulls: "first" } },
+		{ dueAt: { sort: "asc", nulls: "last" } },
+	],
+	company: (dir) => [
+		{ company: { name: dir } },
+		{ dueAt: { sort: "asc", nulls: "last" } },
+	],
+	createdBy: (dir) => [
+		{ createdBy: { name: dir } },
+		{ dueAt: { sort: "asc", nulls: "last" } },
+	],
+	createdAt: (dir) => [{ createdAt: dir }],
+};
 
 @Injectable()
 export class ActivitiesService {
@@ -133,7 +194,7 @@ export class ActivitiesService {
 				subject: blankToNull(input.subject ?? ""),
 				body: blankToNull(input.body ?? ""),
 				occurredAt: parseDate(input.occurredAt) ?? new Date(),
-				dueAt: isTask ? parseDate(input.dueAt) : null,
+				dueAt: isTask ? parseTaskDueDay(input.dueAt) : null,
 				companyId,
 				contactId: input.contactId ?? null,
 				dealId: input.dealId ?? null,
@@ -156,19 +217,20 @@ export class ActivitiesService {
 		return serializeEntry(activity);
 	}
 
-	async complete(id: string, completed: boolean) {
-		const activity = await this.db.activity.findUnique({
-			where: { id },
-			select: { type: true },
+	async update(input: ActivityUpdateInput) {
+		await this.requireTask(input.id, "Only tasks can be edited.");
+
+		const updated = await this.db.activity.update({
+			where: { id: input.id },
+			data: { subject: input.subject, dueAt: parseTaskDueDay(input.dueAt) },
+			select: ENTRY_SELECT,
 		});
 
-		if (!activity) {
-			throw new NotFoundException(`No activity with id ${id}.`);
-		}
+		return serializeEntry(updated);
+	}
 
-		if (activity.type !== ActivityType.TASK) {
-			throw new BadRequestException("Only tasks can be completed.");
-		}
+	async complete(id: string, completed: boolean) {
+		await this.requireTask(id, "Only tasks can be completed.");
 
 		const updated = await this.db.activity.update({
 			where: { id },
@@ -179,28 +241,102 @@ export class ActivitiesService {
 		return serializeEntry(updated);
 	}
 
-	async myTasks(input: MyTasksInput, actingUserId: string) {
-		const now = new Date();
-		const where: Prisma.ActivityWhereInput = {
-			type: ActivityType.TASK,
-			completedAt: null,
-			createdById: actingUserId,
+	async tasks(input: TaskListInput): Promise<ListResult<TaskRow>> {
+		const where = this.taskWhere(input);
+		const { skip, take } = paginate(input);
+
+		const [rows, total, facetCounts] = await Promise.all([
+			this.db.activity.findMany({
+				where,
+				skip,
+				take,
+				orderBy: resolveOrderBy(input, TASK_SORTABLE, [
+					{ dueAt: { sort: "asc", nulls: "last" } },
+					{ createdAt: "desc" },
+				]),
+				select: TASK_SELECT,
+			}),
+			this.db.activity.count({ where }),
+			this.taskFacetCounts(input),
+		]);
+
+		return { rows: rows.map(serializeTask), total, facetCounts };
+	}
+
+	private taskWhere(input: TaskListInput): Prisma.ActivityWhereInput {
+		const where = this.taskBaseWhere(input.q);
+
+		if (input.status === "open") where.completedAt = null;
+		if (input.status === "done") where.completedAt = { not: null };
+
+		if (input.createdBy !== FACET_ALL) where.createdById = input.createdBy;
+
+		if (isTaskWindow(input.due)) {
+			Object.assign(where, taskWindowFilter(input.due, input.today));
+		}
+
+		return where;
+	}
+
+	private async taskFacetCounts(input: TaskListInput) {
+		const where = this.taskBaseWhere(input.q);
+
+		const [authors, open, done, ...windowCounts] = await Promise.all([
+			this.db.activity.groupBy({
+				by: ["createdById"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.activity.count({ where: { ...where, completedAt: null } }),
+			this.db.activity.count({
+				where: { ...where, completedAt: { not: null } },
+			}),
+			...TASK_WINDOWS.map((window) =>
+				this.db.activity.count({
+					where: { ...where, ...taskWindowFilter(window, input.today) },
+				}),
+			),
+		]);
+
+		return {
+			status: { open, done },
+			createdBy: countsByKey(authors, "createdById"),
+			due: Object.fromEntries(
+				TASK_WINDOWS.map((window, index) => [window, windowCounts[index] ?? 0]),
+			),
 		};
+	}
 
-		if (input.window === "overdue") where.dueAt = { lt: now };
-		if (input.window === "upcoming") where.dueAt = { gte: now };
+	private taskBaseWhere(q: string): Prisma.ActivityWhereInput {
+		const term = q.trim();
+		const where: Prisma.ActivityWhereInput = { type: ActivityType.TASK };
+		if (!term) return where;
 
-		const tasks = await this.db.activity.findMany({
-			where,
-			take: input.limit,
-			orderBy: [
-				{ dueAt: { sort: "asc", nulls: "last" } },
-				{ createdAt: "desc" },
-			],
-			select: ENTRY_SELECT,
+		where.OR = [
+			{ subject: { contains: term, mode: "insensitive" } },
+			{ body: { contains: term, mode: "insensitive" } },
+			{ company: { name: { contains: term, mode: "insensitive" } } },
+			{ deal: { name: { contains: term, mode: "insensitive" } } },
+			{ contact: { firstName: { contains: term, mode: "insensitive" } } },
+			{ contact: { lastName: { contains: term, mode: "insensitive" } } },
+		];
+
+		return where;
+	}
+
+	private async requireTask(id: string, wrongType: string) {
+		const activity = await this.db.activity.findUnique({
+			where: { id },
+			select: { type: true },
 		});
 
-		return tasks.map(serializeEntry);
+		if (!activity) {
+			throw new NotFoundException(`No activity with id ${id}.`);
+		}
+
+		if (activity.type !== ActivityType.TASK) {
+			throw new BadRequestException(wrongType);
+		}
 	}
 
 	private anchor(
@@ -264,13 +400,26 @@ function filterClause(filter: TimelineFilter): Prisma.ActivityWhereInput {
 	}
 }
 
+type Task = Prisma.ActivityGetPayload<{ select: typeof TASK_SELECT }>;
+
+type TaskRow = ReturnType<typeof serializeTask>;
+
+function serializeTask(task: Task) {
+	return {
+		...task,
+		dueAt: serializeTaskDueDay(task.dueAt),
+		completedAt: task.completedAt?.toISOString() ?? null,
+		createdAt: task.createdAt.toISOString(),
+	};
+}
+
 type Entry = Prisma.ActivityGetPayload<{ select: typeof ENTRY_SELECT }>;
 
 function serializeEntry(entry: Entry) {
 	return {
 		...entry,
 		occurredAt: entry.occurredAt?.toISOString() ?? null,
-		dueAt: entry.dueAt?.toISOString() ?? null,
+		dueAt: serializeTaskDueDay(entry.dueAt),
 		completedAt: entry.completedAt?.toISOString() ?? null,
 		createdAt: entry.createdAt.toISOString(),
 		meta: entry.meta as Record<string, unknown> | null,

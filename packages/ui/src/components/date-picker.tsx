@@ -13,7 +13,7 @@ import { selectTriggerVariants } from "@crm/ui/components/select";
 import { formatDay, fromDay, toDay } from "@crm/ui/lib/format";
 import { cn } from "@crm/ui/lib/utils";
 import type { VariantProps } from "class-variance-authority";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 
 export function DatePicker({
 	id,
@@ -57,29 +57,57 @@ export function DatePicker({
 				</button>
 			</PopoverTrigger>
 			<PopoverContent size="fit" align="start">
-				<Calendar
-					mode="single"
-					selected={selected}
+				<DatePickerCalendar
+					value={value}
+					onChange={choose}
 					startMonth={new Date(thisYear - 10, 0)}
 					endMonth={new Date(thisYear + 10, 11)}
-					defaultMonth={selected}
-					onSelect={(next) => choose(next ? toDay(next) : "")}
 					captionLayout="dropdown"
-					autoFocus
 				/>
-				{selected ? (
-					<div className="border-t p-1">
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full justify-start"
-							onClick={() => choose("")}
-						>
-							Clear
-						</Button>
-					</div>
-				) : null}
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+export function DatePickerCalendar({
+	value,
+	onChange,
+	captionLayout,
+	startMonth,
+	endMonth,
+}: {
+	value: string | null | undefined;
+	onChange: (next: string) => void;
+} & Pick<
+	ComponentProps<typeof Calendar>,
+	"captionLayout" | "startMonth" | "endMonth"
+>) {
+	const selected = fromDay(value);
+
+	return (
+		<>
+			<Calendar
+				mode="single"
+				selected={selected}
+				defaultMonth={selected}
+				startMonth={startMonth}
+				endMonth={endMonth}
+				captionLayout={captionLayout}
+				onSelect={(next) => onChange(next ? toDay(next) : "")}
+				autoFocus
+			/>
+			{selected ? (
+				<div className="border-t p-1">
+					<Button
+						variant="ghost"
+						size="sm"
+						className="w-full justify-start"
+						onClick={() => onChange("")}
+					>
+						Clear
+					</Button>
+				</div>
+			) : null}
+		</>
 	);
 }
