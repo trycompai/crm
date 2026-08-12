@@ -786,6 +786,23 @@ export class DealsService {
 	): Promise<void> {
 		const now = new Date();
 		await this.db.$transaction(async (tx) => {
+			const [company] = await tx.$queryRaw<Array<{ id: string }>>`
+				SELECT id
+				FROM company
+				WHERE id = ${companyId}
+				FOR UPDATE
+			`;
+			if (!company) {
+				throw new NotFoundException(`No company with id ${companyId}.`);
+			}
+			const [lockedDeal] = await tx.$queryRaw<Array<{ id: string }>>`
+				SELECT id
+				FROM deal
+				WHERE id = ${dealId}
+				FOR UPDATE
+			`;
+			if (!lockedDeal)
+				throw new NotFoundException(`No deal with id ${dealId}.`);
 			const deal = await tx.deal.findUnique({
 				where: { id: dealId },
 				select: {
