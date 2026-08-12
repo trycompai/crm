@@ -1,11 +1,9 @@
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { daysFromNow, RECHECK } from "../lib/recheck-config";
 import { assertResearchPurpose } from "../lib/session-purpose";
 import { scheduleTask } from "../lib/tasks";
-
-const MIN_DAYS = 1;
-const MAX_DAYS = 730;
 
 export default defineTool({
 	description:
@@ -15,10 +13,10 @@ export default defineTool({
 		days: z
 			.number()
 			.int()
-			.min(MIN_DAYS)
-			.max(MAX_DAYS)
+			.min(RECHECK.minDays)
+			.max(RECHECK.maxDays)
 			.describe(
-				"14 for a champion on an open deal; 90 for a named contact with no deal; 365 when two attempts have found nothing.",
+				`${RECHECK.championDays} for a champion on an open deal; ${RECHECK.namedDays} for a named contact with no deal; ${RECHECK.baselineDays} for a steady job-change feed; ${RECHECK.emptyDays} when two attempts have found nothing.`,
 			),
 		reason: z
 			.string()
@@ -31,12 +29,12 @@ export default defineTool({
 			.int()
 			.min(1)
 			.max(20)
-			.default(4)
+			.default(RECHECK.defaultBudget)
 			.describe("Vendor calls the next run may spend."),
 	}),
 	async execute({ contactId, days, reason, budget }, ctx) {
 		assertResearchPurpose(ctx);
-		const dueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+		const dueAt = daysFromNow(days);
 
 		await scheduleTask({
 			contactId,
