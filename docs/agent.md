@@ -322,13 +322,12 @@ delegation paths for custom agents.
   per-action approval; the deployed permission and idempotent runtime checks are the
   boundary.
 - **Lifecycle specialists are Deploy-gated team agents.** Optional manifest field
-  `lifecycleRole` is one of `qualify` | `engage` | `advance` | `close`. The Qualify
-  template lives in `apps/agent/agent/lib/lifecycle-qualify.ts`. The Engage template
-  lives in `apps/agent/agent/lib/lifecycle-engage.ts`. The Advance template lives in
-  `apps/agent/agent/lib/lifecycle-advance.ts`. All are recommend-only: CRM note/task
-  plus `run.summary`, no send tools. Engage queues outreach recommendations only and
-  never sends email or SMS. Advance recommends stage and next step only and never
-  mutates deal stage. Saving never makes a version LIVE.
+  `lifecycleRole` is one of `qualify` | `engage` | `advance` | `close`. Templates:
+  `lifecycle-qualify.ts`, `lifecycle-engage.ts`, `lifecycle-advance.ts`,
+  `lifecycle-close.ts` under `apps/agent/agent/lib/`. All are recommend-only: CRM
+  note/task plus `run.summary`, no send tools. Engage never sends email or SMS.
+  Advance never mutates deal stage. Close never reopens deals or writes finance
+  fields. Saving never makes a version LIVE.
 - **Approved instructions are system context.** The runner resolves the pinned
   version instructions at `session.started`, then calls `inspect_run` for the manifest
   and current run state. Every runner tool also checks the `team-agent` purpose and
