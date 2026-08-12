@@ -10,6 +10,7 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 type Agents = RouterOutputs["agents"]["list"];
+type Fleet = RouterOutputs["agents"]["observability"];
 
 export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 	const trpc = useTRPC();
@@ -18,10 +19,12 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 		...trpc.agents.list.queryOptions(),
 		initialData: initialAgents,
 	});
+	const fleet = useQuery(trpc.agents.observability.queryOptions());
 	const rows = agents.data ?? initialAgents;
 
 	return (
 		<>
+			{fleet.data ? <FleetHealth fleet={fleet.data} /> : null}
 			{rows.length ? (
 				<div className="overflow-hidden rounded-lg border bg-card">
 					{rows.map((agent) => (
@@ -39,6 +42,11 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 									<span className="min-w-0 wrap-break-word font-medium text-sm sm:truncate">
 										{agent.name}
 									</span>
+									{agent.lifecycleRole ? (
+										<span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs capitalize">
+											{agent.lifecycleRole}
+										</span>
+									) : null}
 									<span className="shrink-0 text-muted-foreground text-xs">
 										{agent.status.toLowerCase()}
 									</span>
@@ -77,5 +85,89 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 				</div>
 			)}
 		</>
+	);
+}
+
+function FleetHealth({ fleet }: { fleet: Fleet }) {
+	const open = Object.values(fleet.openRunsByStatus).reduce(
+		(sum: number, count: number) => sum + count,
+		0,
+	);
+
+	return (
+		<div className="mb-4 overflow-hidden rounded-lg border bg-card">
+			<div className="border-b px-4 py-3 sm:px-5">
+				<h2 className="font-medium text-sm">Fleet health (24h)</h2>
+				<p className="mt-0.5 text-muted-foreground text-xs">
+					Run status, action quality, and token cost for team agents. Aggregate
+					counts only.
+				</p>
+			</div>
+			<div className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-4 sm:gap-4 sm:px-5">
+				<Stat label="Runs" value={String(fleet.consumption.runs)} />
+				<Stat label="Open now" value={String(open)} />
+				<Stat
+					label="Failed"
+					value={String(fleet.quality.failed)}
+					warn={fleet.quality.failed > 0}
+				/>
+				<Stat
+					label="Dependency fails"
+					value={String(fleet.quality.dependencyFailures)}
+					warn={fleet.quality.dependencyFailures > 0}
+				/>
+				<Stat
+					label="Cancelled"
+					value={`${fleet.quality.cancelled}${
+						fleet.quality.cancelAfterAction > 0
+							? ` (${fleet.quality.cancelAfterAction} after action)`
+							: ""
+					}`}
+				/>
+				<Stat
+					label="Input tokens"
+					value={fleet.consumption.inputTokens.toLocaleString("en-US")}
+				/>
+				<Stat
+					label="Output tokens"
+					value={fleet.consumption.outputTokens.toLocaleString("en-US")}
+				/>
+				<Stat
+					label="Cost"
+					value={`$${fleet.consumption.costUsd.toFixed(4)}`}
+				/>
+			</div>
+			{Object.keys(fleet.runsByLifecycleRole).length > 0 ? (
+				<div className="border-t px-4 py-3 font-mono text-muted-foreground text-xs sm:px-5">
+					Roles ·{" "}
+					{Object.entries(fleet.runsByLifecycleRole)
+						.map(([role, count]) => `${role} ${count}`)
+						.join(" · ")}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function Stat({
+	label,
+	value,
+	warn = false,
+}: {
+	label: string;
+	value: string;
+	warn?: boolean;
+}) {
+	return (
+		<div className="min-w-0">
+			<div className="text-muted-foreground text-xs">{label}</div>
+			<div
+				className={`mt-0.5 truncate font-mono text-sm ${
+					warn ? "text-destructive" : ""
+				}`}
+			>
+				{value}
+			</div>
+		</div>
 	);
 }

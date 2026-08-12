@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TrpcModule } from "../trpc/trpc.module";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentDefinitionsService } from "./agent-definitions.service";
+import { AgentObservabilityService } from "./agent-observability.service";
 import { AgentQueueService } from "./agent-queue.service";
 import { AgentRunsService } from "./agent-runs.service";
 import { AgentTriggerService } from "./agent-trigger.service";
@@ -14,6 +15,7 @@ import { ResearchKeyService } from "./research-key.service";
 	providers: [
 		AgentAccessService,
 		AgentDefinitionsService,
+		AgentObservabilityService,
 		AgentQueueService,
 		AgentRunsService,
 		AgentTriggerService,

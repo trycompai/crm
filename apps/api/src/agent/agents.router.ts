@@ -11,6 +11,7 @@ import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { AgentDefinitionsService } from "./agent-definitions.service";
+import { AgentObservabilityService } from "./agent-observability.service";
 import { AgentRunsService } from "./agent-runs.service";
 import {
 	agentCancelRunInput,
@@ -32,11 +33,18 @@ export class AgentsRouter {
 		private readonly agents: AgentDefinitionsService,
 		@Inject(AgentRunsService)
 		private readonly runs: AgentRunsService,
+		@Inject(AgentObservabilityService)
+		private readonly fleetHealth: AgentObservabilityService,
 	) {}
 
 	@Query()
 	async list(@Ctx() ctx: AuthedTrpcContext) {
 		return this.agents.list(ctx.user.id);
+	}
+
+	@Query()
+	async observability(@Ctx() ctx: AuthedTrpcContext) {
+		return this.fleetHealth.fleet(ctx.user.id);
 	}
 
 	@Mutation({ input: agentReviseInput })

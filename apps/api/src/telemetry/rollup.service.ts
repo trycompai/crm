@@ -18,14 +18,20 @@ import {
 	drainCounters,
 	installDaily,
 	type Properties,
+	permittedAgentActionStatus,
+	permittedAgentRunStatus,
+	permittedAgentTriggerType,
 	permittedEvidenceKind,
+	permittedLifecycleRole,
 	permittedMethod,
 	permittedTaskKind,
+	permittedTeamActionType,
 	permittedTool,
 	releaseRollup,
 	restoreCounters,
 	telemetryDisabled,
 } from "@crm/telemetry";
+import { readLifecycleRole } from "@crm/validation";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { FunnelService } from "./funnel.service";
@@ -186,7 +192,7 @@ export class RollupService {
 		since: Date,
 		counters: Record<string, number>,
 	): Promise<Properties> {
-		const [tools, sessions, tasks, attempts, rechecks, conversations] =
+		const [tools, sessions, tasks, attempts, rechecks, conversations, team] =
 			await Promise.all([
 				this.toolCalls(since),
 				this.sessions(since),
@@ -194,6 +200,7 @@ export class RollupService {
 				this.attempts(since),
 				this.rechecks(since),
 				this.db.agentConversation.count(),
+				this.teamAgents(since),
 			]);
 
 		const total = Object.values(tools.calls).reduce((sum, n) => sum + n, 0);
@@ -223,6 +230,130 @@ export class RollupService {
 			recheck_interval_days: rechecks.buckets,
 
 			agent_conversations: conversations,
+
+			team_runs_by_status: team.runsByStatus,
+			team_runs_by_trigger: team.runsByTrigger,
+			team_runs_by_lifecycle_role: team.runsByRole,
+			team_actions_by_type: team.actionsByType,
+			team_actions_by_status: team.actionsByStatus,
+			team_runs_cancelled: team.cancelled,
+			team_runs_cancel_after_action: team.cancelAfterAction,
+			team_dependency_failures: team.dependencyFailures,
+			team_input_tokens: team.inputTokens,
+			team_output_tokens: team.outputTokens,
+			team_cost_usd: team.costUsd,
+		};
+	}
+
+	private async teamAgents(since: Date): Promise<{
+		runsByStatus: Record<string, number>;
+		runsByTrigger: Record<string, number>;
+		runsByRole: Record<string, number>;
+		actionsByType: Record<string, number>;
+		actionsByStatus: Record<string, number>;
+		cancelled: number;
+		cancelAfterAction: number;
+		dependencyFailures: number;
+		inputTokens: number;
+		outputTokens: number;
+		costUsd: number;
+	}> {
+		const [statusRows, triggerRows, runs, actionTypeRows, actionStatusRows] =
+			await Promise.all([
+				this.db.agentRun.groupBy({
+					by: ["status"],
+					where: { createdAt: { gte: since } },
+					_count: { _all: true },
+				}),
+				this.db.agentRun.groupBy({
+					by: ["triggerType"],
+					where: { createdAt: { gte: since } },
+					_count: { _all: true },
+				}),
+				this.db.agentRun.findMany({
+					where: { createdAt: { gte: since } },
+					select: {
+						status: true,
+						cancelRequestedAt: true,
+						errorCode: true,
+						inputTokens: true,
+						outputTokens: true,
+						costUsd: true,
+						version: { select: { manifest: true } },
+						_count: { select: { actions: true } },
+					},
+				}),
+				this.db.agentAction.groupBy({
+					by: ["type"],
+					where: { plannedAt: { gte: since } },
+					_count: { _all: true },
+				}),
+				this.db.agentAction.groupBy({
+					by: ["status"],
+					where: { plannedAt: { gte: since } },
+					_count: { _all: true },
+				}),
+			]);
+
+		const runsByRole: Record<string, number> = {};
+		let cancelled = 0;
+		let cancelAfterAction = 0;
+		let dependencyFailures = 0;
+		let inputTokens = 0;
+		let outputTokens = 0;
+		let costUsd = 0;
+
+		for (const run of runs) {
+			const role = readLifecycleRole(run.version.manifest);
+			const roleKey = role ? permittedLifecycleRole(role) : "none";
+			runsByRole[roleKey] = (runsByRole[roleKey] ?? 0) + 1;
+
+			if (run.status === "CANCELLED" || run.cancelRequestedAt) {
+				cancelled += 1;
+				if (run._count.actions > 0) cancelAfterAction += 1;
+			}
+
+			if (run.errorCode === "DEPENDENCY_UNAVAILABLE") {
+				dependencyFailures += 1;
+			}
+
+			inputTokens += run.inputTokens ?? 0;
+			outputTokens += run.outputTokens ?? 0;
+			costUsd += Number(run.costUsd ?? 0);
+		}
+
+		return {
+			runsByStatus: merge(
+				statusRows.map((row) => ({
+					key: permittedAgentRunStatus(row.status),
+					count: row._count._all,
+				})),
+			),
+			runsByTrigger: merge(
+				triggerRows.map((row) => ({
+					key: permittedAgentTriggerType(row.triggerType),
+					count: row._count._all,
+				})),
+			),
+			runsByRole,
+			actionsByType: merge(
+				actionTypeRows.map((row) => ({
+					key: permittedTeamActionType(row.type),
+					count: row._count._all,
+				})),
+			),
+			actionsByStatus: merge(
+				actionStatusRows.map((row) => ({
+					key: permittedAgentActionStatus(row.status),
+					count: row._count._all,
+				})),
+			),
+			cancelled,
+			cancelAfterAction,
+			dependencyFailures,
+			inputTokens,
+			outputTokens,
+			costUsd: round(costUsd),
 		};
 	}
 
