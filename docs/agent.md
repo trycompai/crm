@@ -313,8 +313,10 @@ delegation paths for custom agents.
   boundary.
 - **Lifecycle specialists are Deploy-gated team agents.** Optional manifest field
   `lifecycleRole` is one of `qualify` | `engage` | `advance` | `close`. The Qualify
-  template lives in `apps/agent/agent/lib/lifecycle-qualify.ts` and is recommend-only:
-  CRM note/task plus `run.summary`, no send tools. Saving never makes a version LIVE.
+  template lives in `apps/agent/agent/lib/lifecycle-qualify.ts`. The Engage template
+  lives in `apps/agent/agent/lib/lifecycle-engage.ts`. Both are recommend-only:
+  CRM note/task plus `run.summary`, no send tools. Engage queues outreach
+  recommendations only and never sends email or SMS. Saving never makes a version LIVE.
 - **Approved instructions are system context.** The runner resolves the pinned
   version instructions at `session.started`, then calls `inspect_run` for the manifest
   and current run state. Every runner tool also checks the `team-agent` purpose and
