@@ -1,2 +1,1 @@
-ALTER TABLE "slackMemberMatch"
-DROP COLUMN "explicitlyUnmatched";
+SELECT 1;

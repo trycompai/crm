@@ -4,7 +4,6 @@ CREATE TABLE "slackMemberMatch" (
     "slackUserId" TEXT,
     "slackHandle" TEXT,
     "slackEmail" TEXT,
-    "explicitlyUnmatched" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
