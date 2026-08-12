@@ -147,10 +147,10 @@ General — an admin who cannot redeploy cannot set a variable.
 
 - **An install that had the variable is asked again**: no migration, no fallback, and
   **the gate cannot be dismissed**.
-- **Nothing is lost while waiting.** A keyless `brand` task settles `SKIPPED` *before*
-  anything marks the row `RUNNING`, and `settle` only overwrites `RUNNING` — so the
-  company stays `PENDING`, which the sweep re-queues
-  (`test/keyless-brand.integration.spec.ts`).
+- **Nothing is lost while waiting.** A keyless `brand` task returns without writing
+  enrichment status (it never marks the row `RUNNING`). On the enrichment path,
+  `settle` only overwrites `RUNNING`. Either way the company stays `PENDING`,
+  which the sweep re-queues (`test/keyless-brand.integration.spec.ts`).
 - **Saving the key runs the company sweep immediately** (fire-and-forget).
 - **`readContextDevKey` (`@crm/db/settings`) is the only reader**, read live with no
   cache. An unreadable database is a capability that is off, not an exception.

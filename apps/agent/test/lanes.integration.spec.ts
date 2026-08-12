@@ -107,6 +107,9 @@ describe("kind vocabulary", () => {
 	});
 
 	it("puts what a rep sees first above what they have to click for", () => {
+		expect(PRIORITY.brand).toBe(900);
+		expect(PRIORITY.portrait).toBe(800);
+		expect(PRIORITY.brand).toBeGreaterThan(PRIORITY.portrait);
 		expect(PRIORITY.brand).toBeGreaterThan(PRIORITY.requested);
 		expect(PRIORITY.portrait).toBeGreaterThan(PRIORITY.requested);
 		expect(PRIORITY.requested).toBeGreaterThan(PRIORITY.companyProfile);

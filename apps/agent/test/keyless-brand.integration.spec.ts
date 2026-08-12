@@ -1,5 +1,14 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { db, EnrichmentStatus } from "@crm/db";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+} from "bun:test";
+import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { SETTINGS_ID } from "@crm/db/settings";
+import { runBrand } from "../agent/lib/brand";
 import { settle } from "../agent/lib/enrichment";
 
 /**
@@ -8,15 +17,29 @@ import { settle } from "../agent/lib/enrichment";
  * the *record*: the sign-in sweep re-queues companies whose enrichment never
  * succeeded, and it decides that on `enrichmentStatus` being PENDING or FAILED.
  *
- * `runBrand` settles SKIPPED before anything marks the row RUNNING, and
- * `settle` only writes over a RUNNING row — so the row stays PENDING and the
- * sweep picks it up once a key exists. That is load bearing and entirely
- * implicit, which is why it is pinned here: a `settle` that wrote
- * unconditionally would strand every company added before the key, with
- * nothing to say so.
+ * `runBrand` returns without writing enrichment status when the key is missing,
+ * so the row stays PENDING. `settle` on the enrichment path only writes over a
+ * RUNNING row. Either path must leave PENDING companies re-queueable once a key
+ * exists. A settle that wrote SKIPPED unconditionally would strand every
+ * company added before the key, with nothing to say so.
  */
 const created: string[] = [];
 const tasks: string[] = [];
+
+let savedSettings: Prisma.AppSettingUncheckedCreateInput | null = null;
+
+beforeAll(async () => {
+	savedSettings = await db.appSetting.findUnique({
+		where: { id: SETTINGS_ID },
+	});
+});
+
+afterAll(async () => {
+	await db.appSetting.deleteMany({ where: { id: SETTINGS_ID } });
+	if (savedSettings) {
+		await db.appSetting.create({ data: savedSettings });
+	}
+});
 
 afterEach(async () => {
 	if (tasks.length > 0) {
@@ -130,5 +153,16 @@ describe("a brand task with no key", () => {
 		);
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.COMPLETE);
+	});
+
+	it("runBrand leaves PENDING when Context is not configured", async () => {
+		await db.appSetting.deleteMany({ where: { id: SETTINGS_ID } });
+
+		const id = await company(EnrichmentStatus.PENDING);
+		const result = await runBrand({ companyId: id });
+
+		expect(result.enriched).toBe(false);
+		expect(result.reason).toContain("not configured");
+		expect(await statusOf(id)).toBe(EnrichmentStatus.PENDING);
 	});
 });
