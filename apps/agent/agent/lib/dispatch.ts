@@ -426,6 +426,8 @@ function work(kind: string, reason: string): string {
 			return "This company's brand, industry, location and links are filled in separately and may already be there. Read the account, fill anything still missing, and write a brief if there is something worth saying.";
 		case "workspace-profile":
 			return "Write the profile of the company you work for, so that every other session knows who we are. Read our own site and keep it short.";
+		case "deal-score":
+			return "Score this deal from 0–100 and write the forecast context. Read the deal history first. Base the score on stage age, activity recency and cadence, contact coverage (champion and economic buyer), and what the notes say. Call write_deal_intelligence once with the score, a one-paragraph rationale, and a rolling timeline summary. Do not send outreach. Do not change stage or ownership. Do not overwrite forecastContextManual.";
 		default:
 			return `Handle this: ${reason}`;
 	}

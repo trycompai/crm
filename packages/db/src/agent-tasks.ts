@@ -12,6 +12,7 @@ export const TASK_KINDS = [
 	"slack-channel-join",
 	"agent-event",
 	"stalled-deal",
+	"deal-score",
 ] as const;
 
 export type TaskKind = (typeof TASK_KINDS)[number];
@@ -50,6 +51,7 @@ export const PRIORITY = {
 	slackJoin: 950,
 	event: 700,
 	stalledDeal: 120,
+	dealScore: 80,
 } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;

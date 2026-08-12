@@ -61,9 +61,15 @@ they never wait behind research sessions either.
 
 **Priority**: `slackJoin` 950 · `brand` 900 · `portrait` 800 · `event` 700 ·
 `workspace` 500 · `requested` 300 · `meeting` 200 · `slackPeople` 150 ·
-`identify` 100 · `sweep` 50 · `companyProfile` 40 · `fieldBackfill` 20 ·
-`recheck` 0. Brand stays at 900 so company visual identity claims ahead of every
-research kind.
+`stalledDeal` 120 · `identify` 100 · `dealScore` 80 · `sweep` 50 ·
+`companyProfile` 40 · `fieldBackfill` 20 · `recheck` 0. Brand stays at 900 so
+company visual identity claims ahead of every research kind.
+
+**`deal-score`** is a research-lane kind. Nest enqueues it on stage change and on a
+nightly open-deal sweep. The session reads the deal timeline and calls
+`write_deal_intelligence` once. That tool writes `dealScore`, `dealScoreSummary`,
+`dealScoredAt`, and `forecastContext`. It never overwrites `forecastContextManual`.
+The sheet shows the manual forecast when set.
 
 **`claimDue` sorts what it claims** — Postgres does not order `UPDATE … RETURNING` by
 its sub-select's `ORDER BY`.

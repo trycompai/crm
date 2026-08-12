@@ -202,6 +202,11 @@ export class DealsService {
 				expectedCloseDate: true,
 				closedAt: true,
 				closedReason: true,
+				dealScore: true,
+				dealScoreSummary: true,
+				dealScoredAt: true,
+				forecastContext: true,
+				forecastContextManual: true,
 				createdAt: true,
 				company: { select: { ...COMPANY_SELECT, industry: true } },
 				owner: { select: OWNER_SELECT },
@@ -229,6 +234,7 @@ export class DealsService {
 			stageChangedAt: deal.stageChangedAt.toISOString(),
 			expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			closedAt: deal.closedAt?.toISOString() ?? null,
+			dealScoredAt: deal.dealScoredAt?.toISOString() ?? null,
 			createdAt: deal.createdAt.toISOString(),
 			contacts: contacts.map(({ role, contact }) => ({ ...contact, role })),
 		};
@@ -311,6 +317,12 @@ export class DealsService {
 		}
 		if (input.expectedCloseDate !== undefined) {
 			data.expectedCloseDate = parseDate(input.expectedCloseDate);
+		}
+		if (input.forecastContextManual !== undefined) {
+			data.forecastContextManual =
+				input.forecastContextManual === null
+					? null
+					: blankToNull(input.forecastContextManual);
 		}
 
 		if (input.amountCents !== undefined || input.currency !== undefined) {
@@ -477,6 +489,11 @@ export class DealsService {
 		const { deal, updated, now } = transition;
 
 		await this.stamp.touch({ companyId: deal.companyId, dealId: deal.id }, now);
+
+		void this.agent.dealScore(
+			deal.id,
+			`Stage changed from ${deal.stage} to ${input.stage}`,
+		);
 
 		this.logger.log({
 			message: "Deal stage changed",

@@ -256,6 +256,16 @@ export class AgentTriggerService {
 		});
 	}
 
+	async dealScore(dealId: string, reason: string): Promise<boolean> {
+		return this.enqueue({
+			dealId,
+			kind: "deal-score",
+			reason,
+			priority: PRIORITY.dealScore,
+			budget: 6,
+		});
+	}
+
 	builderConversationQueued(): void {
 		this.pokeRoute("/internal/crm/builder-dispatch");
 	}
