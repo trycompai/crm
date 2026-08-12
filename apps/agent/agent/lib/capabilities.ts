@@ -50,14 +50,14 @@ export function capabilitiesFrom(
 		{
 			...fromEnv("PERPLEXITY_API_KEY"),
 			label: "Web research",
-			gives:
-				"open-web context with citations, and the search that finds a LinkedIn slug in the first place",
+			gives: "open-web context with citations for research, not for identity matching",
 		},
 		{
 			id: CONTEXT_DEV,
 			from: "Settings → General",
 			label: "Company brand data",
-			gives: "a company's logo, industry, location and socials from its domain",
+			gives:
+				"a company's logo, industry, location and socials from its domain, and Context web search that finds LinkedIn candidate slugs for identity matching",
 			enabled: contextDev !== null,
 		},
 		{

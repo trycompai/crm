@@ -16,6 +16,16 @@ describe("scoreEvidence", () => {
 		expect(scored.hasPrimary).toBe(true);
 	});
 
+	it("writes when LinkedIn employer and name both match", () => {
+		const scored = scoreEvidence(of("linkedin.employer-and-name"));
+		expect(scored.band).toBe("VERIFIED");
+		expect(scored.hasPrimary).toBe(true);
+	});
+
+	it("keeps employer-only below the floor so strangers are not stored", () => {
+		expect(scoreEvidence(of("employer-only")).band).toBeNull();
+	});
+
 	it("treats our own mailbox as primary evidence", () => {
 		expect(scoreEvidence(of("crm.thread-reply")).band).toBe("VERIFIED");
 	});
