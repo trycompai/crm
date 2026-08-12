@@ -22,6 +22,7 @@
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",
+		"./stalled-deals": "./src/stalled-deals.ts",
 		"./tracking": "./src/tracking.ts",
 		"./workspace": "./src/workspace.ts"
 	},

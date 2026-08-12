@@ -106,6 +106,7 @@ describe("kind vocabulary", () => {
 	it("agrees on which kinds skip the model", () => {
 		expect(isDirectKind("brand")).toBe(true);
 		expect(isDirectKind("portrait")).toBe(true);
+		expect(isDirectKind("stalled-deal")).toBe(true);
 		expect(isDirectKind("company-profile")).toBe(false);
 		expect(isDirectKind("identify")).toBe(false);
 		expect(isDirectKind("workspace-profile")).toBe(false);
