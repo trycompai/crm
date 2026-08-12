@@ -158,6 +158,15 @@ describe("session purpose boundaries", () => {
 		expect(() => assertResearchPurpose(context("team-agent"))).toThrow();
 	});
 
+	it("leaves the read-only deal list open to the assistant chat that is told to use it", async () => {
+		const source = await Bun.file(
+			new URL("../agent/tools/list_deals.ts", import.meta.url),
+		).text();
+
+		expect(source).not.toContain("assertResearchPurpose");
+		expect(builderTaskMarkdown(null)).toContain("list_deals");
+	});
+
 	it("binds specialist tools to their explicit session purpose", () => {
 		expect(
 			requireBuilderAttribute(
