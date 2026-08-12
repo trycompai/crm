@@ -4,6 +4,7 @@ import { capabilities, readLifecycleRole } from "../src/agents";
 describe("lifecycleRole validation", () => {
 	it("reads a valid role from a raw manifest", () => {
 		expect(readLifecycleRole({ lifecycleRole: "qualify" })).toBe("qualify");
+		expect(readLifecycleRole({ lifecycleRole: "engage" })).toBe("engage");
 		expect(readLifecycleRole({ lifecycleRole: "nope" })).toBeNull();
 		expect(readLifecycleRole({})).toBeNull();
 	});
@@ -17,6 +18,9 @@ describe("lifecycleRole validation", () => {
 		expect(
 			capabilities.parse({ ...base, lifecycleRole: "qualify" }).lifecycleRole,
 		).toBe("qualify");
+		expect(
+			capabilities.parse({ ...base, lifecycleRole: "engage" }).lifecycleRole,
+		).toBe("engage");
 		expect(
 			capabilities.safeParse({ ...base, lifecycleRole: "send" }).success,
 		).toBe(false);
