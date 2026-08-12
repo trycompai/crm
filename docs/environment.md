@@ -132,7 +132,7 @@ single place that knows what is set.
 | `AI_GATEWAY_API_KEY` | Dedicated Gateway credential. Required to open model spend in Vercel production |
 | `VERCEL_OIDC_TOKEN` | Provider-injected Gateway auth. It does not open the production spend gate by itself |
 | `AI_GATEWAY_SPEND_PAUSED` | Defaults to paused; set to `false` only when model-backed agent work is approved |
-| `OPENAI_API_KEY` | Optional direct OpenAI model access for the agent |
+| `OPENAI_API_KEY` | Optional direct OpenAI model access for local agent development only; production always uses AI Gateway |
 | `TAVILY_API_KEY` | Current public-web discovery for prospect research |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
 

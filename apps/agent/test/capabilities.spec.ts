@@ -7,12 +7,19 @@ import {
 	unavailable,
 } from "../agent/lib/capabilities";
 
-const KEYS = [
+const CAPABILITY_KEYS = [
 	"OPENAI_API_KEY",
 	"TAVILY_API_KEY",
 	"RAPIDAPI_KEY",
 	"PERPLEXITY_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
+] as const;
+const KEYS = [
+	...CAPABILITY_KEYS,
+	"AI_GATEWAY_SPEND_PAUSED",
+	"LODE_AGENT_OPENAI_MODEL",
+	"NODE_ENV",
+	"VERCEL_ENV",
 ] as const;
 
 const saved: Record<string, string | undefined> = {};
@@ -59,6 +66,15 @@ describe("capabilities", () => {
 		process.env.SOMETHING_ELSE = "x";
 		expect(await enabled("SOMETHING_ELSE")).toBe(false);
 		delete process.env.SOMETHING_ELSE;
+	});
+
+	it("never advertises direct OpenAI in production", async () => {
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
+		process.env.OPENAI_API_KEY = "configured";
+		process.env.NODE_ENV = "production";
+
+		expect(await enabled("OPENAI_API_KEY")).toBe(false);
 	});
 });
 
@@ -128,7 +144,9 @@ describe("the capability briefing", () => {
 	});
 
 	it("does not warn about missing sources when everything is on", () => {
-		for (const key of KEYS) process.env[key] = "key";
+		for (const key of CAPABILITY_KEYS) process.env[key] = "key";
+		process.env.AI_GATEWAY_SPEND_PAUSED = "false";
+		process.env.LODE_AGENT_OPENAI_MODEL = "direct-model";
 
 		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
 			"Not configured here",

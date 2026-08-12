@@ -2,6 +2,7 @@ import "@crm/env/load";
 
 import { db } from "@crm/db";
 import { readContextDevKey } from "@crm/db/settings";
+import { directOpenAiAllowed } from "./autonomy";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
@@ -45,6 +46,7 @@ export function capabilitiesFrom(
 			...fromEnv("OPENAI_API_KEY"),
 			label: "Direct OpenAI model",
 			gives: "the configured OpenAI research model without an AI gateway",
+			enabled: directOpenAiAllowed(),
 		},
 		{
 			...fromEnv("TAVILY_API_KEY"),
