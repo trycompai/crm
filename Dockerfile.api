@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+
+ARG BUN_VERSION=1.3.12
+
+FROM oven/bun:${BUN_VERSION} AS pruner
+WORKDIR /workspace
+COPY . .
+RUN bunx turbo prune api --docker
+
+FROM oven/bun:${BUN_VERSION} AS builder
+WORKDIR /workspace
+RUN apt-get update -qq \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install only the API workspace and its transitive workspace dependencies.
+COPY --from=pruner /workspace/out/json/ ./
+COPY --from=pruner /workspace/out/bun.lock ./bun.lock
+RUN bun install --frozen-lockfile
+
+COPY --from=pruner /workspace/out/full/ ./
+RUN DATABASE_URL=postgresql://postgres:build@localhost:5432/crm \
+    bun run --cwd packages/db db:generate
+RUN bun run --cwd apps/api build
+
+FROM oven/bun:${BUN_VERSION}-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# The API bundle keeps third-party packages external. Copy only the pruned API
+# dependency graph rather than the complete CRM monorepo workspace.
+COPY --from=builder /workspace/package.json /workspace/bun.lock ./
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /workspace/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /workspace/apps/api/dist ./apps/api/dist
+COPY --from=builder /workspace/packages ./packages
+
+EXPOSE 3001
+CMD ["sh", "-c", "bun run --cwd packages/db db:deploy && bun apps/api/dist/main.js"]
