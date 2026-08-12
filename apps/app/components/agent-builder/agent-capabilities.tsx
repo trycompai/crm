@@ -29,6 +29,7 @@ export type Resource = { id: string; kind: string; label: string };
 export type Capabilities = {
 	readable: boolean;
 	problem: string | null;
+	lifecycleRole?: "qualify" | "engage" | "advance" | "close" | null;
 	channel: { kind: "channel" | "user"; id: string; label: string } | null;
 	actions: Array<{ type: string; provider: string; summary: string }>;
 	dataScope: {

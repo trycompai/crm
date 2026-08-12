@@ -1,6 +1,7 @@
 import { CRM_EVENT_TYPES } from "@crm/db/crm-events";
 import { z } from "zod";
 import { AGENT_ACTION_TYPES } from "./agent-actions";
+import { LIFECYCLE_ROLES } from "./lifecycle-roles";
 
 const slackDestination = z.object({
 	kind: z.enum(["channel", "user"]),
@@ -65,6 +66,7 @@ export const agentManifestResource = z.object({
 export const agentManifest = z
 	.object({
 		description: z.string().optional(),
+		lifecycleRole: z.enum(LIFECYCLE_ROLES).optional(),
 		actions: z.array(agentManifestAction).min(1),
 		triggers: z.array(agentManifestTrigger).min(1),
 		dataScope: z.object({

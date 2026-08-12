@@ -321,6 +321,10 @@ delegation paths for custom agents.
   team. Scheduled runner sessions use task mode and therefore cannot pause for a
   per-action approval; the deployed permission and idempotent runtime checks are the
   boundary.
+- **Lifecycle specialists are Deploy-gated team agents.** Optional manifest field
+  `lifecycleRole` is one of `qualify` | `engage` | `advance` | `close`. The Qualify
+  template lives in `apps/agent/agent/lib/lifecycle-qualify.ts` and is recommend-only:
+  CRM note/task plus `run.summary`, no send tools. Saving never makes a version LIVE.
 - **Approved instructions are system context.** The runner resolves the pinned
   version instructions at `session.started`, then calls `inspect_run` for the manifest
   and current run state. Every runner tool also checks the `team-agent` purpose and
