@@ -195,6 +195,28 @@ databaseDescribe("inbound provenance database contracts", () => {
 	});
 
 	afterAll(async () => {
+		await db.$transaction(async (tx) => {
+			await tx.$executeRaw`ALTER TABLE "entityFieldProvenance" DISABLE TRIGGER "entityFieldProvenance_applied_immutable"`;
+			await tx.$executeRaw`ALTER TABLE "entityLinkProvenance" DISABLE TRIGGER "entityLinkProvenance_applied_immutable"`;
+			await tx.entityFieldProvenance.deleteMany({
+				where: { decidedById: userId },
+			});
+			await tx.entityLinkProvenance.deleteMany({
+				where: { decidedById: userId },
+			});
+			await tx.contactCandidate.deleteMany({
+				where: { decisionById: userId },
+			});
+			await tx.recordQuarantine.deleteMany({
+				where: { reviewedById: userId },
+			});
+			await tx.granolaNoteExclusion.deleteMany({
+				where: { reviewedById: userId },
+			});
+			await tx.user.delete({ where: { id: userId } });
+			await tx.$executeRaw`ALTER TABLE "entityFieldProvenance" ENABLE TRIGGER "entityFieldProvenance_applied_immutable"`;
+			await tx.$executeRaw`ALTER TABLE "entityLinkProvenance" ENABLE TRIGGER "entityLinkProvenance_applied_immutable"`;
+		});
 		await db.$disconnect();
 	});
 
@@ -559,7 +581,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await db.contactCandidate.create({
 			data: {
 				identityKey: provenanceValueDigest(`name-fallback-${suffix}`),
-				canonicalName: "Fallback Person",
+				canonicalName: `Fallback Person ${suffix}`,
 				canonicalDomain: "fallback.example.test",
 			},
 		});
@@ -569,7 +591,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 					identityKey: provenanceValueDigest(
 						`name-fallback-duplicate-${suffix}`,
 					),
-					canonicalName: " fallback person ",
+					canonicalName: ` fallback person ${suffix} `,
 					canonicalDomain: "FALLBACK.EXAMPLE.TEST",
 				},
 			}),
@@ -577,7 +599,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 		await db.contactCandidate.create({
 			data: {
 				identityKey: provenanceValueDigest(`business-fallback-${suffix}`),
-				canonicalBusinessName: "Fallback Business",
+				canonicalBusinessName: `Fallback Business ${suffix}`,
 				canonicalDomain: "business.example.test",
 			},
 		});
@@ -587,7 +609,7 @@ databaseDescribe("inbound provenance database contracts", () => {
 					identityKey: provenanceValueDigest(
 						`business-fallback-duplicate-${suffix}`,
 					),
-					canonicalBusinessName: " fallback business ",
+					canonicalBusinessName: ` fallback business ${suffix} `,
 					canonicalDomain: "BUSINESS.EXAMPLE.TEST",
 				},
 			}),
