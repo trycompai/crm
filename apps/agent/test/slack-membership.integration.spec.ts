@@ -53,8 +53,11 @@ function replies(reply: (url: string) => object) {
 }
 
 let inventoryTaskIds: string[] = [];
+let previousProviderPause: string | undefined;
 
 beforeEach(async () => {
+	previousProviderPause = process.env.PROVIDER_MUTATIONS_PAUSED;
+	process.env.PROVIDER_MUTATIONS_PAUSED = "false";
 	requested.length = 0;
 	inventoryTaskIds = (
 		await db.agentTask.findMany({
@@ -77,6 +80,11 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	globalThis.fetch = realFetch;
+	if (previousProviderPause === undefined) {
+		delete process.env.PROVIDER_MUTATIONS_PAUSED;
+	} else {
+		process.env.PROVIDER_MUTATIONS_PAUSED = previousProviderPause;
+	}
 	await db.slackChannel.deleteMany({ where: { id: CHANNEL_ID } });
 	await db.slackWorkspaceGrant.deleteMany({ where: { id: GRANT_ID } });
 	await db.agentTask.deleteMany({
@@ -87,6 +95,18 @@ afterEach(async () => {
 });
 
 describe("joining a Slack channel", () => {
+	it("stops before Slack while provider mutations are paused", async () => {
+		process.env.PROVIDER_MUTATIONS_PAUSED = "true";
+		replies(() => ({ ok: true }));
+
+		expect(await joinSlackChannel(CHANNEL_ID)).toEqual({
+			joined: false,
+			needsHuman: true,
+			reason: "Provider mutations are paused.",
+		});
+		expect(requested).toEqual([]);
+	});
+
 	it("does not claim membership of an archived channel", async () => {
 		answers("is_archived");
 
