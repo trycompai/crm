@@ -209,6 +209,14 @@ export function TeamAgentDetail({
 		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
 	const triggerSummary =
 		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
+	const detailCapabilities = (
+		data as unknown as { capabilities?: Capabilities }
+	).capabilities;
+	const lifecycleRole =
+		detailCapabilities?.lifecycleRole ??
+		(isLifecycleRoleText(reviewManifest.lifecycleRole)
+			? reviewManifest.lifecycleRole
+			: null);
 
 	return (
 		<PageShell className="min-h-0" contained>
@@ -216,6 +224,11 @@ export function TeamAgentDetail({
 				<PageShellHeading>
 					<PageShellTitle className="wrap-break-word">
 						{displayedName}
+						{lifecycleRole ? (
+							<span className="ml-2 align-middle text-muted-foreground text-sm font-normal capitalize">
+								{lifecycleRole}
+							</span>
+						) : null}
 					</PageShellTitle>
 					<PageShellDescription className="wrap-break-word leading-6">
 						<span className="block">{displayedDescription}</span>
@@ -585,6 +598,17 @@ function recordOf(value: unknown): Record<string, unknown> {
 
 function textOf(value: unknown, fallback: string): string {
 	return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function isLifecycleRoleText(
+	value: unknown,
+): value is "qualify" | "engage" | "advance" | "close" {
+	return (
+		value === "qualify" ||
+		value === "engage" ||
+		value === "advance" ||
+		value === "close"
+	);
 }
 
 function formatDate(value: string): string {

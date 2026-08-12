@@ -39,6 +39,11 @@ export function TeamAgentsIndex({ initialAgents }: { initialAgents: Agents }) {
 									<span className="min-w-0 wrap-break-word font-medium text-sm sm:truncate">
 										{agent.name}
 									</span>
+									{agent.lifecycleRole ? (
+										<span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs capitalize">
+											{agent.lifecycleRole}
+										</span>
+									) : null}
 									<span className="shrink-0 text-muted-foreground text-xs">
 										{agent.status.toLowerCase()}
 									</span>
