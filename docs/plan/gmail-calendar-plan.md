@@ -822,12 +822,12 @@ with `class-validator` decorators, and to `docs/environment.md`.
 
 ---
 
-## 16. Status and handoff (calendar + Gmail substrate)
+## 16. Status and handoff (calendar + Gmail + auto-create)
 
-### Shipped (phases 0–3)
+### Shipped (phases 0–3 + phase 4 rules)
 
-Phases **0–3** are in the tree: calendar substrate and Gmail threads on the
-record timeline. Auto-create product closure remains phase 4.
+Phases **0–3** are in the tree (calendar + Gmail threads). Phase **4** auto-create
+rules and acceptance tests ship in the same wave; Gmail auto-create stays off by default.
 
 | Concern | Where |
 | --- | --- |
@@ -868,146 +868,48 @@ Rules already enforced for Gmail:
 - First sight of a mailbox stores the current `historyId` and imports nothing.
 - History 404 clears the cursor and resumes from now (no backfill).
 
-### Remaining handoff — Auto-create (phase 4)
+### Phase 4 auto-create (shipped on existing substrate)
 
-1. **Defaults** — calendar rows may get `autoCreate: true` on first connect; gmail
-   stays false (`GoogleConnectionService.onConnected`) until matching is observed
-   on production traffic.
-2. **Rules** — two-way engagement for Gmail (rep must have sent); calendar
-   external attendee + not declined. Table-driven tests for declined meetings,
-   free-host, no-reply, dual external domains.
-3. **Undo surfaces** — `RecordSource` filter + bulk delete + `SuppressedDomain`
-   / `google.suppressDomain` (and contact suppress) must stay usable when junk
-   appears.
-4. **Do not** flip Gmail auto-create on by default in this wave.
-5. **Real-mailbox soak** — run phase 3 on production traffic for a week before
-   tightening auto-create defaults for email.
+### Shipped (phase 4 rules on the existing substrate)
 
-### Out of scope here (other lanes)
-
-- Meeting-prep agent copy / `meetingSoon` brief generation (`crm-meeting-prep`).
-- Sending mail from the CRM.
-- Phase 5 Pub/Sub real-time (`users.watch`).
-- Auto-create product closure beyond the hardening list above.
-
-### Done when (this wave)
-
-Calendar events for relevant companies appear on the timeline, deduped by
-`(iCalUID, originalStartTime)`, and Gmail threads project as one `EMAIL`
-activity with cross-mailbox `rfcMessageId` dedupe. Calendar and Gmail acceptance
-suites are green. Auto-create stays off for Gmail by default.
-
+Phase **4** reuses the Gmail and Calendar sync path. Nest matches and creates
+rows only. Intelligence still lives in `apps/agent` via `company.created` /
+`contact.created` tasks. No generic agent-copy and no auto-send.
 
 | Concern | Where |
 | --- | --- |
-| Scopes + offline access | `packages/auth/src/scopes.ts`, `packages/auth/src/auth.ts` |
-| App shell gate | `apps/app/lib/session.ts` → `requireMailboxAccess()`, `/grant-access` |
-<<<<<<< HEAD
-| `MailboxSync` + event tables + `Activity` FK | `packages/db/prisma/schema.prisma` |
-| Calendar list client + pure helpers | `apps/api/src/google/calendar.client.ts` |
-| Forward-only sync, relevance, projection | `apps/api/src/google/calendar-sync.service.ts` |
-| Match (contact → company domain; optional create) | `apps/api/src/mailbox/mailbox-match.service.ts` |
-| Cron tick + dispatch | `apps/api/src/sync/mailbox-sync.service.ts`, `sync.controller.ts` |
-| Timeline filter `meetings` | `apps/api/src/activities/activities.contracts.ts` |
-| Connection / status / purge | `apps/api/src/google/google-connection.service.ts` |
-| Acceptance tests | `apps/api/test/calendar-sync.spec.ts`, `calendar-client.spec.ts` |
+| Two-way Gmail gate | `ThreadWriterService.store` — `allowCreate: row.autoCreate && repliedTo` |
+| Calendar gate | `CalendarSyncService.apply` — `allowCreate: row.autoCreate && !declinedByUs` |
+| Create + provenance | `MailboxMatchService` stamps `RecordSource.EMAIL` / `CALENDAR` on company and contact |
+| Defaults | `GoogleConnectionService.onConnected` — calendar `autoCreate: true`, gmail `false` |
+| Toggles | `google.setAutoCreate` / settings connection card |
+| Undo | companies/contacts `source` filter + `bulkDelete`; `google.suppressDomain` (+ optional purge) |
+| Noise filters | free hosts, no-reply local parts, `SuppressedDomain`, own Workspace domain |
+| Acceptance tests | `apps/api/test/mailbox-auto-create.spec.ts` |
 
-Rules already enforced for calendar:
+Rules locked by tests:
 
-- Identity is `(iCalUid, originalStartTime)` unique.
-- Only events that resolve to a tracked company/contact are stored when
-  `autoCreate` is off (phase-1 relevance).
-- Cancellations delete the `CalendarEvent` and cascade the projected `Activity`.
-- Cursor invalidation (410) clears the cursor and resumes from `now` (no backfill).
-- `timeMin` is now; horizon is 180 days.
+- Inbound-only (newsletter) never creates, even when Gmail auto-create is on.
+- Rep-sent mail with auto-create on creates company + contact with `source = EMAIL`.
+- Auto-create off: unknown domains create nothing; known companies still attach.
+- Calendar allowCreate stamps `source = CALENDAR`; declined-by-us does not create.
+- Free hosts, no-reply, and suppressed domains create nothing.
 
-### Remaining handoff — Gmail (phase 3 polish)
+### Ops note (not a code gate)
 
-Gmail write path already exists (`gmail-sync.service.ts`, `ThreadWriterService`).
-Work still owned by a Gmail-focused lane, not this substrate:
-
-1. **Prove phase-3 acceptance on real mailboxes** for a week before tightening
-   auto-create defaults for email.
-2. **Cross-mailbox dedupe tests** on `rfcMessageId` / root `Message-ID` if not
-   already covered for the Gmail path specifically.
-3. **Body privacy checks** — list payloads stay snippet-only; expand uses
-   `google.thread`. No subjects/bodies in logs (`docs/api.md`).
-4. **UI** — thread accordion + Email filter on the record sheet if any surface
-   still lacks expand-to-messages.
-
-### Remaining handoff — Auto-create (phase 4)
-
-Infrastructure is present; product hardening is not closed:
-
-1. **Defaults** — calendar rows get `autoCreate: true` on first connect; gmail
-   stays false (`GoogleConnectionService.onConnected`). Keep that until Gmail
-   matching is observed on production traffic.
-2. **Rules** — two-way engagement for Gmail (rep must have sent); calendar
-   external attendee + not declined. Table-driven tests for declined meetings,
-   free-host, no-reply, dual external domains.
-3. **Undo surfaces** — `RecordSource` filter + bulk delete + `SuppressedDomain`
-   / `google.suppressDomain` (and contact suppress) must stay usable when junk
-   appears.
-4. **Do not** flip Gmail auto-create on by default in this calendar lane.
-
-### Out of scope here (other lanes)
-
-- Meeting-prep agent copy / `meetingSoon` brief generation (`crm-meeting-prep`).
-- Gmail body storage policy changes beyond the plan.
-- Phase 5 Pub/Sub real-time (`users.watch`).
-
-### Done when (this lane)
-
-Calendar events for relevant companies appear on the timeline, deduped by
-`(iCalUID, originalStartTime)`, with tests green on the feature branch. Gmail
-and auto-create product closure are the next owners above.
-=======
-| `EmailThread` / `EmailMessage` + `Activity.emailThreadId` | `packages/db/prisma/schema.prisma` |
-| Gmail history client + MIME parse | `apps/api/src/google/gmail.client.ts`, `gmail-mime.ts` |
-| Forward-only sync (`historyId`) | `apps/api/src/google/gmail-sync.service.ts` |
-| Thread write + EMAIL activity projection | `apps/api/src/mailbox/thread-writer.service.ts` |
-| Match (contact → company; create only if allowed) | `apps/api/src/mailbox/mailbox-match.service.ts` |
-| Expand path with full bodies | `google.thread` → `ConversationService.thread` |
-| Timeline filter `email` + accordion UI | `activities.contracts.ts`, `timeline-search-params.ts`, `email-thread-entry.tsx` |
-| Acceptance tests | `apps/api/test/gmail-sync.spec.ts` (plus `mailbox-thread-writer`, `mailbox-message-text`) |
-
-Rules already enforced for Gmail:
-
-- Identity is RFC 822 `Message-ID` (normalised) for messages and the root of
-  `References` / `In-Reply-To` / own id for threads — not Gmail `threadId`.
-- Cross-mailbox copies of one conversation produce one `EmailThread` and one
-  projected `Activity`.
-- Only threads that resolve to a tracked company/contact are stored when
-  `autoCreate` is off (this lane leaves Gmail auto-create off).
-- Timeline list payloads carry a snippet on `Activity.body` and thread summary
-  fields only. Full message bodies load on expand via `google.thread`.
-- First sight of a mailbox stores the current `historyId` and imports nothing.
-- History 404 clears the cursor and resumes from now (no backfill).
-
-### Remaining handoff — Auto-create (phase 4)
-
-Do **not** flip Gmail `autoCreate` on by default in this lane.
-
-1. **Defaults** — calendar may stay true on connect; gmail stays false
-   (`GoogleConnectionService.onConnected`) until matching is observed on real
-   mailboxes.
-2. **Rules** — two-way engagement for Gmail (rep must have sent); calendar
-   external attendee + not declined.
-3. **Undo surfaces** — `RecordSource` filter, bulk delete, `SuppressedDomain` /
-   `google.suppressDomain`.
-4. **Real-mailbox soak** — run phase 3 on production traffic for a week before
-   tightening auto-create defaults for email.
+Plan §12 still prefers a week of real-mailbox soak before flipping Gmail
+auto-create on by default. The product default stays **calendar on, gmail off**.
 
 ### Out of scope here
 
 - Phase 5 Pub/Sub real-time (`users.watch`).
 - Sending mail from the CRM.
-- Meeting-prep agent work (`crm-meeting-prep`).
-- Auto-create product closure (phase 4).
+- Lifecycle specialist agents (qualify/engage) — separate Deploy-gated work.
+- Changing the Gmail default to on.
 
 ### Done when (this lane)
 
-A thread with an existing company is projected as one `EMAIL` activity, expands
-to readable messages, dedupes across mailboxes on `rfcMessageId`, and the
-acceptance suite in `gmail-sync.spec.ts` is green. Auto-create stays off.
->>>>>>> fm/crm-gmail-threads
+A meeting with an unknown work domain creates a company and contact tagged
+`CALENDAR`. A newsletter creates nothing. Gmail creates only on two-way
+engagement when the toggle is on. Provenance filters and suppress-domain undo
+remain available. The suite in `mailbox-auto-create.spec.ts` is green.
