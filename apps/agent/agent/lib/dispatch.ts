@@ -9,6 +9,7 @@ import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
 import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
+import { flagStalledDeal } from "./stalled-deal";
 import {
 	claimDue,
 	completeTask,
@@ -143,6 +144,11 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 				? "Queued 1 matching agent run."
 				: `Queued ${queued} matching agent runs.`,
 		);
+		return;
+	}
+
+	if (task.kind === "stalled-deal") {
+		await completeTask(task.id, await flagStalledDeal(task));
 		return;
 	}
 
