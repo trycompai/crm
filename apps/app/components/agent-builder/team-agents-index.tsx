@@ -132,10 +132,7 @@ function FleetHealth({ fleet }: { fleet: Fleet }) {
 					label="Output tokens"
 					value={fleet.consumption.outputTokens.toLocaleString("en-US")}
 				/>
-				<Stat
-					label="Cost"
-					value={`$${fleet.consumption.costUsd.toFixed(4)}`}
-				/>
+				<Stat label="Cost" value={`$${fleet.consumption.costUsd.toFixed(4)}`} />
 			</div>
 			{Object.keys(fleet.runsByLifecycleRole).length > 0 ? (
 				<div className="border-t px-4 py-3 font-mono text-muted-foreground text-xs sm:px-5">
