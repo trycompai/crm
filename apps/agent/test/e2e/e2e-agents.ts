@@ -49,6 +49,6 @@ export async function removeEventRuns(
 	return runIds.length;
 }
 
-export function reasonOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+export function reasonOf(cause: unknown): string {
+	return cause instanceof Error ? cause.message : String(cause);
 }

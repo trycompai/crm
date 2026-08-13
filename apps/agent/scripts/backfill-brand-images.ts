@@ -1,7 +1,14 @@
 import { db } from "@crm/db";
 import { blobEnabled, isMirrored, mirror } from "@crm/db/blob";
-import { COMPANY_IMAGE_FIELDS } from "@crm/db/images";
+import { COMPANY_IMAGE_FIELDS, type CompanyImageField } from "@crm/db/images";
+import { z } from "zod";
 import { brandToUpdate } from "../agent/lib/brand-mapping";
+
+type CompanyImagePatch = Partial<
+	Record<CompanyImageField | "iconTone", string>
+>;
+
+const storedText = z.string().nullable().catch(null);
 
 if (!blobEnabled()) {
 	console.warn(
@@ -54,14 +61,12 @@ for (const row of rows) {
 		nameIsPlaceholder: false,
 	});
 
-	const patch: Record<string, string> = {
-		...(typeof update.iconDarkUrl === "string"
-			? { iconDarkUrl: update.iconDarkUrl }
-			: {}),
-		...(typeof update.iconTone === "string"
-			? { iconTone: update.iconTone }
-			: {}),
-	};
+	const patch: CompanyImagePatch = {};
+	const iconDarkUrl = storedText.parse(update.iconDarkUrl);
+	const iconTone = storedText.parse(update.iconTone);
+
+	if (iconDarkUrl !== null) patch.iconDarkUrl = iconDarkUrl;
+	if (iconTone !== null) patch.iconTone = iconTone;
 
 	for (const slot of COMPANY_IMAGE_FIELDS) {
 		const current = row.company[slot];

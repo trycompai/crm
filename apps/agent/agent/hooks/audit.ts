@@ -1,9 +1,28 @@
 import { db, Prisma } from "@crm/db";
 import { defineHook } from "eve/hooks";
+import { z } from "zod";
 import { isTransportOnlyEvent } from "../lib/event-persistence";
 import { currentFocus } from "../lib/focus";
 import { lockAgentRun } from "../lib/run-state";
 import { attribute, purposeOf } from "../lib/session-purpose";
+
+const finiteNumber = z.number().refine(Number.isFinite).nullable().catch(null);
+
+const stepUsage = z
+	.object({
+		usage: z
+			.object({
+				inputTokens: finiteNumber,
+				outputTokens: finiteNumber,
+				costUsd: finiteNumber,
+			})
+			.catch({ inputTokens: null, outputTokens: null, costUsd: null }),
+	})
+	.catch({ usage: { inputTokens: null, outputTokens: null, costUsd: null } });
+
+const completedMessage = z
+	.object({ message: z.string().nullable().catch(null) })
+	.catch({ message: null });
 
 export default defineHook({
 	events: {
@@ -13,7 +32,9 @@ export default defineHook({
 			if (!id || isTransportOnlyEvent(event.type)) return;
 
 			try {
-				const data = ("data" in event ? (event.data ?? {}) : {}) as object;
+				const data = (
+					"data" in event ? (event.data ?? {}) : {}
+				) as Prisma.InputJsonObject;
 				const emittedAt = event.meta?.at ? new Date(event.meta.at) : new Date();
 				const purpose = purposeOf(ctx);
 				const conversationId =
@@ -86,7 +107,7 @@ async function persistRunEvent(
 	tx: Prisma.TransactionClient,
 	eventId: string,
 	type: string,
-	data: object,
+	data: Prisma.InputJsonObject,
 	emittedAt: Date,
 	ctx: Parameters<typeof purposeOf>[0] & { session: { id: string } },
 ) {
@@ -128,17 +149,13 @@ async function persistRunEvent(
 			runId,
 			sequence,
 			type,
-			data: data as Prisma.InputJsonValue,
+			data,
 			emittedAt,
 		},
 	});
 
 	if (type === "step.completed") {
-		const usage = recordOf(data).usage;
-		const values = recordOf(usage);
-		const inputTokens = numberOf(values.inputTokens);
-		const outputTokens = numberOf(values.outputTokens);
-		const costUsd = numberOf(values.costUsd);
+		const { inputTokens, outputTokens, costUsd } = stepUsage.parse(data).usage;
 		const current = await tx.agentRun.findUniqueOrThrow({
 			where: { id: runId },
 			select: { inputTokens: true, outputTokens: true, costUsd: true },
@@ -161,8 +178,8 @@ async function persistRunEvent(
 	}
 
 	if (type === "message.completed") {
-		const message = recordOf(data).message;
-		if (typeof message === "string" && message.trim()) {
+		const { message } = completedMessage.parse(data);
+		if (message?.trim()) {
 			await tx.agentRun.updateMany({
 				where: { id: runId, status: "RUNNING" },
 				data: { summary: message.slice(0, 1000) },
@@ -173,14 +190,4 @@ async function persistRunEvent(
 
 function isRootSession(ctx: Parameters<typeof purposeOf>[0]): boolean {
 	return !("parent" in ctx.session) || !ctx.session.parent;
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function numberOf(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

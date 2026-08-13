@@ -1,7 +1,11 @@
 import { defineHook, type HookEvent } from "eve/hooks";
+import { z } from "zod";
 
 type ActionRequest = HookEvent<"actions.requested">["data"]["actions"][number];
 type ActionResult = HookEvent<"action.result">["data"]["result"];
+type ActionInput = ActionRequest["input"];
+
+const inputText = z.string().nullable().catch(null);
 
 const SHOW_CONTENT = process.env.NODE_ENV !== "production";
 const MAX_IN_FLIGHT = 256;
@@ -16,14 +20,14 @@ function line(symbol: string, text: string): void {
 	console.error(`[agent] ${symbol} ${text}`);
 }
 
-function preview(input: unknown): string {
-	if (!SHOW_CONTENT || typeof input !== "object" || input === null) return "";
+function preview(input: ActionInput): string {
+	if (!SHOW_CONTENT) return "";
 
 	const parts: string[] = [];
 
 	for (const [key, value] of Object.entries(input)) {
 		if (value === null || value === undefined) continue;
-		const text = typeof value === "string" ? value : JSON.stringify(value);
+		const text = inputText.parse(value) ?? JSON.stringify(value);
 		parts.push(`${key}=${truncate(text ?? String(value), 48)}`);
 	}
 

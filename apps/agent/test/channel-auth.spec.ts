@@ -9,11 +9,21 @@ import { isAutomated } from "../agent/lib/approval";
 const SECRET = "test-secret-at-least-long-enough-to-be-a-secret";
 const auth = repFromCrm(SECRET);
 
-async function mint(
-	claims: Record<string, unknown>,
-	secret = SECRET,
-): Promise<string> {
-	const encode = (value: object) =>
+type BridgeHeader = { alg: string; typ: string };
+
+type BridgeClaims = {
+	iss: string;
+	aud: string;
+	sub: string | undefined;
+	email: string;
+	name: string;
+	iat: number;
+	nbf: number;
+	exp: number;
+};
+
+async function mint(claims: BridgeClaims, secret = SECRET): Promise<string> {
+	const encode = (value: BridgeClaims | BridgeHeader) =>
 		Buffer.from(JSON.stringify(value)).toString("base64url");
 
 	const signingInput = `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}`;
@@ -40,7 +50,7 @@ function request(token: string | null): Request {
 	});
 }
 
-function claims(overrides: Record<string, unknown> = {}) {
+function claims(overrides: Partial<BridgeClaims> = {}): BridgeClaims {
 	const now = Math.floor(Date.now() / 1000);
 	return {
 		iss: BRIDGE_ISSUER,
