@@ -7,7 +7,13 @@ import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-searc
 import { dealsSearchParams } from "@/app/(app)/[slug]/deals/deals-search-params";
 import { useTRPC } from "@/lib/trpc/client";
 
-export type Section = "/" | "/companies" | "/contacts" | "/deals" | "/settings";
+export type Section =
+	| "/"
+	| "/companies"
+	| "/contacts"
+	| "/deals"
+	| "/marketing"
+	| "/settings";
 
 export function usePrefetchSection(): (section: string) => void {
 	const trpc = useTRPC();
@@ -38,6 +44,19 @@ export function usePrefetchSection(): (section: string) => void {
 				case "/deals":
 					void queryClient.prefetchQuery(
 						trpc.deals.list.queryOptions(dealsSearchParams.defaultInput()),
+					);
+					return;
+				case "/marketing":
+					void queryClient.prefetchQuery(
+						trpc.marketingCampaigns.list.queryOptions({
+							q: "",
+							sort: "updatedAt",
+							dir: "desc",
+							page: 1,
+							pageSize: 25,
+							kind: "",
+							status: "",
+						}),
 					);
 					return;
 				default:

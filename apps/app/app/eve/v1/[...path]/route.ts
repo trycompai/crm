@@ -5,7 +5,10 @@ import {
 	bridgeConfigured,
 	mintBridgeToken,
 } from "@/lib/agent-bridge";
+import { GRAPH_NODE_ID } from "@/lib/campaign-graph";
 import { getSession } from "@/lib/session";
+
+const RECORD_ID = /^[a-z0-9]{20,32}$/;
 
 async function handler(request: Request): Promise<Response> {
 	await connection();
@@ -46,6 +49,11 @@ async function handler(request: Request): Promise<Response> {
 	const contactId = request.headers.get("x-crm-contact");
 	const companyId = request.headers.get("x-crm-company");
 	const dealId = request.headers.get("x-crm-deal");
+	const campaignId = request.headers.get("x-crm-campaign");
+	const campaignNodeId = request.headers.get("x-crm-campaign-node");
+	const segmentId = request.headers.get("x-crm-segment");
+	const templateId = request.headers.get("x-crm-template");
+	const shellId = request.headers.get("x-crm-shell");
 	const builderConversationId = request.headers.get(
 		"x-crm-builder-conversation",
 	);
@@ -53,6 +61,11 @@ async function handler(request: Request): Promise<Response> {
 	headers.delete("x-crm-contact");
 	headers.delete("x-crm-company");
 	headers.delete("x-crm-deal");
+	headers.delete("x-crm-campaign");
+	headers.delete("x-crm-campaign-node");
+	headers.delete("x-crm-segment");
+	headers.delete("x-crm-template");
+	headers.delete("x-crm-shell");
 	headers.delete("x-crm-builder-conversation");
 
 	if (requestedSession) {
@@ -88,6 +101,8 @@ async function handler(request: Request): Promise<Response> {
 		}
 	}
 
+	const campaign = recordId(campaignId);
+
 	headers.set(
 		"authorization",
 		`Bearer ${await mintBridgeToken(
@@ -97,9 +112,14 @@ async function handler(request: Request): Promise<Response> {
 				name: session.user.name,
 			},
 			{
-				contactId: cuid(contactId),
-				companyId: cuid(companyId),
-				dealId: cuid(dealId),
+				contactId: recordId(contactId),
+				companyId: recordId(companyId),
+				dealId: recordId(dealId),
+				campaignId: campaign,
+				campaignNodeId: campaign ? nodeId(campaignNodeId) : undefined,
+				segmentId: recordId(segmentId),
+				templateId: recordId(templateId),
+				shellId: recordId(shellId),
 			},
 		)}`,
 	);
@@ -156,8 +176,13 @@ export {
 	handler as PUT,
 };
 
-function cuid(value: string | null): string | undefined {
-	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
+function recordId(value: string | null): string | undefined {
+	return value && RECORD_ID.test(value) ? value : undefined;
+}
+
+function nodeId(value: string | null): string | undefined {
+	if (!value) return undefined;
+	return RECORD_ID.test(value) || GRAPH_NODE_ID.test(value) ? value : undefined;
 }
 
 function sessionFromPath(pathname: string): string | null {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	CONTEXT_DEV,
 	capabilitiesFrom,
+	EMAIL_PREVIEW,
 	enabled,
 	markdownFor,
 	unavailable,
@@ -128,8 +129,31 @@ describe("the capability briefing", () => {
 	it("does not warn about missing sources when everything is on", () => {
 		for (const key of KEYS) process.env[key] = "key";
 
-		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
-			"Not configured here",
-		);
+		expect(
+			markdownFor(capabilitiesFrom("ctx", "/usr/bin/chromium")),
+		).not.toContain("Not configured here");
+	});
+});
+
+describe("the email preview capability", () => {
+	const preview = (chrome: string | null) =>
+		capabilitiesFrom(null, chrome).find((c) => c.id === EMAIL_PREVIEW);
+
+	it("is off when no browser was found", () => {
+		expect(preview(null)?.enabled).toBe(false);
+	});
+
+	it("is off by default, so a pure caller decides nothing by accident", () => {
+		expect(
+			capabilitiesFrom(null).find((c) => c.id === EMAIL_PREVIEW)?.enabled,
+		).toBe(false);
+	});
+
+	it("is on when a browser was found", () => {
+		expect(preview("/usr/bin/chromium")?.enabled).toBe(true);
+	});
+
+	it("points at the variable that provides the browser", () => {
+		expect(preview(null)?.from).toBe("CHROME_EXECUTABLE_PATH");
 	});
 });

@@ -52,14 +52,14 @@ model User {
 }
 
 model SlackMemberMatch {
-  id                  String   @id @default(cuid())
-  crmUserId           String   @unique
-  crmUser             User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
-  slackUserId         String?
-  slackHandle         String?
-  slackEmail          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id          String   @id @default(cuid())
+  crmUserId   String   @unique
+  crmUser     User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
+  slackUserId String?
+  slackHandle String?
+  slackEmail  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([slackUserId])
   @@map("slackMemberMatch")
@@ -383,8 +383,12 @@ model Contact {
   fieldValues     FieldValue[]
   visitors        TrackedVisitor[]   @relation("VisitorContact")
   submissions     FormSubmission[]   @relation("SubmissionContact")
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+
+  marketingRecipients MarketingRecipient[]     @relation("RecipientContact")
+  marketingSegments   MarketingSegmentMember[]
+  marketingEnrolments MarketingEnrolment[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -514,6 +518,17 @@ model AgentConversation {
   dealId    String?
   deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
+  campaignId     String?
+  campaign       MarketingCampaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignNodeId String?
+  campaignNode   MarketingCampaignNode? @relation(fields: [campaignNodeId], references: [id], onDelete: SetNull)
+  segmentId      String?
+  segment        MarketingSegment?      @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  templateId     String?
+  template       MarketingTemplate?     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  shellId        String?
+  shell          MarketingPartial?      @relation(fields: [shellId], references: [id], onDelete: Cascade)
+
   userId String
   user   User   @relation("ConversationOwner", fields: [userId], references: [id], onDelete: Cascade)
 
@@ -544,6 +559,11 @@ model AgentConversation {
   @@index([contactId, lastMessageAt])
   @@index([companyId, lastMessageAt])
   @@index([dealId, lastMessageAt])
+  @@index([campaignId, lastMessageAt])
+  @@index([campaignNodeId, lastMessageAt])
+  @@index([segmentId, lastMessageAt])
+  @@index([templateId, lastMessageAt])
+  @@index([shellId, lastMessageAt])
   @@index([userId, kind, lastMessageAt])
   @@index([agentId, lastMessageAt])
   @@map("agentConversation")
@@ -1277,19 +1297,51 @@ model AppSetting {
 
   ratesRefreshedAt DateTime?
 
-  trackingSiteId           String?  @unique
-  trackingCrossDomain      Boolean  @default(true)
-  trackingLimitToDomains   Boolean  @default(true)
-  trackingCookieSubdomains Boolean  @default(false)
-  trackingSecureCookies    Boolean  @default(true)
-  trackingHonourDnt        Boolean  @default(true)
-  trackingCookieDays       Int      @default(395)
+  trackingSiteId           String? @unique
+  trackingCrossDomain      Boolean @default(true)
+  trackingLimitToDomains   Boolean @default(true)
+  trackingCookieSubdomains Boolean @default(false)
+  trackingSecureCookies    Boolean @default(true)
+  trackingHonourDnt        Boolean @default(true)
+  trackingCookieDays       Int     @default(395)
   trackingConfigHash       String?
-  trackingPaused           Boolean  @default(false)
+  trackingPaused           Boolean @default(false)
+
+  marketingResendApiKey   String?
+  marketingResendDomainId String?
+  marketingSendingDomain  String?
+  marketingFromName       String?
+  marketingFromAddress    String?
+  marketingReplyTo        String?
+  marketingPostalAddress  String?
+  marketingSendsPerMinute Int?
+  marketingQuietStart     Int?
+  marketingQuietEnd       Int?
+  marketingTimeZone       String?
+  marketingDailyCap       Int?
+  marketingOnboardedAt    DateTime?
+  marketingBrandColor     String?
+  marketingLogoUrl        String?
+
+  marketingResendClientId     String?
+  marketingResendClientSecret String?
+  marketingResendAccessToken  String?
+  marketingResendRefreshToken String?
+  marketingResendTokenExpires DateTime?
 
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+model MarketingResendAuthAttempt {
+  state     String   @id
+  verifier  String
+  returnTo  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("marketingResendAuthAttempt")
 }
 
 enum DomainScope {
@@ -1316,14 +1368,14 @@ model TrackedVisitor {
   contactId String?
   contact   Contact? @relation("VisitorContact", fields: [contactId], references: [id], onDelete: SetNull)
 
-  firstSource     String?
-  firstMedium     String?
-  firstCampaign   String?
-  firstTerm       String?
-  firstContent    String?
-  firstReferrer   String?
-  firstLanding    String?
-  firstTouchAt    DateTime?
+  firstSource   String?
+  firstMedium   String?
+  firstCampaign String?
+  firstTerm     String?
+  firstContent  String?
+  firstReferrer String?
+  firstLanding  String?
+  firstTouchAt  DateTime?
 
   lastSource   String?
   lastMedium   String?
@@ -1337,6 +1389,8 @@ model TrackedVisitor {
   firstSeen DateTime @default(now())
   lastSeen  DateTime @updatedAt
 
+  events TrackedEvent[] @relation("VisitorEvents")
+
   @@index([contactId])
   @@index([firstSource])
   @@map("trackedVisitor")
@@ -1346,6 +1400,7 @@ model TrackedEvent {
   id String @id @default(cuid())
 
   visitorId String
+  visitor   TrackedVisitor @relation("VisitorEvents", fields: [visitorId], references: [id], onDelete: Cascade)
   type      String
   host      String
   path      String
@@ -1517,4 +1572,451 @@ model SsoProvider {
 
   @@unique([providerId])
   @@map("ssoProvider")
+}
+
+enum MarketingStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+enum MarketingConsent {
+  FORM
+  IMPORT
+  MANUAL
+  DOUBLE_OPT_IN
+}
+
+enum MarketingPartialKind {
+  HEADER
+  FOOTER
+}
+
+enum MarketingSegmentKind {
+  DYNAMIC
+  STATIC
+}
+
+enum MarketingMemberMode {
+  INCLUDE
+  EXCLUDE
+}
+
+enum MarketingCampaignKind {
+  BLAST
+  DRIP
+}
+
+enum MarketingEntryMode {
+  MANUAL
+  CONTINUOUS
+}
+
+enum MarketingCampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SCHEDULED
+  SENDING
+  SENT
+  ACTIVE
+  PAUSED
+  DRAINING
+  CANCELLED
+  ARCHIVED
+  FAILED
+}
+
+enum MarketingNodeKind {
+  EMAIL
+  WAIT
+  BRANCH
+  SPLIT
+  EXIT
+}
+
+enum MarketingSendStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  FAILED
+  SKIPPED
+}
+
+enum MarketingEventType {
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  COMPLAINED
+  UNSUBSCRIBED
+  FAILED
+  DELAYED
+}
+
+enum MarketingSendOrigin {
+  CAMPAIGN
+  DRIP
+  DIRECT
+  TEST
+}
+
+enum MarketingEnrolmentStatus {
+  ACTIVE
+  COMPLETED
+  EXITED
+  PAUSED
+  FAILED
+}
+
+enum MarketingExitKind {
+  GOAL
+  RULE
+  SUPPRESSED
+  MANUAL
+  ARCHIVED
+}
+
+model MarketingRecipient {
+  id      String @id @default(cuid())
+  address String @unique
+  token   String @unique @default(cuid())
+
+  contactId String?
+  contact   Contact? @relation("RecipientContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  status       MarketingStatus @default(SUBSCRIBED)
+  statusReason String?
+  statusAt     DateTime?
+
+  consentBasis  MarketingConsent?
+  consentAt     DateTime?
+  consentSource String?
+
+  lastSentAt DateTime?
+
+  sends      MarketingSend[]
+  enrolments MarketingEnrolment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([contactId])
+  @@map("marketingRecipient")
+}
+
+model MarketingPartial {
+  id        String               @id @default(cuid())
+  kind      MarketingPartialKind
+  name      String
+  document  Json
+  isDefault Boolean              @default(false)
+
+  headerFor MarketingTemplate[] @relation("TemplateHeader")
+  footerFor MarketingTemplate[] @relation("TemplateFooter")
+
+  conversations AgentConversation[]
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([kind, isDefault])
+  @@map("marketingPartial")
+}
+
+model MarketingTemplate {
+  id        String  @id @default(cuid())
+  name      String
+  subject   String
+  preheader String?
+  document  Json
+
+  headerId String?
+  header   MarketingPartial? @relation("TemplateHeader", fields: [headerId], references: [id], onDelete: SetNull)
+  footerId String?
+  footer   MarketingPartial? @relation("TemplateFooter", fields: [footerId], references: [id], onDelete: SetNull)
+
+  nodes         MarketingCampaignNode[]
+  conversations AgentConversation[]
+
+  archivedAt  DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([archivedAt])
+  @@map("marketingTemplate")
+}
+
+model MarketingSegment {
+  id          String               @id @default(cuid())
+  name        String               @unique
+  description String?
+  kind        MarketingSegmentKind @default(DYNAMIC)
+  definition  Json?
+  isDefault   Boolean              @default(false)
+
+  lastCount     Int?
+  lastCountedAt DateTime?
+
+  members       MarketingSegmentMember[]
+  campaigns     MarketingCampaignSegment[]
+  conversations AgentConversation[]
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([archivedAt])
+  @@map("marketingSegment")
+}
+
+model MarketingCampaignSegment {
+  campaignId String
+  campaign   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  segmentId  String
+  segment    MarketingSegment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  mode MarketingMemberMode @default(INCLUDE)
+
+  addedAt DateTime @default(now())
+
+  @@id([campaignId, segmentId])
+  @@index([segmentId])
+  @@index([campaignId, mode])
+  @@map("marketingCampaignSegment")
+}
+
+model MarketingSegmentMember {
+  segmentId String
+  segment   MarketingSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  mode      MarketingMemberMode @default(INCLUDE)
+  addedById String?
+  addedAt   DateTime            @default(now())
+
+  @@id([segmentId, contactId])
+  @@index([contactId])
+  @@map("marketingSegmentMember")
+}
+
+model MarketingCampaign {
+  id     String                  @id @default(cuid())
+  name   String
+  kind   MarketingCampaignKind   @default(BLAST)
+  status MarketingCampaignStatus @default(DRAFT)
+
+  segments MarketingCampaignSegment[]
+
+  entryMode       MarketingEntryMode @default(MANUAL)
+  entryDefinition Json?
+  exitDefinition  Json?
+
+  reentryCooldownDays Int?
+  maxPasses           Int  @default(1)
+
+  fromName    String?
+  fromAddress String?
+  replyTo     String?
+
+  scheduledAt DateTime?
+  activatedAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  pausedReason String?
+
+  approvedById String?
+  approvedAt   DateTime?
+  createdById  String?
+
+  totalRecipients Int @default(0)
+
+  nodes         MarketingCampaignNode[]
+  edges         MarketingCampaignEdge[]
+  enrolments    MarketingEnrolment[]
+  sends         MarketingSend[]
+  attachments   MarketingAttachment[]
+  conversations AgentConversation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([kind, status])
+  @@map("marketingCampaign")
+}
+
+model MarketingCampaignNode {
+  id         String            @id @default(cuid())
+  campaignId String
+  campaign   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  kind  MarketingNodeKind
+  label String?
+
+  templateId String?
+  template   MarketingTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  subject    String?
+  preheader  String?
+  document   Json?
+
+  delayHours Int?
+  condition  Json?
+
+  x Float @default(0)
+  y Float @default(0)
+
+  outgoing      MarketingCampaignEdge[] @relation("EdgeFrom")
+  incoming      MarketingCampaignEdge[] @relation("EdgeTo")
+  sends         MarketingSend[]
+  conversations AgentConversation[]
+
+  @@index([campaignId])
+  @@map("marketingCampaignNode")
+}
+
+model MarketingCampaignEdge {
+  id         String            @id @default(cuid())
+  campaignId String
+  campaign   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  fromId String
+  from   MarketingCampaignNode @relation("EdgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId   String
+  to     MarketingCampaignNode @relation("EdgeTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  handle String  @default("next")
+  label  String?
+  weight Int     @default(100)
+
+  @@unique([fromId, handle])
+  @@index([campaignId])
+  @@index([toId])
+  @@map("marketingCampaignEdge")
+}
+
+model MarketingSend {
+  id String @id @default(cuid())
+
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  enrolmentId String?
+  enrolment   MarketingEnrolment? @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+
+  nodeId String?
+  node   MarketingCampaignNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  recipientId String
+  recipient   MarketingRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  contactId   String?
+
+  origin        MarketingSendOrigin @default(CAMPAIGN)
+  pass          Int                 @default(1)
+  requestedById String?
+  fromName      String?
+  subject       String?
+  preheader     String?
+  document      Json?
+  replyTo       String?
+
+  attachments MarketingAttachment[]
+
+  status     MarketingSendStatus @default(QUEUED)
+  skipReason String?
+  dueAt      DateTime
+  attempts   Int                 @default(0)
+  leasedAt   DateTime?
+  sentAt     DateTime?
+  providerId String?             @unique
+  error      String?
+
+  openedAt  DateTime?
+  clickedAt DateTime?
+  repliedAt DateTime?
+
+  events    MarketingEvent[]
+  createdAt DateTime         @default(now())
+
+  @@unique([nodeId, recipientId, pass])
+  @@index([status, dueAt])
+  @@index([campaignId, status])
+  @@index([recipientId])
+  @@index([nodeId, status])
+  @@index([enrolmentId])
+  @@index([contactId])
+  @@map("marketingSend")
+}
+
+model MarketingAttachment {
+  id       String @id @default(cuid())
+  filename String
+  mimeType String
+  bytes    Int
+  url      String
+
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  templateId String?
+  sendId     String?
+  send       MarketingSend?     @relation(fields: [sendId], references: [id], onDelete: Cascade)
+
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([templateId])
+  @@index([sendId])
+  @@map("marketingAttachment")
+}
+
+model MarketingEvent {
+  id     String             @id @default(cuid())
+  sendId String
+  send   MarketingSend      @relation(fields: [sendId], references: [id], onDelete: Cascade)
+  type   MarketingEventType
+  at     DateTime           @default(now())
+  url    String?
+
+  @@index([sendId, at])
+  @@index([type, at])
+  @@map("marketingEvent")
+}
+
+model MarketingEnrolment {
+  id         String            @id @default(cuid())
+  campaignId String
+  campaign   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  contactId   String
+  contact     Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   MarketingRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  status        MarketingEnrolmentStatus @default(ACTIVE)
+  pass          Int                      @default(1)
+  currentNodeId String?
+  nextDueAt     DateTime?
+  exitKind      MarketingExitKind?
+  exitReason    String?
+  exitedAt      DateTime?
+  enrolledAt    DateTime                 @default(now())
+
+  sends MarketingSend[]
+
+  @@unique([campaignId, contactId, pass])
+  @@index([campaignId, status, currentNodeId])
+  @@index([campaignId, contactId, exitedAt])
+  @@index([status, nextDueAt])
+  @@index([contactId])
+  @@map("marketingEnrolment")
 }

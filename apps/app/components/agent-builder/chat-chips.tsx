@@ -16,6 +16,7 @@ import {
 } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import Image from "next/image";
+import { isSupportedImageType } from "@/lib/agent-attachments";
 
 type ChatChipVariant = "default" | "composer";
 
@@ -134,7 +135,7 @@ export function ChatAttachmentChip({
 	variant?: ChatChipVariant;
 }) {
 	const label = `${attachment.name} · ${formatBytes(attachment.size)}`;
-	const image = isPreviewableImage(attachment.type)
+	const image = isSupportedImageType(attachment.type)
 		? (attachment.previewUrl ??
 			(attachment.contentBase64
 				? `data:${attachment.type};base64,${attachment.contentBase64}`
@@ -225,10 +226,4 @@ function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function isPreviewableImage(mediaType: string): boolean {
-	return ["image/gif", "image/jpeg", "image/png", "image/webp"].includes(
-		mediaType.toLowerCase(),
-	);
 }

@@ -15,6 +15,7 @@ import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { LocalDateTime } from "@/components/local-date-time";
+import type { AgentRecordFilter } from "@/lib/agent-record";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
@@ -129,10 +130,7 @@ function Forget({
 	);
 }
 
-export function useConversations(recordId: {
-	contactId?: string;
-	companyId?: string;
-}) {
+export function useConversations(recordId: AgentRecordFilter) {
 	const trpc = useTRPC();
 	return useQuery(trpc.conversations.list.queryOptions(recordId));
 }

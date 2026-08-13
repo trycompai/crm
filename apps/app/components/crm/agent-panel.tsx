@@ -1,7 +1,9 @@
 "use client";
 
+import AttachmentIcon from "@carbon/icons-react/es/Attachment";
 import Checkmark from "@carbon/icons-react/es/Checkmark";
 import CircleDash from "@carbon/icons-react/es/CircleDash";
+import Close from "@carbon/icons-react/es/Close";
 import Document from "@carbon/icons-react/es/Document";
 import LogoGithub from "@carbon/icons-react/es/LogoGithub";
 import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
@@ -9,8 +11,11 @@ import Send from "@carbon/icons-react/es/Send";
 import Warning from "@carbon/icons-react/es/Warning";
 import {
 	Attachment,
+	AttachmentAction,
+	AttachmentActions,
 	AttachmentContent,
 	AttachmentGroup,
+	AttachmentImage,
 	AttachmentMedia,
 	AttachmentTitle,
 	AttachmentTrigger,
@@ -47,6 +52,7 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEveAgent } from "eve/react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { toast } from "sonner";
 import { AgentClarificationComposer } from "@/components/agent-clarification-composer";
 import {
 	type Conversation,
@@ -54,7 +60,19 @@ import {
 	useConversations,
 } from "@/components/crm/agent-conversations";
 import {
+	AGENT_ATTACHMENTS,
+	type DraftAttachment,
+	IMAGE_ACCEPT,
+	isImage,
+	isUnsupportedImage,
+	sizeLimitLabel,
+	toDraftAttachment,
+	tooLarge,
+} from "@/lib/agent-attachments";
+import { graphWriteSummary } from "@/lib/agent-graph-result";
+import {
 	type AgentRecord,
+	type AgentRecordFilter,
 	recordCopy,
 	recordFilter,
 	recordHeader,
@@ -76,9 +94,16 @@ import {
 	toTranscript,
 } from "@/lib/agent-transcript";
 import { useTRPC } from "@/lib/trpc/client";
+import { AgentGraphResult } from "./agent-graph-result";
 import { useRecordSheetView } from "./record-sheet/record-stack";
 
-export function AgentPanel({ record }: { record: AgentRecord }) {
+export function AgentPanel({
+	record,
+	onFinish,
+}: {
+	record: AgentRecord;
+	onFinish?: () => void;
+}) {
 	const conversations = useConversations(recordFilter(record));
 	const { thread, setThread } = useRecordSheetView("overview");
 
@@ -92,6 +117,7 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 			history={history}
 			thread={thread}
 			setThread={setThread}
+			onFinish={onFinish}
 		/>
 	);
 }
@@ -101,11 +127,13 @@ function LoadedAgentPanel({
 	history,
 	thread,
 	setThread,
+	onFinish,
 }: {
 	record: AgentRecord;
 	history: Conversation[];
 	thread: string | null;
 	setThread: (thread: string) => void;
+	onFinish?: () => void;
 }) {
 	const [landedOn] = useState(() => history[0]?.id ?? NEW_THREAD);
 	const { openId, current } = resolveThread({
@@ -129,6 +157,7 @@ function LoadedAgentPanel({
 				record={record}
 				conversation={current}
 				onNewThread={() => setThread(NEW_THREAD)}
+				onFinish={onFinish}
 			/>
 		</div>
 	);
@@ -141,10 +170,12 @@ function ThreadWithHistory({
 	record,
 	conversation,
 	onNewThread,
+	onFinish,
 }: {
 	record: AgentRecord;
 	conversation: Conversation | null;
 	onNewThread: () => void;
+	onFinish?: () => void;
 }) {
 	const trpc = useTRPC();
 
@@ -179,6 +210,7 @@ function ThreadWithHistory({
 				offline ? offlineThread((archive.data ?? []) as never) : thread.data
 			}
 			onNewThread={onNewThread}
+			onFinish={onFinish}
 		/>
 	);
 }
@@ -196,20 +228,26 @@ function Thread({
 	conversation,
 	thread,
 	onNewThread,
+	onFinish,
 }: {
 	record: AgentRecord;
 	conversation: Conversation | null;
 	thread: ThreadState | undefined;
 	onNewThread: () => void;
+	onFinish?: () => void;
 }) {
-	const copy = recordCopy(record.kind);
+	const copy = recordCopy(record);
 	const agent = useEveAgent({
 		headers: recordHeader(record),
+		onFinish,
 		...(thread && "session" in thread
 			? { initialSession: thread.session, initialEvents: eventsOf(thread) }
 			: { initialEvents: eventsOf(thread) }),
 	});
 	const [draft, setDraft] = useState("");
+	const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
+	const [reading, setReading] = useState(0);
+	const filePicker = useRef<HTMLInputElement>(null);
 
 	const opening = useRef<string | null>(conversation?.title ?? null);
 
@@ -226,22 +264,102 @@ function Thread({
 	const question = pendingQuestion(agent.data.messages);
 
 	const { locked, ended } = composerState(thread, busy);
+	const loading = reading > 0;
+
+	const addFiles = (files: File[]) => {
+		if (files.some(isUnsupportedImage)) {
+			toast.error(AGENT_ATTACHMENTS.copy.unsupportedType);
+		}
+
+		const images = files.filter(isImage);
+		if (images.length === 0) return;
+
+		const room = AGENT_ATTACHMENTS.image.maxCount - attachments.length;
+		if (room <= 0) {
+			toast.error(
+				`No more than ${AGENT_ATTACHMENTS.image.maxCount} images per message.`,
+			);
+			return;
+		}
+
+		for (const image of images.slice(0, room)) {
+			if (tooLarge(image)) {
+				toast.error(
+					`${image.name || "That image"} is larger than ${sizeLimitLabel()}.`,
+				);
+				continue;
+			}
+
+			setReading((count) => count + 1);
+			void toDraftAttachment(image)
+				.then((attachment) =>
+					setAttachments((current) =>
+						current.length < AGENT_ATTACHMENTS.image.maxCount
+							? [...current, attachment]
+							: current,
+					),
+				)
+				.catch(() => toast.error(AGENT_ATTACHMENTS.copy.readFailed))
+				.finally(() => setReading((count) => count - 1));
+		}
+	};
+
+	const blindToImages = useModelReadsImages(attachments.length > 0) === false;
+
+	const panel = useRef<HTMLDivElement>(null);
+	const pasteAnywhere = useEffectEvent((event: ClipboardEvent) => {
+		if (locked || question) return;
+		if (panel.current === null || panel.current.offsetParent === null) return;
+
+		const target = event.target instanceof HTMLElement ? event.target : null;
+		if (target?.closest("input, textarea, [contenteditable=true]")) return;
+
+		const files = Array.from(event.clipboardData?.files ?? []);
+		if (!files.some(isImage)) return;
+
+		event.preventDefault();
+		addFiles(files);
+	});
+
+	useEffect(() => {
+		const listener = (event: ClipboardEvent) => pasteAnywhere(event);
+		window.addEventListener("paste", listener);
+		return () => window.removeEventListener("paste", listener);
+	}, []);
 
 	const ask = (message: string) => {
-		if (!message.trim() || locked) return;
-		opening.current ||= message.trim();
+		const text = message.trim();
+		if (locked || loading || (!text && attachments.length === 0)) return;
+		opening.current ||= text || "Sent an image";
 		setDraft("");
-		void agent.send({ message: message.trim() });
+		setAttachments([]);
+
+		if (attachments.length === 0) {
+			void agent.send({ message: text });
+			return;
+		}
+
+		void agent.send({
+			message: [
+				...(text ? [{ type: "text" as const, text }] : []),
+				...attachments.map((attachment) => ({
+					type: "file" as const,
+					data: attachment.dataUrl,
+					mediaType: attachment.mediaType,
+					...(attachment.filename ? { filename: attachment.filename } : {}),
+				})),
+			],
+		});
 	};
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col">
+		<div ref={panel} className="flex min-h-0 flex-1 flex-col">
 			<MessageScrollerProvider autoScroll defaultScrollPosition="end">
 				<MessageScroller className="flex-1">
 					<MessageScrollerViewport>
 						<MessageScrollerContent className="gap-3 px-4 py-4 sm:px-5">
 							{messages.length === 0 && !busy ? (
-								<Idle kind={record.kind} onAsk={ask} />
+								<Idle record={record} onAsk={ask} />
 							) : null}
 
 							{messages.map((message) => (
@@ -292,29 +410,100 @@ function Thread({
 						onSubmit={(response) => agent.send({ inputResponses: [response] })}
 					/>
 				) : (
-					<form
-						className="flex min-w-0 items-center gap-2"
-						onSubmit={(event) => {
-							event.preventDefault();
-							ask(draft);
-						}}
-					>
-						<Input
-							value={draft}
-							onChange={(event) => setDraft(event.target.value)}
-							placeholder={copy.placeholder}
-							disabled={locked}
-						/>
-						<Button
-							type="submit"
-							size="icon-sm"
-							variant="outline"
-							disabled={locked}
+					<>
+						{attachments.length > 0 && blindToImages ? (
+							<p className="pb-2 text-pretty text-muted-foreground text-xs">
+								This model cannot read images. Pick one marked with an image
+								icon in Settings, or the agent answers on your words alone.
+							</p>
+						) : null}
+
+						{attachments.length > 0 ? (
+							<AttachmentGroup className="pb-2">
+								{attachments.map((attachment) => (
+									<Attachment key={attachment.id} size="sm" state="done">
+										<AttachmentMedia variant="image">
+											<AttachmentImage
+												src={attachment.dataUrl}
+												alt={attachment.filename ?? "Pasted image"}
+											/>
+										</AttachmentMedia>
+										<AttachmentContent>
+											<AttachmentTitle>
+												{attachment.filename ?? "Pasted image"}
+											</AttachmentTitle>
+										</AttachmentContent>
+										<AttachmentActions>
+											<AttachmentAction
+												aria-label="Remove the image"
+												onClick={() =>
+													setAttachments((current) =>
+														current.filter(
+															(entry) => entry.id !== attachment.id,
+														),
+													)
+												}
+											>
+												<Icon icon={Close} />
+											</AttachmentAction>
+										</AttachmentActions>
+									</Attachment>
+								))}
+							</AttachmentGroup>
+						) : null}
+
+						<form
+							className="flex min-w-0 items-center gap-2"
+							onSubmit={(event) => {
+								event.preventDefault();
+								ask(draft);
+							}}
 						>
-							{busy ? <Spinner /> : <Icon icon={Send} />}
-							<span className="sr-only">Ask</span>
-						</Button>
-					</form>
+							<Input
+								value={draft}
+								onChange={(event) => setDraft(event.target.value)}
+								onPaste={(event) => {
+									const files = Array.from(event.clipboardData.files);
+									if (files.some(isImage)) {
+										event.preventDefault();
+										addFiles(files);
+									}
+								}}
+								placeholder={copy.placeholder}
+								disabled={locked}
+							/>
+							<input
+								ref={filePicker}
+								type="file"
+								accept={IMAGE_ACCEPT}
+								multiple
+								className="sr-only"
+								onChange={(event) => {
+									addFiles(Array.from(event.target.files ?? []));
+									event.target.value = "";
+								}}
+							/>
+							<Button
+								type="button"
+								size="icon-sm"
+								variant="ghost"
+								disabled={locked}
+								onClick={() => filePicker.current?.click()}
+							>
+								<Icon icon={AttachmentIcon} />
+								<span className="sr-only">Attach an image</span>
+							</Button>
+							<Button
+								type="submit"
+								size="icon-sm"
+								variant="outline"
+								disabled={locked || loading}
+							>
+								{busy || loading ? <Spinner /> : <Icon icon={Send} />}
+								<span className="sr-only">Ask</span>
+							</Button>
+						</form>
+					</>
 				)}
 			</div>
 		</div>
@@ -322,13 +511,13 @@ function Thread({
 }
 
 function Idle({
-	kind,
+	record,
 	onAsk,
 }: {
-	kind: AgentRecord["kind"];
+	record: AgentRecord;
 	onAsk: (question: string) => void;
 }) {
-	const copy = recordCopy(kind);
+	const copy = recordCopy(record);
 
 	return (
 		<Empty width="wide">
@@ -424,6 +613,37 @@ function Item({ item }: { item: TranscriptItem }) {
 
 	if (item.kind === "reasoned") return null;
 
+	if (item.kind === "attached") {
+		const label = item.filename ?? "Pasted image";
+		return (
+			<Message align={item.mine ? "end" : "start"} className="min-w-0">
+				<MessageContent>
+					<Attachment size="sm" state="done">
+						{item.url && item.mediaType.startsWith("image/") ? (
+							<AttachmentMedia variant="image">
+								<AttachmentImage src={item.url} alt={label} />
+							</AttachmentMedia>
+						) : (
+							<AttachmentMedia variant="icon">
+								<Icon icon={AttachmentIcon} />
+							</AttachmentMedia>
+						)}
+						<AttachmentContent>
+							<AttachmentTitle>{label}</AttachmentTitle>
+						</AttachmentContent>
+					</Attachment>
+				</MessageContent>
+			</Message>
+		);
+	}
+
+	const graph =
+		item.tool === "write_campaign_graph" && !item.pending
+			? graphWriteSummary(item.input, item.output)
+			: null;
+
+	if (graph) return <AgentGraphResult summary={graph} />;
+
 	return (
 		<div className="min-w-0 space-y-1.5">
 			<Marker>
@@ -471,6 +691,16 @@ function AgentAvatar() {
 	);
 }
 
+function useModelReadsImages(enabled: boolean): boolean | null {
+	const trpc = useTRPC();
+	const settings = useQuery({
+		...trpc.settings.agentModel.queryOptions(),
+		enabled,
+	});
+
+	return settings.data?.effective?.vision ?? null;
+}
+
 function useSavedConversation({
 	record,
 	conversation,
@@ -478,7 +708,7 @@ function useSavedConversation({
 	session,
 	messages,
 }: {
-	record: { contactId?: string; companyId?: string; dealId?: string };
+	record: AgentRecordFilter;
 	conversation: Conversation | null;
 	opening: React.RefObject<string | null>;
 	session: {
@@ -495,7 +725,16 @@ function useSavedConversation({
 	const sessionId = session?.sessionId ?? null;
 	const token = session?.continuationToken ?? null;
 	const streamIndex = session?.streamIndex ?? 0;
-	const { contactId, companyId, dealId } = record;
+	const {
+		contactId,
+		companyId,
+		dealId,
+		campaignId,
+		campaignNodeId,
+		segmentId,
+		templateId,
+		shellId,
+	} = record;
 
 	const isNew = conversation === null || conversation.sessionId !== sessionId;
 
@@ -503,14 +742,19 @@ function useSavedConversation({
 	const persist = useEffectEvent(() => {
 		save.mutate(
 			{
-				...(contactId ? { contactId } : {}),
-				...(companyId ? { companyId } : {}),
-				...(dealId ? { dealId } : {}),
+				contactId,
+				companyId,
+				dealId,
+				campaignId,
+				campaignNodeId,
+				segmentId,
+				templateId,
+				shellId,
 				sessionId: sessionId ?? "",
 				continuationToken: token,
 				streamIndex,
 				messageCount: messages,
-				...(isNew ? { title: opening.current ?? undefined } : {}),
+				title: isNew ? (opening.current ?? undefined) : undefined,
 			},
 			{
 				onSuccess: () => {

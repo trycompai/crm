@@ -108,15 +108,23 @@ describe("eventsOf", () => {
 
 describe("record context", () => {
 	it("asks about the thing you are actually looking at", () => {
-		expect(recordCopy("contact").title).toBe("Ask about this person");
-		expect(recordCopy("company").title).toBe("Ask about this company");
-		expect(recordCopy("deal").title).toBe("Ask about this deal");
+		expect(recordCopy({ kind: "contact" }).title).toBe("Ask about this person");
+		expect(recordCopy({ kind: "company" }).title).toBe(
+			"Ask about this company",
+		);
+		expect(recordCopy({ kind: "deal" }).title).toBe("Ask about this deal");
 	});
 
 	it("offers questions that suit the record", () => {
-		expect(recordCopy("company").suggestions.join(" ")).not.toContain("person");
-		expect(recordCopy("deal").suggestions.join(" ")).not.toContain("person");
-		expect(recordCopy("contact").suggestions[0]).toBe("Who is this person?");
+		expect(recordCopy({ kind: "company" }).suggestions.join(" ")).not.toContain(
+			"person",
+		);
+		expect(recordCopy({ kind: "deal" }).suggestions.join(" ")).not.toContain(
+			"person",
+		);
+		expect(recordCopy({ kind: "contact" }).suggestions[0]).toBe(
+			"Who is this person?",
+		);
 	});
 
 	it("tells the agent which record it is on", () => {
@@ -137,6 +145,76 @@ describe("record context", () => {
 			"companyId",
 		]);
 	});
+
+	it("carries the open email step beside the campaign", () => {
+		expect(
+			recordHeader({ kind: "campaign", id: "cmp1", nodeId: "n1" }),
+		).toEqual({
+			"x-crm-campaign": "cmp1",
+			"x-crm-campaign-node": "n1",
+		});
+		expect(recordHeader({ kind: "campaign", id: "cmp1" })).toEqual({
+			"x-crm-campaign": "cmp1",
+		});
+		expect(recordHeader({ kind: "template", id: "t1", nodeId: "n1" })).toEqual({
+			"x-crm-template": "t1",
+		});
+	});
+
+	it("swaps the copy when an email step is open", () => {
+		expect(recordCopy({ kind: "campaign", nodeId: "n1" }).title).toBe(
+			"Write this email",
+		);
+		expect(recordCopy({ kind: "campaign" }).title).toBe("Build this campaign");
+		expect(recordCopy({ kind: "campaign", nodeId: "n1" }).field).toBe(
+			"campaignId",
+		);
+	});
+
+	it("speaks to one send on a blast and to a flow on a drip", () => {
+		const blast = recordCopy({ kind: "campaign", campaignKind: "BLAST" });
+		const drip = recordCopy({ kind: "campaign", campaignKind: "DRIP" });
+
+		expect(blast.suggestions.join(" ")).not.toContain("Branch");
+		expect(blast.suggestions.join(" ")).not.toContain("wait");
+		expect(blast.suggestions.join(" ")).toContain("subject line");
+		expect(drip).toEqual(recordCopy({ kind: "campaign" }));
+		expect(drip.suggestions.join(" ")).toContain("Branch");
+	});
+
+	it("lets the open email step win over the campaign kind", () => {
+		expect(
+			recordCopy({ kind: "campaign", nodeId: "n1", campaignKind: "BLAST" })
+				.title,
+		).toBe("Write this email");
+	});
+
+	it("offers to start a template that is still blank", () => {
+		const blank = recordCopy({ kind: "template", empty: true });
+		const written = recordCopy({ kind: "template" });
+
+		expect(blank.title).toBe("Write this email");
+		expect(blank.placeholder).toBe(
+			"A welcome email for people who just signed up.",
+		);
+		expect(blank.suggestions[0]).toBe("Write a welcome email for new signups");
+		expect(written.placeholder).toBe(
+			"Make this shorter and lead with the customer.",
+		);
+		expect(recordCopy({ kind: "template", empty: false })).toEqual(written);
+	});
+
+	it("files a node-scoped chat under the campaign and its node", () => {
+		expect(
+			recordFilter({ kind: "campaign", id: "cmp1", nodeId: "n1" }),
+		).toEqual({ campaignId: "cmp1", campaignNodeId: "n1" });
+		expect(recordFilter({ kind: "campaign", id: "cmp1" })).toEqual({
+			campaignId: "cmp1",
+		});
+		expect(recordFilter({ kind: "template", id: "t1", nodeId: "n1" })).toEqual({
+			templateId: "t1",
+		});
+	});
 });
 
 describe("the panel", () => {
@@ -148,7 +226,7 @@ describe("the panel", () => {
 
 	it("takes its copy from the record, never from a literal", () => {
 		for (const kind of ["contact", "company", "deal"] as const) {
-			const copy = recordCopy(kind);
+			const copy = recordCopy({ kind });
 			for (const literal of [copy.title, copy.blurb, copy.placeholder]) {
 				expect(source()).not.toContain(literal);
 			}

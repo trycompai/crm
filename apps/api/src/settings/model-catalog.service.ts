@@ -16,6 +16,7 @@ export interface CatalogModel {
 	provider: string;
 	contextWindowTokens: number;
 	pricing: { input: number; output: number } | null;
+	vision: boolean;
 }
 
 interface GatewayModel {
@@ -99,6 +100,7 @@ export class ModelCatalogService {
 							: (id.split("/")[0] ?? id),
 					contextWindowTokens: model.context_window as number,
 					pricing: input !== null && output !== null ? { input, output } : null,
+					vision: Array.isArray(model.tags) && model.tags.includes("vision"),
 				};
 			});
 

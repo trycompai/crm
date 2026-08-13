@@ -1,0 +1,110 @@
+@import "@xyflow/react/dist/style.css";
+
+.crm-flow {
+	--xy-background-color: var(--muted);
+	--xy-background-pattern-color: var(--border);
+
+	--xy-edge-stroke: var(--border);
+	--xy-edge-stroke-width: 1;
+	--xy-edge-stroke-selected: var(--primary);
+	--xy-edge-label-background-color: var(--muted);
+	--xy-edge-label-color: var(--muted-foreground);
+
+	--xy-connectionline-stroke: var(--primary);
+	--xy-connectionline-stroke-width: 1;
+
+	--xy-node-color: var(--foreground);
+	--xy-node-border: 1px solid var(--border);
+	--xy-node-background-color: var(--card);
+	--xy-node-group-background-color: transparent;
+	--xy-node-boxshadow-hover: none;
+	--xy-node-boxshadow-selected: none;
+	--xy-node-border-radius: var(--radius-lg);
+
+	--xy-handle-background-color: var(--border);
+	--xy-handle-border-color: var(--card);
+
+	--xy-selection-background-color: color-mix(
+		in oklab,
+		var(--primary) 8%,
+		transparent
+	);
+	--xy-selection-border: 1px solid var(--primary);
+
+	--xy-controls-button-background-color: var(--card);
+	--xy-controls-button-background-color-hover: var(--muted);
+	--xy-controls-button-color: var(--foreground);
+	--xy-controls-button-color-hover: var(--foreground);
+	--xy-controls-button-border-color: var(--border);
+	--xy-controls-box-shadow: none;
+
+	--xy-minimap-background-color: var(--card);
+	--xy-minimap-mask-background-color: color-mix(
+		in oklab,
+		var(--muted) 70%,
+		transparent
+	);
+	--xy-minimap-node-background-color: var(--border);
+
+	--xy-attribution-background-color: transparent;
+
+	--xy-resize-background-color: var(--primary);
+	--xy-theme-selected: var(--primary);
+	--xy-theme-hover: var(--border);
+	--xy-theme-edge-hover: var(--muted-foreground);
+	--xy-theme-color-focus: var(--ring);
+}
+
+.crm-flow .react-flow__node {
+	font-family: inherit;
+	font-size: inherit;
+}
+
+.crm-flow .react-flow__node-default,
+.crm-flow .react-flow__node-input,
+.crm-flow .react-flow__node-output {
+	padding: 0;
+	border: 0 none;
+	background: transparent;
+	box-shadow: none;
+	width: auto;
+}
+
+.crm-flow .react-flow__handle {
+	width: 6px;
+	height: 6px;
+	border-width: 1px;
+	border-radius: var(--radius-sm);
+}
+
+.crm-flow .react-flow__attribution {
+	display: none;
+}
+
+.crm-flow .react-flow__controls {
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+}
+
+.crm-flow .react-flow__controls-button {
+	width: 28px;
+	height: 28px;
+	padding: 7px;
+	background-color: var(--card);
+	border-bottom: 1px solid var(--border);
+	color: var(--foreground);
+}
+
+.crm-flow .react-flow__controls-button:last-child {
+	border-bottom: 0 none;
+}
+
+.crm-flow .react-flow__controls-button:hover {
+	background-color: var(--muted);
+	color: var(--foreground);
+}
+
+.crm-flow .react-flow__controls-button svg {
+	fill: currentColor;
+}

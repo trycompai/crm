@@ -6,11 +6,13 @@ import {
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { ExportCsv } from "@crm/ui/components/export-csv";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -24,6 +26,7 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { ContactsBulkActions } from "./contacts-bulk-actions";
 import { contactsSearchParams } from "./contacts-search-params";
+import { SaveAsSegment } from "./save-as-segment";
 
 type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
 
@@ -124,6 +127,7 @@ export function ContactsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
+	const queryClient = useQueryClient();
 	const { query, input } = useTableQuery(contactsSearchParams);
 
 	const contacts = useQuery({
@@ -187,6 +191,49 @@ export function ContactsTable() {
 	return (
 		<DataTable
 			query={query}
+			actions={
+				<>
+					<ExportCsv
+						name="contacts"
+						total={contacts.data?.total ?? 0}
+						disabled={contacts.isFetching}
+						columns={[
+							{ header: "Name", value: (row: ContactRow) => contactName(row) },
+							{ header: "Email", value: (row: ContactRow) => row.email },
+							{ header: "Title", value: (row: ContactRow) => row.title },
+							{
+								header: "Company",
+								value: (row: ContactRow) => row.company?.name ?? null,
+							},
+							{
+								header: "Last activity",
+								value: (row: ContactRow) => row.lastActivityAt,
+							},
+						]}
+						fetchPage={async (page, pageSize) => {
+							const result = await queryClient.fetchQuery(
+								trpc.contacts.list.queryOptions({ ...input, page, pageSize }),
+							);
+							return result.rows;
+						}}
+						onDone={(count, capped) =>
+							toast.success(
+								capped
+									? `${count.toLocaleString()} contacts exported. The rest are over the limit.`
+									: `${count.toLocaleString()} contacts exported.`,
+							)
+						}
+						onError={(message) => toast.error(message)}
+					/>
+
+					<SaveAsSegment
+						filters={{
+							owner: input.owner,
+							company: input.company,
+						}}
+					/>
+				</>
+			}
 			search={<ListSearch placeholder="Search by name, email or company…" />}
 			columns={columns}
 			rows={rows}

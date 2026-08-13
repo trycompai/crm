@@ -69,12 +69,14 @@ const REQUEST = {
 	userAgent: "Mozilla/5.0",
 };
 
+const VISITOR_PREFIX = `ingest${suffix.replace(/[^a-zA-Z0-9]/g, "")}`;
+
 let visitor = 0;
 
 function visitorId(): string {
 	visitor += 1;
 
-	return `ingest${suffix.replace(/[^a-zA-Z0-9]/g, "")}${visitor}`;
+	return `${VISITOR_PREFIX}${visitor}`;
 }
 
 async function accept(events: IncomingEvent[], id = visitorId()) {
@@ -99,6 +101,9 @@ async function clean() {
 
 	await db.trackedDomain.deleteMany({
 		where: { host: { in: [parent, exact] } },
+	});
+	await db.trackedVisitor.deleteMany({
+		where: { id: { startsWith: VISITOR_PREFIX } },
 	});
 	await db.trackingCounter.deleteMany({ where: {} });
 }
@@ -304,6 +309,52 @@ describe("a batch delivered twice", () => {
 		await accept([submission], id);
 
 		expect(filed).toHaveLength(1);
+	});
+});
+
+describe("the window a visitor was seen in", () => {
+	it("moves firstSeen back for an event older than the stored first visit", async () => {
+		const id = visitorId();
+		const now = Date.now();
+		const recent = now - 60_000;
+		const delayed = now - 3_600_000;
+
+		await accept(
+			[{ type: "page_view", host: parent, path: "/a", at: recent }],
+			id,
+		);
+		await accept(
+			[{ type: "page_view", host: parent, path: "/b", at: delayed }],
+			id,
+		);
+
+		const row = await db.trackedVisitor.findUnique({
+			where: { id },
+			select: { firstSeen: true, lastSeen: true },
+		});
+
+		expect(row?.firstSeen.getTime()).toBe(delayed);
+		expect(row?.lastSeen.getTime()).toBe(recent);
+	});
+
+	it("keeps the later timestamp when two first batches arrive together", async () => {
+		const id = visitorId();
+		const now = Date.now();
+		const older = now - 120_000;
+		const newer = now - 1_000;
+
+		await Promise.all([
+			accept([{ type: "page_view", host: parent, path: "/a", at: older }], id),
+			accept([{ type: "page_view", host: parent, path: "/b", at: newer }], id),
+		]);
+
+		const row = await db.trackedVisitor.findUnique({
+			where: { id },
+			select: { firstSeen: true, lastSeen: true },
+		});
+
+		expect(row?.firstSeen.getTime()).toBe(older);
+		expect(row?.lastSeen.getTime()).toBe(newer);
 	});
 });
 

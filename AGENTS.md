@@ -14,6 +14,7 @@ context until you read them, and the rules in them are not optional.
 | The record sheet's Agent tab | `docs/agent-panel.md` |
 | `/settings/connections`, integrations, the intake endpoint | `docs/connections.md` |
 | The tracking script, the collector, form submissions | `docs/tracking.md` |
+| Campaigns, drips, templates, segments, sending, unsubscribes | `docs/marketing.md` |
 | Running it locally, Google Cloud, DB commands, secrets | `docs/setup.md` |
 | Anything that sends a telemetry event, or a new property on one | `docs/telemetry.md` |
 | `.github/workflows`, versions, changelog, how a change reaches `release` | `CONTRIBUTING.md` |

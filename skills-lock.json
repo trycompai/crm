@@ -61,6 +61,12 @@
       "skillPath": "skills/better-writing/SKILL.md",
       "computedHash": "450dc38b88fc7207044bf918e52a29422ad7a3de71517119cfd12fb65c7b05ee"
     },
+    "email-best-practices": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/email-best-practices/SKILL.md",
+      "computedHash": "c7218333381fa335b8a912bd55b3bb58b5b567a174f9e1d8b41940ff82f1a6b6"
+    },
     "eve": {
       "source": "vercel/eve",
       "sourceType": "github",
@@ -102,6 +108,24 @@
       "sourceType": "github",
       "skillPath": "prisma-database-setup/SKILL.md",
       "computedHash": "6a991a2530a6da7131e3fc71c353e8278702d0146b8b6e1d2fdfc2d3d0a21bd2"
+    },
+    "react-email": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-email/SKILL.md",
+      "computedHash": "ff40e3355c318e5ef203eb1118cab574454ce65dae01bb268b05a2e244b8041b"
+    },
+    "react-flow": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "skillPath": "plugins/beagle-react/skills/react-flow/SKILL.md",
+      "computedHash": "24daea215037828ec60608bf5952cd24ed55ff5512d65fc1d636bd0c0b188c5a"
+    },
+    "resend": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend/SKILL.md",
+      "computedHash": "be9d48930a10b28358abd6afe1ac851d4feb72aed301373870d7c09cb64f5970"
     },
     "seo-audit": {
       "source": "coreyhaines31/marketingskills",

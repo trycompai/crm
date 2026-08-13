@@ -104,10 +104,12 @@ async function SignIn({
 				description="Sign in with your account to continue."
 			/>
 
-			{showSso ? <SsoSignIn providers={providers} /> : null}
-			{social.map((provider) => (
-				<SocialSignIn key={provider} provider={provider} />
-			))}
+			<div className="flex flex-col gap-3">
+				{showSso ? <SsoSignIn providers={providers} /> : null}
+				{social.map((provider) => (
+					<SocialSignIn key={provider} provider={provider} />
+				))}
+			</div>
 		</>
 	);
 }

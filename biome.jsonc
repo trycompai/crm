@@ -80,6 +80,9 @@
 			"includes": ["apps/api/**"],
 			"linter": {
 				"rules": {
+					"correctness": {
+						"useHookAtTopLevel": "off"
+					},
 					"style": {
 						"useImportType": "off"
 					}

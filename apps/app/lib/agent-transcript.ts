@@ -8,6 +8,14 @@ import {
 
 export type TranscriptItem =
 	| { kind: "said"; id: string; mine: boolean; text: string }
+	| {
+			kind: "attached";
+			id: string;
+			mine: boolean;
+			url: string | null;
+			mediaType: string;
+			filename: string | null;
+	  }
 	| { kind: "reasoned"; id: string; streaming: boolean; text: string }
 	| {
 			kind: "asked";
@@ -46,6 +54,25 @@ type AgentStreamEvent = {
 };
 
 const VERBS: Record<string, string> = {
+	list_segments: "Listed the marketing segments",
+	read_segment: "Read a segment's rules",
+	preview_segment: "Counted who those rules match",
+	write_segment: "Saved the segment",
+	list_templates: "Listed the email templates",
+	read_template: "Read an email template",
+	read_shell: "Read the header and footer",
+	write_shell: "Rewrote the header or footer",
+	write_template: "Wrote the email",
+	create_campaign: "Created a campaign as a draft",
+	read_campaign: "Read the campaign and how each touch is doing",
+	write_campaign_graph: "Built the campaign's flow",
+	update_node: "Changed one step in the campaign",
+	schedule_campaign: "Staged the campaign for you to approve",
+	review_email: "Looked at the email as a reader would",
+	send_email: "Sent the email",
+	enrol_contact: "Put them into the campaign",
+	campaign_stats: "Checked how the campaign is delivering",
+	read_engagement: "Read what marketing email they have had",
 	read_crm_history: "Read our emails and meetings with them",
 	read_company_history: "Read everything we have on the company",
 	read_deal_history: "Read the deal and where it has been",
@@ -210,6 +237,19 @@ export function toTranscript(
 					const text = part.text.trim();
 					if (!text) return [];
 					return [{ kind: "said", id, mine: message.role === "user", text }];
+				}
+
+				if (part.type === "file") {
+					return [
+						{
+							kind: "attached",
+							id,
+							mine: message.role === "user",
+							url: part.url ?? null,
+							mediaType: part.mediaType,
+							filename: part.filename ?? null,
+						},
+					];
 				}
 
 				if (part.type === "reasoning") {

@@ -5,6 +5,7 @@ import { queueEventAgentRuns } from "./custom-agent-dispatch";
 import { settledWithin } from "./deadline";
 import { DISPATCH } from "./dispatch-config";
 import { markRunning, settle } from "./enrichment";
+import { brandPassOutcome, runMarketingBrand } from "./marketing-brand";
 import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
 import { runSlackChannelJoin } from "./slack-join-task";
@@ -107,6 +108,18 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 		if (result.retryable) return;
 
 		await completeTask(task.id, brandOutcome(result));
+		return;
+	}
+
+	if (task.kind === "marketing-brand") {
+		const pass = await runMarketingBrand().catch(() => null);
+
+		await completeTask(
+			task.id,
+			pass
+				? brandPassOutcome(pass)
+				: "The branding pass found nothing usable, so the defaults stand.",
+		);
 		return;
 	}
 

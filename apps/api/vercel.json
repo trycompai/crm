@@ -16,6 +16,10 @@
 		{
 			"path": "/internal/tracking/retention",
 			"schedule": "0 4 * * *"
+		},
+		{
+			"path": "/internal/marketing/drain",
+			"schedule": "* * * * *"
 		}
 	]
 }

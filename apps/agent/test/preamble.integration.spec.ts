@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DealStage, db } from "@crm/db";
 import {
+	campaignPreamble,
 	companyPreamble,
 	composeClosing,
 	contactPreamble,
@@ -162,6 +163,43 @@ describe("dealPreamble", () => {
 		expect(markdown).toContain(`company id \`${companyId}\``);
 		expect(markdown).toContain(`Champion \`${paulaId}\``);
 		expect(focus).toEqual({ companyId });
+	});
+});
+
+describe("campaignPreamble", () => {
+	it("names the open email step and scopes edits to it", async () => {
+		const campaign = await db.marketingCampaign.create({
+			data: {
+				name: `Fernhill launch ${suffix}`,
+				kind: "DRIP",
+				nodes: {
+					create: [
+						{ kind: "EMAIL", label: "Touch 1", subject: "Hello" },
+						{ kind: "WAIT", delayHours: 72 },
+					],
+				},
+			},
+			select: {
+				id: true,
+				nodes: { select: { id: true, kind: true } },
+			},
+		});
+		const email = campaign.nodes.find((node) => node.kind === "EMAIL");
+		const wait = campaign.nodes.find((node) => node.kind === "WAIT");
+		if (!email || !wait) throw new Error("The fixture is missing a node.");
+
+		const focused = await campaignPreamble(campaign.id, email.id);
+		expect(focused.markdown).toContain(`node id \`${email.id}\``);
+		expect(focused.markdown).toContain("**Touch 1**");
+		expect(focused.markdown).toContain("`update_node`");
+
+		const plain = await campaignPreamble(campaign.id);
+		expect(plain.markdown).not.toContain("open in the editor");
+
+		const notEmail = await campaignPreamble(campaign.id, wait.id);
+		expect(notEmail.markdown).not.toContain("open in the editor");
+
+		await db.marketingCampaign.delete({ where: { id: campaign.id } });
 	});
 });
 

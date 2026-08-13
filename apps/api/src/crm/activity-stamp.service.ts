@@ -18,6 +18,8 @@ function present(ids: (string | null)[]): string[] {
 	return ids.filter((id): id is string => id !== null);
 }
 
+const NOT_MARKETING = PrismaNamespace.sql`a."meta"->>'source' IS DISTINCT FROM 'marketing'`;
+
 @Injectable()
 export class ActivityStampService {
 	private readonly logger = new Logger(ActivityStampService.name);
@@ -49,41 +51,6 @@ export class ActivityStampService {
 					})
 				: null,
 		]);
-	}
-
-	async recompute(target: ActivityTarget): Promise<void> {
-		if (target.companyId) {
-			const { _max } = await this.db.activity.aggregate({
-				where: { companyId: target.companyId },
-				_max: { createdAt: true },
-			});
-			await this.db.company.update({
-				where: { id: target.companyId },
-				data: { lastActivityAt: _max.createdAt },
-			});
-		}
-
-		if (target.contactId) {
-			const { _max } = await this.db.activity.aggregate({
-				where: { contactId: target.contactId },
-				_max: { createdAt: true },
-			});
-			await this.db.contact.update({
-				where: { id: target.contactId },
-				data: { lastActivityAt: _max.createdAt },
-			});
-		}
-
-		if (target.dealId) {
-			const { _max } = await this.db.activity.aggregate({
-				where: { dealId: target.dealId },
-				_max: { createdAt: true },
-			});
-			await this.db.deal.update({
-				where: { id: target.dealId },
-				data: { lastActivityAt: _max.createdAt },
-			});
-		}
 	}
 
 	async targetsOf(
@@ -142,49 +109,42 @@ export class ActivityStampService {
 		return this.db.$executeRaw`
 			UPDATE ${record} r
 			SET "lastActivityAt" = (
-				SELECT MAX(a."createdAt") FROM "activity" a WHERE a.${key} = r.id
+				SELECT MAX(a."createdAt") FROM "activity" a
+				WHERE a.${key} = r.id AND ${NOT_MARKETING}
 			)
 			WHERE r.id IN (${PrismaNamespace.join(ids)})`;
 	}
 
+	private rebuild(table: string, column: string) {
+		const record = PrismaNamespace.raw(`"${table}"`);
+		const key = PrismaNamespace.raw(`"${column}"`);
+
+		return [
+			this.db.$executeRaw`
+				UPDATE ${record} r
+				SET "lastActivityAt" = m.max
+				FROM (
+					SELECT a.${key} AS id, MAX(a."createdAt") AS max
+					FROM "activity" a
+					WHERE a.${key} IS NOT NULL AND ${NOT_MARKETING}
+					GROUP BY a.${key}
+				) m
+				WHERE r.id = m.id AND r."lastActivityAt" IS DISTINCT FROM m.max`,
+			this.db.$executeRaw`
+				UPDATE ${record} SET "lastActivityAt" = NULL
+				WHERE "lastActivityAt" IS NOT NULL
+				AND id NOT IN (
+					SELECT a.${key} FROM "activity" a
+					WHERE a.${key} IS NOT NULL AND ${NOT_MARKETING}
+				)`,
+		];
+	}
+
 	async recomputeAll(): Promise<void> {
 		await this.db.$transaction([
-			this.db.$executeRaw`
-				UPDATE "company" c
-				SET "lastActivityAt" = a.max
-				FROM (
-					SELECT "companyId" AS id, MAX("createdAt") AS max
-					FROM "activity" WHERE "companyId" IS NOT NULL GROUP BY "companyId"
-				) a
-				WHERE c.id = a.id AND c."lastActivityAt" IS DISTINCT FROM a.max`,
-			this.db.$executeRaw`
-				UPDATE "company" SET "lastActivityAt" = NULL
-				WHERE "lastActivityAt" IS NOT NULL
-				AND id NOT IN (SELECT "companyId" FROM "activity" WHERE "companyId" IS NOT NULL)`,
-			this.db.$executeRaw`
-				UPDATE "contact" c
-				SET "lastActivityAt" = a.max
-				FROM (
-					SELECT "contactId" AS id, MAX("createdAt") AS max
-					FROM "activity" WHERE "contactId" IS NOT NULL GROUP BY "contactId"
-				) a
-				WHERE c.id = a.id AND c."lastActivityAt" IS DISTINCT FROM a.max`,
-			this.db.$executeRaw`
-				UPDATE "contact" SET "lastActivityAt" = NULL
-				WHERE "lastActivityAt" IS NOT NULL
-				AND id NOT IN (SELECT "contactId" FROM "activity" WHERE "contactId" IS NOT NULL)`,
-			this.db.$executeRaw`
-				UPDATE "deal" d
-				SET "lastActivityAt" = a.max
-				FROM (
-					SELECT "dealId" AS id, MAX("createdAt") AS max
-					FROM "activity" WHERE "dealId" IS NOT NULL GROUP BY "dealId"
-				) a
-				WHERE d.id = a.id AND d."lastActivityAt" IS DISTINCT FROM a.max`,
-			this.db.$executeRaw`
-				UPDATE "deal" SET "lastActivityAt" = NULL
-				WHERE "lastActivityAt" IS NOT NULL
-				AND id NOT IN (SELECT "dealId" FROM "activity" WHERE "dealId" IS NOT NULL)`,
+			...this.rebuild("company", "companyId"),
+			...this.rebuild("contact", "contactId"),
+			...this.rebuild("deal", "dealId"),
 		]);
 	}
 }

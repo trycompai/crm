@@ -193,6 +193,46 @@ missing key removes a place to look. **Never an error, never throws.**
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
+### The agent can look at an email before a reader does
+
+`review_email` renders a template, a campaign email step, or an unsaved draft in a
+headless browser at 600px and 390px, measures the first screen, and reports what it
+observed — image coverage, visible text characters, anything oversized, cut off,
+upscaled or overflowing. A block document passes every linter and still opens on a
+wall of image; this tool is how the agent catches that before a rep does.
+
+- **The session model never sees pixels.** The default model (`zai/glm-5.2-fast`) is
+  chosen for tool use, not vision, and the model chooser filters only on `tool-use` —
+  so the tool must not require vision of it. Screenshots go to a separate
+  vision-capable judge (`EMAIL_REVIEW.judge` in `lib/email-review-config.ts`) through
+  the same AI Gateway credential the agent already runs on, and the session gets text:
+  measurements plus the judge's observations. No image enters session history, so
+  nothing is re-sent per turn or lost to compaction.
+- **The measurements do not need the judge.** First-screen image coverage, visible
+  text, overflow and upscaling are computed from the DOM. No gateway credential means
+  the visual read reports itself skipped; the numbers still land.
+- **Rendering is local, deliberately.** The email is composed by `renderEmail()` —
+  the one renderer — and screenshotted by a Chrome the deployment provides
+  (`CHROME_EXECUTABLE_PATH`, or a standard location found automatically). No
+  screenshot vendor: rendered marketing copy stays on this machine, per the egress
+  rules above. The page runs with JavaScript disabled.
+- **The browser fetches public addresses only.** An email holds addresses the
+  agent did not choose, and a headless browser on our own network is an SSRF
+  vector. Every request is intercepted: `data:` loads, `http(s)` loads when the
+  host resolves to a public address, and everything else is refused — loopback,
+  link-local, private, CGNAT, unique-local, multicast and reserved ranges, and
+  any other scheme. The one exception is this install's own origin (`APP_URL`),
+  so a picture served by the app in dev still draws. `lib/email-requests.ts`
+  holds the rule and reuses `resolvesToPublicHost` from `@crm/db/safe-fetch`. A
+  refused address becomes a finding rather than a silent gap: a reader on
+  another network cannot reach it either.
+- **It is a capability like the others.** No browser means the capability is off at
+  boot, stated in the session instructions, and the tool returns the shared
+  not-configured result. It never throws, and it costs nothing when unused.
+- **Evidence, not confidence.** Findings are observations with the measured numbers
+  in them. The judge is instructed to describe what is visible — no scores, no
+  grades.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.
@@ -358,7 +398,10 @@ browser → /eve/v1/*  (same origin, session cookie, x-crm-contact header)
                              → instructions/task.ts reads attributes.contactId
 ```
 
-- **The record travels in the token, never in the message.**
+- **The record travels in the token, never in the message.** A campaign may
+  also carry the open email step (`x-crm-campaign-node` → `campaignNodeId`),
+  so the session preamble names the node the rep is editing and points
+  `update_node` at it.
 - **Mounted at `/eve/v1/*`** because that is where `useEveAgent()` looks — no `host`,
   no CORS, no cross-site cookie.
 - **The proxy is an enforcement point, not a passthrough** — the agent never sees the
@@ -529,17 +572,22 @@ silently ignored.
 
 ## Watching it work
 
-`eve dev` shows every tool call, every result and every token in its interactive
-TUI, and it is the agent package's default `dev` command. The package's Turbo
-task is explicitly interactive, so select the agent pane and press Enter to hand
-stdin to eve. Type `/traces` to open the live trace viewer; Ctrl+Z returns input
-to Turbo.
+`eve dev --no-ui` is the agent package's default `dev` command, so `turbo dev`
+gives the agent an ordinary log pane and not a TUI nested inside Turbo's own.
+`hooks/activity.ts` narrates the session there: a line per tool call with its
+arguments, a line per result with how long it took, the finish reason and token
+spend of each step, and any failure with its code.
 
-`dev:headless` keeps `eve dev --no-ui` available when a terminal cannot render
-the nested TUI. It starts the same server on the same port with the same routes
-and watcher. In that mode `hooks/activity.ts` narrates the session instead: a
-line per tool call with its arguments, a line per result with how long it took,
-the finish reason and token spend of each step, and any failure with its code.
+`dev:ui` is plain `eve dev`, the interactive TUI, for when you want to type at
+the agent. It starts the same server on the same port with the same routes and
+watcher. Its Turbo task is the one marked interactive, so select the agent pane
+and press Enter to hand stdin to eve. Type `/traces` to open the live trace
+viewer; Ctrl+Z returns input to Turbo.
+
+```sh
+bun run dev                       # every app; the agent is headless
+turbo run dev:ui --filter=agent   # the agent alone, with the TUI
+```
 
 - **The lines go to stderr, not stdout.** The TUI's default log mode is `stderr`
   and it keeps stdout buffered and hidden, so a `console.log` here would be
@@ -560,20 +608,20 @@ the finish reason and token spend of each step, and any failure with its code.
   an entry per call, forever, in a process that stays up for days.
 
 `eve logs` reads the full record back, but only for an **interactive** `eve dev`
-— that is the process that writes `.eve/logs/`. Under `--no-ui` the pane is the
-record, so keep the turbo scrollback rather than going looking for a file that
-was never written.
+— that is the process that writes `.eve/logs/`. The default `dev` is headless,
+so the pane is the record: keep the turbo scrollback rather than going looking
+for a file that was never written. Run `dev:ui` when you want `.eve/logs/`.
 
-Two consequences of opting into `dev:headless`, both worth recognising rather
-than debugging:
+Two consequences of a headless default, both worth recognising rather than
+debugging:
 
 - **A headless dev process cannot reconnect.** An interactive `eve dev`
-  reconnects to a local server that is already up; `dev:headless` rejects it and
-  exits non-zero. `A dev server is already running for this eve agent` means
+  reconnects to a local server that is already up; the headless `dev` rejects it
+  and exits non-zero. `A dev server is already running for this eve agent` means
   exactly what it says: use the terminal it is in, or stop it before starting
   another.
 - **An orphaned agent holds the port.** If turbo dies without reaping its child,
-  nothing on screen says so and every later `dev:headless` fails the same way.
+  nothing on screen says so and every later `dev` fails the same way.
   `lsof -nP -iTCP:2000 -sTCP:LISTEN` names the process to kill.
 
 ### Nothing is researching, and the queue only grows

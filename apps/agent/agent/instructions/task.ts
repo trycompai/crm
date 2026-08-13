@@ -29,6 +29,11 @@ export default defineDynamic({
 					contactId: asString(attributes.contactId),
 					companyId: asString(attributes.companyId),
 					dealId: asString(attributes.dealId),
+					campaignId: asString(attributes.campaignId),
+					campaignNodeId: asString(attributes.campaignNodeId),
+					segmentId: asString(attributes.segmentId),
+					templateId: asString(attributes.templateId),
+					shellId: asString(attributes.shellId),
 				},
 				{
 					dispatched: Boolean(kind),

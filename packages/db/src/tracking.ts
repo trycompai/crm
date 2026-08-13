@@ -30,6 +30,10 @@ export const BUNDLE_MAX_AGE_SECONDS = 31_536_000;
 
 export const EVENT_RETENTION_DAYS = 90;
 
+export const SWEEP_BATCH = 10_000;
+
+export const MAX_SWEEP_PASSES = 50;
+
 export const VERIFY_WINDOW_MS = 5 * 60_000;
 
 export const MAX_VERIFY_BYTES = 2_000_000;

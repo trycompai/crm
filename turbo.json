@@ -61,6 +61,7 @@
 		"VERCEL_OIDC_TOKEN",
 		"AGENT_URL",
 		"AGENT_BRIDGE_SECRET",
+		"CHROME_EXECUTABLE_PATH",
 		"CRM_TELEMETRY_DISABLED",
 		"DO_NOT_TRACK",
 		"VERCEL",
@@ -103,7 +104,7 @@
 			"cache": false,
 			"persistent": true
 		},
-		"dev:headless": {
+		"dev:ui": {
 			"dependsOn": ["^dev:prepare"],
 			"cache": false,
 			"persistent": true

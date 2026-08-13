@@ -35,6 +35,7 @@ import {
 	InlineSelectField,
 	savingValue,
 } from "@/components/crm/inline-field";
+import { ContactMarketingActions } from "@/components/crm/marketing-actions";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { ContactSocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
@@ -59,6 +60,7 @@ import { hasContactLinks } from "@/lib/social-links";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { ContactMarketing } from "./contact-marketing";
 import { RecordActions } from "./record-actions";
 import { DealAmount, MetaLine, RecordSheetFrame } from "./record-parts";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
@@ -131,6 +133,11 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 					content: <Timeline anchor={{ contactId: contact.id }} />,
 				},
 				{
+					value: "marketing",
+					label: "Marketing",
+					content: <ContactMarketing contactId={contact.id} />,
+				},
+				{
 					value: "agent",
 					label: "Agent",
 					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
@@ -180,6 +187,10 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 				contact ? (
 					<>
 						<ContactEnrichmentAction contactId={contact.id} />
+						<ContactMarketingActions
+							contactId={contact.id}
+							hasEmail={Boolean(contact.email)}
+						/>
 						{contact.email ? (
 							<Button asChild variant="outline" size="sm">
 								<a href={`mailto:${contact.email}`}>

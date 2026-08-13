@@ -51,6 +51,49 @@ describe("toTranscript", () => {
 		expect(first?.items[0]).toMatchObject({ kind: "said", text: "Hey!" });
 	});
 
+	it("keeps a pasted image as an attachment on the rep's message", () => {
+		const [first] = toTranscript([
+			message(
+				[
+					{ type: "text", text: "Match this style." },
+					{
+						type: "file",
+						mediaType: "image/png",
+						filename: "brand.png",
+						url: "data:image/png;base64,QQ==",
+					},
+				],
+				"user",
+			),
+		]);
+
+		expect(first?.items[0]).toMatchObject({
+			kind: "said",
+			text: "Match this style.",
+		});
+		expect(first?.items[1]).toMatchObject({
+			kind: "attached",
+			mine: true,
+			mediaType: "image/png",
+			filename: "brand.png",
+			url: "data:image/png;base64,QQ==",
+		});
+	});
+
+	it("keeps an attachment even when eve returns no browser url", () => {
+		const [first] = toTranscript([
+			message([{ type: "file", mediaType: "image/jpeg" }], "user"),
+		]);
+
+		expect(first?.items[0]).toMatchObject({
+			kind: "attached",
+			mine: true,
+			mediaType: "image/jpeg",
+			filename: null,
+			url: null,
+		});
+	});
+
 	it("keeps one message's parts in one row", () => {
 		const grouped = toTranscript([
 			message([

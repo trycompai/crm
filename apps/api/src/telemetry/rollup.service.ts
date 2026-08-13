@@ -107,6 +107,121 @@ export class RollupService {
 		}
 	}
 
+	private async marketing() {
+		const [
+			settings,
+			templates,
+			segments,
+			campaigns,
+			enrolments,
+			sends,
+			delivered,
+			bounced,
+			complained,
+			unsubscribed,
+			opens,
+			clicks,
+			replies,
+			branchNodes,
+			splitNodes,
+			manualMembers,
+			copilotGraphs,
+		] = await Promise.all([
+			this.db.appSetting.findFirst({
+				select: {
+					marketingResendApiKey: true,
+					marketingOnboardedAt: true,
+					marketingSendingDomain: true,
+				},
+			}),
+			this.db.marketingTemplate.count({ where: { archivedAt: null } }),
+			this.db.marketingSegment.groupBy({
+				by: ["kind"],
+				where: { archivedAt: null },
+				_count: { _all: true },
+			}),
+			this.db.marketingCampaign.groupBy({
+				by: ["status", "kind"],
+				_count: { _all: true },
+			}),
+			this.db.marketingEnrolment.groupBy({
+				by: ["status"],
+				_count: { _all: true },
+			}),
+			this.db.marketingSend.count({ where: { sentAt: { not: null } } }),
+			this.db.marketingSend.count({ where: { status: "DELIVERED" } }),
+			this.db.marketingSend.count({ where: { status: "BOUNCED" } }),
+			this.db.marketingSend.count({ where: { status: "COMPLAINED" } }),
+			this.db.marketingEvent.count({ where: { type: "UNSUBSCRIBED" } }),
+			this.db.marketingSend.count({ where: { openedAt: { not: null } } }),
+			this.db.marketingSend.count({ where: { clickedAt: { not: null } } }),
+			this.db.marketingSend.count({ where: { repliedAt: { not: null } } }),
+			this.db.marketingCampaignNode.findMany({
+				where: { kind: "BRANCH" },
+				select: { campaignId: true },
+				distinct: ["campaignId"],
+			}),
+			this.db.marketingCampaignNode.findMany({
+				where: { kind: "SPLIT" },
+				select: { campaignId: true },
+				distinct: ["campaignId"],
+			}),
+			this.db.marketingSegmentMember.findMany({
+				select: { segmentId: true },
+				distinct: ["segmentId"],
+			}),
+			this.db.agentConversation.count({ where: { campaignId: { not: null } } }),
+		]);
+
+		const nodesPerDrip = await this.db.marketingCampaignNode.groupBy({
+			by: ["campaignId"],
+			_count: { _all: true },
+			orderBy: { _count: { campaignId: "desc" } },
+			take: 1,
+		});
+
+		const dynamic = segments
+			.filter((row) => row.kind === "DYNAMIC")
+			.reduce((sum, row) => sum + row._count._all, 0);
+
+		return {
+			cap_email_resend: settings?.marketingResendApiKey !== null,
+			marketing_onboarded: settings?.marketingOnboardedAt !== null,
+			marketing_domain_verified: settings?.marketingSendingDomain !== null,
+			marketing_templates: templates,
+			marketing_segments: segments.reduce(
+				(sum, row) => sum + row._count._all,
+				0,
+			),
+			marketing_segments_dynamic: dynamic,
+			marketing_segments_with_manual_members: manualMembers.length,
+			marketing_campaigns_by_status: merge(
+				campaigns.map((row) => ({ key: row.status, count: row._count._all })),
+			),
+			marketing_blasts: campaigns
+				.filter((row) => row.kind === "BLAST")
+				.reduce((sum, row) => sum + row._count._all, 0),
+			marketing_drips: campaigns
+				.filter((row) => row.kind === "DRIP")
+				.reduce((sum, row) => sum + row._count._all, 0),
+			marketing_drip_nodes_max: nodesPerDrip[0]?._count._all ?? 0,
+			marketing_drips_with_branch: branchNodes.length,
+			marketing_drips_with_split: splitNodes.length,
+			marketing_enrolments_by_status: merge(
+				enrolments.map((row) => ({ key: row.status, count: row._count._all })),
+			),
+			marketing_sends: sends,
+			marketing_delivered: delivered,
+			marketing_bounced: bounced,
+			marketing_complained: complained,
+			marketing_unsubscribed: unsubscribed,
+			marketing_opens: opens,
+			marketing_clicks: clicks,
+			marketing_replies: replies,
+			marketing_copilot_graphs: copilotGraphs,
+		};
+	}
+
 	private async giveBack(
 		previous: Date | null,
 		counters: Record<string, number>,
@@ -521,8 +636,10 @@ export class RollupService {
 		]);
 
 		const configured = syncs.reduce((sum, row) => sum + row._count._all, 0);
+		const marketing = await this.marketing();
 
 		return {
+			...marketing,
 			seed_only: contacts > 0 && nonSeedContacts === 0,
 
 			contacts_bucket: bucket(contacts),

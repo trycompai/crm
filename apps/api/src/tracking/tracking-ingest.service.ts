@@ -99,6 +99,8 @@ export class TrackingIngestService {
 		if (accepted.length === 0) return;
 		if (!(await this.withinRate(accepted.length))) return;
 
+		await this.seen(visitorId, accepted);
+
 		const pageViews = accepted.filter(
 			({ event }) => event.type === "page_view" || event.type === "click",
 		);
@@ -111,6 +113,23 @@ export class TrackingIngestService {
 		for (const form of forms) {
 			await this.submission(visitorId, form);
 		}
+	}
+
+	private async seen(
+		visitorId: string,
+		accepted: AcceptedEvent[],
+	): Promise<void> {
+		const stamps = accepted.map(({ event }) => occurredAt(event.at).getTime());
+		const firstSeen = new Date(Math.min(...stamps));
+		const lastSeen = new Date(Math.max(...stamps));
+
+		await this.db.$executeRaw`
+			INSERT INTO "trackedVisitor" ("id", "firstSeen", "lastSeen")
+			VALUES (${visitorId}, ${firstSeen}, ${lastSeen})
+			ON CONFLICT ("id") DO UPDATE
+				SET "firstSeen" = LEAST("trackedVisitor"."firstSeen", EXCLUDED."firstSeen"),
+					"lastSeen" = GREATEST("trackedVisitor"."lastSeen", EXCLUDED."lastSeen");
+		`;
 	}
 
 	private async events(

@@ -126,6 +126,10 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	CRM_TELEMETRY_DISABLED?: string;
+
+	@IsOptional()
+	@IsString()
+	RESEND_WEBHOOK_SECRET?: string;
 }
 
 export function validateEnv(

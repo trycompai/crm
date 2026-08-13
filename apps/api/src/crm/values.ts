@@ -17,11 +17,4 @@ export function decimalFromCents(
 		: new PrismaNamespace.Decimal(cents).dividedBy(100);
 }
 
-export function blankToNull(value: string): string | null {
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
-}
-
-export function normalizeEmail(value: string): string | null {
-	return blankToNull(value)?.toLowerCase() ?? null;
-}
+export { blankToNull, normalizeEmail } from "@crm/db/values";

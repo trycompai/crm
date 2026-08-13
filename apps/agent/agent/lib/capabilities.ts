@@ -2,8 +2,12 @@ import "@crm/env/load";
 
 import { db } from "@crm/db";
 import { readContextDevKey } from "@crm/db/settings";
+import { resolveChrome } from "./chrome";
+import { EMAIL_REVIEW } from "./email-review-config";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
+
+export const EMAIL_PREVIEW = "EMAIL_PREVIEW";
 
 export type Capability = {
 	readonly id: string;
@@ -28,11 +32,12 @@ export async function contextDevKey(): Promise<string | null> {
 }
 
 export async function capabilities(): Promise<readonly Capability[]> {
-	return capabilitiesFrom(await contextDevKey());
+	return capabilitiesFrom(await contextDevKey(), resolveChrome());
 }
 
 export function capabilitiesFrom(
 	contextDev: string | null,
+	emailPreviewChrome: string | null = null,
 ): readonly Capability[] {
 	const fromEnv = (id: string) => ({
 		id,
@@ -59,6 +64,14 @@ export function capabilitiesFrom(
 			label: "Company brand data",
 			gives: "a company's logo, industry, location and socials from its domain",
 			enabled: contextDev !== null,
+		},
+		{
+			id: EMAIL_PREVIEW,
+			from: EMAIL_REVIEW.chrome.env,
+			label: "Email preview review",
+			gives:
+				"a rendered look at outgoing email — review_email screenshots the desktop and mobile preview and reports what the first screen shows before a rep or a recipient sees it",
+			enabled: emailPreviewChrome !== null,
 		},
 		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),

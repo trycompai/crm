@@ -22,4 +22,5 @@ export default defineAgent({
 		maxOutputTokensPerSession: 50_000,
 		sessionTimeoutMs: 30 * 24 * 60 * 60 * 1000,
 	},
+	build: { externalDependencies: ["puppeteer-core"] },
 });

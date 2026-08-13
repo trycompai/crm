@@ -1,6 +1,7 @@
 "use client";
 
 import ChevronDown from "@carbon/icons-react/es/ChevronDown";
+import Image from "@carbon/icons-react/es/Image";
 import { Button } from "@crm/ui/components/button";
 import {
 	Card,
@@ -35,6 +36,7 @@ type CatalogModel = {
 	provider: string;
 	contextWindowTokens: number;
 	pricing: { input: number; output: number } | null;
+	vision: boolean;
 };
 
 const FOLLOW_DEFAULT = "__default__";
@@ -159,6 +161,13 @@ export function AgentModel() {
 													onSelect={() => choose(model.id)}
 												>
 													<span>{model.name}</span>
+													{model.vision ? (
+														<Icon
+															icon={Image}
+															className="size-3.5 text-muted-foreground"
+															aria-label="Reads images"
+														/>
+													) : null}
 													<span className="ml-auto text-muted-foreground text-xs">
 														{price ?? contextHint(model.contextWindowTokens)}
 													</span>

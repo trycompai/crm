@@ -6,7 +6,11 @@
 			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"],
-			"env": ["NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_AUTH_URL"],
+			"env": [
+				"NEXT_PUBLIC_API_URL",
+				"NEXT_PUBLIC_AUTH_URL",
+				"NEXT_PUBLIC_QUERY_DEVTOOLS"
+			],
 			"passThroughEnv": [
 				"AGENT_BRIDGE_SECRET",
 				"AGENT_URL",
@@ -40,7 +44,8 @@
 				"DATABASE_URL",
 				"IS_MARKETING",
 				"NEXT_PUBLIC_API_URL",
-				"NEXT_PUBLIC_AUTH_URL"
+				"NEXT_PUBLIC_AUTH_URL",
+				"NEXT_PUBLIC_QUERY_DEVTOOLS"
 			]
 		}
 	}

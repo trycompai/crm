@@ -60,6 +60,9 @@
 	--font-sans: var(--font-geist-sans, "Geist", sans-serif);
 	--font-mono: var(--font-geist-mono, "Geist Mono", monospace);
 	--radius: 5px;
+	--radius-sm: 4px;
+	--radius-lg: 8px;
+	--radius-xl: 12px;
 	--shadow-x: 0px;
 	--shadow-y: 1px;
 	--shadow-blur: 2px;
@@ -132,6 +135,9 @@
 	--font-sans: var(--font-geist-sans, "Geist", sans-serif);
 	--font-mono: var(--font-geist-mono, "Geist Mono", monospace);
 	--radius: 5px;
+	--radius-sm: 4px;
+	--radius-lg: 8px;
+	--radius-xl: 12px;
 	--shadow-x: 0px;
 	--shadow-y: 1px;
 	--shadow-blur: 2px;
@@ -219,10 +225,10 @@
 
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
-	--radius-sm: 4px;
+	--radius-sm: var(--radius-sm);
 	--radius-md: var(--radius);
-	--radius-lg: 8px;
-	--radius-xl: 12px;
+	--radius-lg: var(--radius-lg);
+	--radius-xl: var(--radius-xl);
 
 	--shadow-2xs: var(--shadow-2xs);
 	--shadow-xs: var(--shadow-xs);

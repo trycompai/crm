@@ -1,6 +1,7 @@
 "use client";
 
 import Building from "@carbon/icons-react/es/Building";
+import Bullhorn from "@carbon/icons-react/es/Bullhorn";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Chat from "@carbon/icons-react/es/Chat";
 import Close from "@carbon/icons-react/es/Close";
@@ -55,13 +56,26 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Marketing", href: "/marketing", icon: Bullhorn, match: "prefix" },
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 
+const SETUP = "/marketing/setup/connect";
+
+function resolveItems(items: RailItem[], onboarded: boolean): RailItem[] {
+	if (onboarded) return items;
+
+	return items.map((item) =>
+		item.href === "/marketing" ? { ...item, href: SETUP } : item,
+	);
+}
+
 function isActive(item: RailItem, pathname: string): boolean {
+	const root = item.href.replace(/\/marketing\/setup\/connect$/, "/marketing");
+
 	return (
 		pathname === item.href ||
-		(item.match === "prefix" && pathname.startsWith(item.href)) ||
+		(item.match === "prefix" && pathname.startsWith(root)) ||
 		Boolean(item.related?.some((prefix) => pathname.startsWith(prefix)))
 	);
 }
@@ -205,7 +219,11 @@ export function AppIconRailFallback() {
 	);
 }
 
-export function AppIconRail() {
+export function AppIconRail({
+	marketingOnboarded = true,
+}: {
+	marketingOnboarded?: boolean;
+}) {
 	const pathname = usePathname();
 	const workspaceUrl = useWorkspaceUrl();
 	const { open, setOpen } = useMobileNav();
@@ -213,13 +231,13 @@ export function AppIconRail() {
 
 	const items = useMemo(
 		() =>
-			ITEMS.map((item) => ({
+			resolveItems(ITEMS, marketingOnboarded).map((item) => ({
 				...item,
 				section: item.href,
 				href: workspaceUrl(item.href),
 				related: item.related?.map((path) => workspaceUrl(path)),
 			})),
-		[workspaceUrl],
+		[workspaceUrl, marketingOnboarded],
 	);
 	const inChat = items.some(
 		(item) => item.title === "Chat" && isActive(item, pathname),

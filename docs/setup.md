@@ -51,14 +51,14 @@ inventory, including a `diagnostics` count that finds files eve silently ignored
 
 ## Running the agent
 
-The agent package's default `dev` command is interactive `eve dev`. The root
-Turbo task marks it interactive, so select the agent pane and press Enter before
-using the eve TUI. Run `turbo run dev:headless --filter=agent` when a terminal
-cannot render the TUI; that uses `eve dev --no-ui`, and the Turbo pane is the
-record because only interactive development writes `.eve/logs/` for `eve logs`.
-Reach for the Turbo task rather than `bun run --filter=agent dev:headless`: the
-package script alone skips `dev:prepare`, so the agent would start against
-unmigrated tables.
+The agent package's default `dev` command is `eve dev --no-ui`, so `bun run dev`
+gives the agent a plain log pane rather than a TUI nested inside Turbo's own.
+Run `turbo run dev:ui --filter=agent` for the interactive TUI; that task is the
+one marked interactive, so select the agent pane and press Enter before typing.
+The headless pane is the whole record, because only interactive development
+writes `.eve/logs/` for `eve logs`. Reach for the Turbo task rather than
+`bun run --filter=agent dev:ui`: the package script alone skips `dev:prepare`,
+so the agent would start against unmigrated tables.
 
 `hooks/activity.ts` is the replacement narration, **to stderr** (the TUI hides
 stdout), printing shape everywhere and argument contents outside production only. It

@@ -3,6 +3,7 @@
 	"extends": "@crm/typescript-config/nestjs.json",
 	"compilerOptions": {
 		"types": ["bun"],
+		"jsx": "react-jsx",
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true
 	},

@@ -61,6 +61,36 @@ export async function mirror(
 	}
 }
 
+export async function putBytes(
+	bytes: Buffer,
+	filename: string,
+	contentType: string,
+	prefix: string,
+): Promise<string | null> {
+	if (!blobEnabled()) return null;
+
+	try {
+		const digest = createHash("sha256")
+			.update(bytes)
+			.digest("hex")
+			.slice(0, 16);
+
+		const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-80);
+		const { put } = await import("@vercel/blob");
+
+		const blob = await put(`${prefix}/${digest}-${safe}`, bytes, {
+			access: "public",
+			contentType,
+			addRandomSuffix: false,
+			allowOverwrite: true,
+		});
+
+		return blob.url;
+	} catch {
+		return null;
+	}
+}
+
 async function readCapped(response: Response): Promise<Buffer | null> {
 	const declared = Number(response.headers.get("content-length"));
 	if (Number.isFinite(declared) && declared > MAX_BYTES) {

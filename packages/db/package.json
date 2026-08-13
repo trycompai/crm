@@ -23,7 +23,10 @@
 		"./settings": "./src/settings.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",
 		"./tracking": "./src/tracking.ts",
-		"./workspace": "./src/workspace.ts"
+		"./workspace": "./src/workspace.ts",
+		"./values": "./src/values.ts",
+		"./marketing": "./src/marketing/index.ts",
+		"./marketing/facet-limits": "./src/marketing/facet-limits.ts"
 	},
 	"scripts": {
 		"build": "prisma generate",
@@ -46,7 +49,8 @@
 		"@crm/env": "workspace:*",
 		"@prisma/adapter-pg": "^7.9.1",
 		"@prisma/client": "^7.9.1",
-		"@vercel/blob": "^2.6.1"
+		"@vercel/blob": "^2.6.1",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@crm/typescript-config": "workspace:*",

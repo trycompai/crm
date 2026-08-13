@@ -4,20 +4,51 @@ const recordShape = {
 	contactId: z.string().trim().min(1).optional(),
 	companyId: z.string().trim().min(1).optional(),
 	dealId: z.string().trim().min(1).optional(),
+	campaignId: z.string().trim().min(1).optional(),
+	campaignNodeId: z.string().trim().min(1).optional(),
+	segmentId: z.string().trim().min(1).optional(),
+	templateId: z.string().trim().min(1).optional(),
+	shellId: z.string().trim().min(1).optional(),
 };
 
-const hasExactlyOneRecord = (input: {
+export type RecordScope = {
 	contactId?: string;
 	companyId?: string;
 	dealId?: string;
-}) =>
-	[input.contactId, input.companyId, input.dealId].filter(Boolean).length === 1;
+	campaignId?: string;
+	campaignNodeId?: string;
+	segmentId?: string;
+	templateId?: string;
+	shellId?: string;
+};
 
-const recordMessage = "Choose exactly one contact, company or deal.";
+export function recordScopeIds(input: RecordScope): (string | undefined)[] {
+	return [
+		input.contactId,
+		input.companyId,
+		input.dealId,
+		input.campaignId,
+		input.segmentId,
+		input.templateId,
+		input.shellId,
+	];
+}
+
+const hasExactlyOneRecord = (input: RecordScope) =>
+	recordScopeIds(input).filter(Boolean).length === 1;
+
+const nodeInsideItsCampaign = (input: RecordScope) =>
+	!input.campaignNodeId || Boolean(input.campaignId);
+
+const recordMessage =
+	"Choose exactly one contact, company, deal, campaign, segment, template or shell.";
+
+const nodeMessage = "A campaign node scope needs its campaign.";
 
 export const conversationListInput = z
 	.object(recordShape)
-	.refine(hasExactlyOneRecord, { message: recordMessage });
+	.refine(hasExactlyOneRecord, { message: recordMessage })
+	.refine(nodeInsideItsCampaign, { message: nodeMessage });
 
 export type ConversationListInput = z.infer<typeof conversationListInput>;
 
@@ -30,7 +61,8 @@ export const conversationSaveInput = z
 		title: z.string().trim().max(120).optional(),
 		messageCount: z.number().int().min(0).optional(),
 	})
-	.refine(hasExactlyOneRecord, { message: recordMessage });
+	.refine(hasExactlyOneRecord, { message: recordMessage })
+	.refine(nodeInsideItsCampaign, { message: nodeMessage });
 
 export type ConversationSaveInput = z.infer<typeof conversationSaveInput>;
 

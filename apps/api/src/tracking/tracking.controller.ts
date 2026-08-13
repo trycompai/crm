@@ -1,9 +1,12 @@
 import type { IncomingMessage } from "node:http";
 import type { Db } from "@crm/db";
+import { MARKETING, sweepEvents } from "@crm/db/marketing";
 import {
 	EVENT_RETENTION_DAYS,
 	isSiteId,
 	MAX_BODY_BYTES,
+	MAX_SWEEP_PASSES,
+	SWEEP_BATCH,
 } from "@crm/db/tracking";
 import {
 	Controller,
@@ -30,10 +33,6 @@ import {
 	TrackingIngestService,
 } from "./tracking-ingest.service";
 import { TrackingRollupService } from "./tracking-rollup.service";
-
-const SWEEP_BATCH = 10_000;
-
-const MAX_SWEEP_PASSES = 50;
 
 @Controller("api/t")
 export class TrackingController {
@@ -139,12 +138,22 @@ export class TrackingRetentionController {
 		const { removed, complete } = await this.sweepEvents(before);
 		const visitors = await this.sweepVisitors(before);
 		const counters = await this.counters.sweep();
+		const marketing = await this.sweepMarketingEvents(before);
 
 		if (!complete) {
 			this.logger.warn({
 				message:
 					"Tracking retention hit its pass limit — events older than the window remain",
 				removed,
+				retentionDays: EVENT_RETENTION_DAYS,
+			});
+		}
+
+		if (!marketing.complete) {
+			this.logger.warn({
+				message:
+					"Marketing retention hit its pass limit — marketing events older than the window remain",
+				marketingEvents: marketing.removed,
 				retentionDays: EVENT_RETENTION_DAYS,
 			});
 		}
@@ -156,10 +165,39 @@ export class TrackingRetentionController {
 			complete,
 			visitors,
 			counters,
+			marketingEvents: marketing.removed,
+			marketingEventsComplete: marketing.complete,
 			retentionDays: EVENT_RETENTION_DAYS,
 		});
 
-		return { rolled, removed, complete, visitors, counters };
+		return {
+			rolled,
+			removed,
+			complete,
+			visitors,
+			counters,
+			marketingEvents: marketing.removed,
+			marketingEventsComplete: marketing.complete,
+		};
+	}
+
+	private async sweepMarketingEvents(
+		before: Date,
+	): Promise<{ removed: number; complete: boolean }> {
+		let removed = 0;
+
+		for (let pass = 0; pass < MARKETING.retention.maxPasses; pass += 1) {
+			const swept = await sweepEvents(
+				this.db,
+				before,
+				MARKETING.retention.batch,
+			);
+
+			removed += swept.removed;
+			if (swept.complete) return { removed, complete: true };
+		}
+
+		return { removed, complete: false };
 	}
 
 	private async sweepEvents(

@@ -5,6 +5,7 @@
 		"module": "preserve",
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
+		"jsx": "react-jsx",
 		"types": ["node"]
 	},
 	"include": ["agent/**/*.ts", "evals/**/*.ts"],

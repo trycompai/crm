@@ -28,8 +28,12 @@ Nest's half is to report *that something happened*: `AgentTriggerService` writes
 `AgentTask` row. A row, not an HTTP call — the agent already leases from that table,
 so the row survives the agent being down.
 
-About to add a vendor client to `apps/api`? You want `apps/agent/agent/lib`. One
-documented exception, for timing: the exchange-rate fetcher, below.
+About to add a vendor client to `apps/api`? You want `apps/agent/agent/lib`. Two
+documented exceptions, and neither decides anything about a person: the
+exchange-rate fetcher, below, and **the mail the API sends and receives** —
+`MailboxApiClient` for Gmail and Graph, and `ResendService` for marketing. A
+mail provider carries a message somebody already wrote; a data vendor forms an
+opinion about somebody. The rule is about the second.
 
 ## One organization, and it is not a tenancy boundary
 

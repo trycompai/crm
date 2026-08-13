@@ -33,6 +33,7 @@ import {
 	InlineSelectField,
 	savingValue,
 } from "@/components/crm/inline-field";
+import { CompanyMarketingActions } from "@/components/crm/marketing-actions";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { CompanySocials } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
@@ -254,6 +255,10 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 						<EnrichmentActions
 							companyId={company.id}
 							hasDomain={company.domain !== null}
+						/>
+						<CompanyMarketingActions
+							companyId={company.id}
+							people={company.contacts.filter((person) => person.email).length}
 						/>
 						<RecordActions
 							record={{ kind: "company", id: company.id }}

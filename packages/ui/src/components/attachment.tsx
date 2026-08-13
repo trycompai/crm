@@ -92,6 +92,13 @@ function AttachmentMedia({
   )
 }
 
+function AttachmentImage({
+  alt,
+  ...props
+}: React.ComponentProps<"img"> & { alt: string }) {
+  return <img data-slot="attachment-image" alt={alt} {...props} />
+}
+
 function AttachmentContent({
   className,
   ...props
@@ -214,6 +221,7 @@ export {
   Attachment,
   AttachmentGroup,
   AttachmentMedia,
+  AttachmentImage,
   AttachmentContent,
   AttachmentTitle,
   AttachmentDescription,

@@ -7,6 +7,7 @@ import {
 	DealStage,
 	RateSource,
 } from "../src/generated/prisma/enums";
+import { ensureDefaultSegments } from "../src/marketing/segments";
 import { readReportingCurrency, SETTINGS_ID } from "../src/settings";
 
 function makeRandom(seed: number): () => number {
@@ -762,6 +763,107 @@ async function seedActivities(
 	return rows.length;
 }
 
+async function seedMarketing(): Promise<number> {
+	await ensureDefaultSegments(db);
+
+	const existing = await db.marketingPartial.count();
+	if (existing > 0) return 0;
+
+	const header = await db.marketingPartial.create({
+		data: {
+			kind: "HEADER",
+			name: "Default header",
+			isDefault: true,
+			document: { version: 1, blocks: [] },
+		},
+		select: { id: true },
+	});
+
+	const footer = await db.marketingPartial.create({
+		data: {
+			kind: "FOOTER",
+			name: "Default footer",
+			isDefault: true,
+			document: {
+				version: 1,
+				blocks: [
+					{
+						type: "text",
+						text: [
+							{
+								text: "You are getting this because you asked us about {{workspace.name|our product}}.",
+							},
+						],
+					},
+				],
+			},
+		},
+		select: { id: true },
+	});
+
+	const templates = [
+		{
+			name: "Product announcement",
+			subject: "Continuous monitoring is here",
+			preheader: "No setup. It is already running on the frameworks you use.",
+			document: {
+				version: 1,
+				blocks: [
+					{
+						type: "heading",
+						level: 1,
+						text: [{ text: "Continuous monitoring is here" }],
+					},
+					{
+						type: "text",
+						text: [
+							{
+								text: "Hi {{contact.firstName|there}} — every control in your framework is now checked on a schedule, and anything that drifts opens a task the same day.",
+							},
+						],
+					},
+					{
+						type: "button",
+						label: "Read the changelog",
+						href: "https://example.com/changelog",
+					},
+				],
+			},
+		},
+		{
+			name: "Plain letter",
+			subject: "A quick question",
+			preheader: "Two minutes, and no pitch.",
+			document: {
+				version: 1,
+				blocks: [
+					{
+						type: "text",
+						text: [{ text: "Hi {{contact.firstName|there}}," }],
+					},
+					{
+						type: "text",
+						text: [
+							{
+								text: "You had a look at our pricing this week, so I thought I would save you the guesswork.",
+							},
+						],
+					},
+					{ type: "text", text: [{ text: "— {{sender.name|the team}}" }] },
+				],
+			},
+		},
+	];
+
+	for (const template of templates) {
+		await db.marketingTemplate.create({
+			data: { ...template, headerId: header.id, footerId: footer.id },
+		});
+	}
+
+	return templates.length;
+}
+
 async function main() {
 	const rates = await seedRates();
 	const ownerIds = await seedOwners();
@@ -769,10 +871,12 @@ async function main() {
 	const contacts = await seedContacts(companies, ownerIds);
 	const deals = await seedDeals(companies, contacts, ownerIds);
 	const activities = await seedActivities(companies, contacts, deals, ownerIds);
+	const templates = await seedMarketing();
 
 	console.log(
 		`Seeded ${companies.length} companies, ${contacts.length} contacts, ` +
-			`${deals.length} deals, ${activities} activities, ${rates} exchange rates.`,
+			`${deals.length} deals, ${activities} activities, ${rates} exchange rates, ` +
+			`${templates} email templates.`,
 	);
 }
 

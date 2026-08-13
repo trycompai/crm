@@ -81,6 +81,7 @@ export const MILESTONES = [
 	"first_agent_task_claimed",
 	"first_agent_task_completed",
 	"first_fact_applied",
+	"first_campaign_sent",
 ] as const;
 
 export type Milestone = (typeof MILESTONES)[number];

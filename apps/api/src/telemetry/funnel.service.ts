@@ -122,6 +122,19 @@ export class FunnelService {
 
 			case "first_fact_applied":
 				return this.firstApplied();
+
+			case "first_campaign_sent":
+				return this.earliest(
+					this.db.marketingSend.findFirst({
+						where: {
+							sentAt: { not: null },
+							origin: { in: ["CAMPAIGN", "DRIP"] },
+						},
+						orderBy: { sentAt: "asc" },
+						select: { sentAt: true },
+					}),
+					(row) => row.sentAt,
+				);
 		}
 	}
 

@@ -23,7 +23,7 @@ export default function AppLayout({
 
 				<div className="flex min-h-0 flex-1">
 					<Suspense fallback={<AppIconRailFallback />}>
-						<AppIconRail />
+						<PrimaryRail />
 					</Suspense>
 					{children}
 				</div>
@@ -38,6 +38,20 @@ export default function AppLayout({
 			</div>
 		</MobileNavProvider>
 	);
+}
+
+async function PrimaryRail() {
+	await connection();
+
+	const onboarded = await getServerQueryClient()
+		.fetchQuery(getServerTrpc().marketing.status.queryOptions())
+		.then((status) => status.onboarded)
+		.catch((error: unknown) => {
+			unstable_rethrow(error);
+			return true;
+		});
+
+	return <AppIconRail marketingOnboarded={onboarded} />;
 }
 
 async function WorkspaceHeader({

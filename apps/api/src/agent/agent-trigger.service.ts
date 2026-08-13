@@ -360,6 +360,15 @@ export class AgentTriggerService {
 		}
 	}
 
+	async marketingConnected(): Promise<void> {
+		await this.enqueue({
+			kind: "marketing-brand",
+			reason: "Marketing was connected",
+			priority: 5,
+			budget: 1,
+		});
+	}
+
 	private async enqueue(
 		task: {
 			contactId?: string;

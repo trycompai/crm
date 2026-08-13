@@ -4,6 +4,7 @@ import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import {
 	builderConversationCreateInput,
+	type ConversationSaveInput,
 	conversationListInput,
 	conversationSaveInput,
 } from "../src/conversations/conversations.contracts";
@@ -13,8 +14,14 @@ const suffix = process.env.TEST_RUN_ID ?? "conversations-spec";
 const email = `conversation.subject.${suffix}@example.test`;
 const userId = `user-${suffix}`;
 const memberId = `conversation-member-${suffix}`;
+const campaignName = `Conversations ${suffix}`;
+const otherCampaignName = `other-${suffix}`;
 
 let contactId: string;
+let campaignId: string;
+let otherCampaignId: string;
+let nodeId: string;
+let secondNodeId: string;
 let service: ConversationsService;
 
 beforeAll(async () => {
@@ -59,6 +66,32 @@ beforeAll(async () => {
 	});
 	contactId = contact.id;
 
+	await db.marketingCampaign.deleteMany({
+		where: { name: { in: [campaignName, otherCampaignName] } },
+	});
+	const campaign = await db.marketingCampaign.create({
+		data: { name: campaignName, kind: "DRIP" },
+		select: { id: true },
+	});
+	campaignId = campaign.id;
+	const otherCampaign = await db.marketingCampaign.create({
+		data: { name: otherCampaignName, kind: "DRIP", status: "DRAFT" },
+		select: { id: true },
+	});
+	otherCampaignId = otherCampaign.id;
+	const [node, secondNode] = await Promise.all([
+		db.marketingCampaignNode.create({
+			data: { campaignId, kind: "EMAIL" },
+			select: { id: true },
+		}),
+		db.marketingCampaignNode.create({
+			data: { campaignId, kind: "EMAIL" },
+			select: { id: true },
+		}),
+	]);
+	nodeId = node.id;
+	secondNodeId = secondNode.id;
+
 	service = new ConversationsService(db);
 });
 
@@ -73,6 +106,9 @@ afterAll(async () => {
 	});
 	await db.contact.deleteMany({ where: { email } });
 	await db.agentConversation.deleteMany({ where: { userId } });
+	await db.marketingCampaign.deleteMany({
+		where: { name: { in: [campaignName, otherCampaignName] } },
+	});
 	await db.member.deleteMany({ where: { id: memberId } });
 	await db.user.deleteMany({ where: { id: userId } });
 });
@@ -840,6 +876,273 @@ describe("ConversationsService", () => {
 				},
 			}),
 		).toBe(1);
+	});
+});
+
+describe("node-scoped conversations", () => {
+	it("files a node conversation under its campaign and its node", async () => {
+		const sessionId = `ses_${suffix}_node`;
+		await service.save(
+			{ campaignId, campaignNodeId: nodeId, sessionId },
+			userId,
+		);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { sessionId },
+				select: { campaignId: true, campaignNodeId: true },
+			}),
+		).toEqual({ campaignId, campaignNodeId: nodeId });
+	});
+
+	it("keeps node threads out of the campaign list, and the campaign's out of the node's", async () => {
+		const campaignSession = `ses_${suffix}_campaign_level`;
+		await service.save({ campaignId, sessionId: campaignSession }, userId);
+
+		const campaignThreads = await service.list({ campaignId }, userId);
+		expect(campaignThreads.map((row) => row.sessionId)).toEqual([
+			campaignSession,
+		]);
+
+		const nodeThreads = await service.list(
+			{ campaignId, campaignNodeId: nodeId },
+			userId,
+		);
+		expect(nodeThreads.map((row) => row.sessionId)).toEqual([
+			`ses_${suffix}_node`,
+		]);
+
+		expect(
+			await service.list({ campaignId, campaignNodeId: secondNodeId }, userId),
+		).toEqual([]);
+	});
+
+	it("refuses a node scope without its campaign", () => {
+		expect(
+			conversationListInput.safeParse({ campaignNodeId: "node-1" }).success,
+		).toBe(false);
+		expect(
+			conversationSaveInput.safeParse({
+				campaignNodeId: "node-1",
+				sessionId: "session-1",
+			}).success,
+		).toBe(false);
+		expect(
+			conversationListInput.safeParse({
+				campaignId: "campaign-1",
+				campaignNodeId: "node-1",
+			}).success,
+		).toBe(true);
+	});
+
+	it("saves under the campaign when the step is already gone", async () => {
+		const sessionId = `ses_${suffix}_node_missing`;
+
+		await service.save(
+			{ campaignId, campaignNodeId: `${nodeId}-deleted`, sessionId },
+			userId,
+		);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { sessionId },
+				select: { campaignId: true, campaignNodeId: true },
+			}),
+		).toEqual({ campaignId, campaignNodeId: null });
+	});
+
+	it("saves under the campaign when the step goes after the check", async () => {
+		const doomed = await db.marketingCampaignNode.create({
+			data: { campaignId, kind: "EMAIL" },
+			select: { id: true },
+		});
+		await db.marketingCampaignNode.delete({ where: { id: doomed.id } });
+
+		const racing = new ConversationsService(db);
+		Object.assign(racing, {
+			withLiveNode: (input: ConversationSaveInput) => Promise.resolve(input),
+		});
+
+		const sessionId = `ses_${suffix}_node_raced`;
+		await racing.save(
+			{ campaignId, campaignNodeId: doomed.id, sessionId },
+			userId,
+		);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { sessionId },
+				select: { campaignId: true, campaignNodeId: true },
+			}),
+		).toEqual({ campaignId, campaignNodeId: null });
+	});
+
+	it("refuses a conversation whose campaign is gone", async () => {
+		const racing = new ConversationsService(db);
+		Object.assign(racing, {
+			withLiveNode: (input: ConversationSaveInput) => Promise.resolve(input),
+		});
+
+		let saveError: unknown;
+		try {
+			await racing.save(
+				{
+					campaignId: `${campaignId}-deleted`,
+					sessionId: `ses_${suffix}_campaign_gone`,
+				},
+				userId,
+			);
+		} catch (error) {
+			saveError = error;
+		}
+
+		expect((saveError as Error).message).toContain("no longer exists");
+	});
+
+	it("does not file a step that belongs to another campaign", async () => {
+		const sessionId = `ses_${suffix}_node_foreign`;
+
+		await service.save(
+			{ campaignId: otherCampaignId, campaignNodeId: nodeId, sessionId },
+			userId,
+		);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { sessionId },
+				select: { campaignNodeId: true },
+			}),
+		).toEqual({ campaignNodeId: null });
+	});
+
+	it("does not move a conversation between a campaign and its nodes", async () => {
+		const sessionId = `ses_${suffix}_node_move`;
+		await service.save(
+			{ campaignId, campaignNodeId: nodeId, sessionId },
+			userId,
+		);
+
+		for (const scope of [
+			{ campaignId },
+			{ campaignId, campaignNodeId: secondNodeId },
+		]) {
+			let moveError: unknown;
+			try {
+				await service.save({ ...scope, sessionId }, userId);
+			} catch (error) {
+				moveError = error;
+			}
+			expect((moveError as Error).message).toContain("cannot be moved");
+		}
+
+		const campaignSession = `ses_${suffix}_campaign_move`;
+		await service.save({ campaignId, sessionId: campaignSession }, userId);
+
+		let ontoNodeError: unknown;
+		try {
+			await service.save(
+				{ campaignId, campaignNodeId: nodeId, sessionId: campaignSession },
+				userId,
+			);
+		} catch (error) {
+			ontoNodeError = error;
+		}
+		expect((ontoNodeError as Error).message).toContain("cannot be moved");
+	});
+
+	it("moves a node conversation's cursor inside its own scope", async () => {
+		const sessionId = `ses_${suffix}_node_cursor`;
+		await service.save(
+			{ campaignId, campaignNodeId: nodeId, sessionId },
+			userId,
+		);
+		await service.save(
+			{
+				campaignId,
+				campaignNodeId: nodeId,
+				sessionId,
+				continuationToken: "eve:node-token",
+				streamIndex: 5,
+				messageCount: 3,
+			},
+			userId,
+		);
+
+		const [thread] = await service.list(
+			{ campaignId, campaignNodeId: nodeId },
+			userId,
+		);
+		expect(thread).toMatchObject({
+			sessionId,
+			continuationToken: "eve:node-token",
+			streamIndex: 5,
+			messageCount: 3,
+		});
+	});
+});
+
+describe("shell-scoped conversations", () => {
+	let shellId: string;
+
+	beforeAll(async () => {
+		await db.marketingPartial.deleteMany({
+			where: { name: `Conversations shell ${suffix}` },
+		});
+		const shell = await db.marketingPartial.create({
+			data: {
+				kind: "HEADER",
+				name: `Conversations shell ${suffix}`,
+				document: { version: 1, blocks: [] },
+			},
+			select: { id: true },
+		});
+		shellId = shell.id;
+	});
+
+	afterAll(async () => {
+		await db.marketingPartial.deleteMany({
+			where: { name: `Conversations shell ${suffix}` },
+		});
+	});
+
+	it("accepts a shell as a record scope", () => {
+		expect(
+			conversationListInput.safeParse({ shellId: "shell-1" }).success,
+		).toBe(true);
+		expect(
+			conversationSaveInput.safeParse({
+				shellId: "shell-1",
+				sessionId: "session-1",
+			}).success,
+		).toBe(true);
+	});
+
+	it("files and lists a shell conversation under its shell", async () => {
+		const sessionId = `ses_${suffix}_shell`;
+		await service.save({ shellId, sessionId }, userId);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { sessionId },
+				select: { shellId: true, campaignId: true },
+			}),
+		).toEqual({ shellId, campaignId: null });
+
+		const threads = await service.list({ shellId }, userId);
+		expect(threads.map((row) => row.sessionId)).toEqual([sessionId]);
+	});
+
+	it("does not move a shell conversation to another record", async () => {
+		const sessionId = `ses_${suffix}_shell_move`;
+		await service.save({ shellId, sessionId }, userId);
+
+		let moveError: unknown;
+		try {
+			await service.save({ campaignId, sessionId }, userId);
+		} catch (error) {
+			moveError = error;
+		}
+		expect((moveError as Error).message).toContain("cannot be moved");
 	});
 });
 
