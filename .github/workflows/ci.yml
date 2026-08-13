@@ -64,4 +64,6 @@ jobs:
 
       - run: bun run lint
 
+      - run: bun run lint:slop
+
       - run: bun run test

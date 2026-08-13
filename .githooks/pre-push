@@ -21,7 +21,7 @@ fail() {
 	exit 1
 }
 
-for task in check-types lint test; do
+for task in check-types lint lint:slop test; do
 	echo "pre-push: bun run $task"
 	bun run "$task" || fail "$task"
 done
