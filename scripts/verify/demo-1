@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTRACT="MORNING DESK: Today shows the day's proposed work; Angus approves nothing; Richard clears gated items in one pass; every action leaves a visible receipt and a next action."
+
+exec "$(dirname "$0")/demo-runner.sh" "1" "$CONTRACT"

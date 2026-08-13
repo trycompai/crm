@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTRACT="APPROVED OUTREACH LOOP: Richard sees evidence, lawful basis, suppression status, draft, and risk flags; approve, reject, or revise; approval creates activity, follow-up, and receipt; NO SEND WITHOUT EXPLICIT APPROVAL; reply threads back onto the right prospect and company."
+
+exec "$(dirname "$0")/demo-runner.sh" "3" "$CONTRACT"

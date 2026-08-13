@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTRACT="LEVERAGE REPORT: last 7 days shows agent actions, human minutes spent, and HUMAN-MINUTES PER ACTIVE CUSTOMER."
+
+exec "$(dirname "$0")/demo-runner.sh" "5" "$CONTRACT"

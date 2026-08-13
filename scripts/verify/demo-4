@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTRACT="PILOT TO DELIVERY: prospect to company to deal to closed-won to onboarding proposal to approved agent plan to delivery state with receipts."
+
+exec "$(dirname "$0")/demo-runner.sh" "4" "$CONTRACT"

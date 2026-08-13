@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTRACT="PROSPECT QUALIFICATION: filter prospects by country, fit, evidence freshness, and readiness; agent refreshes evidence, scores fit, flags jurisdiction constraints, drafts next action; NO SEND."
+
+exec "$(dirname "$0")/demo-runner.sh" "2" "$CONTRACT"
