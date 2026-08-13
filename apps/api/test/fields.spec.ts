@@ -176,9 +176,13 @@ describe("field definitions", () => {
 			spec_runs_on: "AWS",
 		});
 
-		await expect(fields.update(field.id, { type: "TEXT" })).rejects.toThrow(
-			/cannot change/,
-		);
+		let refused: Error | null = null;
+		try {
+			await fields.update(field.id, { type: "TEXT" });
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/cannot change/);
 	});
 
 	it("will not turn a field into a select with nothing to choose", async () => {
@@ -194,9 +198,13 @@ describe("field definitions", () => {
 			showOnTable: false,
 		});
 
-		await expect(fields.update(field.id, { type: "SELECT" })).rejects.toThrow(
-			/at least one option/,
-		);
+		let refused: Error | null = null;
+		try {
+			await fields.update(field.id, { type: "SELECT" });
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/at least one option/);
 	});
 
 	it("archives without losing values, and restores them", async () => {
@@ -250,9 +258,13 @@ describe("field definitions", () => {
 			keys.indexOf("spec_runs_on"),
 		);
 
-		await expect(
-			fields.reorder({ entity: "CONTACT", ids: [first.id] }),
-		).rejects.toThrow(/not on this record type/);
+		let refused: Error | null = null;
+		try {
+			await fields.reorder({ entity: "CONTACT", ids: [first.id] });
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/not on this record type/);
 	});
 });
 
@@ -294,9 +306,13 @@ describe("field values", () => {
 		expect(renewal?.value).toBe("2027-03-31T12:30:00.000Z");
 
 		for (const raw of ["2027/03/31", "03-31-2027", "31 March 2027"]) {
-			await expect(
-				fields.applyValues(db, "COMPANY", record, { spec_renewal: raw }),
-			).rejects.toThrow(/takes a date/);
+			let refused: Error | null = null;
+			try {
+				await fields.applyValues(db, "COMPANY", record, { spec_renewal: raw });
+			} catch (cause) {
+				refused = cause as Error;
+			}
+			expect(refused?.message).toMatch(/takes a date/);
 		}
 
 		expect(
@@ -321,12 +337,16 @@ describe("field values", () => {
 	it("writes none of a batch when one value in it is refused", async () => {
 		const record = await makeCompany("batch");
 
-		await expect(
-			fields.applyValues(db, "COMPANY", record, {
+		let refused: Error | null = null;
+		try {
+			await fields.applyValues(db, "COMPANY", record, {
 				spec_seats: "12",
 				spec_renewal: "the spring",
-			}),
-		).rejects.toThrow(/takes a date/);
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/takes a date/);
 
 		expect(await db.fieldValue.count({ where: { companyId: record } })).toBe(0);
 	});
@@ -346,12 +366,16 @@ describe("field values", () => {
 			showOnTable: false,
 		});
 
-		await expect(
-			fields.applyValues(db, "COMPANY", record, {
+		let refused: Error | null = null;
+		try {
+			await fields.applyValues(db, "COMPANY", record, {
 				spec_seats: "12",
 				spec_champion: `nobody-${suffix}`,
-			}),
-		).rejects.toThrow(/works here/);
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/works here/);
 
 		expect(await db.fieldValue.count({ where: { companyId: record } })).toBe(0);
 
@@ -428,9 +452,13 @@ describe("a select option that was taken away", () => {
 			),
 		).toEqual(["Silver"]);
 
-		await expect(
-			fields.applyValues(db, "COMPANY", record, { spec_tier: "Gold" }),
-		).rejects.toThrow(/no option/);
+		let refused: Error | null = null;
+		try {
+			await fields.applyValues(db, "COMPANY", record, { spec_tier: "Gold" });
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/no option/);
 	});
 
 	it("still reads as a label in a table, not as an option id", async () => {
@@ -466,13 +494,17 @@ describe("a record update that fails", () => {
 	it("leaves a company's field values as they were", async () => {
 		const record = await makeCompany("company-rollback");
 
-		await expect(
-			companies.update(record, {
+		let refused: Error | null = null;
+		try {
+			await companies.update(record, {
 				name: "Renamed",
 				ownerId: `nobody-${suffix}`,
 				fields: { spec_seats: "99" },
-			}),
-		).rejects.toThrow();
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused).not.toBeNull();
 
 		expect(await db.fieldValue.count({ where: { companyId: record } })).toBe(0);
 	});
@@ -499,12 +531,16 @@ describe("a record update that fails", () => {
 			select: { id: true },
 		});
 
-		await expect(
-			contacts.update(contact.id, {
+		let refused: Error | null = null;
+		try {
+			await contacts.update(contact.id, {
 				companyId: `nobody-${suffix}`,
 				fields: { spec_note: "Reads the docs" },
-			}),
-		).rejects.toThrow();
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused).not.toBeNull();
 
 		expect(
 			await db.fieldValue.count({ where: { contactId: contact.id } }),
@@ -529,12 +565,16 @@ describe("a record update that fails", () => {
 			select: { id: true },
 		});
 
-		await expect(
-			deals.update(deal.id, {
+		let refused: Error | null = null;
+		try {
+			await deals.update(deal.id, {
 				companyId: `nobody-${suffix}`,
 				fields: { spec_risk: "Champion left" },
-			}),
-		).rejects.toThrow();
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused).not.toBeNull();
 
 		expect(await db.fieldValue.count({ where: { dealId: deal.id } })).toBe(0);
 

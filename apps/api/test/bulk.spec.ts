@@ -134,12 +134,16 @@ describe("assigning an owner to a selection", () => {
 			email: `alan@${domain}`,
 		});
 
-		await expect(
-			contacts.bulkAssignOwner({
+		let refused: Error | null = null;
+		try {
+			await contacts.bulkAssignOwner({
 				ids: [contact.id],
 				ownerId: `nobody-${suffix}`,
-			}),
-		).rejects.toThrow(/does not work here/);
+			});
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/does not work here/);
 
 		expect(
 			await db.contact.findUnique({
@@ -224,9 +228,16 @@ describe("moving a selection of deals to a stage", () => {
 			ownerId,
 		});
 
-		await expect(
-			deals.bulkSetStage({ ids: [deal.id], stage: "CLOSED_LOST" }, ownerId),
-		).rejects.toThrow(/teaches nobody anything/);
+		let refused: Error | null = null;
+		try {
+			await deals.bulkSetStage(
+				{ ids: [deal.id], stage: "CLOSED_LOST" },
+				ownerId,
+			);
+		} catch (cause) {
+			refused = cause as Error;
+		}
+		expect(refused?.message).toMatch(/teaches nobody anything/);
 
 		expect(
 			await db.deal.findUnique({
