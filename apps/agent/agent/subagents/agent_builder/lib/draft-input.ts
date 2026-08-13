@@ -1,6 +1,6 @@
 import { CRM_EVENT_TYPES } from "@crm/db/crm-events";
+import { AGENT_ACTION_TYPES } from "@crm/validation/agent-manifest";
 import { z } from "zod";
-import { AGENT_ACTION_TYPES } from "../../../lib/agent-actions";
 import type { DraftAgentInput } from "../../../lib/builder-runtime";
 
 const recordResource = z.object({

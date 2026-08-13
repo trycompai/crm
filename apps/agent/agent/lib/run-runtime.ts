@@ -2,13 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { ActivityType, db, type Prisma } from "@crm/db";
 import type { AgentActionStatus, AgentTriggerType } from "@crm/db/enums";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
-import { readCompanyHistory, readDealHistory } from "./accounts";
 import {
-	AGENT_ACTION_EXECUTORS,
 	AGENT_ACTION_TYPES,
-	isAgentActionType,
-} from "./agent-actions";
-import { parseAgentManifest } from "./agent-manifest";
+	type AgentManifestResource,
+	parseAgentManifest,
+} from "@crm/validation/agent-manifest";
+import { readCompanyHistory, readDealHistory } from "./accounts";
+import { AGENT_ACTION_EXECUTORS, isAgentActionType } from "./agent-actions";
 import { readCrmHistory } from "./crm";
 import { DISPATCH } from "./dispatch-config";
 import { searchCrm } from "./lookup";
@@ -23,12 +23,6 @@ const ACTION_LEASE_MS = DISPATCH.run.actionLeaseMs;
 const NO_ACTION_TRIGGER_TYPES = new Set<AgentTriggerType>(
 	DISPATCH.run.noActionTriggerTypes,
 );
-
-type RunResource = {
-	kind: "integration" | "company" | "contact" | "deal";
-	id: string;
-	label: string;
-};
 
 type RunRecordScope = "SELECTED" | "WORKSPACE";
 
@@ -834,7 +828,7 @@ async function requiredActionFailure(
 	});
 
 	for (const action of external) {
-		const type = typeof action.type === "string" ? action.type : "unknown";
+		const type = action.type;
 		const rows = recorded.filter((row) => row.type === type);
 		if (rows.some((row) => row.status === "SUCCEEDED")) continue;
 
@@ -857,10 +851,7 @@ async function requiredActionFailure(
 					type,
 					provider:
 						type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST ? "slack" : "crm",
-					summary:
-						typeof action.summary === "string"
-							? action.summary
-							: `Perform ${type}`,
+					summary: action.summary,
 					status: "FAILED",
 					idempotencyKey: `run:${run.id}:required:${type}`,
 					requestHash: hashRequest({ type, required: true }),
@@ -930,10 +921,10 @@ async function failLockedRun(
 
 function manifestDataScope(value: unknown): {
 	mode: RunRecordScope;
-	resources: RunResource[];
+	resources: AgentManifestResource[];
 } {
 	const scope = parseAgentManifest(value).dataScope;
-	const resources = scope.resources as RunResource[];
+	const resources = scope.resources;
 	const records = resources.filter(
 		(resource) => resource.kind !== "integration",
 	);
@@ -962,8 +953,7 @@ function assertActivityAllowed(
 ) {
 	const allowed = manifestActions(manifest).some(
 		(action) =>
-			action.type === "crm.activity.create" &&
-			Array.isArray(action.activityTypes) &&
+			action.type === AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE &&
 			action.activityTypes.includes(activityType),
 	);
 	if (!allowed) {
@@ -988,26 +978,17 @@ export function approvedSlackDestination(manifest: unknown): {
 		throw new Error("Agent version does not allow Slack.");
 	}
 
-	const destinations = manifestActions(manifest).flatMap((action) => {
-		if (action.type !== "slack.message.post") return [];
-		const destination = recordOf(action.destination);
-		if (
-			!["channel", "user"].includes(String(destination.kind)) ||
-			typeof destination.id !== "string" ||
-			!destination.id ||
-			typeof destination.label !== "string" ||
-			!destination.label
-		) {
-			return [];
-		}
-		return [
-			{
-				kind: destination.kind as "channel" | "user",
-				id: destination.id,
-				label: destination.label,
-			},
-		];
-	});
+	const destinations = manifestActions(manifest).flatMap((action) =>
+		action.type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST
+			? [
+					{
+						kind: action.destination.kind,
+						id: action.destination.id,
+						label: action.destination.label,
+					},
+				]
+			: [],
+	);
 	const [destination] = destinations;
 	if (!destination || destinations.length !== 1) {
 		throw new Error(
@@ -1020,7 +1001,7 @@ export function approvedSlackDestination(manifest: unknown): {
 
 function assertResourceAllowed(
 	mode: RunRecordScope,
-	resources: RunResource[],
+	resources: AgentManifestResource[],
 	input: { kind: "contact" | "company" | "deal"; id: string },
 ) {
 	if (mode === "WORKSPACE") return;
@@ -1039,7 +1020,7 @@ function assertResourceAllowed(
 	);
 }
 
-export function allowedHistorySources(resources: RunResource[]): {
+export function allowedHistorySources(resources: AgentManifestResource[]): {
 	gmail: boolean;
 	calendar: boolean;
 } {

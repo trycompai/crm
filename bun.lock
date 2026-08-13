@@ -234,6 +234,7 @@
       "name": "@crm/validation",
       "version": "0.0.0",
       "dependencies": {
+        "@crm/db": "workspace:*",
         "zod": "^4.4.3",
       },
       "devDependencies": {

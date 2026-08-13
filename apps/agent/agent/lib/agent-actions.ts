@@ -1,11 +1,7 @@
-export const AGENT_ACTION_TYPES = {
-	CRM_ACTIVITY_CREATE: "crm.activity.create",
-	RUN_SUMMARY: "run.summary",
-	SLACK_MESSAGE_POST: "slack.message.post",
-} as const;
-
-export type AgentActionType =
-	(typeof AGENT_ACTION_TYPES)[keyof typeof AGENT_ACTION_TYPES];
+import {
+	AGENT_ACTION_TYPES,
+	type AgentActionType,
+} from "@crm/validation/agent-manifest";
 
 export const AGENT_ACTION_EXECUTORS = {
 	[AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE]: "create_crm_activity",

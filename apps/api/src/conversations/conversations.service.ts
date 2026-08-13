@@ -1,5 +1,6 @@
 import { WORKSPACE_ID } from "@crm/auth";
 import { type Db, type Prisma, Prisma as PrismaNamespace } from "@crm/db";
+import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
 import {
 	BadRequestException,
 	Injectable,
@@ -396,6 +397,7 @@ export class ConversationsService {
 				: null,
 			createdVersions: row.createdVersions.map((version) => ({
 				...version,
+				manifest: readAgentManifestSummary(version.manifest),
 				createdAt: version.createdAt.toISOString(),
 			})),
 			builderArtifacts: row.builderArtifacts.map((artifact) => ({

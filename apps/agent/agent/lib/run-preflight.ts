@@ -1,10 +1,10 @@
 import { db } from "@crm/db";
-import { actionDependency } from "./agent-actions";
 import {
 	type AgentManifest,
 	InvalidAgentManifest,
 	parseAgentManifest,
-} from "./agent-manifest";
+} from "@crm/validation/agent-manifest";
+import { actionDependency } from "./agent-actions";
 import { slackConnected } from "./slack-connection";
 
 export const DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE";

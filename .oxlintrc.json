@@ -41,6 +41,20 @@
 			"rules": {
 				"anti-slop/no-chained-type-assertions": "off"
 			}
+		},
+		{
+			"files": [
+				"packages/telemetry/src/**",
+				"apps/api/src/logging/**",
+				"packages/db/src/fields.ts",
+				"packages/db/src/fields-shape.ts",
+				"apps/api/src/fields/**"
+			],
+			"rules": {
+				"anti-slop/no-unsafe-dictionary-type": "off",
+				"anti-slop/no-unknown-parameters": "off",
+				"anti-slop/no-runtime-typeof": "off"
+			}
 		}
 	]
 }

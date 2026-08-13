@@ -1,6 +1,7 @@
 import type { Db, Prisma } from "@crm/db";
 import type { AgentDefinitionStatus } from "@crm/db/enums";
 import { schemas } from "@crm/validation";
+import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
 import {
 	BadRequestException,
 	Injectable,
@@ -131,6 +132,7 @@ export class AgentDefinitionsService {
 
 		if (!row) throw new NotFoundException(`No agent with id ${id}.`);
 		const { versions, ...agent } = row;
+		const draft = versions[0];
 
 		return {
 			...agent,
@@ -144,7 +146,10 @@ export class AgentDefinitionsService {
 						deployedAt: agent.currentVersion.deployedAt?.toISOString() ?? null,
 					}
 				: null,
-			reviewVersion: agent.status === "DRAFT" ? (versions[0] ?? null) : null,
+			reviewVersion:
+				agent.status === "DRAFT" && draft
+					? { ...draft, manifest: readAgentManifestSummary(draft.manifest) }
+					: null,
 			triggers: agent.triggers.map((trigger) => ({
 				...trigger,
 				nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
@@ -152,7 +157,7 @@ export class AgentDefinitionsService {
 			})),
 			runCount: agent._count.runs,
 			capabilities: readCapabilities(
-				agent.currentVersion?.manifest ?? versions[0]?.manifest,
+				agent.currentVersion?.manifest ?? draft?.manifest,
 			),
 		};
 	}
@@ -793,20 +798,16 @@ export class AgentDefinitionsService {
 	}
 }
 
-function versionMetadata(manifest: unknown): {
+function versionMetadata(manifest: Prisma.JsonValue): {
 	name?: string;
 	description?: string | null;
 } {
-	if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-		return {};
-	}
-
-	const record = manifest as Record<string, unknown>;
-	const name = typeof record.name === "string" ? record.name.trim() : "";
+	const summary = readAgentManifestSummary(manifest);
+	const name = summary.name?.trim() ?? "";
 	const description =
-		typeof record.description === "string"
-			? record.description.trim() || null
-			: undefined;
+		summary.description === undefined
+			? undefined
+			: summary.description.trim() || null;
 
 	return {
 		...(name ? { name } : {}),

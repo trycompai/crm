@@ -232,7 +232,10 @@ const slack = manifest.actions.find(
 const id = slack?.destination.id;
 ```
 
-`apps/agent/agent/lib/agent-manifest.ts` is the pattern. Rules that follow from
+`packages/validation/src/agent-manifest.ts` is the pattern. A shape that crosses
+a package boundary — a `Json` column two apps read, a payload one app writes and
+another consumes — lives in `packages/validation/src`, one module per shape, and
+is imported by subpath (`@crm/validation/agent-manifest`). Rules that follow from
 it:
 
 - The schema describes what is **actually stored**, not the loosest thing that

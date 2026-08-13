@@ -1,9 +1,22 @@
 import type { ZodType, z } from "zod";
+import * as agentEvents from "./agent-events";
+import * as agentManifest from "./agent-manifest";
 import * as agents from "./agents";
 import * as slack from "./slack";
 
-export const schemas = { agents, slack } as const;
+export const schemas = { agentEvents, agentManifest, agents, slack } as const;
 
+export type { CrmEventTask } from "./agent-events";
+export type {
+	AgentActionType,
+	AgentManifest,
+	AgentManifestAction,
+	AgentManifestResource,
+	AgentManifestSummary,
+	AgentManifestTrigger,
+	AgentTriggerConfig,
+	SlackDestination,
+} from "./agent-manifest";
 export type {
 	Handoff,
 	HandoffChannel,

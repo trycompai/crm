@@ -7,7 +7,8 @@ import {
 } from "@crm/db/crm-events";
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
-import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
+import { AGENT_ACTION_TYPES } from "@crm/validation/agent-manifest";
+import { actionDependency } from "./agent-actions";
 import { requestStaleSlackInventorySync } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";

@@ -1,6 +1,8 @@
 import { db, Prisma } from "@crm/db";
-import { CRM_EVENT_CATALOG, isCrmEventType } from "@crm/db/crm-events";
+import { CRM_EVENT_CATALOG } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { crmEventTask } from "@crm/validation/agent-events";
+import { readAgentTriggerConfig } from "@crm/validation/agent-manifest";
 import type { SendFn } from "eve/channels";
 import { DISPATCH } from "./dispatch-config";
 import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
@@ -219,7 +221,9 @@ export async function queueDueAgentRuns(now = new Date()): Promise<number> {
 	for (const trigger of triggers) {
 		if (!trigger.nextRunAt) continue;
 		const scheduledAt = trigger.nextRunAt;
-		const intervalMinutes = intervalOf(trigger.config);
+		const intervalMinutes = readAgentTriggerConfig(
+			trigger.config,
+		).intervalMinutes;
 		const nextRunAt = advance(scheduledAt, intervalMinutes, now);
 		const idempotencyKey = `${trigger.id}:${scheduledAt.toISOString()}`;
 		const claimed = await db.$transaction(async (tx) => {
@@ -271,29 +275,22 @@ export async function queueEventAgentRuns(
 		"id" | "contactId" | "companyId" | "dealId" | "payload"
 	>,
 ): Promise<number> {
-	const payload = recordOf(task.payload);
-	const eventType = payload.type;
-	const record = recordOf(payload.record);
-	const recordKind = textOf(record.kind);
-	const recordId = textOf(record.id);
-	const occurredAt = textOf(payload.occurredAt);
+	const parsed = crmEventTask.safeParse(task.payload);
+	if (!parsed.success) {
+		throw new Error("The queued agent event is invalid.");
+	}
+
+	const { type: eventType, occurredAt, data } = parsed.data;
+	const recordKind = CRM_EVENT_CATALOG[eventType].recordKind;
+	const recordId = parsed.data.record.id;
 	const occurredAtDate = new Date(occurredAt);
 	const taskRecordId =
 		recordKind === "contact"
 			? task.contactId
 			: recordKind === "company"
 				? task.companyId
-				: recordKind === "deal"
-					? task.dealId
-					: null;
-	if (
-		!isCrmEventType(eventType) ||
-		CRM_EVENT_CATALOG[eventType].recordKind !== recordKind ||
-		!recordId ||
-		taskRecordId !== recordId ||
-		!occurredAt ||
-		Number.isNaN(occurredAtDate.getTime())
-	) {
+				: task.dealId;
+	if (taskRecordId !== recordId) {
 		throw new Error("The queued agent event is invalid.");
 	}
 
@@ -314,7 +311,7 @@ export async function queueEventAgentRuns(
 
 	let matched = 0;
 	for (const trigger of triggers) {
-		if (recordOf(trigger.config).event !== eventType) continue;
+		if (readAgentTriggerConfig(trigger.config).event !== eventType) continue;
 		const idempotencyKey = `event:${task.id}:trigger:${trigger.id}`;
 
 		const queued = await db.$transaction(async (tx) => {
@@ -340,13 +337,9 @@ export async function queueEventAgentRuns(
 					idempotencyKey,
 					correlationId: `trigger:${trigger.id}:event:${task.id}`,
 					input: {
-						event: {
-							type: eventType,
-							occurredAt,
-							data: recordOf(payload.data),
-						},
+						event: { type: eventType, occurredAt, data },
 						record: { kind: recordKind, id: recordId },
-					} as Prisma.InputJsonValue,
+					},
 					events: {
 						create: {
 							sequence: 0,
@@ -881,15 +874,6 @@ function resourceLabel(value: unknown): string | null {
 
 function textOf(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
-}
-
-function intervalOf(value: unknown): number {
-	const interval = recordOf(value).intervalMinutes;
-	return typeof interval === "number" &&
-		Number.isFinite(interval) &&
-		interval >= 1
-		? Math.min(interval, 525_600)
-		: 1440;
 }
 
 function advance(from: Date, intervalMinutes: number, now: Date): Date {

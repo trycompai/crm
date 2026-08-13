@@ -35,6 +35,7 @@ import { Reasoning } from "@crm/ui/components/reasoning";
 import { ThinkingIndicator } from "@crm/ui/components/thinking-indicator";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { cn } from "@crm/ui/lib/utils";
+import type { AgentManifestSummary } from "@crm/validation/agent-manifest";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Client, type MessageStreamEvent } from "eve/client";
 import type { EveMessage, EveMessageInputRequest } from "eve/react";
@@ -100,12 +101,6 @@ const BUILDER_STEP_ARTIFACTS = [
 	"agent/manifest.json",
 	"agent/README.md",
 ] as const;
-type DraftVersion = {
-	id: string;
-	status: string;
-	manifest: unknown;
-};
-
 type BuilderSubmission = {
 	id: string;
 	createdAt: string;
@@ -1188,11 +1183,11 @@ function ReviewAgentCard({
 	const workspaceUrl = useWorkspaceUrl();
 	const version = conversation.createdVersions.find(
 		(candidate) => candidate.id === versionId,
-	) as DraftVersion | undefined;
+	);
 	const agent = conversation.agent;
-	const manifest = manifestOf(version?.manifest);
 
 	if (!version || !agent) return null;
+	const manifest = manifestOf(version.manifest);
 
 	return (
 		<div className="flex flex-col gap-5">
@@ -1510,30 +1505,11 @@ function sharedConversationNeedsPolling(
 	return !eventStreamSettled(conversation.events);
 }
 
-function manifestOf(value: unknown) {
-	const manifest = recordOf(value);
-	const triggers = Array.isArray(manifest.triggers)
-		? manifest.triggers.map(recordOf)
-		: [];
-	const dataScope = recordOf(manifest.dataScope);
-	const actions = Array.isArray(manifest.actions)
-		? manifest.actions.map(recordOf)
-		: [];
-	const access = Array.isArray(manifest.access)
-		? manifest.access.filter((item): item is string => typeof item === "string")
-		: [];
-
+function manifestOf(manifest: AgentManifestSummary) {
 	return {
-		name:
-			typeof manifest.name === "string" && manifest.name.trim()
-				? manifest.name.trim()
-				: null,
-		description:
-			typeof manifest.description === "string" && manifest.description.trim()
-				? manifest.description.trim()
-				: null,
+		name: manifest.name?.trim() || null,
 		trigger:
-			triggers
+			manifest.triggers
 				.map((trigger) =>
 					trigger.type === "MANUAL"
 						? "On demand"
@@ -1543,16 +1519,19 @@ function manifestOf(value: unknown) {
 							),
 				)
 				.join(" · ") || "On demand",
-		looksAt: textOf(dataScope.summary, "CRM records in the approved scope"),
+		looksAt: textOf(
+			manifest.dataScope.summary,
+			"CRM records in the approved scope",
+		),
 		action: compactSummary(
-			actions[0]?.summary,
+			manifest.actions[0]?.summary,
 			"Perform the requested team action",
 		),
-		access,
+		access: manifest.access,
 	};
 }
 
-function compactSummary(value: unknown, fallback: string): string {
+function compactSummary(value: string | undefined, fallback: string): string {
 	return textOf(value, fallback).replace(/\s+\([^()]+\)\s*\.?$/, "");
 }
 
@@ -1562,6 +1541,6 @@ function recordOf(value: unknown): Record<string, unknown> {
 		: {};
 }
 
-function textOf(value: unknown, fallback: string): string {
-	return typeof value === "string" && value.trim() ? value : fallback;
+function textOf(value: string | undefined, fallback: string): string {
+	return value?.trim() ? value : fallback;
 }

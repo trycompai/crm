@@ -183,22 +183,14 @@ export function TeamAgentDetail({
 
 	const data = agent.data ?? initialAgent;
 	const isDraft = data.status === "DRAFT";
-	const reviewManifest = recordOf(
-		(
-			data.reviewVersion as unknown as {
-				manifest: unknown;
-			} | null
-		)?.manifest,
-	);
+	const reviewManifest = data.reviewVersion?.manifest;
+	const fallbackDescription = data.description ?? "A durable team automation.";
 	const displayedName = isDraft
-		? textOf(reviewManifest.name, data.name)
+		? textOf(reviewManifest?.name, data.name)
 		: data.name;
 	const displayedDescription = isDraft
-		? textOf(
-				reviewManifest.description,
-				data.description ?? "A durable team automation.",
-			)
-		: (data.description ?? "A durable team automation.");
+		? textOf(reviewManifest?.description, fallbackDescription)
+		: fallbackDescription;
 	const displayedVersionNumber =
 		data.currentVersion?.number ?? data.reviewVersion?.number;
 	const enabledTriggers = data.triggers.filter((trigger) => trigger.enabled);
@@ -577,14 +569,8 @@ function _DetailRow({ label, value }: { label: string; value: ReactNode }) {
 	);
 }
 
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function textOf(value: unknown, fallback: string): string {
-	return typeof value === "string" && value.trim() ? value : fallback;
+function textOf(value: string | undefined, fallback: string): string {
+	return value?.trim() ? value : fallback;
 }
 
 function formatDate(value: string): string {
