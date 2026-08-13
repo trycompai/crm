@@ -20,10 +20,12 @@ import {
 } from "../mailbox/participants";
 import { TrackingCounterService } from "./tracking-counter.service";
 
+type TouchColumns = Record<string, string | Date | null>;
+
 function columns(
 	touch: Touch | undefined,
 	prefix: "first" | "last",
-): Record<string, string | Date | null> {
+): TouchColumns {
 	if (!touch) return {};
 
 	return {
@@ -144,12 +146,12 @@ export class TrackingFilingService {
 	}
 
 	private async raced(
-		error: unknown,
+		cause: unknown,
 		email: string,
 	): Promise<{ id: string } | null> {
 		if (
-			!(error instanceof Prisma.PrismaClientKnownRequestError) ||
-			error.code !== "P2002"
+			!(cause instanceof Prisma.PrismaClientKnownRequestError) ||
+			cause.code !== "P2002"
 		) {
 			return null;
 		}

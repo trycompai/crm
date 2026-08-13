@@ -3,7 +3,7 @@ import {
 	isSlackConfigured,
 	WORKSPACE_ID,
 } from "@crm/auth";
-import type { Db } from "@crm/db";
+import type { Db, Prisma } from "@crm/db";
 import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
@@ -177,17 +177,16 @@ export class SlackConnectionService {
 		const take = input.limit ?? SLACK.channels.pageSize;
 		const needle = input.query?.trim() ?? "";
 
+		const where: Prisma.SlackChannelWhereInput = { available: true };
+		if (needle) where.name = { contains: needle, mode: "insensitive" };
+
 		const [rows, grant, sync] = await Promise.all([
 			this.db.slackChannel.findMany({
-				where: {
-					available: true,
-					...(needle
-						? { name: { contains: needle, mode: "insensitive" } }
-						: {}),
-				},
+				where,
 				orderBy: [{ isMember: "desc" }, { name: "asc" }, { id: "asc" }],
 				take: take + 1,
-				...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+				cursor: input.cursor ? { id: input.cursor } : undefined,
+				skip: input.cursor ? 1 : undefined,
 				select: {
 					id: true,
 					name: true,

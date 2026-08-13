@@ -13,6 +13,7 @@ import {
 	type TrackingConfig,
 } from "@crm/db/tracking";
 import { Injectable, Logger } from "@nestjs/common";
+import { z } from "zod";
 import { normalizeEmail } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
@@ -35,6 +36,21 @@ const CARD = /^[0-9 -]{12,25}$/;
 
 const ADDRESS = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
 
+const fieldText = z.string().nullable().catch(null);
+
+export type FormFields = Record<string, string>;
+
+type StoredTouch = {
+	source: string;
+	medium: string;
+	campaign: string | null;
+	term: string | null;
+	content: string | null;
+	referrer: string | null;
+	landing: string | null;
+	at: string;
+};
+
 export interface IncomingEvent {
 	type: string;
 	host: string;
@@ -42,7 +58,7 @@ export interface IncomingEvent {
 	referrer?: string;
 	label?: string;
 	at?: number;
-	fields?: Record<string, string>;
+	fields?: FormFields;
 	touch?: RawTouch;
 	firstTouch?: RawTouch;
 }
@@ -250,7 +266,7 @@ function arriving(touch: RawTouch): RawTouch {
 	};
 }
 
-function stored(touch: Touch): Record<string, string | null> {
+function stored(touch: Touch): StoredTouch {
 	return {
 		source: touch.source,
 		medium: touch.medium,
@@ -267,7 +283,7 @@ function scripted(events: IncomingEvent[]): boolean {
 	if (events.length < 3) return false;
 
 	const stamps = events.flatMap((event) =>
-		typeof event.at === "number" && Number.isFinite(event.at) ? [event.at] : [],
+		event.at !== undefined && Number.isFinite(event.at) ? [event.at] : [],
 	);
 
 	if (stamps.length !== events.length) return false;
@@ -277,7 +293,7 @@ function scripted(events: IncomingEvent[]): boolean {
 
 function occurredAt(at: number | undefined): Date {
 	const now = Date.now();
-	if (typeof at !== "number" || !Number.isFinite(at)) return new Date(now);
+	if (at === undefined || !Number.isFinite(at)) return new Date(now);
 
 	const bounded = Math.min(Math.max(at, now - 86_400_000), now);
 
@@ -289,28 +305,27 @@ function trim(value: string, max: number): string {
 }
 
 function sanitizeId(value: string | undefined): string | null {
-	if (typeof value !== "string") return null;
-
-	const trimmed = value.trim();
+	const trimmed = fieldText.parse(value)?.trim() ?? "";
 
 	return /^[a-zA-Z0-9_-]{8,64}$/.test(trimmed) ? trimmed : null;
 }
 
-function clean(fields: Record<string, string>): Record<string, string> {
-	const kept: Record<string, string> = {};
+function clean(fields: FormFields): FormFields {
+	const kept: FormFields = {};
 
 	for (const [key, value] of Object.entries(fields).slice(0, 40)) {
-		if (typeof value !== "string") continue;
+		const text = fieldText.parse(value);
+		if (text === null) continue;
 		if (SENSITIVE.test(key)) continue;
-		if (CARD.test(value.trim())) continue;
+		if (CARD.test(text.trim())) continue;
 
-		kept[trim(key, 64)] = trim(value, 512);
+		kept[trim(key, 64)] = trim(text, 512);
 	}
 
 	return kept;
 }
 
-function emailFrom(fields: Record<string, string>): string | null {
+function emailFrom(fields: FormFields): string | null {
 	for (const [key, value] of Object.entries(fields)) {
 		if (!/mail/i.test(key)) continue;
 		const email = address(value);
@@ -331,7 +346,7 @@ function address(value: string): string | null {
 	return email && ADDRESS.test(email) ? email : null;
 }
 
-function nameFrom(fields: Record<string, string>): string | null {
+function nameFrom(fields: FormFields): string | null {
 	const first = pick(fields, /^(first[\s_-]?name|fname|given)/i);
 	const last = pick(fields, /^(last[\s_-]?name|lname|surname|family)/i);
 
@@ -340,7 +355,7 @@ function nameFrom(fields: Record<string, string>): string | null {
 	return pick(fields, /^(full[\s_-]?name|name)$/i) ?? pick(fields, /name/i);
 }
 
-function pick(fields: Record<string, string>, pattern: RegExp): string | null {
+function pick(fields: FormFields, pattern: RegExp): string | null {
 	for (const [key, value] of Object.entries(fields)) {
 		if (pattern.test(key) && value.trim()) return value.trim();
 	}

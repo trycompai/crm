@@ -37,14 +37,14 @@ export function isMicrosoftSyncSource(
 	return (MICROSOFT_SYNC_SOURCES as readonly string[]).includes(source);
 }
 
-export const SCOPE_FOR_SOURCE: Record<SyncSource, string> = {
+export const SCOPE_FOR_SOURCE = {
 	calendar: CALENDAR_SCOPE,
 	gmail: GMAIL_SCOPE,
 	outlook: OUTLOOK_MAIL_SCOPE,
-};
+} satisfies Record<SyncSource, string>;
 
-export const PROVIDER_FOR_SOURCE: Record<SyncSource, MailboxProviderId> = {
+export const PROVIDER_FOR_SOURCE = {
 	calendar: GOOGLE_PROVIDER_ID,
 	gmail: GOOGLE_PROVIDER_ID,
 	outlook: MICROSOFT_PROVIDER_ID,
-};
+} satisfies Record<SyncSource, MailboxProviderId>;

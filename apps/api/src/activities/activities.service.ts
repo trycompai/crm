@@ -1,4 +1,5 @@
 import { ActivityType, type Db, type Prisma } from "@crm/db";
+import { activityMeta } from "@crm/validation/activity-meta";
 import {
 	BadRequestException,
 	Injectable,
@@ -80,7 +81,8 @@ export class ActivitiesService {
 		const rows = await this.db.activity.findMany({
 			where,
 			take: input.limit + 1,
-			...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+			cursor: input.cursor ? { id: input.cursor } : undefined,
+			skip: input.cursor ? 1 : undefined,
 			orderBy: [
 				{ occurredAt: { sort: "desc", nulls: "last" } },
 				{ id: "desc" },
@@ -273,7 +275,7 @@ function serializeEntry(entry: Entry) {
 		dueAt: entry.dueAt?.toISOString() ?? null,
 		completedAt: entry.completedAt?.toISOString() ?? null,
 		createdAt: entry.createdAt.toISOString(),
-		meta: entry.meta as Record<string, unknown> | null,
+		meta: activityMeta.parse(entry.meta),
 
 		emailThread: entry.emailThread
 			? {

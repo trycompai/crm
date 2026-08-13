@@ -1,4 +1,4 @@
-import type { Db } from "@crm/db";
+import type { Db, Prisma } from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
@@ -18,12 +18,12 @@ export class AgentQueueService {
 		companyId?: string;
 		contactId?: string;
 	}): Promise<boolean> {
+		const where: Prisma.AgentTaskWhereInput = { finishedAt: null };
+		if (subject.companyId) where.companyId = subject.companyId;
+		if (subject.contactId) where.contactId = subject.contactId;
+
 		const row = await this.db.agentTask.findFirst({
-			where: {
-				finishedAt: null,
-				...(subject.companyId ? { companyId: subject.companyId } : {}),
-				...(subject.contactId ? { contactId: subject.contactId } : {}),
-			},
+			where,
 			select: { id: true },
 		});
 

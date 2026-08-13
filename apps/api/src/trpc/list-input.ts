@@ -10,7 +10,9 @@ export const listInput = z.object({
 
 export type ListInput = z.infer<typeof listInput>;
 
-type FacetCounts = Record<string, Record<string, number>>;
+export type FacetCount = Record<string, number>;
+
+type FacetCounts = Record<string, FacetCount>;
 
 export type ListResult<TRow> = {
 	rows: TRow[];
@@ -18,19 +20,27 @@ export type ListResult<TRow> = {
 	facetCounts: FacetCounts;
 };
 
-export function paginate(input: Pick<ListInput, "page" | "pageSize">): {
+export type Page = {
 	skip: number;
 	take: number;
-} {
+};
+
+export function paginate(input: Pick<ListInput, "page" | "pageSize">): Page {
 	return {
 		skip: (input.page - 1) * input.pageSize,
 		take: input.pageSize,
 	};
 }
 
+export type SortDirection = ListInput["dir"];
+
+export interface OrderByColumns<TOrderBy> {
+	[column: string]: (dir: SortDirection) => TOrderBy;
+}
+
 export function resolveOrderBy<TOrderBy>(
 	input: Pick<ListInput, "sort" | "dir">,
-	columns: Record<string, (dir: "asc" | "desc") => TOrderBy>,
+	columns: OrderByColumns<TOrderBy>,
 	fallback: TOrderBy,
 ): TOrderBy {
 	const column = columns[input.sort];
@@ -42,8 +52,8 @@ export function countsByKey<
 	TGroup extends { _count: { _all: number } } & {
 		[K in TKey]?: string | null;
 	},
->(groups: TGroup[], key: TKey, nullKey?: string): Record<string, number> {
-	const counts: Record<string, number> = {};
+>(groups: TGroup[], key: TKey, nullKey?: string): FacetCount {
+	const counts: FacetCount = {};
 
 	for (const group of groups) {
 		const value = group[key] ?? nullKey;

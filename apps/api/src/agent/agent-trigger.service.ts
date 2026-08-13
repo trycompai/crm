@@ -316,11 +316,13 @@ export class AgentTriggerService {
 					finishedAt: null,
 					[subject]: { in: ids },
 				},
-				select: { [subject]: true },
+				select: { companyId: true, contactId: true },
 			});
 
 			const taken = new Set(
-				outstanding.map((row) => (row as Record<string, unknown>)[subject]),
+				outstanding.map((row) =>
+					subject === "contactId" ? row.contactId : row.companyId,
+				),
 			);
 			const fresh = ids.filter((id) => !taken.has(id));
 

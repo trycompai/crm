@@ -3,7 +3,7 @@ import { z } from "zod";
 import { setResearchKeyInput } from "../src/settings/settings.contracts";
 import { readableInputError } from "../src/trpc/error-formatter";
 
-const causeOf = (schema: z.ZodType, value: unknown) => {
+const causeOf = (schema: z.ZodType, value: z.core.util.JSONType) => {
 	const result = schema.safeParse(value);
 	if (result.success) throw new Error("expected the parse to fail");
 	return result.error;

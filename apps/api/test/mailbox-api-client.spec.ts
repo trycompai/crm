@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import type { z } from "zod";
 import { MailboxApiClient } from "../src/mailbox/mailbox-api.client";
 
 const realFetch = globalThis.fetch;
@@ -9,7 +10,7 @@ afterEach(() => {
 
 function stub(
 	status: number,
-	body: unknown,
+	body: z.core.util.JSONType,
 	headers: Record<string, string> = {},
 ): void {
 	globalThis.fetch = (async () =>

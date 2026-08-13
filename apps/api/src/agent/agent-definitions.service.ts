@@ -7,6 +7,7 @@ import {
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
+import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentTriggerService } from "./agent-trigger.service";
@@ -20,6 +21,18 @@ import {
 } from "./agents.contracts";
 
 const INSTRUCTIONS_PATH = "agent/instructions.md";
+
+type VersionMetadata = {
+	name?: string;
+	description?: string | null;
+};
+
+const capabilityName = z.string().nullable().catch(null);
+
+const versionValidation = z
+	.object({ capabilities: z.array(z.json()).catch([]) })
+	.catchall(z.json())
+	.catch({ capabilities: [] });
 
 @Injectable()
 export class AgentDefinitionsService {
@@ -798,10 +811,7 @@ export class AgentDefinitionsService {
 	}
 }
 
-function versionMetadata(manifest: Prisma.JsonValue): {
-	name?: string;
-	description?: string | null;
-} {
+function versionMetadata(manifest: Prisma.JsonValue): VersionMetadata {
 	const summary = readAgentManifestSummary(manifest);
 	const name = summary.name?.trim() ?? "";
 	const description =
@@ -809,13 +819,14 @@ function versionMetadata(manifest: Prisma.JsonValue): {
 			? undefined
 			: summary.description.trim() || null;
 
-	return {
-		...(name ? { name } : {}),
-		...(description !== undefined ? { description } : {}),
-	};
+	const metadata: VersionMetadata = {};
+	if (name) metadata.name = name;
+	if (description !== undefined) metadata.description = description;
+
+	return metadata;
 }
 
-function readCapabilities(manifest: unknown) {
+function readCapabilities(manifest: Prisma.JsonValue | undefined) {
 	const parsed = schemas.agents.capabilities.safeParse(manifest);
 
 	if (!parsed.success) {
@@ -858,28 +869,24 @@ function reviseSummary(input: {
 }
 
 function reviseValidation(
-	validation: unknown,
+	validation: Prisma.JsonValue,
 	before: string[],
 	after: string[],
 ): Prisma.InputJsonValue {
 	const removed = before.filter((type) => !after.includes(type));
-	const base =
-		validation && typeof validation === "object" && !Array.isArray(validation)
-			? (validation as Record<string, unknown>)
-			: {};
+	const base = versionValidation.parse(validation);
 
-	const capabilities = Array.isArray(base.capabilities)
-		? base.capabilities.filter(
-				(entry) => typeof entry === "string" && !removed.includes(entry),
-			)
-		: [];
+	const capabilities = base.capabilities.flatMap((entry) => {
+		const name = capabilityName.parse(entry);
+		return name !== null && !removed.includes(name) ? [name] : [];
+	});
 
 	return {
 		...base,
 		status: "passed",
 		checkedAt: new Date().toISOString(),
 		capabilities,
-	} as Prisma.InputJsonValue;
+	};
 }
 
 async function nextVersionNumber(

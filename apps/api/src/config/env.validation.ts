@@ -128,9 +128,9 @@ export class EnvironmentVariables {
 	CRM_TELEMETRY_DISABLED?: string;
 }
 
-export function validateEnv(
-	config: Record<string, unknown>,
-): EnvironmentVariables {
+export type RawEnvironment = Record<string, string | undefined>;
+
+export function validateEnv(config: RawEnvironment): EnvironmentVariables {
 	const validated = plainToInstance(EnvironmentVariables, config, {
 		enableImplicitConversion: true,
 		exposeDefaultValues: true,

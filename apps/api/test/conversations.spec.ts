@@ -2,12 +2,19 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
+import { z } from "zod";
 import {
 	builderConversationCreateInput,
 	conversationListInput,
 	conversationSaveInput,
 } from "../src/conversations/conversations.contracts";
 import { ConversationsService } from "../src/conversations/conversations.service";
+
+const record = z.record(z.string(), z.unknown()).catch({});
+
+const list = z.array(z.unknown()).catch([]);
+
+const text = z.string().nullable().catch(null);
 
 const suffix = process.env.TEST_RUN_ID ?? "conversations-spec";
 const email = `conversation.subject.${suffix}@example.test`;
@@ -449,8 +456,10 @@ describe("ConversationsService", () => {
 		const submission = detail.submissions.find(
 			(row) => row.clientRequestId === input.clientRequestId,
 		);
-		const message = recordOf(submission?.message);
-		const attachments = arrayOf(message.attachments).map(recordOf);
+		const message = record.parse(submission?.message);
+		const attachments = list
+			.parse(message.attachments)
+			.map((entry) => record.parse(entry));
 
 		expect(JSON.stringify(message)).not.toContain("contentBase64");
 		expect(attachments).toEqual([
@@ -467,8 +476,8 @@ describe("ConversationsService", () => {
 				previewUrl: null,
 			}),
 		]);
-		const imageId = attachments[0]?.id;
-		if (typeof imageId !== "string") throw new Error("Missing attachment id");
+		const imageId = text.parse(attachments[0]?.id);
+		if (imageId === null) throw new Error("Missing attachment id");
 		const image = await service.attachment(imageId, userId);
 		expect(Buffer.from(image.content)).toEqual(imageBytes);
 		expect(image).toMatchObject({
@@ -515,9 +524,9 @@ describe("ConversationsService", () => {
 			userId,
 		);
 		const original = await service.builderById(conversation.id, userId);
-		const originalMessage = recordOf(original.submissions[0]?.message);
-		const originalAttachment = recordOf(
-			arrayOf(originalMessage.attachments)[0],
+		const originalMessage = record.parse(original.submissions[0]?.message);
+		const originalAttachment = record.parse(
+			list.parse(originalMessage.attachments)[0],
 		);
 
 		await service.submitBuilder(
@@ -541,8 +550,10 @@ describe("ConversationsService", () => {
 		);
 
 		const detail = await service.builderById(conversation.id, userId);
-		const retryMessage = recordOf(detail.submissions.at(-1)?.message);
-		const retryAttachment = recordOf(arrayOf(retryMessage.attachments)[0]);
+		const retryMessage = record.parse(detail.submissions.at(-1)?.message);
+		const retryAttachment = record.parse(
+			list.parse(retryMessage.attachments)[0],
+		);
 		expect(retryAttachment.id).not.toBe(originalAttachment.id);
 		const stored = await service.attachment(String(retryAttachment.id), userId);
 		expect(Buffer.from(stored.content)).toEqual(bytes);
@@ -578,8 +589,8 @@ describe("ConversationsService", () => {
 			userId,
 		);
 		const sourceDetail = await service.builderById(source.id, userId);
-		const sourceMessage = recordOf(sourceDetail.submissions[0]?.message);
-		const attachment = recordOf(arrayOf(sourceMessage.attachments)[0]);
+		const sourceMessage = record.parse(sourceDetail.submissions[0]?.message);
+		const attachment = record.parse(list.parse(sourceMessage.attachments)[0]);
 
 		let submitError: unknown;
 		try {
@@ -842,13 +853,3 @@ describe("ConversationsService", () => {
 		).toBe(1);
 	});
 });
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function arrayOf(value: unknown): unknown[] {
-	return Array.isArray(value) ? value : [];
-}

@@ -133,10 +133,10 @@ export class SettingsService {
 					});
 				}
 			})
-			.catch((error: unknown) => {
+			.catch((cause: unknown) => {
 				this.logger.warn(
 					{ message: "Could not queue the waiting research" },
-					error instanceof Error ? error.stack : String(error),
+					cause instanceof Error ? cause.stack : String(cause),
 				);
 			});
 

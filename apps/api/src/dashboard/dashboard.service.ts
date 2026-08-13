@@ -1,5 +1,6 @@
 import { ActivityType, type Db, DealStage } from "@crm/db";
 import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
+import { activityMeta } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
@@ -282,7 +283,7 @@ export class DashboardService {
 			recentActivity: recentActivity.map(({ createdAt, meta, ...entry }) => ({
 				...entry,
 				createdAt: createdAt.toISOString(),
-				meta: meta as Record<string, unknown> | null,
+				meta: activityMeta.parse(meta),
 			})),
 		};
 	}

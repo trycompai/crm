@@ -1,6 +1,17 @@
-import type { Db } from "@crm/db";
+import type { Db, Prisma } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
+
+const storedRecipient = z.object({
+	email: z.string(),
+	name: z.string().nullable().catch(null),
+	kind: z.string().catch("to"),
+});
+
+type StoredRecipient = z.infer<typeof storedRecipient>;
+
+const storedRecipients = z.array(z.json()).catch([]);
 
 @Injectable()
 export class ConversationService {
@@ -142,22 +153,9 @@ export class ConversationService {
 	}
 }
 
-function recipientsOf(
-	value: unknown,
-): { email: string; name: string | null; kind: string }[] {
-	if (!Array.isArray(value)) return [];
-
-	return value.flatMap((entry) => {
-		if (typeof entry !== "object" || entry === null) return [];
-		const record = entry as Record<string, unknown>;
-		if (typeof record.email !== "string") return [];
-
-		return [
-			{
-				email: record.email,
-				name: typeof record.name === "string" ? record.name : null,
-				kind: typeof record.kind === "string" ? record.kind : "to",
-			},
-		];
+function recipientsOf(value: Prisma.JsonValue): StoredRecipient[] {
+	return storedRecipients.parse(value).flatMap((entry) => {
+		const parsed = storedRecipient.safeParse(entry);
+		return parsed.success ? [parsed.data] : [];
 	});
 }

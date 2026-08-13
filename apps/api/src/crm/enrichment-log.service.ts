@@ -1,4 +1,5 @@
 import { ActivityType, type Db } from "@crm/db";
+import type { ActivityMetaFields } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { ActivityStampService } from "./activity-stamp.service";
@@ -8,7 +9,7 @@ export type EnrichmentEvent = {
 	contactId?: string | null;
 	subject: string;
 	body?: string | null;
-	meta?: Record<string, unknown>;
+	meta?: ActivityMetaFields;
 };
 
 @Injectable()

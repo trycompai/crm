@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./activity-meta": "./src/activity-meta.ts",
 		"./agent-events": "./src/agent-events.ts",
 		"./agent-manifest": "./src/agent-manifest.ts",
 		"./builder-question": "./src/builder-question.ts",

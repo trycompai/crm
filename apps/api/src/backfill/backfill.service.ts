@@ -273,12 +273,14 @@ export class BackfillService implements OnModuleInit {
 			.map((row) => row.companyId)
 			.filter((id): id is string => id !== null);
 
-		return {
+		const where: Prisma.CompanyWhereInput = {
 			domain: { not: null },
 			logoUrl: null,
 			iconUrl: null,
-			...(recentlyChecked.length > 0 ? { id: { notIn: recentlyChecked } } : {}),
 		};
+		if (recentlyChecked.length > 0) where.id = { notIn: recentlyChecked };
+
+		return where;
 	}
 
 	/**
@@ -311,15 +313,17 @@ export class BackfillService implements OnModuleInit {
 			.map((row) => row.contactId)
 			.filter((id): id is string => id !== null);
 
-		return {
+		const where: Prisma.ContactWhereInput = {
 			imageUrl: null,
-			...(recentlyChecked.length > 0 ? { id: { notIn: recentlyChecked } } : {}),
 			OR: [
 				{ linkedinUrl: { not: null } },
 				{ githubUrl: { not: null } },
 				{ company: { domain: { not: null } } },
 			],
 		};
+		if (recentlyChecked.length > 0) where.id = { notIn: recentlyChecked };
+
+		return where;
 	}
 
 	private contactsNeverResearched(): Prisma.ContactWhereInput {
