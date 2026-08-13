@@ -45,7 +45,3 @@ export const CRM_EVENT_TYPES = Object.keys(CRM_EVENT_CATALOG) as [
 	CrmEventType,
 	...CrmEventType[],
 ];
-
-export function isCrmEventType(value: unknown): value is CrmEventType {
-	return typeof value === "string" && Object.hasOwn(CRM_EVENT_CATALOG, value);
-}

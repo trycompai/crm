@@ -9,6 +9,8 @@ import { commitSha } from "./version";
 
 const FLUSH_TIMEOUT_MS = 3_000;
 
+type CaptureMessage = Parameters<PostHog["capture"]>[0];
+
 type Debug = (message: string) => void;
 
 let debug: Debug = () => {};
@@ -73,22 +75,24 @@ export function resetTelemetryClient(): void {
 
 async function payload(
 	properties: Properties,
-): Promise<Record<string, unknown> | null> {
+): Promise<Omit<CaptureMessage, "event"> | null> {
 	const install = await readInstall();
 	if (!install) return null;
 
 	const sha = commitSha();
 
+	const identity: Properties = {
+		crm_version: install.version,
+		days_since_install: daysSince(install.createdAt),
+		is_vercel: Boolean(process.env.VERCEL),
+	};
+
+	if (sha) identity.git_commit_sha = sha;
+
 	return {
 		distinctId: install.uuid,
 		properties: {
-			...permitted({
-				crm_version: install.version,
-				days_since_install: daysSince(install.createdAt),
-				is_vercel: Boolean(process.env.VERCEL),
-				...(sha ? { git_commit_sha: sha } : {}),
-				...properties,
-			}),
+			...permitted({ ...identity, ...properties }),
 			$ip: null,
 			$process_person_profile: false,
 		},
@@ -125,12 +129,10 @@ async function send(
 		const message = await payload(properties);
 		if (!message) return false;
 
-		const full = {
-			...message,
-			event,
-			...(at ? { timestamp: at } : {}),
-			...(uuid ? { uuid } : {}),
-		} as Parameters<PostHog["capture"]>[0];
+		const full: CaptureMessage = { ...message, event };
+
+		if (at) full.timestamp = at;
+		if (uuid) full.uuid = uuid;
 
 		if (immediate) {
 			const before = failures;

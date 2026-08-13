@@ -34,7 +34,7 @@ export interface Touch {
 	at: Date;
 }
 
-const SEARCH: Record<string, string> = {
+const SEARCH = {
 	"google.": "Google",
 	"bing.": "Bing",
 	"duckduckgo.": "DuckDuckGo",
@@ -44,9 +44,9 @@ const SEARCH: Record<string, string> = {
 	"ecosia.": "Ecosia",
 	"startpage.": "Startpage",
 	"search.brave.": "Brave Search",
-};
+} satisfies Record<string, string>;
 
-const SOCIAL: Record<string, string> = {
+const SOCIAL = {
 	"linkedin.": "LinkedIn",
 	"lnkd.in": "LinkedIn",
 	"twitter.": "X",
@@ -63,13 +63,13 @@ const SOCIAL: Record<string, string> = {
 	"producthunt.": "Product Hunt",
 	"github.": "GitHub",
 	"slack.": "Slack",
-};
+} satisfies Record<string, string>;
 
-const MAIL: Record<string, string> = {
+const MAIL = {
 	"mail.google.": "Gmail",
 	"outlook.": "Outlook",
 	"mail.yahoo.": "Yahoo Mail",
-};
+} satisfies Record<string, string>;
 
 const SECOND_LEVEL = new Set([
 	"co",

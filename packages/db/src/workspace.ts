@@ -1,5 +1,11 @@
 import type { Db } from "./client";
-import type { WorkspaceProfileSections } from "./json";
+import {
+	type JsonObject,
+	type JsonValue,
+	jsonObject,
+	jsonText,
+	type WorkspaceProfileSections,
+} from "./json";
 
 export const WORKSPACE_ID = "workspace";
 
@@ -42,30 +48,26 @@ export const MAX_NARRATIVE = 320;
 export const MAX_LINE = 140;
 
 export function isOnboarded(metadata: string | null): boolean {
-	return typeof readMetadata(metadata).onboardedAt === "string";
+	return jsonText(readMetadata(metadata).onboardedAt) !== undefined;
 }
 
 export function markOnboarded(metadata: string | null, at: Date): string {
 	const current = readMetadata(metadata);
 
 	return JSON.stringify(
-		typeof current.onboardedAt === "string"
-			? current
-			: { ...current, onboardedAt: at.toISOString() },
+		jsonText(current.onboardedAt) === undefined
+			? { ...current, onboardedAt: at.toISOString() }
+			: current,
 	);
 }
 
-function readMetadata(metadata: string | null): Record<string, unknown> {
+function readMetadata(metadata: string | null): JsonObject {
 	if (!metadata) return {};
 
 	try {
-		const parsed: unknown = JSON.parse(metadata);
+		const parsed: JsonValue = JSON.parse(metadata);
 
-		return typeof parsed === "object" &&
-			parsed !== null &&
-			!Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
+		return jsonObject(parsed);
 	} catch {
 		return {};
 	}
@@ -213,14 +215,9 @@ function clamp(value: string | undefined, max: number): string | undefined {
 	return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
 }
 
-function readSections(value: unknown): WorkspaceProfileSections {
-	if (typeof value !== "object" || value === null) return {};
-
-	const record = value as Record<string, unknown>;
-	const text = (key: string) =>
-		typeof record[key] === "string" && record[key].trim()
-			? record[key].trim()
-			: undefined;
+function readSections(value: JsonValue): WorkspaceProfileSections {
+	const record = jsonObject(value);
+	const text = (key: string) => jsonText(record[key])?.trim() || undefined;
 
 	return trimSections({
 		sells: text("sells"),

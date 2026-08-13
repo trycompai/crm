@@ -174,10 +174,12 @@ export function summariseSlackScopes(
 	}).filter((group) => group.total > 0);
 }
 
-export function slackScopeDrift(granted: readonly string[]): {
+export type SlackScopeDrift = {
 	extra: SlackScope[];
 	missing: SlackScope[];
-} {
+};
+
+export function slackScopeDrift(granted: readonly string[]): SlackScopeDrift {
 	const held = new Set(granted);
 	return {
 		extra: describeSlackScopes(

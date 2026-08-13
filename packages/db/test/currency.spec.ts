@@ -19,7 +19,9 @@ type Row = {
 	provider: string | null;
 };
 
-function fakeDb(rows: Row[]): { db: Db; calls: number } {
+type FakeDb = { db: Db; calls: number };
+
+function fakeDb(rows: Row[]): FakeDb {
 	const state = { calls: 0 };
 
 	const db = {

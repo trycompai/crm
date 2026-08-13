@@ -1118,10 +1118,10 @@ export class ConversationsService {
 	}
 }
 
-function isUniqueConstraint(error: unknown): boolean {
+function isUniqueConstraint(cause: unknown): boolean {
 	return (
-		error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-		error.code === "P2002"
+		cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+		cause.code === "P2002"
 	);
 }
 

@@ -12,11 +12,10 @@ export class PrismaLogBridge implements OnModuleInit, OnApplicationShutdown {
 
 	onModuleInit(): void {
 		setPrismaLogSink(({ level, message, target, durationMs }) => {
-			const payload = {
-				message,
-				target,
-				...(durationMs === undefined ? {} : { durationMs }),
-			};
+			const payload =
+				durationMs === undefined
+					? { message, target }
+					: { message, target, durationMs };
 
 			if (level === "error") {
 				this.logger.error(payload);

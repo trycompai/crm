@@ -314,7 +314,9 @@ const EMAIL_SUBJECTS = [
 	"Intro to your implementation lead",
 ] as const;
 
-const TRANSLITERATIONS: Record<string, string> = {
+type Transliterations = Record<string, string>;
+
+const TRANSLITERATIONS: Transliterations = {
 	ø: "o",
 	æ: "ae",
 	œ: "oe",
@@ -476,7 +478,9 @@ type SeededDeal = {
 	closed: boolean;
 };
 
-const SEED_RATES: Record<string, number> = {
+type SeedRates = Record<string, number>;
+
+const SEED_RATES: SeedRates = {
 	EUR: 1.09,
 	GBP: 1.27,
 	CAD: 0.73,

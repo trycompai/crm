@@ -11,8 +11,7 @@ function findRoot(start: string): string | null {
 			try {
 				const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
 				if (
-					typeof parsed === "object" &&
-					parsed !== null &&
+					parsed instanceof Object &&
 					"workspaces" in parsed &&
 					parsed.workspaces !== undefined
 				) {
@@ -52,11 +51,7 @@ describe("finding the workspace root", () => {
 		const manifest: unknown = JSON.parse(
 			readFileSync(join(repoRoot, "apps", "api", "package.json"), "utf8"),
 		);
-		expect(
-			typeof manifest === "object" &&
-				manifest !== null &&
-				"workspaces" in manifest,
-		).toBe(false);
+		expect(manifest instanceof Object && "workspaces" in manifest).toBe(false);
 	});
 });
 

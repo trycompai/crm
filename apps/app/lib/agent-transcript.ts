@@ -503,7 +503,7 @@ const dealListResult = z
 	.nullable()
 	.catch(null);
 
-export function dealListResultOf(value: unknown): DealListResult | null {
+export function dealListResultOf(value: EveToolOutput): DealListResult | null {
 	return dealListResult.parse(value);
 }
 

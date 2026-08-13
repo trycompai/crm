@@ -1,15 +1,12 @@
 import { db } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
-import { schemas } from "@crm/validation";
+import type { OauthAccess } from "@crm/validation";
 import { SLACK_PROVIDER_ID } from "./scopes";
 import { SLACK_CONNECTION } from "./slack-config";
 
-export async function rememberSlackInstall(raw: unknown): Promise<void> {
-	const parsed = schemas.slack.installation.safeParse(raw);
-	if (!parsed.success) return;
-
-	const { team, authed_user: installer } = parsed.data;
-	if (!installer) return;
+export async function rememberSlackInstall(grant: OauthAccess): Promise<void> {
+	const { team, authed_user: installer } = grant;
+	if (!team || !installer) return;
 
 	const install = {
 		teamId: team.id,

@@ -19,6 +19,7 @@
 		"./fx": "./src/fx.ts",
 		"./images": "./src/images.ts",
 		"./idempotency": "./src/idempotency.ts",
+		"./json": "./src/json.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",

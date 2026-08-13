@@ -56,7 +56,7 @@ export type {
 	EveToolOutcome,
 	EveToolOutput,
 } from "./eve-tool";
-export type { AuthTest, Installation, JoinPayload, Reply } from "./slack";
+export type { AuthTest, JoinPayload, OauthAccess, Reply } from "./slack";
 
 export class InvalidInput extends Error {
 	override readonly name = "InvalidInput";

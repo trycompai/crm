@@ -30,7 +30,7 @@ function retryQuery(failureCount: number, error: Error): boolean {
 let browserQueryClient: QueryClient | undefined;
 
 export function getQueryClient(): QueryClient {
-	if (typeof window === "undefined") {
+	if (globalThis.window === undefined) {
 		return makeQueryClient();
 	}
 	browserQueryClient ??= makeQueryClient();

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import {
+	type JsonObject,
+	type JsonValue,
+	jsonObject,
+	jsonText,
+} from "@crm/db/json";
 import { captureNow, resetTelemetryClient } from "../src/client";
 import { milestone } from "../src/events";
 import { forgetInstall, readInstall, stableUuid } from "../src/install";
@@ -12,12 +18,15 @@ const real = {
 	doNotTrack: process.env.DO_NOT_TRACK,
 };
 
-let calls: { url: string; body: unknown }[] = [];
+let calls: { url: string; body: JsonValue }[] = [];
 
 function stubFetch(): void {
 	calls = [];
 
-	globalThis.fetch = (async (input: unknown, init?: { body?: unknown }) => {
+	globalThis.fetch = (async (
+		input: RequestInfo | URL,
+		init?: { body?: BodyInit | null },
+	) => {
 		calls.push({ url: String(input), body: await decode(init?.body) });
 
 		return new Response(JSON.stringify({ status: 1 }), {
@@ -27,17 +36,20 @@ function stubFetch(): void {
 	}) as typeof fetch;
 }
 
-async function decode(body: unknown): Promise<unknown> {
+async function decode(body: BodyInit | null | undefined): Promise<JsonValue> {
 	if (body === undefined || body === null) return null;
-	if (typeof body === "string") return JSON.parse(body);
+	if (body instanceof Blob)
+		return unzip(new Uint8Array(await body.arrayBuffer()));
+	if (body instanceof ArrayBuffer) return unzip(new Uint8Array(body));
+	if (ArrayBuffer.isView(body)) {
+		return unzip(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
+	}
 
-	const bytes =
-		body instanceof Blob
-			? new Uint8Array(await body.arrayBuffer())
-			: new Uint8Array(body as ArrayBufferLike);
+	return JSON.parse(String(body));
+}
 
-	const text = new TextDecoder().decode(Bun.gunzipSync(bytes));
-	return JSON.parse(text);
+function unzip(bytes: Uint8Array): JsonValue {
+	return JSON.parse(new TextDecoder().decode(Bun.gunzipSync(bytes)));
 }
 
 beforeEach(() => {
@@ -239,26 +251,30 @@ describe("milestone", () => {
 });
 
 type Captured = {
-	event: string;
-	distinct_id: string;
-	uuid?: string;
-	properties: Record<string, unknown>;
+	event: string | undefined;
+	distinct_id: string | undefined;
+	uuid: string | undefined;
+	properties: JsonObject;
 };
 
-function eventOf(body: unknown): Captured {
-	const batch = (body as { batch?: Captured[] })?.batch;
-	const event = batch?.[0] ?? (body as Captured);
+function eventOf(body: JsonValue | undefined): Captured {
+	const sent = jsonObject(body);
+	const batch = sent.batch;
+	const first = Array.isArray(batch) ? batch[0] : undefined;
+	const event = jsonObject(first ?? sent);
 
 	return {
-		event: event?.event,
-		distinct_id: event?.distinct_id,
-		uuid: event?.uuid,
-		properties: event?.properties ?? {},
+		event: jsonText(event.event),
+		distinct_id: jsonText(event.distinct_id),
+		uuid: jsonText(event.uuid),
+		properties: jsonObject(event.properties),
 	};
 }
 
 function sentSteps(): string[] {
-	return calls.map((call) => eventOf(call.body).event).filter(Boolean);
+	return calls
+		.map((call) => eventOf(call.body).event)
+		.filter((step) => step !== undefined);
 }
 
 async function installUuid(): Promise<string> {

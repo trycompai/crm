@@ -7,7 +7,9 @@ export { isMirrored, isOptimizable } from "./images";
 const MAX_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 
-const ALLOWED: Record<string, string> = {
+type ExtensionByMediaType = Record<string, string>;
+
+const ALLOWED: ExtensionByMediaType = {
 	"image/jpeg": "jpg",
 	"image/png": "png",
 	"image/webp": "webp",
