@@ -32,7 +32,7 @@ async function write(
 	const data = {
 		enrichmentStatus: status,
 		enrichmentError: error,
-		...(status === EnrichmentStatus.COMPLETE ? { enrichedAt: new Date() } : {}),
+		enrichedAt: status === EnrichmentStatus.COMPLETE ? new Date() : undefined,
 	};
 
 	const guard: SettleGuard = onlyIfRunning

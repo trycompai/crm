@@ -10,10 +10,12 @@ export const focus = defineState("crm.focus", () => ({
 	exhausted: false,
 }));
 
-export function currentFocus(): {
+export type CurrentFocus = {
 	contactId: string | null;
 	sessionId: string | null;
-} {
+};
+
+export function currentFocus(): CurrentFocus {
 	try {
 		const state = focus.get();
 		return { contactId: state.contactId, sessionId: state.sessionId };

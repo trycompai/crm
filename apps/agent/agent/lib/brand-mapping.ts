@@ -115,7 +115,7 @@ export function brandToUpdate(
 		value: string | null,
 	) => {
 		if (value && fillable(key, current)) {
-			(update as Record<string, unknown>)[key] = value;
+			update[key] = value;
 		}
 	};
 
@@ -162,15 +162,9 @@ export function stillFillable(
 	update: BrandUpdate,
 	current: CompanySnapshot,
 ): BrandUpdate {
-	const next: BrandUpdate = {};
-
-	for (const [key, value] of Object.entries(update)) {
-		if (fillable(key, current)) {
-			(next as Record<string, unknown>)[key] = value;
-		}
-	}
-
-	return next;
+	return Object.fromEntries(
+		Object.entries(update).filter(([key]) => fillable(key, current)),
+	);
 }
 
 export function filledFields(update: BrandUpdate): string[] {

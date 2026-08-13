@@ -18,15 +18,17 @@ const FIELDS = {
 
 export type FactField = keyof typeof FIELDS;
 
+export type FactColumn = NonNullable<(typeof FIELDS)[FactField]["column"]>;
+
 export const FACT_FIELDS = Object.keys(FIELDS) as FactField[];
 
 export type FactSubject = {
 	email: string | null;
 	firstName: string;
 	lastName: string | null;
-} & Record<string, unknown>;
+} & { [Column in FactColumn]: string | null };
 
-export function factColumn(field: FactField): string | null {
+export function factColumn(field: FactField): FactColumn | null {
 	return FIELDS[field].column;
 }
 
@@ -310,12 +312,8 @@ function humanOwns({
 	hasAgentFact,
 }: {
 	field: FactField;
-	column: string | null;
-	contact: {
-		email: string | null;
-		firstName: string;
-		lastName: string | null;
-	} & Record<string, unknown>;
+	column: FactColumn | null;
+	contact: FactSubject;
 	hasAgentFact: boolean;
 }): boolean {
 	if (field === "name") {
@@ -334,8 +332,8 @@ function isEmpty({
 	hasAgentFact,
 }: {
 	field: FactField;
-	column: string | null;
-	contact: Record<string, unknown>;
+	column: FactColumn | null;
+	contact: FactSubject;
 	hasAgentFact: boolean;
 }): boolean {
 	if (hasAgentFact) return false;
@@ -345,10 +343,10 @@ function isEmpty({
 	return !contact[column];
 }
 
-const HOST_ALIASES: Record<string, string> = {
-	"twitter.com": "x.com",
-	"mobile.twitter.com": "x.com",
-};
+const HOST_ALIASES = new Map([
+	["twitter.com", "x.com"],
+	["mobile.twitter.com", "x.com"],
+]);
 
 export function sameValue(a: string, b: string): boolean {
 	return canonicalValue(a) === canonicalValue(b);
@@ -363,7 +361,7 @@ export function canonicalValue(value: string): string {
 	const host = url.host.replace(/^www\./, "");
 	const path = url.pathname.replace(/\/+$/, "");
 
-	return `${HOST_ALIASES[host] ?? host}${path}`;
+	return `${HOST_ALIASES.get(host) ?? host}${path}`;
 }
 
 function asWebUrl(value: string): URL | null {

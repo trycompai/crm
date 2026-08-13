@@ -1,7 +1,15 @@
 import { ActivityType, db, EmailDirection } from "@crm/db";
+import { z } from "zod";
 import { isDerivedName } from "./names";
 
 const BODY_LIMIT = 4000;
+
+const stageChangeMeta = z
+	.object({
+		from: z.string().nullable().catch(null),
+		to: z.string().nullable().catch(null),
+	})
+	.catch({ from: null, to: null });
 
 export type AccountThread = {
 	subject: string | null;
@@ -487,10 +495,10 @@ export async function readDealHistory(
 			role,
 		})),
 		stageHistory: stageChanges.map((change) => {
-			const meta = (change.meta ?? {}) as { from?: unknown; to?: unknown };
+			const meta = stageChangeMeta.parse(change.meta);
 			return {
-				from: typeof meta.from === "string" ? meta.from : null,
-				to: typeof meta.to === "string" ? meta.to : null,
+				from: meta.from,
+				to: meta.to,
 				at: change.createdAt.toISOString(),
 			};
 		}),

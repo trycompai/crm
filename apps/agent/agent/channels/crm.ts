@@ -26,7 +26,7 @@ import {
 } from "../lib/dispatch";
 import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
-import { finishRun } from "../lib/run-runtime";
+import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { completeTask, taskSubject } from "../lib/tasks";
@@ -300,7 +300,7 @@ export default defineChannel({
 			try {
 				await finishRun(runId, {
 					summary: run.summary ?? "The agent run completed.",
-					result: recordOf(run.result),
+					result: runResultOf(run.result),
 				});
 			} catch (error) {
 				await failRun(

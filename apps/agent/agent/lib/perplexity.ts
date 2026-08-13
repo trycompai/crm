@@ -44,7 +44,7 @@ export async function ask(
 						: []),
 					{ role: "user", content: question },
 				],
-				...(options.domains ? { search_domain_filter: options.domains } : {}),
+				search_domain_filter: options.domains,
 			}),
 		});
 

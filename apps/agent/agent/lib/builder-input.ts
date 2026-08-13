@@ -1,6 +1,7 @@
 import { db, type Prisma } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { type InputRequested, parse, schemas } from "@crm/validation";
+import type { ChannelEvents } from "eve/channels";
 import {
 	builderIdFromToken,
 	builderToken,
@@ -12,8 +13,12 @@ const BUILDER_INPUT = {
 	idPrefix: "builder-input",
 } as const;
 
+type InputRequestedEvent = Parameters<
+	NonNullable<ChannelEvents["input.requested"]>
+>[0];
+
 export async function persistBuilderInputRequest(
-	data: unknown,
+	data: InputRequestedEvent,
 	continuationToken: string | undefined,
 	authenticatedConversationId?: string | null,
 ): Promise<boolean> {

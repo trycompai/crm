@@ -1,4 +1,4 @@
-import { db, EnrichmentStatus } from "@crm/db";
+import { db, EnrichmentStatus, type Prisma } from "@crm/db";
 import { domainOf, isDerivedName } from "./names";
 import type { Person } from "./socials";
 
@@ -340,9 +340,7 @@ export async function setEnrichmentStatus(
 		data: {
 			enrichmentStatus: status,
 			enrichmentError: error ?? null,
-			...(status === EnrichmentStatus.COMPLETE
-				? { enrichedAt: new Date() }
-				: {}),
+			enrichedAt: status === EnrichmentStatus.COMPLETE ? new Date() : undefined,
 		},
 	});
 }
@@ -351,7 +349,7 @@ export async function writeTimelineNote(
 	contactId: string,
 	subject: string,
 	body: string,
-	meta: Record<string, unknown> = {},
+	meta: Prisma.InputJsonObject = {},
 ): Promise<string | null> {
 	const contact = await db.contact.findUnique({
 		where: { id: contactId },

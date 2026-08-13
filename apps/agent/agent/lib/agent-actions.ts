@@ -9,12 +9,14 @@ export const AGENT_ACTION_EXECUTORS = {
 	[AGENT_ACTION_TYPES.SLACK_MESSAGE_POST]: "post_slack_message",
 } as const satisfies Record<AgentActionType, string>;
 
-export function isAgentActionType(value: unknown): value is AgentActionType {
-	return Object.hasOwn(AGENT_ACTION_EXECUTORS, String(value));
+export function isAgentActionType(value: string): value is AgentActionType {
+	return Object.hasOwn(AGENT_ACTION_EXECUTORS, value);
 }
 
+export type AgentActionDependencyId = "slack";
+
 export type AgentActionDependency = {
-	readonly id: string;
+	readonly id: AgentActionDependencyId;
 	readonly label: string;
 	readonly resourceId: string;
 	readonly fix: string;
