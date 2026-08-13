@@ -2,9 +2,20 @@ import type { ZodType, z } from "zod";
 import * as agentEvents from "./agent-events";
 import * as agentManifest from "./agent-manifest";
 import * as agents from "./agents";
+import * as builderQuestion from "./builder-question";
+import * as eveStream from "./eve-stream";
+import * as eveTool from "./eve-tool";
 import * as slack from "./slack";
 
-export const schemas = { agentEvents, agentManifest, agents, slack } as const;
+export const schemas = {
+	agentEvents,
+	agentManifest,
+	agents,
+	builderQuestion,
+	eveStream,
+	eveTool,
+	slack,
+} as const;
 
 export type { CrmEventTask } from "./agent-events";
 export type {
@@ -25,6 +36,23 @@ export type {
 	InputRequested,
 	Permission,
 } from "./agents";
+export type {
+	BuilderQuestion,
+	BuilderQuestionOption,
+} from "./builder-question";
+export type {
+	EveRequestedActions,
+	EveSettledAction,
+	EveStreamEvent,
+	EveTurnFailure,
+	EveTurnReference,
+} from "./eve-stream";
+export type {
+	EveToolFields,
+	EveToolInput,
+	EveToolOutcome,
+	EveToolOutput,
+} from "./eve-tool";
 export type { AuthTest, Installation, JoinPayload, Reply } from "./slack";
 
 export class InvalidInput extends Error {

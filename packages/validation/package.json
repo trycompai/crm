@@ -6,7 +6,10 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./agent-events": "./src/agent-events.ts",
-		"./agent-manifest": "./src/agent-manifest.ts"
+		"./agent-manifest": "./src/agent-manifest.ts",
+		"./builder-question": "./src/builder-question.ts",
+		"./eve-stream": "./src/eve-stream.ts",
+		"./eve-tool": "./src/eve-tool.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

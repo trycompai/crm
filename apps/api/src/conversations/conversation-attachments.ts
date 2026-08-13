@@ -1,4 +1,7 @@
 import type { Prisma } from "@crm/db";
+import { z } from "zod";
+
+const builderMessageFields = z.record(z.string(), z.json()).catch({});
 
 export type StoredBuilderAttachment = {
 	id: string;
@@ -12,9 +15,8 @@ export function builderMessageWithAttachments(
 	attachments: StoredBuilderAttachment[],
 	shareToken?: string,
 ): Prisma.JsonObject {
-	const message = recordOf(value);
 	return {
-		...message,
+		...builderMessageFields.parse(value),
 		attachments: attachments.map((attachment) => ({
 			id: attachment.id,
 			name: attachment.name,
@@ -24,7 +26,7 @@ export function builderMessageWithAttachments(
 				? attachmentUrl(attachment.id, shareToken)
 				: null,
 		})),
-	} as Prisma.JsonObject;
+	};
 }
 
 export function isPreviewableImage(mediaType: string): boolean {
@@ -36,10 +38,4 @@ export function isPreviewableImage(mediaType: string): boolean {
 function attachmentUrl(id: string, shareToken?: string): string {
 	const path = `/api/conversations/attachments/${encodeURIComponent(id)}`;
 	return shareToken ? `${path}?share=${encodeURIComponent(shareToken)}` : path;
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
 }

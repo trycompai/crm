@@ -11,7 +11,12 @@ const ORDER = [
 	DealStage.UNQUALIFIED_TO_BUY,
 ] as const;
 
-const PRESENTATION: Record<DealStage, { label: string; tone: StatusTone }> = {
+type DealStagePresentation = Record<
+	DealStage,
+	{ label: string; tone: StatusTone }
+>;
+
+const PRESENTATION: DealStagePresentation = {
 	DEMO_BOOKED: { label: "Demo booked", tone: "neutral" },
 	QUALIFIED_TO_BUY: { label: "Qualified to buy", tone: "info" },
 	DECISION_MAKER_BOUGHT_IN: { label: "Decision maker in", tone: "info" },

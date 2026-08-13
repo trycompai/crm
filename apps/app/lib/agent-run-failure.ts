@@ -1,4 +1,6 @@
-const REASONS: Record<string, string> = {
+type RunFailureReasons = Record<string, string>;
+
+const REASONS: RunFailureReasons = {
 	ACTION_NOT_PERFORMED:
 		"The agent finished without doing what it was built to do. Open the run to see which step it skipped.",
 	NO_EXECUTOR:

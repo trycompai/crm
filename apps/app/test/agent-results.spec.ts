@@ -30,7 +30,7 @@ const page = (status: string, ids: string[]) => ({
 
 const did = (
 	id: string,
-	output: unknown,
+	output: Extract<TranscriptItem, { kind: "did" }>["output"],
 	extra: Partial<Extract<TranscriptItem, { kind: "did" }>> = {},
 ): TranscriptItem => ({
 	kind: "did",

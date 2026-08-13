@@ -35,10 +35,13 @@ const CONTACT_LINKS: SocialLink<ContactLinks>[] = [
 	{ key: "githubUrl", label: "GitHub", icon: LogoGithub },
 ];
 
-function present<T>(record: T, links: SocialLink<T>[]) {
+function present<T extends Record<string, string | null>>(
+	record: T,
+	links: SocialLink<T>[],
+) {
 	return links.flatMap((link) => {
 		const href = record[link.key];
-		return typeof href === "string" && href ? [{ ...link, href }] : [];
+		return href ? [{ ...link, href }] : [];
 	});
 }
 

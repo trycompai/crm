@@ -1,3 +1,4 @@
+import type { EveToolOutput } from "@crm/validation/eve-tool";
 import type { TranscriptItem } from "./agent-transcript";
 
 export type AnchoredResult<T> = { itemId: string; value: T };
@@ -10,7 +11,7 @@ export function anchorResults<T>({
 }: {
 	items: readonly TranscriptItem[];
 	tool: string;
-	validate: (output: unknown) => T | null;
+	validate: (output: EveToolOutput) => T | null;
 	group?: (
 		results: readonly AnchoredResult<T>[],
 	) => readonly AnchoredResult<T>[];
