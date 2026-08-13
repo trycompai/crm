@@ -1,4 +1,5 @@
 import { Skeleton } from "@crm/ui/components/skeleton";
+import type { EveToolOutput } from "@crm/validation/eve-tool";
 import type { ReactNode } from "react";
 import { anchorResults } from "@/lib/agent-results";
 import {
@@ -22,7 +23,7 @@ function defineResult<T>({
 	skeleton,
 }: {
 	tool: string;
-	validate: (output: unknown) => T | null;
+	validate: (output: EveToolOutput) => T | null;
 	group?: (
 		results: readonly { itemId: string; value: T }[],
 	) => readonly { itemId: string; value: T }[];
@@ -58,22 +59,27 @@ const listSkeleton = (
 	</div>
 );
 
-const REGISTRY: Record<string, ResultEntry> = {
-	list_deals: defineResult<DealListResult>({
-		tool: "list_deals",
-		validate: dealListResultOf,
-		group: groupDealListPages,
-		render: (result, key) => <DealListResultTable key={key} result={result} />,
-		skeleton: listSkeleton,
-	}),
-};
+const REGISTRY = new Map<string, ResultEntry>([
+	[
+		"list_deals",
+		defineResult<DealListResult>({
+			tool: "list_deals",
+			validate: dealListResultOf,
+			group: groupDealListPages,
+			render: (result, key) => (
+				<DealListResultTable key={key} result={result} />
+			),
+			skeleton: listSkeleton,
+		}),
+	],
+]);
 
 export function hasAgentResult(tool: string): boolean {
-	return tool in REGISTRY;
+	return REGISTRY.has(tool);
 }
 
 export function agentResultSkeleton(tool: string): ReactNode {
-	return REGISTRY[tool]?.skeleton ?? null;
+	return REGISTRY.get(tool)?.skeleton ?? null;
 }
 
 export function agentResultsByItem(
@@ -81,7 +87,7 @@ export function agentResultsByItem(
 ): Map<string, ReactNode[]> {
 	const rendered = new Map<string, ReactNode[]>();
 
-	for (const entry of Object.values(REGISTRY)) {
+	for (const entry of REGISTRY.values()) {
 		for (const [itemId, nodes] of entry.anchor(items)) {
 			const bucket = rendered.get(itemId);
 			if (bucket) bucket.push(...nodes);

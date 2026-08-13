@@ -27,14 +27,18 @@ function stub(handler: (url: string) => Promise<Response>) {
 		handler(String(input))) as unknown as typeof fetch;
 }
 
-function json(body: unknown, status = 200) {
+type GateResponse =
+	| { result: { data: unknown } }
+	| { error: { message: string } };
+
+function json(body: GateResponse, status = 200) {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "content-type": "application/json" },
 	});
 }
 
-function answerWith(body: unknown, status = 200) {
+function answerWith(body: GateResponse, status = 200) {
 	stub(async () => json(body, status));
 }
 

@@ -123,10 +123,12 @@ function GoogleUnavailable() {
 	);
 }
 
-const CONNECT_ERRORS: Record<string, string> = {
-	"email_doesn't_match":
+const CONNECT_ERRORS = new Map([
+	[
+		"email_doesn't_match",
 		"That Google account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Google account that matches your sign-in address.",
-};
+	],
+]);
 
 function ConnectGoogle({
 	slug,
@@ -196,7 +198,7 @@ function ConnectGoogle({
 						<Icon icon={Warning} />
 						<AlertTitle>Google did not finish connecting</AlertTitle>
 						<AlertDescription>
-							{CONNECT_ERRORS[connectError] ??
+							{CONNECT_ERRORS.get(connectError) ??
 								"Google returned an error before the connection was made. Try again."}
 						</AlertDescription>
 					</Alert>

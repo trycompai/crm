@@ -6,13 +6,19 @@ import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
+import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+type ProviderChoice = {
+	label: string;
+	Logo: FC<SVGProps<SVGSVGElement>>;
+};
 
 const PROVIDERS = {
 	google: { label: "Continue with Google", Logo: GoogleLogo },
 	microsoft: { label: "Continue with Microsoft", Logo: MicrosoftLogo },
-} as const satisfies Record<MailboxProviderId, unknown>;
+} as const satisfies Record<MailboxProviderId, ProviderChoice>;
 
 export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 	const [pending, setPending] = useState(false);

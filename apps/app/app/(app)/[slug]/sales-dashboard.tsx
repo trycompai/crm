@@ -58,11 +58,8 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 	} = summary;
 
 	const money = (cents: number) => formatMoneyCompact(cents, reportingCurrency);
-	const exact = (value: unknown) =>
-		formatMoney(
-			typeof value === "number" ? value : Number(value),
-			reportingCurrency,
-		);
+	const exact = (value: number | string) =>
+		formatMoney(Number(value), reportingCurrency);
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 

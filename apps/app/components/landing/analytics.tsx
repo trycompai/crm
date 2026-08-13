@@ -32,7 +32,7 @@ export function captureLanding(
 	event: "setup_prompt_copied" | "github_star_clicked",
 	location: CtaLocation,
 ): void {
-	if (typeof window === "undefined") return;
+	if (globalThis.window === undefined) return;
 	if (!analyticsAllowed(window.location.hostname)) return;
 
 	import("posthog-js")

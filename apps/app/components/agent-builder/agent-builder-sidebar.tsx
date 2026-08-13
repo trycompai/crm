@@ -234,18 +234,16 @@ function groupConversations(conversations: Conversation[], now: number) {
 	if (!now) return [];
 
 	const labels: ChatDateGroup[] = ["Today", "Yesterday", "Last 7 days"];
-	const items: Record<ChatDateGroup, Conversation[]> = {
-		Today: [],
-		Yesterday: [],
-		"Last 7 days": [],
-	};
+	const items = new Map<ChatDateGroup, Conversation[]>(
+		labels.map((label) => [label, []]),
+	);
 
 	for (const conversation of conversations) {
 		const label = chatDateGroup(conversation.lastMessageAt, now);
-		if (label) items[label].push(conversation);
+		if (label) items.get(label)?.push(conversation);
 	}
 
 	return labels
-		.map((label) => ({ label, items: items[label] }))
+		.map((label) => ({ label, items: items.get(label) ?? [] }))
 		.filter((group) => group.items.length > 0);
 }

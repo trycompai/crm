@@ -42,6 +42,7 @@ import type { EveMessage, EveMessageInputRequest } from "eve/react";
 import Link from "next/link";
 import { Fragment, type ReactNode, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import {
 	AgentClarificationComposer,
 	type ClarificationResponse,
@@ -101,21 +102,87 @@ const BUILDER_STEP_ARTIFACTS = [
 	"agent/manifest.json",
 	"agent/README.md",
 ] as const;
-type BuilderSubmission = {
-	id: string;
-	createdAt: string;
-	clientRequestId?: string | null;
-	commandType: "CHAT" | "CREATE_AGENT";
-	message: unknown;
-	status: string;
-	errorMessage: string | null;
-};
+const submissionResource = z.object({
+	kind: z.enum(["integration", "company", "contact", "deal"]),
+	id: z.string().min(1),
+	label: z.string().min(1),
+	detail: z.string().nullable().optional().catch(null),
+	imageUrl: z.string().nullable().optional().catch(null),
+});
+
+const storedAttachment = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	type: z.string().min(1),
+	size: z.number(),
+	previewUrl: z.string().nullable().optional().catch(null),
+});
+
+const uploadAttachment = z.object({
+	name: z.string().min(1),
+	type: z.string().min(1),
+	size: z.number(),
+	contentBase64: z.string().min(1),
+	previewUrl: z.string().nullable().optional().catch(null),
+});
+
+const builderMessage = z
+	.object({
+		text: z.string().nullable().catch(null),
+		resources: z.array(submissionResource).catch([]),
+		attachments: z
+			.array(z.union([storedAttachment, uploadAttachment]))
+			.catch([]),
+		inputResponse: z
+			.object({ requestId: z.string().min(1) })
+			.nullable()
+			.catch(null),
+	})
+	.catch({
+		text: null,
+		resources: [],
+		attachments: [],
+		inputResponse: null,
+	});
+
+type BuilderMessage = z.infer<typeof builderMessage>;
+
+const builderSubmissions = z.array(
+	z.object({
+		id: z.string(),
+		createdAt: z.string(),
+		clientRequestId: z.string().nullable().catch(null),
+		commandType: z.enum(["CHAT", "CREATE_AGENT"]),
+		message: builderMessage,
+		status: z.string(),
+		errorMessage: z.string().nullable().catch(null),
+	}),
+);
+
+type BuilderSubmission = z.infer<typeof builderSubmissions>[number];
+
+const streamEventShape = z.object({
+	type: z.string().min(1),
+	meta: z.object({ id: z.string().min(1), at: z.string().min(1) }),
+});
+
+const streamEvents = z
+	.array(
+		z
+			.custom<MessageStreamEvent>(
+				(value) => streamEventShape.safeParse(value).success,
+			)
+			.nullable()
+			.catch(null),
+	)
+	.catch([])
+	.transform((events) => events.filter((event) => event !== null));
 
 type PendingSubmission = {
 	clientRequestId: string;
 	createdAt: string;
 	commandType: "CHAT" | "CREATE_AGENT";
-	message: unknown;
+	message: BuilderMessage;
 };
 
 export function AgentBuilderChat({
@@ -227,7 +294,7 @@ export function AgentBuilderChat({
 	}
 
 	const data = conversation.data ?? (initialData as Conversation);
-	const submissions = data.submissions as BuilderSubmission[];
+	const submissions = builderSubmissions.parse(data.submissions);
 	const confirmedRequestIds = new Set(
 		submissions
 			.map((submission) => submission.clientRequestId)
@@ -236,8 +303,7 @@ export function AgentBuilderChat({
 	const pendingSubmissions = sending.filter(
 		(item) => !confirmedRequestIds.has(item.clientRequestId),
 	);
-	const persistedEvents = (events.data ??
-		[]) as unknown as MessageStreamEvent[];
+	const persistedEvents = streamEvents.parse(events.data ?? []);
 	const streamKey = builderSessionStreamKey(
 		data.sessionId,
 		submissions.at(-1)?.id ?? null,
@@ -282,6 +348,7 @@ export function AgentBuilderChat({
 					text: prompt.message,
 					resources: prompt.resources,
 					attachments: prompt.attachments,
+					inputResponse: null,
 				},
 			},
 		]);
@@ -382,6 +449,7 @@ export function AgentBuilderChat({
 										submission={{
 											id: item.clientRequestId,
 											createdAt: item.createdAt,
+											clientRequestId: item.clientRequestId,
 											commandType: item.commandType,
 											message: item.message,
 											status: "PENDING",
@@ -534,13 +602,15 @@ function BuilderEventFollower({
 			}
 		};
 
-		void follow()
-			.catch((error: unknown) => {
+		void (async () => {
+			try {
+				await follow();
+			} catch (error) {
 				if (!controller.signal.aborted) console.error(error);
-			})
-			.finally(() => {
+			} finally {
 				if (!controller.signal.aborted) onEnded();
-			});
+			}
+		})();
 
 		return () => controller.abort();
 	});
@@ -596,9 +666,8 @@ function SharedAgentChat({
 }: {
 	conversation: SharedConversation;
 }) {
-	const submissions =
-		conversation.submissions as unknown as BuilderSubmission[];
-	const events = conversation.events as unknown as MessageStreamEvent[];
+	const submissions = builderSubmissions.parse(conversation.submissions);
+	const events = streamEvents.parse(conversation.events);
 	const messages = messagesFromEvents(events);
 	const timeline = conversationTimeline(submissions, events, messages);
 	const answeredQuestionIds = questionResponseIds(submissions);
@@ -740,13 +809,14 @@ function UserSubmission({
 	error: string | null;
 	sending?: boolean;
 }) {
-	const message = builderMessageOf(submission.message);
+	const message = submission.message;
+	const messageText = message.text ?? "Message unavailable";
 	const command =
 		submission.commandType === "CREATE_AGENT"
-			? consumeBuilderCommand(message.text)
+			? consumeBuilderCommand(messageText)
 			: null;
-	const text = command?.body ?? message.text;
-	const response = inputResponseOf(submission.message);
+	const text = command?.body ?? messageText;
+	const response = message.inputResponse;
 
 	return (
 		<div
@@ -1425,19 +1495,6 @@ const RESOURCE_ICONS = {
 	deal: Partnership,
 } as const;
 
-function builderMessageOf(message: unknown) {
-	const row = recordOf(message);
-	return {
-		text: typeof row.text === "string" ? row.text : "Message unavailable",
-		resources: Array.isArray(row.resources)
-			? (row.resources as BuilderPrompt["resources"])
-			: [],
-		attachments: Array.isArray(row.attachments)
-			? (row.attachments as BuilderPrompt["attachments"])
-			: [],
-	};
-}
-
 function hasQueuedQuestionResponse(
 	submissions: BuilderSubmission[],
 	requestId: string,
@@ -1447,7 +1504,7 @@ function hasQueuedQuestionResponse(
 			return false;
 		}
 
-		return inputResponseOf(submission.message)?.requestId === requestId;
+		return submission.message.inputResponse?.requestId === requestId;
 	});
 }
 
@@ -1460,36 +1517,25 @@ function questionResponseIds(
 				return [];
 			}
 
-			const response = inputResponseOf(submission.message);
+			const response = submission.message.inputResponse;
 			return response ? [response.requestId] : [];
 		}),
 	);
-}
-
-function inputResponseOf(message: unknown): { requestId: string } | null {
-	const response = recordOf(recordOf(message).inputResponse);
-	return typeof response.requestId === "string" && response.requestId
-		? { requestId: response.requestId }
-		: null;
 }
 
 function retryPromptOf(
 	submission: BuilderSubmission | undefined,
 ): BuilderPrompt | null {
 	if (!submission) return null;
-	const row = recordOf(submission.message);
-	if (Object.keys(recordOf(row.inputResponse)).length > 0) return null;
-	if (typeof row.text !== "string" || !row.text.trim()) return null;
+	const { message } = submission;
+	if (message.inputResponse) return null;
+	if (!message.text?.trim()) return null;
 
 	return {
 		commandType: submission.commandType,
-		message: row.text,
-		resources: Array.isArray(row.resources)
-			? (row.resources as BuilderPrompt["resources"])
-			: [],
-		attachments: Array.isArray(row.attachments)
-			? (row.attachments as BuilderPrompt["attachments"])
-			: [],
+		message: message.text,
+		resources: message.resources,
+		attachments: message.attachments,
 	};
 }
 
@@ -1533,12 +1579,6 @@ function manifestOf(manifest: AgentManifestSummary) {
 
 function compactSummary(value: string | undefined, fallback: string): string {
 	return textOf(value, fallback).replace(/\s+\([^()]+\)\s*\.?$/, "");
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
 }
 
 function textOf(value: string | undefined, fallback: string): string {

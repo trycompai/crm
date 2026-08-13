@@ -22,10 +22,10 @@ const RECORD_FORMS = ["contact", "deal"] as const;
 
 export type RecordForm = (typeof RECORD_FORMS)[number];
 
-const FORM_TAB: Record<RecordForm, string> = {
+const FORM_TAB = {
 	contact: "contacts",
 	deal: "deals",
-};
+} satisfies Record<RecordForm, string>;
 
 const params = {
 	record: parseAsArrayOf(parseAsString, ",").withDefault([]),

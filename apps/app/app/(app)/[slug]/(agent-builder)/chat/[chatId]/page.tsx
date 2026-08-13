@@ -30,16 +30,16 @@ async function PrefetchedAgentChat({
 	const client = getServerTrpcClient();
 
 	if (isSharedChatToken(chatId)) {
-		const shared = await client.conversations.shared
-			.query({ token: chatId })
-			.catch(nullIfMissing);
+		const shared = await nullIfMissing(
+			client.conversations.shared.query({ token: chatId }),
+		);
 
 		return <AgentBuilderChat conversationId={chatId} initialData={shared} />;
 	}
 
-	const conversation = await client.conversations.builderById
-		.query({ id: chatId })
-		.catch(nullIfMissing);
+	const conversation = await nullIfMissing(
+		client.conversations.builderById.query({ id: chatId }),
+	);
 
 	if (!conversation) notFound();
 

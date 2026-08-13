@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync } from "node:fs";
+import type { EveToolInput, EveToolOutput } from "@crm/validation/eve-tool";
 import type { EveMessage } from "eve/react";
 import {
 	conversationTimeline,
@@ -31,10 +32,15 @@ const message = (
 		metadata: turnId ? { turnId } : undefined,
 	}) as unknown as EveMessage;
 
-const tool = (
-	toolName: string,
-	extra: Record<string, unknown> = {},
-): Record<string, unknown> => ({
+type ToolPartFixture = {
+	errorText?: string;
+	input?: EveToolInput;
+	output?: EveToolOutput;
+	state?: string;
+	toolCallId?: string;
+};
+
+const tool = (toolName: string, extra: ToolPartFixture = {}) => ({
 	type: "dynamic-tool",
 	toolName,
 	state: "output-available",

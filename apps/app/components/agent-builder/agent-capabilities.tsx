@@ -22,27 +22,21 @@ import {
 } from "@/components/slack/channel-picker";
 import { useSlackChannels } from "@/components/slack/use-slack-channels";
 import { useTRPC } from "@/lib/trpc/client";
+import type { RouterOutputs } from "@/lib/trpc/types";
 import { CreateChannelDialog } from "./create-channel-dialog";
 
-export type Resource = { id: string; kind: string; label: string };
+export type Capabilities = RouterOutputs["agents"]["byId"]["capabilities"];
 
-export type Capabilities = {
-	readable: boolean;
-	problem: string | null;
-	channel: { kind: "channel" | "user"; id: string; label: string } | null;
-	actions: Array<{ type: string; provider: string; summary: string }>;
-	dataScope: {
-		mode: "SELECTED" | "WORKSPACE";
-		summary: string;
-		resources: Resource[];
-	} | null;
-};
+export type Resource = Extract<
+	Capabilities,
+	{ readable: true }
+>["dataScope"]["resources"][number];
 
-const ACTION_LABELS: Record<string, string> = {
-	"slack.message.post": "Post a message",
-	"crm.activity.create": "Write a note or task on the record",
-	"run.summary": "Write a summary of the run",
-};
+const ACTION_LABELS = new Map([
+	["slack.message.post", "Post a message"],
+	["crm.activity.create", "Write a note or task on the record"],
+	["run.summary", "Write a summary of the run"],
+]);
 
 export function AgentCapabilities({
 	agentId,
@@ -136,29 +130,22 @@ export function AgentCapabilities({
 		revise.mutate({
 			id: agentId,
 			clientRequestId: crypto.randomUUID(),
-			...(channelChanged && picked
-				? { channel: { id: picked.id, name: picked.name } }
-				: {}),
-			...(actionsChanged
-				? {
-						actions: capabilities.actions
-							.map((action) => action.type)
-							.filter((type) => !off.includes(type)),
-					}
-				: {}),
-			...(scopeChanged
-				? {
-						resources: shownResources.map((resource) => ({
-							id: resource.id,
-							kind: resource.kind as
-								| "company"
-								| "contact"
-								| "deal"
-								| "integration",
-							label: resource.label,
-						})),
-					}
-				: {}),
+			channel:
+				channelChanged && picked
+					? { id: picked.id, name: picked.name }
+					: undefined,
+			actions: actionsChanged
+				? capabilities.actions
+						.map((action) => action.type)
+						.filter((type) => !off.includes(type))
+				: undefined,
+			resources: scopeChanged
+				? shownResources.map((resource) => ({
+						id: resource.id,
+						kind: resource.kind,
+						label: resource.label,
+					}))
+				: undefined,
 		});
 	};
 
@@ -207,7 +194,7 @@ export function AgentCapabilities({
 						>
 							<div className="min-w-0 flex-1">
 								<p className="text-sm">
-									{ACTION_LABELS[action.type] ?? action.type}
+									{ACTION_LABELS.get(action.type) ?? action.type}
 								</p>
 								<p className="text-muted-foreground text-xs">
 									{action.summary || action.provider}

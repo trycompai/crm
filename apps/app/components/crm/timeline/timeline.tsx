@@ -31,19 +31,16 @@ export type TimelineAnchor =
 	| { contactId: string }
 	| { dealId: string };
 
-const TAB_LABELS: Record<TimelineTab, string> = {
+const TAB_LABELS = {
 	all: "All",
 	notes: "Notes",
 	email: "Email",
 	meetings: "Meetings",
 	upcoming: "Upcoming",
 	done: "Done",
-};
+} satisfies Record<TimelineTab, string>;
 
-const EMPTY_STATES: Record<
-	TimelineTab,
-	{ title: string; description: string }
-> = {
+const EMPTY_STATES = {
 	all: {
 		title: "Nothing has happened yet",
 		description:
@@ -73,16 +70,16 @@ const EMPTY_STATES: Record<
 		title: "Nothing finished yet",
 		description: "Tasks move here once you tick them off.",
 	},
-};
+} satisfies Record<TimelineTab, { title: string; description: string }>;
 
-const EMPTY_ICONS: Record<TimelineTab, CarbonIcon> = {
+const EMPTY_ICONS = {
 	all: Time,
 	notes: Chat,
 	email: Email,
 	meetings: Events,
 	upcoming: Task,
 	done: Checkmark,
-};
+} satisfies Record<TimelineTab, CarbonIcon>;
 
 const dayFormat = new Intl.DateTimeFormat("en-US", {
 	weekday: "short",

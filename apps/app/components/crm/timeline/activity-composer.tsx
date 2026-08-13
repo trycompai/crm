@@ -34,13 +34,13 @@ const dueFormat = new Intl.DateTimeFormat("en-US", {
 	day: "numeric",
 });
 
-const PLACEHOLDER: Record<ComposableType, string> = {
+const PLACEHOLDER = {
 	NOTE: "Log a note, call, email, meeting or task…",
 	CALL: "What came out of the call?",
 	EMAIL: "What was said?",
 	MEETING: "What came out of the meeting?",
 	TASK: "What needs doing?",
-};
+} satisfies Record<ComposableType, string>;
 
 export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 	const trpc = useTRPC();

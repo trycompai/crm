@@ -43,7 +43,7 @@ import {
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
-import { AgentCapabilities, type Capabilities } from "./agent-capabilities";
+import { AgentCapabilities } from "./agent-capabilities";
 import { AgentCode } from "./agent-code";
 import { AgentRunsDrawer } from "./agent-runs-drawer";
 
@@ -523,8 +523,7 @@ function DeleteAgentAction({
 }
 
 function AgentOverview({ agent }: { agent: AgentDetail }) {
-	const detail = agent as unknown as { capabilities?: Capabilities };
-	const capabilities = detail.capabilities;
+	const { capabilities } = agent;
 	const deployed = agent.currentVersion !== null;
 	const canEdit = agent.canManage && deployed;
 
