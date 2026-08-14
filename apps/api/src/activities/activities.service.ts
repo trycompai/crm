@@ -1,4 +1,5 @@
 import { ActivityType, type Db, type Prisma } from "@crm/db";
+import { activityMeta } from "@crm/validation/activity-meta";
 import {
 	BadRequestException,
 	Injectable,
@@ -12,6 +13,7 @@ import {
 	countsByKey,
 	FACET_ALL,
 	type ListResult,
+	type OrderByColumns,
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
@@ -101,29 +103,27 @@ const TASK_SELECT = {
 	deal: { select: { id: true, name: true } },
 } as const;
 
-const TASK_SORTABLE: Record<
-	string,
-	(dir: Prisma.SortOrder) => Prisma.ActivityOrderByWithRelationInput[]
-> = {
-	subject: (dir) => [{ subject: { sort: dir, nulls: "last" } }],
-	dueAt: (dir) => [
-		{ dueAt: { sort: dir, nulls: "last" } },
-		{ createdAt: "desc" },
-	],
-	status: (dir) => [
-		{ completedAt: { sort: dir, nulls: "first" } },
-		{ dueAt: { sort: "asc", nulls: "last" } },
-	],
-	company: (dir) => [
-		{ company: { name: dir } },
-		{ dueAt: { sort: "asc", nulls: "last" } },
-	],
-	createdBy: (dir) => [
-		{ createdBy: { name: dir } },
-		{ dueAt: { sort: "asc", nulls: "last" } },
-	],
-	createdAt: (dir) => [{ createdAt: dir }],
-};
+const TASK_SORTABLE: OrderByColumns<Prisma.ActivityOrderByWithRelationInput[]> =
+	{
+		subject: (dir) => [{ subject: { sort: dir, nulls: "last" } }],
+		dueAt: (dir) => [
+			{ dueAt: { sort: dir, nulls: "last" } },
+			{ createdAt: "desc" },
+		],
+		status: (dir) => [
+			{ completedAt: { sort: dir, nulls: "first" } },
+			{ dueAt: { sort: "asc", nulls: "last" } },
+		],
+		company: (dir) => [
+			{ company: { name: dir } },
+			{ dueAt: { sort: "asc", nulls: "last" } },
+		],
+		createdBy: (dir) => [
+			{ createdBy: { name: dir } },
+			{ dueAt: { sort: "asc", nulls: "last" } },
+		],
+		createdAt: (dir) => [{ createdAt: dir }],
+	};
 
 @Injectable()
 export class ActivitiesService {
@@ -141,7 +141,8 @@ export class ActivitiesService {
 		const rows = await this.db.activity.findMany({
 			where,
 			take: input.limit + 1,
-			...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+			cursor: input.cursor ? { id: input.cursor } : undefined,
+			skip: input.cursor ? 1 : undefined,
 			orderBy: [
 				{ occurredAt: { sort: "desc", nulls: "last" } },
 				{ id: "desc" },
@@ -422,7 +423,7 @@ function serializeEntry(entry: Entry) {
 		dueAt: serializeTaskDueDay(entry.dueAt),
 		completedAt: entry.completedAt?.toISOString() ?? null,
 		createdAt: entry.createdAt.toISOString(),
-		meta: entry.meta as Record<string, unknown> | null,
+		meta: activityMeta.parse(entry.meta),
 
 		emailThread: entry.emailThread
 			? {

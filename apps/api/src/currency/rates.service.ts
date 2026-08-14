@@ -11,6 +11,7 @@ import {
 	writeRatesRefreshedAt,
 } from "@crm/db/settings";
 import { Injectable, Logger } from "@nestjs/common";
+import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
 
 export const RATES_PROVIDER = "open.er-api.com";
@@ -31,17 +32,29 @@ export interface RateRefresh {
 	reason: string | null;
 }
 
-interface OpenExchangeResponse {
-	result?: unknown;
-	base_code?: unknown;
-	time_last_update_unix?: unknown;
-	rates?: Record<string, unknown>;
-	"error-type"?: unknown;
-}
+const UNREADABLE_FEED = {
+	result: "",
+	time_last_update_unix: null,
+	rates: {},
+	"error-type": null,
+};
 
-function parseAsOf(value: unknown): Date | null {
-	if (typeof value !== "number" || !Number.isFinite(value)) return null;
-	const date = new Date(value * 1000);
+const openExchangeResponse = z
+	.object({
+		result: z.string().catch(""),
+		time_last_update_unix: z
+			.number()
+			.refine(Number.isFinite)
+			.nullable()
+			.catch(null),
+		rates: z.record(z.string(), z.json()).catch({}),
+		"error-type": z.string().nullable().catch(null),
+	})
+	.catch(UNREADABLE_FEED);
+
+function parseAsOf(seconds: number | null): Date | null {
+	if (seconds === null) return null;
+	const date = new Date(seconds * 1000);
 	return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -179,15 +192,14 @@ export class RatesService {
 				return null;
 			}
 
-			const body = (await response.json()) as OpenExchangeResponse;
+			const body = openExchangeResponse.parse(await response.json());
 
 			if (body.result !== "success") {
 				this.logger.warn({
 					message: "Exchange rate provider refused the request",
 					base,
 					attempt,
-					errorType:
-						typeof body["error-type"] === "string" ? body["error-type"] : null,
+					errorType: body["error-type"],
 				});
 				return null;
 			}
@@ -195,7 +207,7 @@ export class RatesService {
 			const asOf = parseAsOf(body.time_last_update_unix) ?? new Date();
 			const rates = new Map<string, Prisma.Decimal>();
 
-			for (const [code, value] of Object.entries(body.rates ?? {})) {
+			for (const [code, value] of Object.entries(body.rates)) {
 				const quoteCurrency = normalizeCurrency(code);
 				if (!isCurrencyCode(quoteCurrency)) continue;
 				if (quoteCurrency === normalizeCurrency(base)) continue;

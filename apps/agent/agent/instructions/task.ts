@@ -1,8 +1,18 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
+import { z } from "zod";
 import { focusOn, setBudget } from "../lib/focus";
 import { sessionPreamble } from "../lib/preamble";
 import { RESEARCH_INSTRUCTIONS } from "../lib/research-instructions";
 import { attribute, purposeOf } from "../lib/session-purpose";
+
+const attributeText = z.string().trim().min(1).nullable().catch(null);
+
+const attributeNumber = z
+	.union([z.string(), z.number()])
+	.transform(Number)
+	.refine(Number.isFinite)
+	.nullable()
+	.catch(null);
 
 export default defineDynamic({
 	events: {
@@ -19,21 +29,21 @@ export default defineDynamic({
 			}
 
 			const attributes = ctx.session.auth.current?.attributes ?? {};
-			const budget = asNumber(attributes.budget);
-			const kind = asString(attributes.taskKind);
+			const budget = attributeNumber.parse(attributes.budget);
+			const kind = attributeText.parse(attributes.taskKind);
 
 			if (budget) setBudget(budget);
 
 			const { markdown, focus } = await sessionPreamble(
 				{
-					contactId: asString(attributes.contactId),
-					companyId: asString(attributes.companyId),
-					dealId: asString(attributes.dealId),
+					contactId: attributeText.parse(attributes.contactId),
+					companyId: attributeText.parse(attributes.companyId),
+					dealId: attributeText.parse(attributes.dealId),
 				},
 				{
 					dispatched: Boolean(kind),
 					kind,
-					reason: asString(attributes.reason),
+					reason: attributeText.parse(attributes.reason),
 					budget,
 				},
 			);
@@ -70,13 +80,4 @@ export function builderTaskMarkdown(
 	return needsTitle
 		? `Before any other work, call set_chat_title once. Summarize the user's first message as a polished title of three to seven words in sentence case. Capture the intent, remove slash-command syntax and filler, and do not use quotation marks or ending punctuation.\n\n${task}`
 		: task;
-}
-
-function asString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function asNumber(value: unknown): number | null {
-	const parsed = typeof value === "string" ? Number(value) : value;
-	return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null;
 }

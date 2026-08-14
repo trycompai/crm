@@ -10,9 +10,16 @@ import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
+import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { signOutAndRedirect } from "@/lib/sign-out";
+
+type ProviderGrant = {
+	label: string;
+	scopes: readonly string[];
+	Logo: FC<SVGProps<SVGSVGElement>>;
+};
 
 const PROVIDERS = {
 	google: {
@@ -25,7 +32,7 @@ const PROVIDERS = {
 		scopes: [...MICROSOFT_SYNC_SCOPES],
 		Logo: MicrosoftLogo,
 	},
-} as const satisfies Record<MailboxProviderId, unknown>;
+} as const satisfies Record<MailboxProviderId, ProviderGrant>;
 
 export function GrantAccess({
 	providers,

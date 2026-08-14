@@ -8,10 +8,10 @@ import {
 	overviewParsers,
 } from "./overview-search-params";
 
-const LABELS: Record<OverviewScope, string> = {
+const LABELS = {
 	me: "Me",
 	everyone: "Everyone",
-};
+} satisfies Record<OverviewScope, string>;
 
 function isScope(value: string): value is OverviewScope {
 	return (OVERVIEW_SCOPES as readonly string[]).includes(value);

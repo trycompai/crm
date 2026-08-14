@@ -98,10 +98,12 @@ export type PropertyValue =
 
 export type Properties = Partial<Record<AllowedProperty, PropertyValue>>;
 
+export type PermittedProperties = Record<string, PropertyValue>;
+
 export function permitted(
 	properties: Record<string, unknown>,
-): Record<string, PropertyValue> {
-	const kept: Record<string, PropertyValue> = {};
+): PermittedProperties {
+	const kept: PermittedProperties = {};
 
 	for (const [name, value] of Object.entries(properties)) {
 		if (!ALLOWED.has(name)) continue;
@@ -239,11 +241,11 @@ export function permittedSyncSource(source: string | null | undefined): string {
 
 const MAILBOX_SYNC = "mailbox_sync";
 
-const SYNC_ERROR_SOURCES: Record<TelemetrySyncSource, string> = {
+const SYNC_ERROR_SOURCES = {
 	gmail: "google_sync",
 	calendar: "google_sync",
 	outlook: "microsoft_sync",
-};
+} as const satisfies Record<TelemetrySyncSource, string>;
 
 export function permittedSyncErrorSource(
 	source: string | null | undefined,

@@ -7,7 +7,9 @@ import {
 } from "@crm/db/crm-events";
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
-import { AGENT_ACTION_TYPES, actionDependency } from "./agent-actions";
+import { AGENT_ACTION_TYPES } from "@crm/validation/agent-manifest";
+import { z } from "zod";
+import { actionDependency } from "./agent-actions";
 import { requestStaleSlackInventorySync } from "./slack-people";
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -18,6 +20,19 @@ export type BuilderResource = {
 	id: string;
 	label: string;
 };
+
+const taggedResource = z
+	.object({
+		kind: z.enum(["integration", "company", "contact", "deal"]),
+		id: z.string(),
+		label: z.string(),
+	})
+	.nullable()
+	.catch(null);
+
+const taggedResources = z
+	.object({ resources: z.array(taggedResource).catch([]) })
+	.catch({ resources: [] });
 
 export type DraftTrigger = {
 	type: "MANUAL" | "SCHEDULE" | "EVENT";
@@ -71,11 +86,11 @@ export const BUILDER_ARTIFACT_PATHS = [
 
 export type BuilderArtifactPath = (typeof BUILDER_ARTIFACT_PATHS)[number];
 
-const ARTIFACT_LANGUAGES: Record<BuilderArtifactPath, string> = {
+const ARTIFACT_LANGUAGES = {
 	"agent/README.md": "markdown",
 	"agent/instructions.md": "markdown",
 	"agent/manifest.json": "json",
-};
+} satisfies Record<BuilderArtifactPath, string>;
 
 export async function writeBuilderArtifact(
 	conversationId: string,
@@ -247,7 +262,7 @@ export async function saveBuilderDraft(
 		credentials: "app-runtime-only",
 		summary: "Isolated sandbox · deny-all network · bounded CRM tools",
 	};
-	const files = artifactFiles(input, manifest);
+	const files = artifactFiles(input, JSON.stringify(manifest, null, 2));
 	for (const file of files) assertSafeArtifact(file.content);
 
 	return db.$transaction(async (tx) => {
@@ -777,25 +792,10 @@ async function missingResourceIds(resources: BuilderResource[]) {
 	return described.filter((resource) => !resource.record);
 }
 
-function resourcesOf(value: unknown): BuilderResource[] {
-	if (!value || typeof value !== "object" || !("resources" in value)) return [];
-	const resources = (value as { resources?: unknown }).resources;
-	if (!Array.isArray(resources)) return [];
-
-	return resources.flatMap((resource) => {
-		if (!resource || typeof resource !== "object") return [];
-		const row = resource as Record<string, unknown>;
-		if (
-			!["integration", "company", "contact", "deal"].includes(
-				String(row.kind),
-			) ||
-			typeof row.id !== "string" ||
-			typeof row.label !== "string"
-		) {
-			return [];
-		}
-		return [resource as BuilderResource];
-	});
+function resourcesOf(value: Prisma.JsonValue): BuilderResource[] {
+	return taggedResources
+		.parse(value)
+		.resources.filter((resource) => resource !== null);
 }
 
 function uniqueResources(resources: BuilderResource[]): BuilderResource[] {
@@ -815,7 +815,7 @@ function scheduleDate(trigger: DraftTrigger, now: Date): Date | null {
 	return parsed > now ? parsed : null;
 }
 
-function artifactFiles(input: DraftAgentInput, manifest: object) {
+function artifactFiles(input: DraftAgentInput, manifestJson: string) {
 	const triggerSummary = input.triggers
 		.map((trigger) => `- ${trigger.summary}`)
 		.join("\n");
@@ -833,7 +833,7 @@ function artifactFiles(input: DraftAgentInput, manifest: object) {
 		{
 			path: "agent/manifest.json" as const,
 			language: ARTIFACT_LANGUAGES["agent/manifest.json"],
-			content: `${JSON.stringify(manifest, null, 2)}\n`,
+			content: `${manifestJson}\n`,
 		},
 	];
 }

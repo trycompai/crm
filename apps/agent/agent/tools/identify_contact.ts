@@ -44,7 +44,7 @@ export default defineTool({
 			band: result.band,
 			score: Number(result.score.toFixed(2)),
 			rationale: result.rationale,
-			...(result.reason ? { reason: result.reason } : {}),
+			reason: result.reason || undefined,
 		};
 	},
 });

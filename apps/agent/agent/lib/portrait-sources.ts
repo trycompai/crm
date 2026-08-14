@@ -1,4 +1,5 @@
-import { extract } from "./context-dev";
+import { z } from "zod";
+import { extract, type JsonSchema } from "./context-dev";
 import { getProfile, slugFromProfileUrl } from "./linkdapi";
 import { namesMatch } from "./names";
 
@@ -71,7 +72,7 @@ export async function findPortrait(
 	return { found: false, tried };
 }
 
-const TEAM_SCHEMA = {
+const TEAM_SCHEMA: JsonSchema = {
 	type: "object",
 	properties: {
 		people: {
@@ -93,6 +94,21 @@ const TEAM_SCHEMA = {
 	required: ["people"],
 };
 
+const teamPage = z
+	.object({
+		people: z
+			.array(
+				z
+					.object({
+						name: z.string().nullable().catch(null),
+						photoUrl: z.string().nullable().catch(null),
+					})
+					.catch({ name: null, photoUrl: null }),
+			)
+			.catch([]),
+	})
+	.catch({ people: [] });
+
 async function fromEmployerSite(
 	subject: PortraitSubject,
 ): Promise<PortraitCandidate | null> {
@@ -106,20 +122,13 @@ async function fromEmployerSite(
 
 	if (result.outcome !== "found") return null;
 
-	const people = (result.data as { people?: unknown } | null)?.people;
-	if (!Array.isArray(people)) return null;
-
-	for (const entry of people) {
-		if (!entry || typeof entry !== "object") continue;
-		const row = entry as Record<string, unknown>;
-
-		const name = typeof row.name === "string" ? row.name : null;
-		const photo = typeof row.photoUrl === "string" ? row.photoUrl : null;
-		if (!name || !photo) continue;
+	for (const person of teamPage.parse(result.data).people) {
+		const { name, photoUrl } = person;
+		if (!name || !photoUrl) continue;
 		if (!namesMatch(name, subject.name)) continue;
 
 		try {
-			const parsed = new URL(photo);
+			const parsed = new URL(photoUrl);
 			if (parsed.protocol !== "https:" && parsed.protocol !== "http:") continue;
 			return { source: "employer-site", url: parsed.toString() };
 		} catch {}

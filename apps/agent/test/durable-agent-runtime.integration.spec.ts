@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
 import type { SendFn } from "eve/channels";
+import { z } from "zod";
 import audit from "../agent/hooks/audit";
 import {
 	builderToken,
@@ -15,8 +16,11 @@ import {
 import {
 	createRunActivity,
 	finishRun,
+	runResultOf,
 	stageRunResult,
 } from "../agent/lib/run-runtime";
+
+const attachmentBytes = z.object({ data: z.instanceof(Uint8Array) });
 
 const suffix = crypto.randomUUID();
 const userId = `durable-runtime-user-${suffix}`;
@@ -503,8 +507,8 @@ describe("durable custom-agent runtime", () => {
 			select: { id: true, submissions: { select: { id: true } } },
 		});
 		builderConversationIds.push(conversation.id);
-		let delivered: unknown;
-		const send = (async (input: unknown) => {
+		let delivered: Parameters<SendFn>[0] | null = null;
+		const send = (async (input: Parameters<SendFn>[0]) => {
 			delivered = input;
 			return { id: `durable-session-${suffix}-attachment` };
 		}) as unknown as SendFn;
@@ -520,7 +524,7 @@ describe("durable custom-agent runtime", () => {
 			mediaType: "text/plain",
 			filename: "brief.txt",
 		});
-		expect(Buffer.from(recordOf(parts[1]).data as Uint8Array)).toEqual(content);
+		expect(Buffer.from(attachmentBytes.parse(parts[1]).data)).toEqual(content);
 	});
 
 	it("ingests a replayed Eve event and its usage exactly once", async () => {
@@ -536,7 +540,7 @@ describe("durable custom-agent runtime", () => {
 				session: {
 					id: string;
 					auth: {
-						current: { attributes: Record<string, unknown> };
+						current: { attributes: Record<string, string> };
 						initiator: null;
 					};
 				};
@@ -590,7 +594,7 @@ describe("durable custom-agent runtime", () => {
 					id: string;
 					parent?: unknown;
 					auth: {
-						current: { attributes: Record<string, unknown> };
+						current: { attributes: Record<string, string> };
 						initiator: null;
 					};
 				};
@@ -689,7 +693,7 @@ describe("durable custom-agent runtime", () => {
 		await satisfyRequiredActivity(run.id, "staged-success");
 		await finishRun(run.id, {
 			summary: staged.summary ?? "Staged safely",
-			result: staged.result as Record<string, unknown>,
+			result: runResultOf(staged.result),
 		});
 		expect(
 			await db.agentRun.findUniqueOrThrow({ where: { id: run.id } }),
@@ -766,7 +770,7 @@ describe("durable custom-agent runtime", () => {
 
 		const finished = await finishRun(run.id, {
 			summary: staged.summary ?? "The deal was already closed",
-			result: staged.result as Record<string, unknown>,
+			result: runResultOf(staged.result),
 		});
 		expect(finished).toEqual({ id: run.id, status: "SUCCEEDED" });
 		expect(await db.agentAction.count({ where: { runId: run.id } })).toBe(0);
@@ -848,9 +852,3 @@ describe("durable custom-agent runtime", () => {
 		).toBe(0);
 	});
 });
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}

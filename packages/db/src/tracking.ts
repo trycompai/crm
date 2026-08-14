@@ -86,8 +86,10 @@ export function mintSiteId(): string {
 	return `${SITE_ID_PREFIX}${randomBytes(4).toString("hex")}`;
 }
 
+const SITE_ID_SHAPE = /^cmp_[0-9a-f]{8}$/;
+
 export function isSiteId(value: string | null | undefined): value is string {
-	return typeof value === "string" && /^cmp_[0-9a-f]{8}$/.test(value);
+	return SITE_ID_SHAPE.test(value ?? "");
 }
 
 export function loaderUrl(appUrl: string): string {
@@ -142,10 +144,12 @@ export function configHash(config: TrackingConfig): string {
 	return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
 }
 
+const CONFIG_HASH_SHAPE = /^[0-9a-f]{12}$/;
+
 export function isConfigHash(
 	value: string | null | undefined,
 ): value is string {
-	return typeof value === "string" && /^[0-9a-f]{12}$/.test(value);
+	return CONFIG_HASH_SHAPE.test(value ?? "");
 }
 
 export function normalizeHost(input: string | null | undefined): string | null {

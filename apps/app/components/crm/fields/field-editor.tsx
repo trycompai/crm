@@ -67,11 +67,11 @@ import {
 } from "./fields-copy";
 import { type FieldEntity, kindOf } from "./fields-entity";
 
-const COVERAGE_NOUN: Record<FieldEntity, string> = {
+const COVERAGE_NOUN = {
 	COMPANY: "companies",
 	CONTACT: "contacts",
 	DEAL: "deals",
-};
+} satisfies Record<FieldEntity, string>;
 
 type FieldRecord = RouterOutputs["fields"]["list"][number];
 
@@ -85,7 +85,7 @@ type Draft = {
 	showOnTable: boolean;
 };
 
-const TYPE_HINTS: Record<string, string> = {
+const TYPE_HINTS = {
 	TEXT: "Text — a short line",
 	LONG_TEXT: "Long text — a paragraph",
 	NUMBER: "Number",
@@ -96,7 +96,7 @@ const TYPE_HINTS: Record<string, string> = {
 	EMAIL: "Email",
 	PHONE: "Phone",
 	USER: "User — someone in the workspace",
-};
+} satisfies Record<(typeof FIELD_TYPES)[number], string>;
 
 function optionId(option: { id?: string }, index: number): string {
 	return option.id ?? `draft-${index}`;

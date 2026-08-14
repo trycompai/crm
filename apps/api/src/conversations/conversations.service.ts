@@ -1,5 +1,10 @@
 import { WORKSPACE_ID } from "@crm/auth";
 import { type Db, type Prisma, Prisma as PrismaNamespace } from "@crm/db";
+import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
+import {
+	type BuilderQuestion,
+	builderQuestion,
+} from "@crm/validation/builder-question";
 import {
 	BadRequestException,
 	Injectable,
@@ -51,6 +56,10 @@ export interface BuilderConversationSummary {
 	} | null;
 }
 
+type ReplayedRequest = {
+	id: string;
+};
+
 type ExistingBuilderRequest = {
 	id: string;
 	conversationId: string;
@@ -77,9 +86,9 @@ export class ConversationsService {
 		const rows = await this.db.agentConversation.findMany({
 			where: {
 				userId,
-				...(input.contactId ? { contactId: input.contactId } : {}),
-				...(input.companyId ? { companyId: input.companyId } : {}),
-				...(input.dealId ? { dealId: input.dealId } : {}),
+				contactId: input.contactId ?? undefined,
+				companyId: input.companyId ?? undefined,
+				dealId: input.dealId ?? undefined,
 			},
 			orderBy: { lastMessageAt: "desc" },
 			take: 20,
@@ -396,6 +405,7 @@ export class ConversationsService {
 				: null,
 			createdVersions: row.createdVersions.map((version) => ({
 				...version,
+				manifest: readAgentManifestSummary(version.manifest),
 				createdAt: version.createdAt.toISOString(),
 			})),
 			builderArtifacts: row.builderArtifacts.map((artifact) => ({
@@ -585,8 +595,7 @@ export class ConversationsService {
 			throw new BadRequestException("Choose an answer before submitting.");
 		}
 
-		const displayText =
-			typeof selected?.label === "string" ? selected.label : answer;
+		const displayText = selected?.label ?? answer;
 		const inputResponse = input.optionId
 			? { requestId: input.requestId, optionId: input.optionId }
 			: { requestId: input.requestId, text: input.text };
@@ -1082,7 +1091,7 @@ export class ConversationsService {
 	private replayBuilderCreation(
 		existing: ExistingBuilderRequest,
 		userId: string,
-	): { id: string } {
+	): ReplayedRequest {
 		if (
 			existing.conversation.userId !== userId ||
 			existing.conversation.kind !== "BUILDER"
@@ -1097,7 +1106,7 @@ export class ConversationsService {
 		existing: ExistingBuilderRequest,
 		conversationId: string,
 		userId: string,
-	): { id: string } {
+	): ReplayedRequest {
 		if (
 			existing.conversationId !== conversationId ||
 			existing.submittedById !== userId
@@ -1109,77 +1118,15 @@ export class ConversationsService {
 	}
 }
 
-function isUniqueConstraint(error: unknown): boolean {
+function isUniqueConstraint(cause: unknown): boolean {
 	return (
-		error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-		error.code === "P2002"
+		cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+		cause.code === "P2002"
 	);
 }
 
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function arrayOf(value: unknown): unknown[] {
-	return Array.isArray(value) ? value : [];
-}
-
-function pendingBuilderQuestionOf(value: unknown) {
-	const request = recordOf(value);
-	if (
-		request.kind !== "question" ||
-		typeof request.requestId !== "string" ||
-		!request.requestId ||
-		typeof request.prompt !== "string" ||
-		!request.prompt
-	) {
-		return null;
-	}
-
-	const display = ["confirmation", "select", "text"].includes(
-		String(request.display),
-	)
-		? (request.display as "confirmation" | "select" | "text")
-		: undefined;
-	const options = arrayOf(request.options).flatMap((value) => {
-		const option = recordOf(value);
-		if (
-			typeof option.id !== "string" ||
-			!option.id ||
-			typeof option.label !== "string" ||
-			!option.label
-		) {
-			return [];
-		}
-		const style = ["danger", "default", "primary"].includes(
-			String(option.style),
-		)
-			? (option.style as "danger" | "default" | "primary")
-			: undefined;
-
-		return [
-			{
-				id: option.id,
-				label: option.label,
-				...(typeof option.description === "string"
-					? { description: option.description }
-					: {}),
-				...(style ? { style } : {}),
-			},
-		];
-	});
-
-	return {
-		kind: "question" as const,
-		requestId: request.requestId,
-		prompt: request.prompt,
-		...(display ? { display } : {}),
-		options,
-		allowFreeform:
-			request.allowFreeform === true ||
-			display === "text" ||
-			options.length === 0,
-	};
+function pendingBuilderQuestionOf(
+	value: Prisma.JsonValue,
+): BuilderQuestion | null {
+	return builderQuestion.parse(value);
 }

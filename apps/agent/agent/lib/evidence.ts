@@ -19,7 +19,7 @@ type Weighting = {
 	label: string;
 };
 
-export const WEIGHTS: Record<EvidenceKind, Weighting> = {
+export const WEIGHTS = {
 	"profile.email-match": {
 		weight: 0.95,
 		primary: true,
@@ -75,7 +75,7 @@ export const WEIGHTS: Record<EvidenceKind, Weighting> = {
 		primary: false,
 		label: "another source disagrees",
 	},
-};
+} satisfies Record<EvidenceKind, Weighting>;
 
 export type Evidence = {
 	kind: EvidenceKind;

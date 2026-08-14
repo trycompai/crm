@@ -582,7 +582,10 @@ describe("cancelling a run", () => {
 		const realFetch = globalThis.fetch;
 		const realSecret = process.env.AGENT_BRIDGE_SECRET;
 		process.env.AGENT_BRIDGE_SECRET = "run-cancel-test";
-		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+		globalThis.fetch = (async (
+			_url: string | URL | Request,
+			init?: RequestInit,
+		) => {
 			const body = JSON.parse(String(init?.body)) as { runId: string };
 			asked.push(body.runId);
 			return new Response(null, { status });

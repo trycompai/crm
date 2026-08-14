@@ -1,17 +1,23 @@
+import { z } from "zod";
+
 export type SessionPurpose = "builder" | "team-agent" | "research";
+
+type SessionAttributes = Readonly<Record<string, string | readonly string[]>>;
 
 type PurposeContext = {
 	readonly session: {
 		readonly auth: {
 			readonly current: {
-				readonly attributes: Readonly<Record<string, unknown>>;
+				readonly attributes: SessionAttributes;
 			} | null;
 			readonly initiator: {
-				readonly attributes: Readonly<Record<string, unknown>>;
+				readonly attributes: SessionAttributes;
 			} | null;
 		};
 	};
 };
+
+const attributeText = z.string().trim().min(1).nullable().catch(null);
 
 export function purposeOf(ctx: PurposeContext): SessionPurpose {
 	const purpose = attribute(ctx, "purpose");
@@ -20,13 +26,10 @@ export function purposeOf(ctx: PurposeContext): SessionPurpose {
 }
 
 export function attribute(ctx: PurposeContext, key: string): string | null {
-	const current = ctx.session.auth.current?.attributes[key];
-	if (typeof current === "string" && current.trim()) return current.trim();
-
-	const initiator = ctx.session.auth.initiator?.attributes[key];
-	return typeof initiator === "string" && initiator.trim()
-		? initiator.trim()
-		: null;
+	return (
+		attributeText.parse(ctx.session.auth.current?.attributes[key]) ??
+		attributeText.parse(ctx.session.auth.initiator?.attributes[key])
+	);
 }
 
 export function requireAttribute(ctx: PurposeContext, key: string): string {

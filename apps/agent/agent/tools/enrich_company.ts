@@ -24,9 +24,7 @@ export default defineTool({
 			return {
 				enriched: false as const,
 				reason: result.reason,
-				...(result.retryable === undefined
-					? {}
-					: { retryable: result.retryable }),
+				retryable: result.retryable,
 			};
 		}
 

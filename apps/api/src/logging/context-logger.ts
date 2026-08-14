@@ -67,11 +67,16 @@ export class ContextLogger extends ConsoleLogger {
 			return record;
 		}
 
-		return {
+		const correlated: JsonLogRecord = {
 			...record,
 			requestId: request.requestId,
-			...(request.userId ? { userId: request.userId } : {}),
 		};
+
+		if (!request.userId) {
+			return correlated;
+		}
+
+		return { ...correlated, userId: request.userId };
 	}
 
 	protected override stringifyMessage(

@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { ActivityType, db, type Prisma } from "@crm/db";
 import type { AgentActionStatus, AgentTriggerType } from "@crm/db/enums";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
-import { readCompanyHistory, readDealHistory } from "./accounts";
 import {
-	AGENT_ACTION_EXECUTORS,
 	AGENT_ACTION_TYPES,
-	isAgentActionType,
-} from "./agent-actions";
-import { parseAgentManifest } from "./agent-manifest";
+	type AgentManifestResource,
+	parseAgentManifest,
+} from "@crm/validation/agent-manifest";
+import { z } from "zod";
+import { readCompanyHistory, readDealHistory } from "./accounts";
+import { AGENT_ACTION_EXECUTORS, isAgentActionType } from "./agent-actions";
 import { readCrmHistory } from "./crm";
 import { DISPATCH } from "./dispatch-config";
 import { searchCrm } from "./lookup";
@@ -24,13 +25,64 @@ const NO_ACTION_TRIGGER_TYPES = new Set<AgentTriggerType>(
 	DISPATCH.run.noActionTriggerTypes,
 );
 
-type RunResource = {
-	kind: "integration" | "company" | "contact" | "deal";
+type RunRecordScope = "SELECTED" | "WORKSPACE";
+
+const json = z.json();
+
+type Json = z.infer<typeof json>;
+
+const runResult = z.record(z.string(), json);
+
+export type RunResult = z.infer<typeof runResult>;
+
+const storedRunResult = runResult.catch({});
+
+export type SlackRunDestination = {
+	kind: "channel" | "user";
 	id: string;
 	label: string;
 };
 
-type RunRecordScope = "SELECTED" | "WORKSPACE";
+type RunDataScope = {
+	mode: RunRecordScope;
+	resources: AgentManifestResource[];
+};
+
+export type RunHistorySources = {
+	gmail: boolean;
+	calendar: boolean;
+};
+
+type SlackRequestBody = Record<string, Json>;
+
+type HashableRequest = Record<string, string | boolean | null>;
+
+const optionalText = z.string().nullable().catch(null);
+
+const slackActionMetadata = z
+	.object({ clientMessageId: z.string().min(1).nullable().catch(null) })
+	.catch({ clientMessageId: null });
+
+const slackEnvelope = z
+	.object({ ok: z.boolean().nullable().catch(null), error: optionalText })
+	.catch({ ok: null, error: null });
+
+const slackOpenedConversation = z
+	.object({
+		channel: z
+			.object({ id: z.string().min(1).nullable().catch(null) })
+			.nullable()
+			.catch(null),
+	})
+	.catch({ channel: null });
+
+const slackPostedMessage = z
+	.object({ channel: optionalText, ts: optionalText })
+	.catch({ channel: null, ts: null });
+
+const noActionResult = z
+	.object({ noActionNeeded: optionalText })
+	.catch({ noActionNeeded: null });
 
 type RunActionRow = {
 	id: string;
@@ -381,8 +433,8 @@ export async function postRunSlackMessage(
 	const { actionId, claimedAt } = claim;
 	try {
 		await assertRunActive(runId);
-		const clientMessageId = recordOf(claim.metadata).clientMessageId;
-		if (typeof clientMessageId !== "string" || !clientMessageId) {
+		const { clientMessageId } = slackActionMetadata.parse(claim.metadata);
+		if (!clientMessageId) {
 			throw new Error("This Slack action is missing its replay key.");
 		}
 		const accessToken = await slackAccessToken();
@@ -540,7 +592,7 @@ async function failRunAction(
 
 export async function sendSlackMessage(
 	accessToken: string,
-	destination: { kind: "channel" | "user"; id: string; label: string },
+	destination: SlackRunDestination,
 	text: string,
 	clientMessageId: string,
 	options: {
@@ -552,37 +604,40 @@ export async function sendSlackMessage(
 	const { fetcher = fetch, abortSignal, beforePost } = options;
 	let channel = destination.id;
 	if (destination.kind === "user") {
-		const opened = await slackApiRequest(
-			fetcher,
-			accessToken,
-			"conversations.open",
-			{ users: destination.id, return_im: true },
-			abortSignal,
+		const opened = slackOpenedConversation.parse(
+			await slackApiRequest(
+				fetcher,
+				accessToken,
+				"conversations.open",
+				{ users: destination.id, return_im: true },
+				abortSignal,
+			),
 		);
-		const conversation = recordOf(opened.channel);
-		if (typeof conversation.id !== "string" || !conversation.id) {
+		if (!opened.channel?.id) {
 			throw new Error("Slack did not return a direct-message channel.");
 		}
-		channel = conversation.id;
+		channel = opened.channel.id;
 	}
 	await beforePost?.();
 
-	const data = await slackApiRequest(
-		fetcher,
-		accessToken,
-		"chat.postMessage",
-		{
-			channel,
-			text,
-			client_msg_id: clientMessageId,
-		},
-		abortSignal,
+	const posted = slackPostedMessage.parse(
+		await slackApiRequest(
+			fetcher,
+			accessToken,
+			"chat.postMessage",
+			{
+				channel,
+				text,
+				client_msg_id: clientMessageId,
+			},
+			abortSignal,
+		),
 	);
-	if (typeof data.channel !== "string" || typeof data.ts !== "string") {
+	if (posted.channel === null || posted.ts === null) {
 		throw new Error("Slack returned an incomplete message receipt.");
 	}
 
-	return { channel: data.channel, ts: data.ts };
+	return { channel: posted.channel, ts: posted.ts };
 }
 
 async function assertRunActive(runId: string): Promise<void> {
@@ -641,9 +696,9 @@ async function slackApiRequest(
 	fetcher: typeof fetch,
 	accessToken: string,
 	method: string,
-	body: Record<string, unknown>,
+	body: SlackRequestBody,
 	abortSignal?: AbortSignal,
-): Promise<Record<string, unknown>> {
+): Promise<Json> {
 	const response = await fetcher(`https://slack.com/api/${method}`, {
 		method: "POST",
 		headers: {
@@ -655,9 +710,10 @@ async function slackApiRequest(
 	});
 	if (!response.ok) throw new Error("Slack message delivery failed.");
 
-	const data = recordOf(await response.json());
-	if (data.ok !== true) {
-		const reason = typeof data.error === "string" ? data.error : "rejected";
+	const data = json.catch(null).parse(await response.json());
+	const envelope = slackEnvelope.parse(data);
+	if (envelope.ok !== true) {
+		const reason = envelope.error ?? "rejected";
 		if (reason === "not_in_channel") {
 			throw new Error(
 				"The Slack bot is not in the selected channel. Invite the app to that channel and retry the run.",
@@ -684,7 +740,7 @@ export async function stageRunResult(
 	runId: string,
 	input: {
 		summary: string;
-		result?: Record<string, unknown> | null;
+		result?: RunResult | null;
 		noActionNeeded?: { reason: string } | null;
 	},
 ) {
@@ -698,12 +754,10 @@ export async function stageRunResult(
 			if (refusal) throw new Error(refusal);
 		}
 
-		const result = {
-			...(input.result ?? {}),
-			...(input.noActionNeeded
-				? { noActionNeeded: input.noActionNeeded.reason }
-				: {}),
-		};
+		const result: RunResult = { ...(input.result ?? {}) };
+		if (input.noActionNeeded) {
+			result.noActionNeeded = input.noActionNeeded.reason;
+		}
 
 		await tx.agentRun.update({
 			where: { id: runId },
@@ -717,18 +771,19 @@ export async function stageRunResult(
 	});
 }
 
-export function runReportedNoActionNeeded(result: unknown): boolean {
-	return (
-		typeof result === "object" &&
-		result !== null &&
-		!Array.isArray(result) &&
-		typeof (result as Record<string, unknown>).noActionNeeded === "string"
-	);
+export function runResultOf(value: Prisma.JsonValue): RunResult {
+	return storedRunResult.parse(value);
+}
+
+export function runReportedNoActionNeeded(
+	result: RunResult | null | undefined,
+): boolean {
+	return noActionResult.parse(result).noActionNeeded !== null;
 }
 
 export async function finishRun(
 	runId: string,
-	input: { summary: string; result?: Record<string, unknown> | null },
+	input: { summary: string; result?: RunResult | null },
 ) {
 	return db.$transaction(async (tx) => {
 		const run = await lockAgentRun(tx, runId);
@@ -834,7 +889,7 @@ async function requiredActionFailure(
 	});
 
 	for (const action of external) {
-		const type = typeof action.type === "string" ? action.type : "unknown";
+		const type = action.type;
 		const rows = recorded.filter((row) => row.type === type);
 		if (rows.some((row) => row.status === "SUCCEEDED")) continue;
 
@@ -857,10 +912,7 @@ async function requiredActionFailure(
 					type,
 					provider:
 						type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST ? "slack" : "crm",
-					summary:
-						typeof action.summary === "string"
-							? action.summary
-							: `Perform ${type}`,
+					summary: action.summary,
 					status: "FAILED",
 					idempotencyKey: `run:${run.id}:required:${type}`,
 					requestHash: hashRequest({ type, required: true }),
@@ -928,12 +980,9 @@ async function failLockedRun(
 	return { id: run.id, status: "FAILED" as const };
 }
 
-function manifestDataScope(value: unknown): {
-	mode: RunRecordScope;
-	resources: RunResource[];
-} {
+function manifestDataScope(value: Prisma.JsonValue): RunDataScope {
 	const scope = parseAgentManifest(value).dataScope;
-	const resources = scope.resources as RunResource[];
+	const resources = scope.resources;
 	const records = resources.filter(
 		(resource) => resource.kind !== "integration",
 	);
@@ -946,24 +995,23 @@ function manifestDataScope(value: unknown): {
 	return { mode: scope.mode, resources };
 }
 
-function manifestActions(value: unknown) {
+function manifestActions(value: Prisma.JsonValue) {
 	return parseAgentManifest(value).actions;
 }
 
-function externalManifestActions(value: unknown) {
+function externalManifestActions(value: Prisma.JsonValue) {
 	return manifestActions(value).filter(
 		(action) => action.type !== AGENT_ACTION_TYPES.RUN_SUMMARY,
 	);
 }
 
 function assertActivityAllowed(
-	manifest: unknown,
+	manifest: Prisma.JsonValue,
 	activityType: "NOTE" | "TASK",
 ) {
 	const allowed = manifestActions(manifest).some(
 		(action) =>
-			action.type === "crm.activity.create" &&
-			Array.isArray(action.activityTypes) &&
+			action.type === AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE &&
 			action.activityTypes.includes(activityType),
 	);
 	if (!allowed) {
@@ -973,11 +1021,9 @@ function assertActivityAllowed(
 	}
 }
 
-export function approvedSlackDestination(manifest: unknown): {
-	kind: "channel" | "user";
-	id: string;
-	label: string;
-} {
+export function approvedSlackDestination(
+	manifest: Prisma.JsonValue,
+): SlackRunDestination {
 	const scope = manifestDataScope(manifest);
 	if (
 		!scope.resources.some(
@@ -988,26 +1034,17 @@ export function approvedSlackDestination(manifest: unknown): {
 		throw new Error("Agent version does not allow Slack.");
 	}
 
-	const destinations = manifestActions(manifest).flatMap((action) => {
-		if (action.type !== "slack.message.post") return [];
-		const destination = recordOf(action.destination);
-		if (
-			!["channel", "user"].includes(String(destination.kind)) ||
-			typeof destination.id !== "string" ||
-			!destination.id ||
-			typeof destination.label !== "string" ||
-			!destination.label
-		) {
-			return [];
-		}
-		return [
-			{
-				kind: destination.kind as "channel" | "user",
-				id: destination.id,
-				label: destination.label,
-			},
-		];
-	});
+	const destinations = manifestActions(manifest).flatMap((action) =>
+		action.type === AGENT_ACTION_TYPES.SLACK_MESSAGE_POST
+			? [
+					{
+						kind: action.destination.kind,
+						id: action.destination.id,
+						label: action.destination.label,
+					},
+				]
+			: [],
+	);
 	const [destination] = destinations;
 	if (!destination || destinations.length !== 1) {
 		throw new Error(
@@ -1020,7 +1057,7 @@ export function approvedSlackDestination(manifest: unknown): {
 
 function assertResourceAllowed(
 	mode: RunRecordScope,
-	resources: RunResource[],
+	resources: AgentManifestResource[],
 	input: { kind: "contact" | "company" | "deal"; id: string },
 ) {
 	if (mode === "WORKSPACE") return;
@@ -1039,10 +1076,9 @@ function assertResourceAllowed(
 	);
 }
 
-export function allowedHistorySources(resources: RunResource[]): {
-	gmail: boolean;
-	calendar: boolean;
-} {
+export function allowedHistorySources(
+	resources: AgentManifestResource[],
+): RunHistorySources {
 	const integrations = new Set(
 		resources
 			.filter((resource) => resource.kind === "integration")
@@ -1100,12 +1136,6 @@ async function targetRecord(kind: "company" | "contact" | "deal", id: string) {
 		: null;
 }
 
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
 function actionRequestHash(input: {
 	type: "NOTE" | "TASK";
 	targetKind: "company" | "contact" | "deal";
@@ -1124,7 +1154,7 @@ function actionRequestHash(input: {
 	});
 }
 
-function hashRequest(input: Record<string, unknown>): string {
+function hashRequest(input: HashableRequest): string {
 	return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 

@@ -75,11 +75,13 @@ export async function enabled(id: string): Promise<boolean> {
 	);
 }
 
-export function unavailable(env: string): {
+export type UnavailableCapability = {
 	ok: false;
 	configured: false;
 	reason: string;
-} {
+};
+
+export function unavailable(env: string): UnavailableCapability {
 	return {
 		ok: false,
 		configured: false,

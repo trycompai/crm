@@ -29,6 +29,7 @@ import {
 	FACET_ALL,
 	FACET_UNASSIGNED,
 	type ListResult,
+	type OrderByColumns,
 	ownerFilter,
 	paginate,
 	resolveOrderBy,
@@ -61,7 +62,9 @@ const COMPANY_SELECT = {
 
 const NO_COMPANY = "none";
 
-const FACT_COLUMNS: Record<string, string | undefined> = {
+type FactColumns = Record<string, string | undefined>;
+
+const FACT_COLUMNS: FactColumns = {
 	title: "title",
 	linkedinUrl: "linkedinUrl",
 	twitterUrl: "twitterUrl",
@@ -95,10 +98,7 @@ export type ContactRow = {
 	fields: Record<string, string | number | boolean | null>;
 };
 
-const SORTABLE: Record<
-	string,
-	(dir: Prisma.SortOrder) => Prisma.ContactOrderByWithRelationInput[]
-> = {
+const SORTABLE: OrderByColumns<Prisma.ContactOrderByWithRelationInput[]> = {
 	name: (dir) => [{ lastName: dir }, { firstName: dir }],
 	email: (dir) => [{ email: dir }],
 	title: (dir) => [{ title: dir }, { lastName: "asc" }],
@@ -403,7 +403,9 @@ export class ContactsService {
 		if (input.firstName !== undefined) data.firstName = input.firstName.trim();
 		if (input.lastName !== undefined)
 			data.lastName = blankToNull(input.lastName);
-		if (input.email !== undefined) data.email = normalizeEmail(input.email);
+		const email =
+			input.email === undefined ? null : normalizeEmail(input.email);
+		if (input.email !== undefined) data.email = email;
 		if (input.phone !== undefined) data.phone = blankToNull(input.phone);
 		if (input.title !== undefined) data.title = blankToNull(input.title);
 		if (input.linkedinUrl !== undefined) {
@@ -438,8 +440,8 @@ export class ContactsService {
 					select: { id: true, firstName: true, lastName: true },
 				});
 
-				if (typeof data.email === "string") {
-					await this.allowAgain(tx, data.email);
+				if (email !== null) {
+					await this.allowAgain(tx, email);
 				}
 
 				return updated;
@@ -753,17 +755,17 @@ export class ContactsService {
 		};
 	}
 
-	private translate(error: unknown, id: string): unknown {
-		if (error instanceof PrismaNamespace.PrismaClientKnownRequestError) {
-			if (error.code === "P2025") {
-				return new NotFoundException(`No contact with id ${id}.`);
+	private translate(cause: unknown, id: string): never {
+		if (cause instanceof PrismaNamespace.PrismaClientKnownRequestError) {
+			if (cause.code === "P2025") {
+				throw new NotFoundException(`No contact with id ${id}.`);
 			}
-			if (error.code === "P2002") {
-				return new ConflictException(
+			if (cause.code === "P2002") {
+				throw new ConflictException(
 					"Another contact already uses that email address.",
 				);
 			}
 		}
-		return error;
+		throw cause;
 	}
 }

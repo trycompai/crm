@@ -48,7 +48,7 @@ export class FieldsService {
 		includeArchived: boolean,
 	): Promise<SerializedField[]> {
 		const definitions = await this.db.fieldDefinition.findMany({
-			where: { entity, ...(includeArchived ? {} : { archivedAt: null }) },
+			where: { entity, archivedAt: includeArchived ? undefined : null },
 			include: WITH_OPTIONS,
 			orderBy: { position: "asc" },
 		});
@@ -421,15 +421,15 @@ export class FieldsService {
 		}
 	}
 
-	private translate(error: unknown): unknown {
+	private translate(cause: unknown): never {
 		if (
-			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-			error.code === "P2025"
+			cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			cause.code === "P2025"
 		) {
-			return new NotFoundException("That field does not exist.");
+			throw new NotFoundException("That field does not exist.");
 		}
 
-		return error;
+		throw cause;
 	}
 }
 

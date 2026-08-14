@@ -1,11 +1,13 @@
 import type { Db, Prisma } from "@crm/db";
 import type { AgentDefinitionStatus } from "@crm/db/enums";
 import { schemas } from "@crm/validation";
+import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
 import {
 	BadRequestException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
+import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
 import { AgentAccessService } from "./agent-access.service";
 import { AgentTriggerService } from "./agent-trigger.service";
@@ -19,6 +21,18 @@ import {
 } from "./agents.contracts";
 
 const INSTRUCTIONS_PATH = "agent/instructions.md";
+
+type VersionMetadata = {
+	name?: string;
+	description?: string | null;
+};
+
+const capabilityName = z.string().nullable().catch(null);
+
+const versionValidation = z
+	.object({ capabilities: z.array(z.json()).catch([]) })
+	.catchall(z.json())
+	.catch({ capabilities: [] });
 
 @Injectable()
 export class AgentDefinitionsService {
@@ -131,6 +145,7 @@ export class AgentDefinitionsService {
 
 		if (!row) throw new NotFoundException(`No agent with id ${id}.`);
 		const { versions, ...agent } = row;
+		const draft = versions[0];
 
 		return {
 			...agent,
@@ -144,7 +159,10 @@ export class AgentDefinitionsService {
 						deployedAt: agent.currentVersion.deployedAt?.toISOString() ?? null,
 					}
 				: null,
-			reviewVersion: agent.status === "DRAFT" ? (versions[0] ?? null) : null,
+			reviewVersion:
+				agent.status === "DRAFT" && draft
+					? { ...draft, manifest: readAgentManifestSummary(draft.manifest) }
+					: null,
 			triggers: agent.triggers.map((trigger) => ({
 				...trigger,
 				nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
@@ -152,7 +170,7 @@ export class AgentDefinitionsService {
 			})),
 			runCount: agent._count.runs,
 			capabilities: readCapabilities(
-				agent.currentVersion?.manifest ?? versions[0]?.manifest,
+				agent.currentVersion?.manifest ?? draft?.manifest,
 			),
 		};
 	}
@@ -793,28 +811,22 @@ export class AgentDefinitionsService {
 	}
 }
 
-function versionMetadata(manifest: unknown): {
-	name?: string;
-	description?: string | null;
-} {
-	if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-		return {};
-	}
-
-	const record = manifest as Record<string, unknown>;
-	const name = typeof record.name === "string" ? record.name.trim() : "";
+function versionMetadata(manifest: Prisma.JsonValue): VersionMetadata {
+	const summary = readAgentManifestSummary(manifest);
+	const name = summary.name?.trim() ?? "";
 	const description =
-		typeof record.description === "string"
-			? record.description.trim() || null
-			: undefined;
+		summary.description === undefined
+			? undefined
+			: summary.description.trim() || null;
 
-	return {
-		...(name ? { name } : {}),
-		...(description !== undefined ? { description } : {}),
-	};
+	const metadata: VersionMetadata = {};
+	if (name) metadata.name = name;
+	if (description !== undefined) metadata.description = description;
+
+	return metadata;
 }
 
-function readCapabilities(manifest: unknown) {
+function readCapabilities(manifest: Prisma.JsonValue | undefined) {
 	const parsed = schemas.agents.capabilities.safeParse(manifest);
 
 	if (!parsed.success) {
@@ -857,28 +869,24 @@ function reviseSummary(input: {
 }
 
 function reviseValidation(
-	validation: unknown,
+	validation: Prisma.JsonValue,
 	before: string[],
 	after: string[],
 ): Prisma.InputJsonValue {
 	const removed = before.filter((type) => !after.includes(type));
-	const base =
-		validation && typeof validation === "object" && !Array.isArray(validation)
-			? (validation as Record<string, unknown>)
-			: {};
+	const base = versionValidation.parse(validation);
 
-	const capabilities = Array.isArray(base.capabilities)
-		? base.capabilities.filter(
-				(entry) => typeof entry === "string" && !removed.includes(entry),
-			)
-		: [];
+	const capabilities = base.capabilities.flatMap((entry) => {
+		const name = capabilityName.parse(entry);
+		return name !== null && !removed.includes(name) ? [name] : [];
+	});
 
 	return {
 		...base,
 		status: "passed",
 		checkedAt: new Date().toISOString(),
 		capabilities,
-	} as Prisma.InputJsonValue;
+	};
 }
 
 async function nextVersionNumber(

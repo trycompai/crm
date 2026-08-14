@@ -1,10 +1,26 @@
 import type { Db, Prisma } from "@crm/db";
 import { blobEnabled, mirror } from "@crm/db/blob";
-import { BLOB_HOST_SUFFIX, COMPANY_IMAGE_FIELDS } from "@crm/db/images";
+import {
+	BLOB_HOST_SUFFIX,
+	COMPANY_IMAGE_FIELDS,
+	type CompanyImageField,
+} from "@crm/db/images";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
 const MAX_PER_SWEEP = 25;
+
+type CompanyImageRow = Record<CompanyImageField, string | null>;
+
+const EXTERNAL_CONTACT_IMAGE: Prisma.ContactWhereInput = {
+	imageUrl: { not: null },
+	NOT: { imageUrl: { contains: BLOB_HOST_SUFFIX } },
+};
+
+const EXTERNAL_USER_IMAGE: Prisma.UserWhereInput = {
+	image: { not: null },
+	NOT: { image: { contains: BLOB_HOST_SUFFIX } },
+};
 
 export type ImageMirrorResult = {
 	scanned: number;
@@ -44,7 +60,7 @@ export class ImageMirrorService {
 	private async sweepCompanies(): Promise<ImageMirrorResult> {
 		const rows = await this.db.company.findMany({
 			where: {
-				OR: COMPANY_IMAGE_FIELDS.map((field) => external(field)),
+				OR: COMPANY_IMAGE_FIELDS.map(externalCompanyImage),
 			},
 			orderBy: { createdAt: "asc" },
 			take: MAX_PER_SWEEP,
@@ -86,7 +102,7 @@ export class ImageMirrorService {
 
 	private async sweepContacts(): Promise<ImageMirrorResult> {
 		const rows = await this.db.contact.findMany({
-			where: external("imageUrl"),
+			where: EXTERNAL_CONTACT_IMAGE,
 			orderBy: { createdAt: "asc" },
 			take: MAX_PER_SWEEP,
 			select: { id: true, imageUrl: true },
@@ -113,7 +129,7 @@ export class ImageMirrorService {
 
 	private async sweepUsers(): Promise<ImageMirrorResult> {
 		const rows = await this.db.user.findMany({
-			where: external("image"),
+			where: EXTERNAL_USER_IMAGE,
 			take: MAX_PER_SWEEP,
 			select: { id: true, image: true },
 		});
@@ -138,20 +154,21 @@ export class ImageMirrorService {
 	}
 }
 
-function external<T extends string>(
-	field: T,
-): Record<T, { not: null }> & { NOT: Record<T, { contains: string }> } {
-	return {
-		...({ [field]: { not: null } } as Record<T, { not: null }>),
-		NOT: { [field]: { contains: BLOB_HOST_SUFFIX } } as Record<
-			T,
-			{ contains: string }
-		>,
-	};
+function externalCompanyImage(
+	field: CompanyImageField,
+): Prisma.CompanyWhereInput {
+	const mirrored: Prisma.CompanyWhereInput = {};
+	mirrored[field] = { contains: BLOB_HOST_SUFFIX };
+
+	const where: Prisma.CompanyWhereInput = { NOT: mirrored };
+	where[field] = { not: null };
+
+	return where;
 }
 
-function unchanged(row: Record<string, unknown>): Prisma.CompanyWhereInput {
-	return Object.fromEntries(
-		COMPANY_IMAGE_FIELDS.map((field) => [field, row[field] ?? null]),
-	);
+function unchanged(row: CompanyImageRow): Prisma.CompanyWhereInput {
+	const where: Prisma.CompanyWhereInput = {};
+	for (const field of COMPANY_IMAGE_FIELDS) where[field] = row[field] ?? null;
+
+	return where;
 }

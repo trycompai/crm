@@ -252,20 +252,23 @@ export async function linkSession(
 	return false;
 }
 
-function reasonOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+function reasonOf(cause: unknown): string {
+	return cause instanceof Error ? cause.message : String(cause);
 }
 
 export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
+	const records: Record<string, string> = {};
+	if (task.contactId) records.contactId = task.contactId;
+	if (task.companyId) records.companyId = task.companyId;
+	if (task.dealId) records.dealId = task.dealId;
+
 	return {
 		...base,
 		attributes: {
 			taskKind: task.kind,
 			reason: task.reason,
 			budget: String(task.budget),
-			...(task.contactId ? { contactId: task.contactId } : {}),
-			...(task.companyId ? { companyId: task.companyId } : {}),
-			...(task.dealId ? { dealId: task.dealId } : {}),
+			...records,
 		},
 	};
 }

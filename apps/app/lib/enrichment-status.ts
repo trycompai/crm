@@ -1,10 +1,12 @@
 import type { EnrichmentStatus } from "@crm/db/enums";
 import type { StatusTone } from "@crm/ui/components/status-indicator";
 
-const PRESENTATION: Record<
+type EnrichmentPresentation = Record<
 	EnrichmentStatus,
 	{ label: string; tone: StatusTone; busy?: boolean }
-> = {
+>;
+
+const PRESENTATION: EnrichmentPresentation = {
 	PENDING: { label: "Not researched", tone: "neutral" },
 	RUNNING: { label: "Researching", tone: "info", busy: true },
 	COMPLETE: { label: "Enriched", tone: "success" },

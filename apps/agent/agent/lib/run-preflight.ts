@@ -1,22 +1,25 @@
 import { db } from "@crm/db";
-import { actionDependency } from "./agent-actions";
 import {
 	type AgentManifest,
 	InvalidAgentManifest,
 	parseAgentManifest,
-} from "./agent-manifest";
+} from "@crm/validation/agent-manifest";
+import {
+	type AgentActionDependencyId,
+	actionDependency,
+} from "./agent-actions";
 import { slackConnected } from "./slack-connection";
 
 export const DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE";
 
-const CHECKS: Record<string, () => Promise<boolean>> = {
+const CHECKS = {
 	slack: slackConnected,
-};
+} satisfies Record<AgentActionDependencyId, () => Promise<boolean>>;
 
 export async function missingRunDependencies(
 	manifest: AgentManifest,
 ): Promise<string[]> {
-	const required = new Map<string, string>();
+	const required = new Map<AgentActionDependencyId, string>();
 
 	for (const action of manifest.actions) {
 		const dependency = actionDependency(action.type);
@@ -25,8 +28,7 @@ export async function missingRunDependencies(
 
 	const missing: string[] = [];
 	for (const [id, fix] of required) {
-		const check = CHECKS[id];
-		if (check && !(await check())) missing.push(fix);
+		if (!(await CHECKS[id]())) missing.push(fix);
 	}
 
 	return missing;

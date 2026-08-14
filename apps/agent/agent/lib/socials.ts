@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Evidence } from "./evidence";
 import {
 	looksLikeSameCompany,
@@ -5,6 +6,27 @@ import {
 	namesMatch,
 } from "./names";
 import { ask } from "./perplexity";
+
+const text = z.string().trim().min(1).nullable().catch(null);
+const rawText = z.string().nullable().catch(null);
+
+const githubAccount = z
+	.object({
+		login: rawText,
+		name: text,
+		company: text,
+		blog: text,
+		bio: text,
+		type: rawText,
+	})
+	.catch({
+		login: null,
+		name: null,
+		company: null,
+		blog: null,
+		bio: null,
+		type: null,
+	});
 
 export type Network = "x" | "github";
 
@@ -159,18 +181,16 @@ async function fetchGithubUser(
 	handle: string,
 ): Promise<{ ok: true; user: GithubUser } | { ok: false; reason: string }> {
 	const token = process.env.GITHUB_TOKEN;
+	const headers = new Headers({
+		accept: "application/vnd.github+json",
+		"user-agent": "comp-ai-crm-research-agent",
+	});
+	if (token) headers.set("authorization", `Bearer ${token}`);
 
 	try {
 		const response = await fetch(
 			`https://api.github.com/users/${encodeURIComponent(handle)}`,
-			{
-				headers: {
-					accept: "application/vnd.github+json",
-					"user-agent": "comp-ai-crm-research-agent",
-					...(token ? { authorization: `Bearer ${token}` } : {}),
-				},
-				signal: AbortSignal.timeout(15_000),
-			},
+			{ headers, signal: AbortSignal.timeout(15_000) },
 		);
 
 		if (response.status === 404) {
@@ -186,23 +206,23 @@ async function fetchGithubUser(
 			return { ok: false, reason: `GitHub returned HTTP ${response.status}.` };
 		}
 
-		const body = (await response.json()) as Record<string, unknown>;
+		const account = githubAccount.parse(await response.json());
 
 		return {
 			ok: true,
 			user: {
-				login: String(body.login ?? handle),
-				name: str(body.name),
-				company: str(body.company),
-				blog: str(body.blog),
-				bio: str(body.bio),
-				type: String(body.type ?? "User"),
+				login: account.login ?? handle,
+				name: account.name,
+				company: account.company,
+				blog: account.blog,
+				bio: account.bio,
+				type: account.type ?? "User",
 			},
 		};
-	} catch (error) {
+	} catch (cause) {
 		return {
 			ok: false,
-			reason: error instanceof Error ? error.message : String(error),
+			reason: cause instanceof Error ? cause.message : String(cause),
 		};
 	}
 }
@@ -395,8 +415,4 @@ export async function findSocialCandidates(
 	]).filter((candidate) => candidate.network === network);
 
 	return { candidates, citations: answer.data.citations };
-}
-
-function str(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
 }

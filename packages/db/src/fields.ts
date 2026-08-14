@@ -3,6 +3,7 @@ import {
 	type FieldValueColumn,
 	FieldValueError,
 	type FieldValueJson,
+	type FieldValueWrite,
 	recordColumn,
 	typeLabel,
 } from "./fields-shape";
@@ -99,7 +100,7 @@ const ISO_DATE_TIME =
 export function coerceValue(
 	definition: FieldDefinitionWithOptions,
 	input: unknown,
-): Partial<Record<FieldValueColumn, unknown>> {
+): FieldValueWrite {
 	const blank =
 		input === null ||
 		input === undefined ||

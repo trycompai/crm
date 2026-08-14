@@ -94,7 +94,7 @@ export async function completeTask(
 		data: {
 			finishedAt: new Date(),
 			outcome: outcome.slice(0, 500),
-			...(sessionId ? { sessionId } : {}),
+			sessionId: sessionId || undefined,
 		},
 	});
 

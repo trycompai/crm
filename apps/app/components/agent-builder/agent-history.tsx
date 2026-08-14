@@ -19,23 +19,33 @@ import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
 import { useState } from "react";
+import { z } from "zod";
 import { runFailureReason } from "@/lib/agent-run-failure";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 type Runs = RouterOutputs["agents"]["history"];
 type Activity = RouterOutputs["agents"]["activity"];
-type RunRow = Omit<Runs[number], "events"> & {
-	events: Array<{
-		id: string;
-		type: string;
-		data: unknown;
-		emittedAt: string;
-	}>;
-};
-type ActivityRow = Omit<Activity[number], "before" | "after"> & {
-	before: unknown;
-	after: unknown;
-};
+type RunRow = Runs[number];
+type AuditRow = Activity[number];
+
+const runEvents = z.array(
+	z.object({
+		id: z.string(),
+		type: z.string(),
+		data: z.json(),
+		emittedAt: z.string(),
+	}),
+);
+
+type RunEvent = z.infer<typeof runEvents>[number];
+
+const eventSummary = z
+	.object({ summary: z.string().refine((text) => text.trim().length > 0) })
+	.transform((event) => event.summary)
+	.nullable()
+	.catch(null);
+
+const auditChange = z.object({ before: z.json(), after: z.json() });
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
 	month: "short",
@@ -180,9 +190,7 @@ export function AgentRuns({
 						) : null}
 					</div>
 
-					{expanded === run.id ? (
-						<ExpandedRun run={run as unknown as RunRow} />
-					) : null}
+					{expanded === run.id ? <ExpandedRun run={run} /> : null}
 				</div>
 			))}
 
@@ -225,8 +233,9 @@ export function AgentRuns({
 }
 
 function ExpandedRun({ run }: { run: RunRow }) {
+	const events = runEvents.parse(run.events);
 	const timeline = [
-		...run.events.map((event) => ({
+		...events.map((event) => ({
 			kind: "event" as const,
 			at: event.emittedAt,
 			event,
@@ -261,7 +270,7 @@ function ExpandedRun({ run }: { run: RunRow }) {
 								{formatTime(entry.at)}
 							</span>
 							<span className="min-w-0 flex-1 wrap-break-word text-sm">
-								{eventLabel(entry.event.type, entry.event.data)}
+								{eventLabel(entry.event)}
 							</span>
 							<span className="hidden shrink-0 font-mono text-muted-foreground text-xs sm:inline">
 								event
@@ -294,8 +303,8 @@ function ExpandedRun({ run }: { run: RunRow }) {
 				)}
 				{run.eventsTruncated ? (
 					<div className="flex min-h-9 items-center border-t px-4 py-2 text-warning text-xs sm:px-5">
-						Showing the first {run.events.length} of {run.totalEvents} steps.
-						This run is too long to display in full.
+						Showing the first {events.length} of {run.totalEvents} steps. This
+						run is too long to display in full.
 					</div>
 				) : null}
 			</div>
@@ -327,8 +336,7 @@ function RunMeta({
 
 export function AgentActivity({ activity }: { activity: Activity }) {
 	const [kind, setKind] = useState("ALL");
-	const rows = activity as unknown as ActivityRow[];
-	const visible = rows.filter(
+	const visible = activity.filter(
 		(event) => kind === "ALL" || event.type.startsWith(kind),
 	);
 
@@ -374,9 +382,9 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 							<span className="block wrap-break-word text-sm">
 								{event.summary}
 							</span>
-							{changeDetail(event.before, event.after) ? (
+							{changeDetail(event) ? (
 								<span className="block max-w-full whitespace-pre-wrap wrap-break-word font-mono text-muted-foreground text-xs">
-									{changeDetail(event.before, event.after)}
+									{changeDetail(event)}
 								</span>
 							) : null}
 						</span>
@@ -398,16 +406,6 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 			</div>
 		</div>
 	);
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function textOf(value: unknown, fallback: string): string {
-	return typeof value === "string" && value.trim() ? value : fallback;
 }
 
 function humanStatus(value: string): string {
@@ -434,19 +432,22 @@ function duration(startedAt: string | null, finishedAt: string | null): string {
 	return `${Math.max(0, milliseconds / 1000).toFixed(1)}s`;
 }
 
-function eventLabel(type: string, data: unknown): string {
-	const payload = recordOf(data);
-	return textOf(payload.summary, humanStatus(type.replace(/\./g, " ")));
+function eventLabel(event: RunEvent): string {
+	return (
+		eventSummary.parse(event.data) ??
+		humanStatus(event.type.replace(/\./g, " "))
+	);
 }
 
-function changeDetail(before: unknown, after: unknown): string | null {
+function changeDetail(event: AuditRow): string | null {
+	const { before, after } = auditChange.parse(event);
 	if (!before && !after) return null;
 	const previous = JSON.stringify(before);
 	const next = JSON.stringify(after);
 	return previous && next ? `${previous} → ${next}` : next || previous;
 }
 
-function exportJson(name: string, value: unknown) {
+function exportJson(name: string, value: readonly AuditRow[]) {
 	const url = URL.createObjectURL(
 		new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }),
 	);

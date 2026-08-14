@@ -25,7 +25,9 @@ export type FieldValueColumn =
 	| "optionId"
 	| "userId";
 
-const COLUMNS: Record<FieldTypeName, FieldValueColumn> = {
+export type FieldValueWrite = Partial<Record<FieldValueColumn, unknown>>;
+
+const COLUMNS = {
 	TEXT: "text",
 	LONG_TEXT: "text",
 	URL: "text",
@@ -36,9 +38,9 @@ const COLUMNS: Record<FieldTypeName, FieldValueColumn> = {
 	CHECKBOX: "bool",
 	SELECT: "optionId",
 	USER: "userId",
-};
+} as const satisfies Record<FieldTypeName, FieldValueColumn>;
 
-const TYPE_LABELS: Record<FieldTypeName, string> = {
+const TYPE_LABELS = {
 	TEXT: "Text",
 	LONG_TEXT: "Long text",
 	NUMBER: "Number",
@@ -49,7 +51,7 @@ const TYPE_LABELS: Record<FieldTypeName, string> = {
 	EMAIL: "Email",
 	PHONE: "Phone",
 	USER: "User",
-};
+} as const satisfies Record<FieldTypeName, string>;
 
 export function columnFor(type: FieldTypeName): FieldValueColumn {
 	return COLUMNS[type];

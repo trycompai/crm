@@ -1,4 +1,5 @@
 import { db } from "@crm/db";
+import type { JsonValue } from "@crm/db/json";
 import {
 	APIError,
 	createAuthMiddleware,
@@ -61,13 +62,13 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 	}
 });
 
-function startsSlackConnect(path: string, body: unknown): boolean {
+function startsSlackConnect(path: string, body: JsonValue): boolean {
 	if (!SLACK_CONNECT_START_PATHS.includes(path)) return false;
 	const parsed = connectStartBody.safeParse(body);
 	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;
 }
 
-function completesSlackConnect(path: string, params: unknown): boolean {
+function completesSlackConnect(path: string, params: JsonValue): boolean {
 	if (!path.startsWith(OAUTH_CALLBACK_PATH)) return false;
 	const parsed = callbackParams.safeParse(params);
 	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;

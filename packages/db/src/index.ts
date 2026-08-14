@@ -11,5 +11,7 @@ export type * from "./generated/prisma/models";
 export type {
 	ContactBriefSections,
 	FactEvidence,
+	JsonObject,
+	JsonValue,
 	WorkspaceProfileSections,
 } from "./json";

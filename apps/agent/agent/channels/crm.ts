@@ -2,7 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { schemas } from "@crm/validation";
+import { eveTurnFailure } from "@crm/validation/eve-stream";
 import { defineChannel, GET, POST } from "eve/channels";
+import { z } from "zod";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
@@ -26,13 +28,35 @@ import {
 } from "../lib/dispatch";
 import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
-import { finishRun } from "../lib/run-runtime";
+import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
 const STALE_QUEUE_MS = DISPATCH.sweep.staleQueueMs;
+
+type InternalDispatchPrincipal = {
+	readonly authenticator: string;
+	readonly principalId: string;
+	readonly principalType: string;
+} | null;
+
+const identifier = z.string().trim().min(1).nullable().catch(null);
+
+const cancelRunRequest = z.object({ runId: identifier }).catch({ runId: null });
+
+const verifyKeyRequest = z
+	.object({ apiKey: identifier })
+	.catch({ apiKey: null });
+
+const receiveTarget = z
+	.object({
+		builderSubmissionId: z.string().nullable().catch(null),
+		runId: z.string().nullable().catch(null),
+		taskId: z.string().nullable().catch(null),
+	})
+	.catch({ builderSubmissionId: null, runId: null, taskId: null });
 
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
@@ -140,10 +164,9 @@ export default defineChannel({
 				return new Response("Unauthorized", { status: 401 });
 			}
 
-			const body = (await request.json().catch(() => null)) as {
-				runId?: unknown;
-			} | null;
-			const runId = typeof body?.runId === "string" ? body.runId.trim() : null;
+			const { runId } = cancelRunRequest.parse(
+				await request.json().catch(() => null),
+			);
 			if (!runId) {
 				return Response.json({ error: "No run id was sent." }, { status: 400 });
 			}
@@ -184,12 +207,9 @@ export default defineChannel({
 				return new Response("Unauthorized", { status: 401 });
 			}
 
-			const body = (await request.json().catch(() => null)) as {
-				apiKey?: unknown;
-			} | null;
-
-			const apiKey =
-				typeof body?.apiKey === "string" ? body.apiKey.trim() : null;
+			const { apiKey } = verifyKeyRequest.parse(
+				await request.json().catch(() => null),
+			);
 
 			if (!apiKey) {
 				return Response.json(
@@ -249,9 +269,7 @@ export default defineChannel({
 		async "turn.failed"(data, channel) {
 			const taskId = taskFromToken(channel.continuationToken);
 			const reason =
-				typeof data === "object" && data && "message" in data
-					? String((data as { message: unknown }).message)
-					: "The agent turn failed.";
+				eveTurnFailure.parse(data).message ?? "The agent turn failed.";
 
 			if (taskId) {
 				const subject = await taskSubject(taskId);
@@ -300,7 +318,7 @@ export default defineChannel({
 			try {
 				await finishRun(runId, {
 					summary: run.summary ?? "The agent run completed.",
-					result: recordOf(run.result),
+					result: runResultOf(run.result),
 				});
 			} catch (error) {
 				await failRun(
@@ -357,47 +375,32 @@ export default defineChannel({
 	},
 
 	async receive(input, { send }) {
-		const builderSubmissionId =
-			typeof input.target?.builderSubmissionId === "string"
-				? input.target.builderSubmissionId
-				: null;
-		if (builderSubmissionId) {
+		const target = receiveTarget.parse(input.target);
+		if (target.builderSubmissionId) {
 			assertInternalDispatchAuth(input.auth);
-			return dispatchBuilderSubmission(builderSubmissionId, send);
+			return dispatchBuilderSubmission(target.builderSubmissionId, send);
 		}
 
-		const runId =
-			typeof input.target?.runId === "string" ? input.target.runId : null;
-		if (runId) {
+		if (target.runId) {
 			assertInternalDispatchAuth(input.auth);
-			return dispatchAgentRun(runId, send);
+			return dispatchAgentRun(target.runId, send);
 		}
-
-		const taskId =
-			typeof input.target?.taskId === "string" ? input.target.taskId : null;
 
 		return send(input.message, {
 			auth: input.auth,
-			continuationToken: taskId
-				? taskToken(taskId)
+			continuationToken: target.taskId
+				? taskToken(target.taskId)
 				: `crm:adhoc:${crypto.randomUUID()}`,
 		});
 	},
 });
 
-function assertInternalDispatchAuth(value: unknown): void {
-	const auth = recordOf(value);
+function assertInternalDispatchAuth(auth: InternalDispatchPrincipal): void {
 	if (
-		auth.authenticator !== "app" ||
+		auth?.authenticator !== "app" ||
 		auth.principalType !== "runtime" ||
 		auth.principalId !== "eve:app"
 	) {
 		throw new Error("Internal agent dispatch requires Eve app authentication.");
 	}
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
 }

@@ -62,7 +62,21 @@ afterEach(async () => {
 	}
 });
 
-function slackReply(body: unknown): Response {
+type SlackChannelReply = {
+	id: string;
+	name: string;
+	is_member: boolean;
+	unknown?: number;
+};
+
+type SlackListReply = {
+	ok: boolean;
+	error?: string;
+	channels?: SlackChannelReply[];
+	response_metadata?: { next_cursor: string };
+};
+
+function slackReply(body: SlackListReply): Response {
 	return new Response(JSON.stringify(body), {
 		status: 200,
 		headers: { "content-type": "application/json" },
@@ -187,7 +201,10 @@ describe("persistSlackChannels", () => {
 describe("refreshSlackChannels", () => {
 	it("aborts a stalled Slack list request", async () => {
 		let signal: AbortSignal | null = null;
-		globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+		globalThis.fetch = (async (
+			_input: RequestInfo | URL,
+			init?: RequestInit,
+		) => {
 			signal = init?.signal ?? null;
 			return slackReply({ ok: true, channels: [] });
 		}) as typeof fetch;

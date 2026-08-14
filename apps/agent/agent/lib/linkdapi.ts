@@ -1,5 +1,32 @@
+import { z } from "zod";
+
 const HOST = "linkdapi-best-unofficial-linkedin-api.p.rapidapi.com";
 const TIMEOUT_MS = 20_000;
+
+const json = z.json();
+const text = z.string().trim().min(1).nullable().catch(null);
+const rawText = z.string().nullable().catch(null);
+const count = z.number().nullable().catch(null);
+const fields = z.record(z.string(), json).catch({});
+const optionalFields = z.record(z.string(), json).nullable().catch(null);
+const rows = z.array(json).nullable().catch(null);
+
+const envelope = z
+	.object({
+		success: z.boolean().nullable().catch(null),
+		data: json.catch(null),
+	})
+	.catch({ success: null, data: null });
+
+const experienceEnvelope = z
+	.object({ experience: rows, experiences: rows })
+	.catch({ experience: null, experiences: null });
+
+const companyLookup = z.object({ companies: rows }).catch({ companies: null });
+
+type Json = z.infer<typeof json>;
+
+export type LinkedinFields = z.infer<typeof fields>;
 
 export type Profile = {
 	slug: string;
@@ -64,29 +91,29 @@ export function slugFromProfileUrl(raw: string | null): string | null {
 }
 
 export async function getProfile(slug: string): Promise<Outcome<Profile>> {
-	const result = await call<RawProfile>("/api/v1/profile/overview", {
-		username: slug,
-	});
+	const result = await call("/api/v1/profile/overview", { username: slug });
 	if (!result.ok) return result;
 
-	const d = result.data;
+	const d = fields.parse(result.data);
 	return {
 		ok: true,
 		data: {
 			slug,
 			profileUrl: `https://www.linkedin.com/in/${slug}`,
-			fullName: str(d.fullName),
-			firstName: str(d.firstName),
-			lastName: str(d.lastName),
-			headline: str(d.headline),
-			location: str(d.location),
-			urn: str(d.urn),
-			followerCount: int(d.followerCount),
-			connectionsCount: int(d.connectionsCount),
+			fullName: text.parse(d.fullName),
+			firstName: text.parse(d.firstName),
+			lastName: text.parse(d.lastName),
+			headline: text.parse(d.headline),
+			location: text.parse(d.location),
+			urn: text.parse(d.urn),
+			followerCount: count.parse(d.followerCount),
+			connectionsCount: count.parse(d.connectionsCount),
 			photoUrl: profilePhotoUrl(d),
-			positions: (d.CurrentPositions ?? []).flatMap((p) =>
-				p?.name ? [{ name: p.name, url: str(p.url) }] : [],
-			),
+			positions: (rows.parse(d.CurrentPositions) ?? []).flatMap((entry) => {
+				const position = fields.parse(entry);
+				const name = rawText.parse(position.name);
+				return name ? [{ name, url: text.parse(position.url) }] : [];
+			}),
 		},
 	};
 }
@@ -94,70 +121,73 @@ export async function getProfile(slug: string): Promise<Outcome<Profile>> {
 export async function getExperience(
 	urn: string,
 ): Promise<Outcome<Experience[]>> {
-	const result = await call<RawExperience>("/api/v1/profile/full-experience", {
-		urn,
-	});
+	const result = await call("/api/v1/profile/full-experience", { urn });
 	if (!result.ok) return result;
 
-	const payload = result.data;
-	const rows: RawExperienceRow[] = Array.isArray(payload)
-		? payload
-		: (payload.experience ?? payload.experiences ?? []);
+	return { ok: true, data: experienceRows(result.data).map(toExperience) };
+}
 
+function experienceRows(payload: Json): Json[] {
+	if (Array.isArray(payload)) return payload;
+
+	const envelope = experienceEnvelope.parse(payload);
+	return envelope.experience ?? envelope.experiences ?? [];
+}
+
+function toExperience(row: Json): Experience {
+	const entry = fields.parse(row);
 	return {
-		ok: true,
-		data: rows.map(
-			(row): Experience => ({
-				title: str(row?.title),
-				company: str(row?.companyName ?? row?.company),
-				dateRange: str(row?.dateRange ?? row?.duration),
-				location: str(row?.location),
-			}),
-		),
+		title: text.parse(entry.title),
+		company: text.parse(entry.companyName ?? entry.company),
+		dateRange: text.parse(entry.dateRange ?? entry.duration),
+		location: text.parse(entry.location),
 	};
 }
 
 export async function lookupCompany(
 	query: string,
 ): Promise<Outcome<{ id: string; displayName: string }[]>> {
-	const result = await call<RawLookup>("/api/v1/companies/name-lookup", {
-		query,
-	});
+	const result = await call("/api/v1/companies/name-lookup", { query });
 	if (!result.ok) return result;
 
+	const companies = companyLookup.parse(result.data).companies ?? [];
 	return {
 		ok: true,
-		data: (result.data.companies ?? []).flatMap((c) =>
-			c?.id ? [{ id: c.id, displayName: c.displayName ?? c.id }] : [],
-		),
+		data: companies.flatMap((entry) => {
+			const company = fields.parse(entry);
+			const id = rawText.parse(company.id);
+			return id
+				? [{ id, displayName: rawText.parse(company.displayName) ?? id }]
+				: [];
+		}),
 	};
 }
 
 export async function getCompany(nameOrId: string): Promise<Outcome<Company>> {
 	const numeric = /^\d+$/.test(nameOrId);
-	const result = await call<RawCompany>("/api/v1/companies/company/info", {
+	const result = await call("/api/v1/companies/company/info", {
 		[numeric ? "id" : "name"]: nameOrId,
 	});
 	if (!result.ok) return result;
 
-	const d = result.data;
+	const d = fields.parse(result.data);
 	return {
 		ok: true,
 		data: {
-			id: str(d.id),
-			name: str(d.name),
-			universalName: str(d.universalName),
-			tagline: str(d.tagline),
-			description: str(d.description),
-			linkedinUrl: str(d.linkedinUrl),
+			id: text.parse(d.id),
+			name: text.parse(d.name),
+			universalName: text.parse(d.universalName),
+			tagline: text.parse(d.tagline),
+			description: text.parse(d.description),
+			linkedinUrl: text.parse(d.linkedinUrl),
 		},
 	};
 }
 
-async function call<T>(
+async function call(
 	path: string,
 	params: Record<string, string>,
-): Promise<Outcome<T>> {
+): Promise<Outcome<Json>> {
 	const apiKey = key();
 	if (!apiKey) return { ok: false, missing: false, reason: "No RAPIDAPI_KEY." };
 
@@ -177,43 +207,28 @@ async function call<T>(
 			return { ok: false, missing: false, reason: `HTTP ${response.status}` };
 		}
 
-		const body = (await response.json()) as {
-			success?: boolean;
-			data?: T | null;
-		};
+		const body = envelope.parse(await response.json());
 
-		if (body.success !== true || body.data == null) {
+		if (body.success !== true || body.data === null) {
 			return { ok: false, missing: true };
 		}
 
 		return { ok: true, data: body.data };
-	} catch (error) {
-		const aborted = error instanceof Error && error.name === "AbortError";
+	} catch (cause) {
+		const aborted = cause instanceof Error && cause.name === "AbortError";
 		return {
 			ok: false,
 			missing: false,
 			reason: aborted
 				? `Timed out after ${TIMEOUT_MS}ms.`
-				: error instanceof Error
-					? error.message
-					: String(error),
+				: cause instanceof Error
+					? cause.message
+					: String(cause),
 		};
 	} finally {
 		clearTimeout(timer);
 	}
 }
-
-type RawProfile = {
-	fullName?: unknown;
-	firstName?: unknown;
-	lastName?: unknown;
-	headline?: unknown;
-	location?: unknown;
-	urn?: unknown;
-	followerCount?: unknown;
-	connectionsCount?: unknown;
-	CurrentPositions?: { name?: string; url?: unknown }[] | null;
-} & Record<string, unknown>;
 
 const PHOTO_KEYS = [
 	"profilePictureURL",
@@ -229,8 +244,8 @@ const PHOTO_KEYS = [
 	"avatar",
 ];
 
-export function profilePhotoUrl(raw: Record<string, unknown>): string | null {
-	const byLowerKey = new Map<string, unknown>();
+export function profilePhotoUrl(raw: LinkedinFields): string | null {
+	const byLowerKey = new Map<string, Json>();
 	for (const [key, value] of Object.entries(raw)) {
 		byLowerKey.set(key.toLowerCase(), value);
 	}
@@ -251,9 +266,7 @@ export function profilePhotoUrl(raw: Record<string, unknown>): string | null {
 	return null;
 }
 
-function firstUrl(value: unknown): string | null {
-	if (typeof value === "string") return str(value);
-
+function firstUrl(value: Json | undefined): string | null {
 	if (Array.isArray(value)) {
 		for (const entry of [...value].reverse()) {
 			const found = firstUrl(entry);
@@ -262,43 +275,16 @@ function firstUrl(value: unknown): string | null {
 		return null;
 	}
 
-	if (value && typeof value === "object") {
-		const record = value as Record<string, unknown>;
+	const direct = text.parse(value);
+	if (direct) return direct;
+
+	const nested = optionalFields.parse(value);
+	if (nested) {
 		for (const key of ["url", "displayUrl", "src", "large", "original"]) {
-			const found = firstUrl(record[key]);
+			const found = firstUrl(nested[key]);
 			if (found) return found;
 		}
 	}
 
 	return null;
-}
-
-type RawExperienceRow = {
-	title?: unknown;
-	companyName?: unknown;
-	company?: unknown;
-	dateRange?: unknown;
-	duration?: unknown;
-	location?: unknown;
-};
-
-type RawExperience =
-	| RawExperienceRow[]
-	| { experience?: RawExperienceRow[]; experiences?: RawExperienceRow[] };
-type RawLookup = { companies?: { id?: string; displayName?: string }[] | null };
-type RawCompany = {
-	id?: unknown;
-	name?: unknown;
-	universalName?: unknown;
-	tagline?: unknown;
-	description?: unknown;
-	linkedinUrl?: unknown;
-};
-
-function str(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function int(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

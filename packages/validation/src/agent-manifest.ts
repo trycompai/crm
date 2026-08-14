@@ -1,6 +1,20 @@
 import { CRM_EVENT_TYPES } from "@crm/db/crm-events";
 import { z } from "zod";
-import { AGENT_ACTION_TYPES } from "./agent-actions";
+
+export const AGENT_ACTION_TYPES = {
+	CRM_ACTIVITY_CREATE: "crm.activity.create",
+	RUN_SUMMARY: "run.summary",
+	SLACK_MESSAGE_POST: "slack.message.post",
+} as const;
+
+export type AgentActionType =
+	(typeof AGENT_ACTION_TYPES)[keyof typeof AGENT_ACTION_TYPES];
+
+export const AGENT_TRIGGER_INTERVAL_MINUTES = {
+	min: 1,
+	max: 525_600,
+	fallback: 1_440,
+} as const;
 
 const slackDestination = z.object({
 	kind: z.enum(["channel", "user"]),
@@ -32,6 +46,15 @@ export const agentManifestAction = z.discriminatedUnion("type", [
 	}),
 ]);
 
+export const agentScheduleTriggerConfig = z.object({
+	nextRunAt: z.string(),
+	intervalMinutes: z.number().int().min(AGENT_TRIGGER_INTERVAL_MINUTES.min),
+});
+
+export const agentEventTriggerConfig = z.object({
+	event: z.enum(CRM_EVENT_TYPES),
+});
+
 export const agentManifestTrigger = z.discriminatedUnion("type", [
 	z.object({
 		type: z.literal("MANUAL"),
@@ -43,16 +66,13 @@ export const agentManifestTrigger = z.discriminatedUnion("type", [
 		type: z.literal("SCHEDULE"),
 		name: z.string(),
 		summary: z.string(),
-		config: z.object({
-			nextRunAt: z.string(),
-			intervalMinutes: z.number().int().min(1),
-		}),
+		config: agentScheduleTriggerConfig,
 	}),
 	z.object({
 		type: z.literal("EVENT"),
 		name: z.string(),
 		summary: z.string(),
-		config: z.object({ event: z.enum(CRM_EVENT_TYPES) }),
+		config: agentEventTriggerConfig,
 	}),
 ]);
 
@@ -90,6 +110,7 @@ export const agentManifest = z
 export type SlackDestination = z.infer<typeof slackDestination>;
 export type AgentManifestAction = z.infer<typeof agentManifestAction>;
 export type AgentManifestTrigger = z.infer<typeof agentManifestTrigger>;
+export type AgentManifestResource = z.infer<typeof agentManifestResource>;
 export type AgentManifest = z.infer<typeof agentManifest>;
 
 export class InvalidAgentManifest extends Error {
@@ -108,4 +129,57 @@ export function parseAgentManifest(value: unknown): AgentManifest {
 			.map((issue) => `${issue.path.join(".") || "manifest"} ${issue.message}`)
 			.join("; "),
 	);
+}
+
+export const agentTriggerConfig = z.object({
+	intervalMinutes: z
+		.number()
+		.min(AGENT_TRIGGER_INTERVAL_MINUTES.min)
+		.transform((minutes) =>
+			Math.min(minutes, AGENT_TRIGGER_INTERVAL_MINUTES.max),
+		)
+		.catch(AGENT_TRIGGER_INTERVAL_MINUTES.fallback),
+	event: z.enum(CRM_EVENT_TYPES).nullable().catch(null),
+});
+
+export type AgentTriggerConfig = z.infer<typeof agentTriggerConfig>;
+
+const UNREADABLE_TRIGGER_CONFIG: AgentTriggerConfig = {
+	intervalMinutes: AGENT_TRIGGER_INTERVAL_MINUTES.fallback,
+	event: null,
+};
+
+export function readAgentTriggerConfig(value: unknown): AgentTriggerConfig {
+	const parsed = agentTriggerConfig.safeParse(value);
+	return parsed.success ? parsed.data : UNREADABLE_TRIGGER_CONFIG;
+}
+
+const optionalText = z.string().optional().catch(undefined);
+
+export const agentManifestSummary = z.object({
+	name: optionalText,
+	description: optionalText,
+	access: z
+		.array(z.string().nullable().catch(null))
+		.catch([])
+		.transform((entries) => entries.filter((entry) => entry !== null)),
+	triggers: z
+		.array(z.object({ type: optionalText, summary: optionalText }).catch({}))
+		.catch([]),
+	actions: z.array(z.object({ summary: optionalText }).catch({})).catch([]),
+	dataScope: z.object({ summary: optionalText }).catch({}),
+});
+
+export type AgentManifestSummary = z.infer<typeof agentManifestSummary>;
+
+const UNREADABLE_MANIFEST_SUMMARY: AgentManifestSummary = {
+	access: [],
+	triggers: [],
+	actions: [],
+	dataScope: {},
+};
+
+export function readAgentManifestSummary(value: unknown): AgentManifestSummary {
+	const parsed = agentManifestSummary.safeParse(value);
+	return parsed.success ? parsed.data : UNREADABLE_MANIFEST_SUMMARY;
 }

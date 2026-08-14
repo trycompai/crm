@@ -1,3 +1,9 @@
+import {
+	type EveStreamEvent,
+	eveRequestedActions,
+	eveSettledAction,
+} from "@crm/validation/eve-stream";
+
 export type BuilderArtifactState = {
 	id: string;
 	versionId: string | null;
@@ -59,20 +65,18 @@ export function builderSessionStreamKey(
 }
 
 export function agentBuilderCallIsActive(
-	events: readonly { type: string; data?: unknown }[],
+	events: readonly EveStreamEvent[],
 ): boolean {
 	const activeCallIds = new Set<string>();
 
 	for (const event of events) {
-		const data = recordOf(event.data);
 		if (event.type === "actions.requested") {
-			for (const value of arrayOf(data.actions)) {
-				const action = recordOf(value);
+			for (const action of eveRequestedActions.parse(event.data).actions) {
 				if (
 					action.kind === "subagent-call" &&
 					(action.name === "agent_builder" ||
 						action.subagentName === "agent_builder") &&
-					typeof action.callId === "string"
+					action.callId !== null
 				) {
 					activeCallIds.add(action.callId);
 				}
@@ -80,11 +84,12 @@ export function agentBuilderCallIsActive(
 		}
 
 		if (event.type === "action.result" || event.type === "subagent.completed") {
-			const result = recordOf(data.result);
-			const action = recordOf(data.action);
-			const callId = [data.callId, result.callId, action.callId].find(
-				(value): value is string => typeof value === "string",
-			);
+			const settled = eveSettledAction.parse(event.data);
+			const callId = [
+				settled.callId,
+				settled.result.callId,
+				settled.action.callId,
+			].find((value) => value !== null);
 			if (callId) activeCallIds.delete(callId);
 		}
 
@@ -150,14 +155,4 @@ export function latestCompletedArtifactVersionId(
 			(artifact) => artifact.status === "READY" && artifact.versionId,
 		)?.versionId ?? null
 	);
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function arrayOf(value: unknown): unknown[] {
-	return Array.isArray(value) ? value : [];
 }

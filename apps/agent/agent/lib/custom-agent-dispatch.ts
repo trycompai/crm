@@ -1,7 +1,10 @@
 import { db, Prisma } from "@crm/db";
-import { CRM_EVENT_CATALOG, isCrmEventType } from "@crm/db/crm-events";
+import { CRM_EVENT_CATALOG } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { crmEventTask } from "@crm/validation/agent-events";
+import { readAgentTriggerConfig } from "@crm/validation/agent-manifest";
 import type { SendFn } from "eve/channels";
+import { z } from "zod";
 import { DISPATCH } from "./dispatch-config";
 import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
 import {
@@ -16,6 +19,32 @@ const RUN_BATCH = DISPATCH.run.batch;
 const MAX_BUILDER_ATTEMPTS = DISPATCH.builder.maxAttempts;
 const BUILDER_LEASE_MS = DISPATCH.builder.leaseMs;
 const RUN_DELIVERY_LEASE_MS = DISPATCH.run.deliveryLeaseMs;
+
+type BuilderMessageParts = Extract<Parameters<SendFn>[0], readonly unknown[]>;
+
+const trimmedText = z.string().trim().catch("");
+
+const builderInputResponse = z
+	.object({
+		requestId: trimmedText,
+		optionId: trimmedText,
+		text: trimmedText,
+	})
+	.catch({ requestId: "", optionId: "", text: "" });
+
+const builderSubmissionMessage = z
+	.object({
+		text: z.string().catch(""),
+		resources: z
+			.array(z.object({ label: z.string().catch("") }).catch({ label: "" }))
+			.catch([]),
+		inputResponse: builderInputResponse,
+	})
+	.catch({
+		text: "",
+		resources: [],
+		inputResponse: { requestId: "", optionId: "", text: "" },
+	});
 
 export async function pendingBuilderSubmissionIds(): Promise<string[]> {
 	await recoverBuilderSubmissions();
@@ -219,7 +248,9 @@ export async function queueDueAgentRuns(now = new Date()): Promise<number> {
 	for (const trigger of triggers) {
 		if (!trigger.nextRunAt) continue;
 		const scheduledAt = trigger.nextRunAt;
-		const intervalMinutes = intervalOf(trigger.config);
+		const intervalMinutes = readAgentTriggerConfig(
+			trigger.config,
+		).intervalMinutes;
 		const nextRunAt = advance(scheduledAt, intervalMinutes, now);
 		const idempotencyKey = `${trigger.id}:${scheduledAt.toISOString()}`;
 		const claimed = await db.$transaction(async (tx) => {
@@ -271,29 +302,22 @@ export async function queueEventAgentRuns(
 		"id" | "contactId" | "companyId" | "dealId" | "payload"
 	>,
 ): Promise<number> {
-	const payload = recordOf(task.payload);
-	const eventType = payload.type;
-	const record = recordOf(payload.record);
-	const recordKind = textOf(record.kind);
-	const recordId = textOf(record.id);
-	const occurredAt = textOf(payload.occurredAt);
+	const parsed = crmEventTask.safeParse(task.payload);
+	if (!parsed.success) {
+		throw new Error("The queued agent event is invalid.");
+	}
+
+	const { type: eventType, occurredAt, data } = parsed.data;
+	const recordKind = CRM_EVENT_CATALOG[eventType].recordKind;
+	const recordId = parsed.data.record.id;
 	const occurredAtDate = new Date(occurredAt);
 	const taskRecordId =
 		recordKind === "contact"
 			? task.contactId
 			: recordKind === "company"
 				? task.companyId
-				: recordKind === "deal"
-					? task.dealId
-					: null;
-	if (
-		!isCrmEventType(eventType) ||
-		CRM_EVENT_CATALOG[eventType].recordKind !== recordKind ||
-		!recordId ||
-		taskRecordId !== recordId ||
-		!occurredAt ||
-		Number.isNaN(occurredAtDate.getTime())
-	) {
+				: task.dealId;
+	if (taskRecordId !== recordId) {
 		throw new Error("The queued agent event is invalid.");
 	}
 
@@ -314,7 +338,7 @@ export async function queueEventAgentRuns(
 
 	let matched = 0;
 	for (const trigger of triggers) {
-		if (recordOf(trigger.config).event !== eventType) continue;
+		if (readAgentTriggerConfig(trigger.config).event !== eventType) continue;
 		const idempotencyKey = `event:${task.id}:trigger:${trigger.id}`;
 
 		const queued = await db.$transaction(async (tx) => {
@@ -340,13 +364,9 @@ export async function queueEventAgentRuns(
 					idempotencyKey,
 					correlationId: `trigger:${trigger.id}:event:${task.id}`,
 					input: {
-						event: {
-							type: eventType,
-							occurredAt,
-							data: recordOf(payload.data),
-						},
+						event: { type: eventType, occurredAt, data },
 						record: { kind: recordKind, id: recordId },
-					} as Prisma.InputJsonValue,
+					},
 					events: {
 						create: {
 							sequence: 0,
@@ -812,14 +832,11 @@ async function recoverAgentRuns() {
 
 export function builderDeliveryMessage(
 	submissionId: string,
-	value: unknown,
+	value: Prisma.JsonValue,
 	attachments: readonly BuilderDeliveryAttachment[] = [],
 ): Parameters<SendFn>[0] {
-	const message = recordOf(value);
-	const inputResponse = recordOf(message.inputResponse);
-	const requestId = textOf(inputResponse.requestId);
-	const optionId = textOf(inputResponse.optionId);
-	const responseText = textOf(inputResponse.text);
+	const message = builderSubmissionMessage.parse(value);
+	const { requestId, optionId, text: responseText } = message.inputResponse;
 	if (requestId && (optionId || responseText)) {
 		return {
 			inputResponses: [
@@ -831,18 +848,19 @@ export function builderDeliveryMessage(
 		};
 	}
 
-	const text = typeof message.text === "string" ? message.text : "";
-	const resources = Array.isArray(message.resources) ? message.resources : [];
+	const labels = message.resources
+		.map((resource) => resource.label)
+		.filter(Boolean);
 	const context = [
 		`Submission id: ${submissionId}`,
-		resources.length > 0
-			? `Tagged resources: ${resources.map(resourceLabel).filter(Boolean).join(", ")}`
+		message.resources.length > 0
+			? `Tagged resources: ${labels.join(", ")}`
 			: null,
 	]
 		.filter(Boolean)
 		.join("\n");
-	const parts: Array<Record<string, unknown>> = [
-		{ type: "text", text: `${context}\n\n${text}` },
+	const parts: BuilderMessageParts = [
+		{ type: "text", text: `${context}\n\n${message.text}` },
 	];
 
 	for (const attachment of attachments) {
@@ -854,18 +872,16 @@ export function builderDeliveryMessage(
 		});
 	}
 
-	return parts as Parameters<SendFn>[0];
+	return parts;
 }
 
 export function builderCommandType(
 	commandType: string,
-	value: unknown,
+	value: Prisma.JsonValue,
 ): string {
-	const inputResponse = recordOf(recordOf(value).inputResponse);
-	return textOf(inputResponse.requestId) &&
-		(textOf(inputResponse.optionId) || textOf(inputResponse.text))
-		? "CREATE_AGENT"
-		: commandType;
+	const { requestId, optionId, text } =
+		builderSubmissionMessage.parse(value).inputResponse;
+	return requestId && (optionId || text) ? "CREATE_AGENT" : commandType;
 }
 
 type BuilderDeliveryAttachment = {
@@ -873,24 +889,6 @@ type BuilderDeliveryAttachment = {
 	mediaType: string;
 	content: Uint8Array;
 };
-
-function resourceLabel(value: unknown): string | null {
-	const row = recordOf(value);
-	return typeof row.label === "string" ? row.label : null;
-}
-
-function textOf(value: unknown): string {
-	return typeof value === "string" ? value.trim() : "";
-}
-
-function intervalOf(value: unknown): number {
-	const interval = recordOf(value).intervalMinutes;
-	return typeof interval === "number" &&
-		Number.isFinite(interval) &&
-		interval >= 1
-		? Math.min(interval, 525_600)
-		: 1440;
-}
 
 function advance(from: Date, intervalMinutes: number, now: Date): Date {
 	const intervalMs = intervalMinutes * 60_000;
@@ -907,10 +905,4 @@ function idFromToken(token: string | undefined, marker: string): string | null {
 	if (index === -1) return null;
 	const id = token.slice(index + marker.length);
 	return id || null;
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
 }

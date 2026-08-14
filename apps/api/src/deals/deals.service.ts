@@ -38,6 +38,7 @@ import {
 	FACET_ALL,
 	FACET_UNASSIGNED,
 	type ListResult,
+	type OrderByColumns,
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
@@ -83,10 +84,7 @@ const CONTACT_SELECT = {
 
 const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
 
-const SORTABLE: Record<
-	string,
-	(dir: Prisma.SortOrder) => Prisma.DealOrderByWithRelationInput[]
-> = {
+const SORTABLE: OrderByColumns<Prisma.DealOrderByWithRelationInput[]> = {
 	name: (dir) => [{ name: dir }],
 	company: (dir) => [{ company: { name: dir } }, { name: "asc" }],
 	stage: (dir) => [{ stage: dir }, { expectedCloseDate: "asc" }],
@@ -709,26 +707,26 @@ export class DealsService {
 		};
 	}
 
-	private translate(error: unknown, id: string): unknown {
+	private translate(cause: unknown, id: string): never {
 		if (
-			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-			error.code === "P2025"
+			cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			cause.code === "P2025"
 		) {
-			return new NotFoundException(`No deal with id ${id}.`);
+			throw new NotFoundException(`No deal with id ${id}.`);
 		}
-		return this.translateRelations(error);
+		return this.translateRelations(cause);
 	}
 
-	private translateRelations(error: unknown): unknown {
+	private translateRelations(cause: unknown): never {
 		if (
-			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-			(error.code === "P2003" || error.code === "P2025")
+			cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			(cause.code === "P2003" || cause.code === "P2025")
 		) {
-			return new BadRequestException(
+			throw new BadRequestException(
 				"That company or owner does not exist any more.",
 			);
 		}
-		return error;
+		throw cause;
 	}
 }
 

@@ -205,7 +205,7 @@ async function main() {
 	} finally {
 		const failure = await cleanUp(agentId, companyId, dealId, taskId).then(
 			() => null,
-			(error: unknown) => reasonOf(error),
+			(cause: unknown) => reasonOf(cause),
 		);
 		record(
 			"cleanup leaves no seeded rows",

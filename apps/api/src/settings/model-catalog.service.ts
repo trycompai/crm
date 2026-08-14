@@ -1,6 +1,7 @@
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { Cache } from "cache-manager";
+import { z } from "zod";
 
 const CATALOG_URL = "https://ai-gateway.vercel.sh/v1/models";
 
@@ -18,29 +19,47 @@ export interface CatalogModel {
 	pricing: { input: number; output: number } | null;
 }
 
-interface GatewayModel {
-	id?: unknown;
-	name?: unknown;
-	owned_by?: unknown;
-	type?: unknown;
-	tags?: unknown;
-	context_window?: unknown;
-	pricing?: { input?: unknown; output?: unknown } | null;
-}
+const gatewayRate = z
+	.union([z.number(), z.string()])
+	.transform((value) => Number(value))
+	.refine((value) => Number.isFinite(value))
+	.nullable()
+	.catch(null);
 
-function rate(value: unknown): number | null {
-	const parsed = typeof value === "string" ? Number(value) : value;
-	return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null;
-}
+const gatewayModel = z.object({
+	id: z.string(),
+	name: z.string().catch(""),
+	owned_by: z.string().catch(""),
+	type: z.string().catch(""),
+	tags: z.array(z.json()).catch([]),
+	context_window: z.number(),
+	pricing: z
+		.object({ input: gatewayRate, output: gatewayRate })
+		.nullable()
+		.catch(null),
+});
+
+type GatewayModel = z.infer<typeof gatewayModel>;
+
+const gatewayCatalog = z
+	.object({ data: z.array(z.json()).catch([]) })
+	.catch({ data: [] });
 
 function usable(model: GatewayModel): boolean {
-	const tags = Array.isArray(model.tags) ? model.tags : [];
-	return (
-		typeof model.id === "string" &&
-		model.type === "language" &&
-		tags.includes("tool-use") &&
-		typeof model.context_window === "number"
-	);
+	return model.type === "language" && model.tags.includes("tool-use");
+}
+
+function toCatalogModel(model: GatewayModel): CatalogModel {
+	const input = model.pricing?.input ?? null;
+	const output = model.pricing?.output ?? null;
+
+	return {
+		id: model.id,
+		name: model.name || model.id,
+		provider: model.owned_by || (model.id.split("/")[0] ?? model.id),
+		contextWindowTokens: model.context_window,
+		pricing: input !== null && output !== null ? { input, output } : null,
+	};
 }
 
 @Injectable()
@@ -80,26 +99,13 @@ export class ModelCatalogService {
 				return null;
 			}
 
-			const body = (await response.json()) as { data?: unknown };
-			const rows = Array.isArray(body.data)
-				? (body.data as GatewayModel[])
-				: [];
+			const body = gatewayCatalog.parse(await response.json());
 
-			const models = rows.filter(usable).map((model): CatalogModel => {
-				const id = model.id as string;
-				const input = rate(model.pricing?.input);
-				const output = rate(model.pricing?.output);
-
-				return {
-					id,
-					name: typeof model.name === "string" && model.name ? model.name : id,
-					provider:
-						typeof model.owned_by === "string" && model.owned_by
-							? model.owned_by
-							: (id.split("/")[0] ?? id),
-					contextWindowTokens: model.context_window as number,
-					pricing: input !== null && output !== null ? { input, output } : null,
-				};
+			const models = body.data.flatMap((entry) => {
+				const parsed = gatewayModel.safeParse(entry);
+				return parsed.success && usable(parsed.data)
+					? [toCatalogModel(parsed.data)]
+					: [];
 			});
 
 			models.sort(

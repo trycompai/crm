@@ -17,6 +17,7 @@
 			"!**/*.svg",
 			"!.claude",
 			"!.agents",
+			"!tools/oxlint/anti-slop",
 			"!skills-lock.json"
 		]
 	},
@@ -27,7 +28,21 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"preset": "recommended"
+			"preset": "recommended",
+			"complexity": {
+				"noExcessiveLinesPerFunction": {
+					"level": "error",
+					"options": { "maxLines": 620, "skipBlankLines": true }
+				},
+				"noExcessiveCognitiveComplexity": {
+					"level": "error",
+					"options": { "maxAllowedComplexity": 62 }
+				}
+			},
+			"performance": {
+				"noBarrelFile": "warn",
+				"noReExportAll": "warn"
+			}
 		}
 	},
 	"css": {
@@ -67,6 +82,16 @@
 				"rules": {
 					"style": {
 						"useImportType": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["apps/api/src/**"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noConsole": "error"
 					}
 				}
 			}

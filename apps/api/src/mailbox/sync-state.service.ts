@@ -2,6 +2,7 @@ import {
 	type Db,
 	GoogleSyncStatus,
 	type MailboxSyncModel as MailboxSync,
+	type Prisma,
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -25,9 +26,10 @@ export class SyncStateService {
 		userId: string,
 		sources?: readonly SyncSource[],
 	): Promise<MailboxSync[]> {
-		return this.db.mailboxSync.findMany({
-			where: { userId, ...(sources ? { source: { in: [...sources] } } : {}) },
-		});
+		const where: Prisma.MailboxSyncWhereInput = { userId };
+		if (sources) where.source = { in: [...sources] };
+
+		return this.db.mailboxSync.findMany({ where });
 	}
 
 	async due(now: Date): Promise<MailboxSync[]> {
@@ -164,9 +166,10 @@ export class SyncStateService {
 	}
 
 	async remove(userId: string, source?: SyncSource): Promise<void> {
-		await this.db.mailboxSync.deleteMany({
-			where: { userId, ...(source ? { source } : {}) },
-		});
+		const where: Prisma.MailboxSyncWhereInput = { userId };
+		if (source) where.source = source;
+
+		await this.db.mailboxSync.deleteMany({ where });
 	}
 }
 

@@ -1,0 +1,41 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"workspaces": {
+		".": {
+			"project": ["tools/**/*.ts"]
+		},
+		"apps/api": {
+			"entry": ["api/index.ts", "scripts/*.ts", "test/**/*.spec.ts"],
+			"project": ["src/**/*.ts", "scripts/**/*.ts"]
+		},
+		"apps/agent": {
+			"entry": [
+				"agent/**/*.ts",
+				"scripts/*.ts",
+				"evals/**/*.eval.ts",
+				"test/**/*.spec.ts"
+			],
+			"project": ["agent/**/*.ts", "scripts/**/*.ts"]
+		},
+		"apps/app": {
+			"entry": [
+				"app/**/{page,layout,route,error,not-found,loading,template,default}.{ts,tsx}",
+				"test/**/*.spec.{ts,tsx}"
+			],
+			"project": ["**/*.{ts,tsx}"]
+		},
+		"packages/*": {
+			"entry": ["src/*.ts"],
+			"project": ["src/**/*.{ts,tsx}"]
+		},
+		"packages/db": {
+			"entry": ["src/*.ts"],
+			"project": ["src/**/*.ts"]
+		},
+		"packages/ui": {
+			"entry": ["src/components/**/*.tsx", "src/lib/*.ts", "src/hooks/*.ts"],
+			"project": ["src/**/*.{ts,tsx}"]
+		}
+	},
+	"ignore": ["**/.eve/**", "**/.scratch/**", "**/generated/**"]
+}

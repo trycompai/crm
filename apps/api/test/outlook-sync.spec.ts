@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { MailboxSyncModel as MailboxSync } from "@crm/db";
+import type { SyncSource } from "../src/mailbox/mailbox.constants";
 import type { MailboxTokenService } from "../src/mailbox/mailbox-token.service";
 import type { SyncStateService } from "../src/mailbox/sync-state.service";
 import type {
@@ -17,6 +18,13 @@ type NotOk =
 	| { outcome: "failed"; reason: string; retryable: boolean };
 
 const ok = <T>(data: T): Ok<T> => ({ outcome: "ok", data });
+
+type StoreOptions = { mailbox: string; origin: SyncSource };
+
+type GraphPage = {
+	value: GraphMessage[];
+	"@odata.nextLink"?: string;
+};
 
 const row = {
 	id: "sync-1",
@@ -51,6 +59,13 @@ function harness(options: {
 	const pages = options.pages ?? [[]];
 	let index = 0;
 
+	const page = (at: number): GraphPage => {
+		const body: GraphPage = { value: pages[at] ?? [] };
+		if (at + 1 < pages.length) body["@odata.nextLink"] = `next-${at + 1}`;
+
+		return body;
+	};
+
 	const graph = {
 		async me() {
 			if (options.meDelayMs) {
@@ -66,19 +81,11 @@ function harness(options: {
 		},
 		async listMessages() {
 			index = 0;
-			return ok({
-				value: pages[0] ?? [],
-				...(pages.length > 1 ? { "@odata.nextLink": "next-1" } : {}),
-			});
+			return ok(page(0));
 		},
 		async nextPage() {
 			index += 1;
-			return ok({
-				value: pages[index] ?? [],
-				...(index + 1 < pages.length
-					? { "@odata.nextLink": `next-${index + 1}` }
-					: {}),
-			});
+			return ok(page(index));
 		},
 	} as unknown as GraphClient;
 
@@ -109,7 +116,11 @@ function harness(options: {
 		async context() {
 			return {};
 		},
-		async store(_row: MailboxSync, _options: unknown, parsed: IncomingMessage) {
+		async store(
+			_row: MailboxSync,
+			_options: StoreOptions,
+			parsed: IncomingMessage,
+		) {
 			stored.push(parsed);
 			return true;
 		},

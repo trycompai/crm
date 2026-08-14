@@ -31,13 +31,9 @@ async function PrefetchedTeamAgent({
 	const client = getServerTrpcClient();
 
 	const [agent, runs, activity] = await Promise.all([
-		client.agents.byId.query({ id: agentId }).catch(nullIfMissing),
-		client.agents.history
-			.query({ id: agentId, limit: 50 })
-			.catch(nullIfMissing),
-		client.agents.activity
-			.query({ id: agentId, limit: 100 })
-			.catch(nullIfMissing),
+		nullIfMissing(client.agents.byId.query({ id: agentId })),
+		nullIfMissing(client.agents.history.query({ id: agentId, limit: 50 })),
+		nullIfMissing(client.agents.activity.query({ id: agentId, limit: 100 })),
 	]);
 
 	if (!agent || !runs || !activity) notFound();

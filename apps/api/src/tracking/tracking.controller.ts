@@ -21,6 +21,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { Response } from "express";
+import { z } from "zod";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
@@ -34,6 +35,18 @@ import { TrackingRollupService } from "./tracking-rollup.service";
 const SWEEP_BATCH = 10_000;
 
 const MAX_SWEEP_PASSES = 50;
+
+const parsedBody = z
+	.union([
+		z.string().transform((text) => ({ text, json: null })),
+		z
+			.union([z.array(z.json()), z.looseObject({})])
+			.transform((json) => ({ text: null, json })),
+	])
+	.nullable()
+	.catch(null);
+
+const trackingRequest = z.object({ body: parsedBody }).catch({ body: null });
 
 @Controller("api/t")
 export class TrackingController {
@@ -203,12 +216,14 @@ async function read(
 	request: IncomingMessage,
 	limit: number,
 ): Promise<string | null> {
-	const existing = (request as { body?: unknown }).body;
-	if (typeof existing === "string") {
-		return existing.length > limit ? null : existing;
-	}
-	if (existing && typeof existing === "object") {
-		return JSON.stringify(existing);
+	const existing = trackingRequest.parse(request).body;
+
+	if (existing !== null) {
+		if (existing.text !== null) {
+			return existing.text.length > limit ? null : existing.text;
+		}
+
+		return JSON.stringify(existing.json);
 	}
 
 	return new Promise((resolve) => {

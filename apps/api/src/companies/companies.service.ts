@@ -29,6 +29,7 @@ import {
 	FACET_ALL,
 	FACET_UNASSIGNED,
 	type ListResult,
+	type OrderByColumns,
 	ownerFilter,
 	paginate,
 	resolveOrderBy,
@@ -75,10 +76,7 @@ export type CompanyRow = {
 	fields: Record<string, string | number | boolean | null>;
 };
 
-const SORTABLE: Record<
-	string,
-	(dir: Prisma.SortOrder) => Prisma.CompanyOrderByWithRelationInput
-> = {
+const SORTABLE: OrderByColumns<Prisma.CompanyOrderByWithRelationInput> = {
 	name: (dir) => ({ name: dir }),
 	domain: (dir) => ({ domain: dir }),
 	industry: (dir) => ({ industry: dir }),
@@ -606,17 +604,17 @@ export class CompaniesService {
 		};
 	}
 
-	private translate(error: unknown, id: string): unknown {
-		if (error instanceof PrismaNamespace.PrismaClientKnownRequestError) {
-			if (error.code === "P2025") {
-				return new NotFoundException(`No company with id ${id}.`);
+	private translate(cause: unknown, id: string): never {
+		if (cause instanceof PrismaNamespace.PrismaClientKnownRequestError) {
+			if (cause.code === "P2025") {
+				throw new NotFoundException(`No company with id ${id}.`);
 			}
-			if (error.code === "P2002") {
-				return new ConflictException(
+			if (cause.code === "P2002") {
+				throw new ConflictException(
 					"Another company already uses that domain.",
 				);
 			}
 		}
-		return error;
+		throw cause;
 	}
 }

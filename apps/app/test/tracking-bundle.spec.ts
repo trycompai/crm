@@ -61,7 +61,7 @@ function inject(
 		currentScript: script,
 		querySelector: () => script,
 		getElementById: () => (existing ? script : null),
-		createElement: () => ({}) as Record<string, unknown>,
+		createElement: () => ({}),
 		head: {
 			appendChild: (node: { src: string }) => injected.push(node.src),
 		},

@@ -172,17 +172,15 @@ export class ThreadWriterService {
 				const firstMessageAt = stats._min.sentAt ?? parsed.sentAt;
 				const lastMessageAt = stats._max.sentAt ?? parsed.sentAt;
 
-				await tx.emailThread.update({
-					where: { id: record.id },
-					data: {
-						messageCount: stats._count._all,
-						firstMessageAt,
-						lastMessageAt,
-						...(parsed.sentAt <= firstMessageAt
-							? { subject: parsed.subject }
-							: {}),
-					},
-				});
+				const data: Prisma.EmailThreadUpdateInput = {
+					messageCount: stats._count._all,
+					firstMessageAt,
+					lastMessageAt,
+				};
+
+				if (parsed.sentAt <= firstMessageAt) data.subject = parsed.subject;
+
+				await tx.emailThread.update({ where: { id: record.id }, data });
 
 				return this.project(tx, record.id, row.userId, {
 					subject: parsed.subject ?? "(no subject)",
@@ -204,12 +202,12 @@ export class ThreadWriterService {
 	}
 
 	private async storedElsewhere(
-		error: unknown,
+		cause: unknown,
 		rfcMessageId: string,
 	): Promise<boolean> {
 		const duplicate =
-			error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-			error.code === "P2002";
+			cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+			cause.code === "P2002";
 		if (!duplicate) return false;
 
 		const winner = await this.db.emailMessage.findFirst({

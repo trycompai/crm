@@ -1,9 +1,13 @@
 import { TRPCClientError } from "@trpc/client";
 
-export function nullIfMissing(error: unknown): null {
-	if (error instanceof TRPCClientError && error.data?.code === "NOT_FOUND") {
-		return null;
-	}
+export async function nullIfMissing<T>(query: Promise<T>): Promise<T | null> {
+	try {
+		return await query;
+	} catch (error) {
+		if (error instanceof TRPCClientError && error.data?.code === "NOT_FOUND") {
+			return null;
+		}
 
-	throw error;
+		throw error;
+	}
 }

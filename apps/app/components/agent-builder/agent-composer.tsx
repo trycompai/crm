@@ -1457,12 +1457,12 @@ function ResourceResultsSkeleton() {
 	);
 }
 
-const RESOURCE_ICONS: Record<BuilderResource["kind"], CarbonIcon> = {
+const RESOURCE_ICONS = {
 	integration: Application,
 	company: Building,
 	contact: User,
 	deal: Partnership,
-};
+} satisfies Record<BuilderResource["kind"], CarbonIcon>;
 
 function ResourceButton({
 	icon,

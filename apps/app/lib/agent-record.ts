@@ -13,7 +13,17 @@ type RecordCopy = {
 	suggestions: string[];
 };
 
-const COPY: Record<AgentRecordKind, RecordCopy> = {
+type RecordCopyByKind = Record<AgentRecordKind, RecordCopy>;
+
+export type AgentRecordHeader = Record<string, string>;
+
+export type AgentRecordFilter = {
+	contactId?: string;
+	companyId?: string;
+	dealId?: string;
+};
+
+const COPY: RecordCopyByKind = {
 	contact: {
 		header: "x-crm-contact",
 		field: "contactId",
@@ -59,15 +69,11 @@ export function recordCopy(kind: AgentRecordKind): RecordCopy {
 	return COPY[kind];
 }
 
-export function recordHeader(record: AgentRecord): Record<string, string> {
+export function recordHeader(record: AgentRecord): AgentRecordHeader {
 	return { [COPY[record.kind].header]: record.id };
 }
 
-export function recordFilter(record: AgentRecord): {
-	contactId?: string;
-	companyId?: string;
-	dealId?: string;
-} {
+export function recordFilter(record: AgentRecord): AgentRecordFilter {
 	return { [COPY[record.kind].field]: record.id };
 }
 

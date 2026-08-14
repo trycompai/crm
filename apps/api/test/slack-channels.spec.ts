@@ -6,7 +6,10 @@ const realFetch = globalThis.fetch;
 const realSecret = process.env.AGENT_BRIDGE_SECRET;
 
 function agentAnswers(status: number, body: string | null) {
-	globalThis.fetch = (async (_url: unknown, _init?: RequestInit) =>
+	globalThis.fetch = (async (
+		_url: string | URL | Request,
+		_init?: RequestInit,
+	) =>
 		new Response(body, {
 			status,
 			headers: { "content-type": "application/json" },

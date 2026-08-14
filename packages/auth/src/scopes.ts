@@ -19,10 +19,10 @@ export const OUTLOOK_MAIL_SCOPE = "Mail.Read";
 export const SYNC_SCOPES = [GMAIL_SCOPE, CALENDAR_SCOPE] as const;
 export const MICROSOFT_SYNC_SCOPES = [OUTLOOK_MAIL_SCOPE] as const;
 
-export const SYNC_SCOPES_FOR: Record<MailboxProviderId, readonly string[]> = {
+export const SYNC_SCOPES_FOR = {
 	[GOOGLE_PROVIDER_ID]: SYNC_SCOPES,
 	[MICROSOFT_PROVIDER_ID]: MICROSOFT_SYNC_SCOPES,
-};
+} satisfies Record<MailboxProviderId, readonly string[]>;
 
 export const REQUIRED_SCOPES = [...IDENTITY_SCOPES, ...SYNC_SCOPES] as const;
 

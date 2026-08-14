@@ -121,11 +121,13 @@ describe("request context", () => {
 	});
 });
 
+type MiddlewareRun = {
+	requestId: string;
+	seen: string | undefined;
+};
+
 describe("RequestLoggerMiddleware", () => {
-	function run(headers: Record<string, string>): {
-		requestId: string;
-		seen: string | undefined;
-	} {
+	function run(headers: Record<string, string>): MiddlewareRun {
 		const middleware = new RequestLoggerMiddleware();
 		let requestId = "";
 		let seen: string | undefined;

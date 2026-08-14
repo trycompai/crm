@@ -4,10 +4,12 @@
 	"license": "MIT",
 	"version": "1.13.0",
 	"scripts": {
-		"prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+		"prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
 		"build": "turbo run build",
 		"dev": "turbo run dev",
 		"lint": "turbo run lint",
+		"lint:slop": "oxlint",
+		"lint:dead": "knip --no-progress",
 		"format": "biome format --write .",
 		"check-types": "turbo run check-types",
 		"test": "turbo run test --concurrency=1",
@@ -23,6 +25,9 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
+		"@oxlint/plugins": "1.78.0",
+		"knip": "6.32.2",
+		"oxlint": "1.78.0",
 		"turbo": "^2.10.8",
 		"typescript": "5.9.2"
 	},

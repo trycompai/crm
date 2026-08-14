@@ -24,6 +24,7 @@ import {
 	countsByKey,
 	FACET_ALL,
 	type ListResult,
+	type OrderByColumns,
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
@@ -65,10 +66,7 @@ const MEMBER_SELECT = {
 
 type MemberRow = Prisma.MemberGetPayload<{ select: typeof MEMBER_SELECT }>;
 
-const SORTABLE: Record<
-	string,
-	(dir: Prisma.SortOrder) => Prisma.MemberOrderByWithRelationInput
-> = {
+const SORTABLE: OrderByColumns<Prisma.MemberOrderByWithRelationInput> = {
 	name: (dir) => ({ user: { name: dir } }),
 	email: (dir) => ({ user: { email: dir } }),
 	role: (dir) => ({ role: dir }),

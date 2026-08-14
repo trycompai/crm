@@ -42,10 +42,12 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const AUTO_CREATE = "Add the company and contact when you reply to someone new";
 
-const CONNECT_ERRORS: Record<string, string> = {
-	"email_doesn't_match":
+const CONNECT_ERRORS = new Map([
+	[
+		"email_doesn't_match",
 		"That Microsoft account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Microsoft account that matches your sign-in address.",
-};
+	],
+]);
 
 function MicrosoftUnavailable() {
 	return (
@@ -134,7 +136,7 @@ function ConnectMicrosoft({
 						<Icon icon={Warning} />
 						<AlertTitle>Microsoft did not finish connecting</AlertTitle>
 						<AlertDescription>
-							{CONNECT_ERRORS[connectError] ??
+							{CONNECT_ERRORS.get(connectError) ??
 								"Microsoft returned an error before the connection was made. Try again."}
 						</AlertDescription>
 					</Alert>

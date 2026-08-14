@@ -31,11 +31,11 @@ import {
 	useRecordStack,
 } from "./record-stack";
 
-const NOUN: Record<RecordKind, string> = {
+const NOUN = {
 	company: "company",
 	contact: "contact",
 	deal: "deal",
-};
+} satisfies Record<RecordKind, string>;
 
 function useDeleteRecord(record: RecordRef) {
 	const trpc = useTRPC();

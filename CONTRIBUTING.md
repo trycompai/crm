@@ -36,10 +36,20 @@ bun run dev
 ```sh
 bun run check-types
 bun run lint
+bun run lint:slop
 bun run test
 ```
 
-All three run on CI, and `bun run format` fixes most of what `lint` complains about.
+All four run on CI, and `bun run format` fixes most of what `lint` complains about.
+
+`lint:slop` is [anti-slop](https://github.com/dmmulroy/anti-slop) over Oxlint, and it holds one
+line: **data crossing an I/O boundary is parsed into a domain type at the point it arrives.** No
+`Record<string, unknown>` standing in for a contract, no `typeof` check standing in for a parser,
+no `unknown` parameter without a schema, no `as unknown as` around a `Json` column. Shapes that
+cross a package boundary live in `packages/validation/src`, one module per shape. It was taken to
+zero in one pass; the gate is what keeps it there. A genuinely open map — a telemetry property
+bag, a log field, a user-defined custom field value — is scoped off in `.oxlintrc.json` with its
+reason, and that is the only sanctioned way past it.
 
 **A `pre-push` hook runs them for you**, so a push that would fail CI fails on your machine
 instead, where the feedback is in seconds rather than minutes. `bun install` wires it up — the

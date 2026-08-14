@@ -188,10 +188,12 @@ export function dominantDomain(
 	return best;
 }
 
-export function splitName(
-	name: string | null,
-	email: string,
-): { firstName: string; lastName: string | null } {
+export type PersonName = {
+	firstName: string;
+	lastName: string | null;
+};
+
+export function splitName(name: string | null, email: string): PersonName {
 	const cleaned = name?.trim().replace(/\s+/g, " ") ?? "";
 
 	if (cleaned && !cleaned.includes("@")) {

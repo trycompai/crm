@@ -97,8 +97,8 @@ async function main() {
 		type: "slack.channel.join",
 		channelId: E2E.slackJoin.bogusChannelId,
 		channelName: E2E.slackJoin.bogusChannelName,
-	}).catch((error: unknown) =>
-		error instanceof Error ? error.message : String(error),
+	}).catch((cause: unknown) =>
+		cause instanceof Error ? cause.message : String(cause),
 	);
 	record(
 		"a channel that does not exist is refused",

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ActivityType, db } from "@crm/db";
+import { z } from "zod";
 import { taskListInput } from "../src/activities/activities.contracts";
 import { ActivitiesService } from "../src/activities/activities.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
@@ -14,7 +15,7 @@ const activities = new ActivitiesService(db, new ActivityStampService(db));
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TODAY = "2026-08-12";
 
-function input(overrides: Record<string, unknown> = {}) {
+function input(overrides: Partial<z.input<typeof taskListInput>> = {}) {
 	return taskListInput.parse({ q: `${suffix}`, today: TODAY, ...overrides });
 }
 

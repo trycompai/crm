@@ -2,8 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
+import { z } from "zod";
 import { ConversationSharingService } from "../src/conversations/conversation-sharing.service";
 import { ConversationsService } from "../src/conversations/conversations.service";
+
+const record = z.record(z.string(), z.unknown()).catch({});
+
+const list = z.array(z.unknown()).catch([]);
 
 const suffix = crypto.randomUUID();
 const userId = `share-user-${suffix}`;
@@ -173,8 +178,8 @@ describe("conversation sharing", () => {
 	it("authorizes attachment bytes with the active share token only", async () => {
 		const { token } = await service.create(conversationId, userId);
 		const shared = await service.resolve(token, viewerId);
-		const message = recordOf(shared.submissions[0]?.message);
-		const attachment = recordOf(arrayOf(message.attachments)[0]);
+		const message = record.parse(shared.submissions[0]?.message);
+		const attachment = record.parse(list.parse(message.attachments)[0]);
 		expect(attachment.previewUrl).toBe(
 			`/api/conversations/attachments/${attachmentId}?share=${encodeURIComponent(token)}`,
 		);
@@ -214,13 +219,3 @@ describe("conversation sharing", () => {
 		expect(unavailable).toBeDefined();
 	});
 });
-
-function recordOf(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function arrayOf(value: unknown): unknown[] {
-	return Array.isArray(value) ? value : [];
-}

@@ -4,7 +4,13 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./activity-meta": "./src/activity-meta.ts",
+		"./agent-events": "./src/agent-events.ts",
+		"./agent-manifest": "./src/agent-manifest.ts",
+		"./builder-question": "./src/builder-question.ts",
+		"./eve-stream": "./src/eve-stream.ts",
+		"./eve-tool": "./src/eve-tool.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",
@@ -13,6 +19,7 @@
 		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
+		"@crm/db": "workspace:*",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
