@@ -24,7 +24,7 @@ export class DevSessionController {
 		@Query("session") session: string | undefined,
 		@Res() response: Response,
 	) {
-		if (process.env.NODE_ENV === "production") {
+		if (process.env.NODE_ENV !== "development") {
 			throw new NotFoundException();
 		}
 
@@ -37,7 +37,12 @@ export class DevSessionController {
 			throw new UnauthorizedException("Missing session.");
 		}
 
-		const token = await verifyDevSessionCookieValue(session, secret);
+		let token: string;
+		try {
+			token = await verifyDevSessionCookieValue(session, secret);
+		} catch {
+			throw new UnauthorizedException("Invalid session.");
+		}
 		const stored = await db.session.findUnique({ where: { token } });
 		if (!stored || stored.expiresAt.getTime() <= Date.now()) {
 			throw new UnauthorizedException("Session is missing or expired.");
