@@ -1,4 +1,4 @@
-import { appUrl } from "@crm/auth/env";
+import { appUrl } from "@crm/auth";
 import { db } from "@crm/db";
 import {
 	DEV_SESSION_COOKIE_NAME,

@@ -1,4 +1,4 @@
-import { appUrl } from "@crm/auth/env";
+import { appUrl } from "@crm/auth";
 import { db } from "@crm/db";
 import {
 	Controller,
@@ -24,7 +24,7 @@ export class DevSessionController {
 		@Query("session") session: string | undefined,
 		@Res() response: Response,
 	) {
-		if (process.env.NODE_ENV !== "development") {
+		if ((process.env.NODE_ENV ?? "development") !== "development") {
 			throw new NotFoundException();
 		}
 

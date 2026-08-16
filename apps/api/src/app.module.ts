@@ -19,6 +19,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { DatabaseModule } from "./database/database.module";
 import { DealsModule } from "./deals/deals.module";
 import { EnrichmentModule } from "./enrichment/enrichment.module";
+import { DevSessionModule } from "./dev/dev-session.module";
 import { FieldsModule } from "./fields/fields.module";
 import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
@@ -37,7 +38,6 @@ import { TrackingModule } from "./tracking/tracking.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
-import { DevSessionModule } from "./dev/dev-session.module";
 
 @Module({
 	imports: [
