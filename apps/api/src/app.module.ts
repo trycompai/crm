@@ -37,6 +37,7 @@ import { TrackingModule } from "./tracking/tracking.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
+import { DevSessionModule } from "./dev/dev-session.module";
 
 @Module({
 	imports: [
@@ -79,6 +80,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		TrackingModule,
 		ArchiveModule,
 		SavedViewsModule,
+		DevSessionModule,
 	],
 })
 export class AppModule {}

@@ -78,4 +78,12 @@ describe("Auth (e2e)", () => {
 
 		expect(response.status).toBe(401);
 	});
+
+	it("returns 404 for the dev session login route in test mode", async () => {
+		const response = await request(app.getHttpServer()).get(
+			"/api/dev/session-login",
+		);
+
+		expect(response.status).toBe(404);
+	});
 });

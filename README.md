@@ -330,12 +330,14 @@ short version:
 | `bun run db:studio` | Prisma Studio |
 | `bun run --filter=api trpc:generate` | Regenerate the `AppRouter` type |
 | `bun run --filter=api dev:session` | Print a session cookie for a local user |
+| `bun run --filter=api dev:session -- --url` | Same, plus a one-click login URL for the app |
 
 Scope any of them with a Turborepo filter: `bun run dev --filter=api`.
 
 Because sign-in goes through an identity provider, there is no way to get a session from a terminal —
 `dev:session` writes the rows Better Auth would have written and prints the cookie it
-would have set. It refuses to run with `NODE_ENV=production`.
+would have set. Pass `--url` to also print a link that sets the cookie in your browser
+and opens the app. It refuses to run with `NODE_ENV=production`.
 
 ## Deploying
 
