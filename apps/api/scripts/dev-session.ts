@@ -4,6 +4,7 @@ import {
 	DEV_SESSION_COOKIE_NAME,
 	DEV_SESSION_DAYS,
 	devSessionLoginUrl,
+	isDevSessionRouteEnabled,
 	signDevSessionCookieValue,
 } from "../src/dev/dev-session.util";
 
@@ -20,11 +21,7 @@ if (!secret) {
 
 const args = process.argv.slice(2);
 const printUrl = args.includes("--url");
-if (
-	printUrl &&
-	process.env.NODE_ENV &&
-	process.env.NODE_ENV !== "development"
-) {
+if (printUrl && !isDevSessionRouteEnabled()) {
 	throw new Error(
 		"dev:session --url needs the API on NODE_ENV=development. Start it with bun run dev or unset NODE_ENV in this shell.",
 	);
@@ -64,11 +61,6 @@ const signedValue = await signDevSessionCookieValue(token, secret);
 console.log(`${DEV_SESSION_COOKIE_NAME}=${signedValue}`);
 
 if (printUrl) {
-	if (!process.env.NODE_ENV) {
-		console.error(
-			"The login link needs the API on NODE_ENV=development. bun run dev sets this.",
-		);
-	}
 	console.log(devSessionLoginUrl(appUrl, signedValue));
 }
 

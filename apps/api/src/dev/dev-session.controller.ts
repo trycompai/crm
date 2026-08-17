@@ -13,6 +13,7 @@ import type { Response } from "express";
 import {
 	DEV_SESSION_COOKIE_NAME,
 	DEV_SESSION_DAYS,
+	isDevSessionRouteEnabled,
 	verifyDevSessionCookieValue,
 } from "./dev-session.util";
 
@@ -24,7 +25,7 @@ export class DevSessionController {
 		@Query("session") session: string | undefined,
 		@Res() response: Response,
 	) {
-		if (process.env.NODE_ENV !== "development") {
+		if (!isDevSessionRouteEnabled()) {
 			throw new NotFoundException();
 		}
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	devSessionLoginUrl,
+	isDevSessionRouteEnabled,
 	signDevSessionCookieValue,
 	verifyDevSessionCookieValue,
 } from "./dev-session.util";
@@ -8,6 +9,29 @@ import {
 const secret = "test-secret-at-least-32-characters-long";
 
 describe("dev-session util", () => {
+	it("enables the login route only in development", () => {
+		const previous = process.env.NODE_ENV;
+		try {
+			delete process.env.NODE_ENV;
+			expect(isDevSessionRouteEnabled()).toBe(true);
+
+			process.env.NODE_ENV = "development";
+			expect(isDevSessionRouteEnabled()).toBe(true);
+
+			process.env.NODE_ENV = "test";
+			expect(isDevSessionRouteEnabled()).toBe(false);
+
+			process.env.NODE_ENV = "production";
+			expect(isDevSessionRouteEnabled()).toBe(false);
+		} finally {
+			if (previous === undefined) {
+				delete process.env.NODE_ENV;
+			} else {
+				process.env.NODE_ENV = previous;
+			}
+		}
+	});
+
 	it("signs and verifies a session token", async () => {
 		const signed = await signDevSessionCookieValue("dev-session-user", secret);
 		await expect(verifyDevSessionCookieValue(signed, secret)).resolves.toBe(

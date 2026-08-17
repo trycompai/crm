@@ -3,6 +3,10 @@ import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 export const DEV_SESSION_COOKIE_NAME = `${AUTH_COOKIE_PREFIX}.session_token`;
 export const DEV_SESSION_DAYS = 7;
 
+export function isDevSessionRouteEnabled(): boolean {
+	return (process.env.NODE_ENV ?? "development") === "development";
+}
+
 async function signToken(value: string, secret: string): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		"raw",
