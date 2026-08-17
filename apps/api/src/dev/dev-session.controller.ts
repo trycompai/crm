@@ -24,7 +24,7 @@ export class DevSessionController {
 		@Query("session") session: string | undefined,
 		@Res() response: Response,
 	) {
-		if ((process.env.NODE_ENV ?? "development") !== "development") {
+		if (process.env.NODE_ENV !== "development") {
 			throw new NotFoundException();
 		}
 
