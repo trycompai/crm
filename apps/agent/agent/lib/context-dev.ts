@@ -68,7 +68,7 @@ const TIMEOUT_MS = 60_000;
 
 let client: { key: string; api: ContextDev } | null = null;
 
-async function contextDev(): Promise<ContextDev | null> {
+export async function contextDev(): Promise<ContextDev | null> {
 	const key = await contextDevKey();
 
 	if (!key) {
@@ -313,7 +313,7 @@ function recognisedKeyFailure(error: APIError): boolean {
 	);
 }
 
-function describe(cause: unknown): string {
+export function describe(cause: unknown): string {
 	if (cause instanceof APIError) {
 		return `${cause.status ?? "?"} ${errorCode(cause) ?? cause.message}`;
 	}

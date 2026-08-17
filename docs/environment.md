@@ -112,7 +112,6 @@ single place that knows what is set.
 | Variable | What it adds |
 | --- | --- |
 | `PERPLEXITY_API_KEY` | Open-web research with citations; finds a LinkedIn slug |
-| `RAPIDAPI_KEY` | LinkedIn profiles via LinkDAPI |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
@@ -128,6 +127,9 @@ excluded — recognising our URL for the image optimizer needs no token.
 in `AppSetting`, is asked for at `/onboarding/research`, and changes on Settings →
 General — an admin who cannot redeploy cannot set a variable.
 
+- **It buys two places to look, not one.** Company brand data by domain, and a person
+  read back from a LinkedIn URL already on their record. Both capabilities in
+  `agent/lib/capabilities.ts` turn on and off with this one key.
 - **An install that had the variable is asked again**: no migration, no fallback, and
   **the gate cannot be dismissed**.
 - **Nothing is lost while waiting.** A keyless `brand` task settles `SKIPPED` *before*

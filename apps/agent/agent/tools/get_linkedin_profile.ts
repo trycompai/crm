@@ -1,23 +1,28 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { enabled, unavailable } from "../lib/capabilities";
+import {
+	CONTEXT_DEV_PEOPLE,
+	CONTEXT_DEV_SOURCE,
+	enabled,
+	unavailable,
+} from "../lib/capabilities";
 import { spend } from "../lib/focus";
-import { getExperience, getProfile } from "../lib/linkdapi";
-import { looksLikeSameCompany, nameMatchesLocalPart } from "../lib/names";
+import {
+	looksLikeSameCompany,
+	nameMatchesLocalPart,
+	normalise,
+} from "../lib/names";
+import { personByProfileUrl } from "../lib/people";
 import { storePortrait } from "../lib/portrait";
 
 export default defineTool({
 	description:
-		"Read a LinkedIn profile by slug and check whether it is really the person behind an email address. Returns the profile plus an explicit verdict.",
+		"Read a LinkedIn profile by slug and check whether it is really the person behind an email address. Returns the profile, their full work history, and an explicit verdict.",
 	inputSchema: z.object({
 		slug: z.string().describe("The linkedin.com/in/<slug> handle."),
 		email: z.string().describe("The address we are trying to identify."),
 		companyName: z.string(),
 		companyDomain: z.string(),
-		includeHistory: z
-			.boolean()
-			.default(false)
-			.describe("Also fetch full work history — costs an extra call."),
 		contactId: z
 			.string()
 			.optional()
@@ -25,61 +30,59 @@ export default defineTool({
 				"The CRM contact this candidate is for. Supply it and their photo is copied automatically if — and only if — the profile turns out to be them.",
 			),
 	}),
-	async execute({
-		slug,
-		email,
-		companyName,
-		companyDomain,
-		includeHistory,
-		contactId,
-	}) {
-		if (!(await enabled("RAPIDAPI_KEY"))) {
-			return { found: false as const, ...unavailable("RAPIDAPI_KEY") };
+	async execute({ slug, email, companyName, companyDomain, contactId }) {
+		if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
+			return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
 		}
 
-		const charge = spend(includeHistory ? 2 : 1);
+		const charge = spend(2);
 		if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-		const result = await getProfile(slug);
-		if (!result.ok) {
-			return result.missing
-				? { found: false as const, reason: "No such profile." }
-				: { found: false as const, reason: result.reason };
+		const result = await personByProfileUrl(
+			`https://www.linkedin.com/in/${slug}`,
+		);
+
+		if (result.outcome !== "found") {
+			return { found: false as const, reason: result.reason };
 		}
 
-		const profile = result.data;
+		const person = result.person;
 		const local = email.split("@")[0] ?? "";
 
-		const employerMatches = profile.positions.some((position) =>
-			looksLikeSameCompany(position.name, companyName, companyDomain),
+		const employerMatches = person.currentRoles.some(
+			(role) =>
+				sameDomain(role.organisation.domain, companyDomain) ||
+				looksLikeSameCompany(
+					role.organisation.name ?? "",
+					companyName,
+					companyDomain,
+				),
 		);
-		const nameMatches = nameMatchesLocalPart(profile, local);
-
-		const history =
-			includeHistory && profile.urn ? await getExperience(profile.urn) : null;
-
-		const isSamePerson = employerMatches && nameMatches;
+		const nameMatches = nameMatchesLocalPart(person, local);
+		const emailMatches = sameEmail(person.email, email);
+		const isSamePerson = emailMatches || (employerMatches && nameMatches);
 
 		const portrait =
 			contactId && isSamePerson
 				? await storePortrait({
 						contactId,
-						sourceUrl: profile.photoUrl,
+						sourceUrl: person.photoUrl,
 						verified: true,
 					})
 				: null;
 
 		return {
 			found: true as const,
-			profile,
-			experience: history?.ok ? history.data : null,
+			profile: person,
+			sourceUrl: person.sourceUrl,
 			photo: portrait ?? undefined,
 			verdict: {
+				emailMatches,
 				employerMatches,
 				nameMatches,
 				isSamePerson,
 				confidence:
-					employerMatches && nameMatches
+					emailMatches || (employerMatches && nameMatches)
 						? ("high" as const)
 						: employerMatches || nameMatches
 							? ("medium" as const)
@@ -88,3 +91,15 @@ export default defineTool({
 		};
 	},
 });
+
+function sameEmail(left: string | null, right: string): boolean {
+	if (!left) return false;
+	return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function sameDomain(left: string | null, right: string): boolean {
+	if (!left) return false;
+	const a = normalise(left);
+	const b = normalise(right);
+	return a !== "" && a === b;
+}

@@ -1,48 +1,29 @@
 import { describe, expect, it } from "bun:test";
-import { profilePhotoUrl, slugFromProfileUrl } from "../agent/lib/linkdapi";
+import { photoUrl, slugFromProfileUrl } from "../agent/lib/people";
 import { findPortrait } from "../agent/lib/portrait-sources";
 
-const OVERVIEW = {
-	firstName: "Kelly",
-	lastName: "Wiarda",
-	fullName: "Kelly Wiarda",
-	publicIdentifier: "kellywiarda",
-	backgroundImageURL:
-		"https://media.licdn.com/dms/image/v2/D4D16AQHJgcgf0YCwWA/profile-displaybackgroundimage-shrink_350_1400/0/1673558147641?e=1787184000",
-	profilePictureURL:
-		"https://media.licdn.com/dms/image/v2/D5603AQGOxXbMuQk4jw/profile-displayphoto-shrink_100_100/0/1738873240305?e=1787184000",
-};
+const AVATAR =
+	"https://media.licdn.com/dms/image/v2/D5603AQGOxXbMuQk4jw/profile-displayphoto-shrink_100_100/0/1738873240305?e=1787184000";
 
-describe("profilePhotoUrl", () => {
-	it("reads the key the API actually uses", () => {
-		expect(profilePhotoUrl(OVERVIEW)).toContain("profile-displayphoto");
+describe("photoUrl", () => {
+	it("keeps the avatar the enrichment returned", () => {
+		expect(photoUrl(AVATAR)).toBe(AVATAR);
 	});
 
-	it("never takes the background banner for a face", () => {
-		const { profilePictureURL, ...noPhoto } = OVERVIEW;
-		expect(profilePhotoUrl(noPhoto)).toBe(null);
+	it("refuses a face served over anything but https", () => {
+		expect(photoUrl("http://media.licdn.com/x.jpg")).toBe(null);
+		expect(photoUrl("ftp://media.licdn.com/x.jpg")).toBe(null);
+		expect(photoUrl("javascript:alert(1)")).toBe(null);
 	});
 
-	it("tolerates the vendor recasing the key", () => {
-		expect(
-			profilePhotoUrl({ profilePictureUrl: OVERVIEW.profilePictureURL }),
-		).toBe(OVERVIEW.profilePictureURL);
+	it("refuses anything that is not an absolute URL", () => {
+		expect(photoUrl("/dms/image/x.jpg")).toBe(null);
+		expect(photoUrl("media.licdn.com/x.jpg")).toBe(null);
+		expect(photoUrl("   ")).toBe(null);
 	});
 
-	it("refuses a photo that is not on LinkedIn's CDN", () => {
-		expect(
-			profilePhotoUrl({ profilePictureURL: "https://evil.example/x.jpg" }),
-		).toBe(null);
-		expect(
-			profilePhotoUrl({ profilePictureURL: "http://media.licdn.com/x.jpg" }),
-		).toBe(null);
-		expect(
-			profilePhotoUrl({ profilePictureURL: "https://licdn.com.evil/x.jpg" }),
-		).toBe(null);
-	});
-
-	it("is null for a profile with no picture, which is ordinary", () => {
-		expect(profilePhotoUrl({ firstName: "Nathan" })).toBe(null);
+	it("is null for a person with no picture, which is ordinary", () => {
+		expect(photoUrl(null)).toBe(null);
 	});
 });
 

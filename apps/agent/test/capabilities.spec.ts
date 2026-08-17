@@ -1,17 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	CONTEXT_DEV,
+	CONTEXT_DEV_PEOPLE,
+	CONTEXT_DEV_SOURCE,
 	capabilitiesFrom,
 	enabled,
 	markdownFor,
 	unavailable,
 } from "../agent/lib/capabilities";
 
-const KEYS = [
-	"RAPIDAPI_KEY",
-	"PERPLEXITY_API_KEY",
-	"BLOB_READ_WRITE_TOKEN",
-] as const;
+const KEYS = ["PERPLEXITY_API_KEY", "BLOB_READ_WRITE_TOKEN"] as const;
 
 const saved: Record<string, string | undefined> = {};
 
@@ -32,25 +30,25 @@ afterEach(() => {
 describe("capabilities", () => {
 	it("reports everything off on a bare install", async () => {
 		expect(capabilitiesFrom(null).every((c) => !c.enabled)).toBe(true);
-		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
 	});
 
 	it("turns one on without turning on the others", async () => {
 		process.env.PERPLEXITY_API_KEY = "pplx-test";
 
 		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
-		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		expect(await enabled("BLOB_READ_WRITE_TOKEN")).toBe(false);
 	});
 
 	it("treats blank and whitespace as unset", async () => {
-		process.env.RAPIDAPI_KEY = "   ";
-		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
+		process.env.PERPLEXITY_API_KEY = "   ";
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
 	});
 
 	it("is read live, so a late-configured process is not stuck off", async () => {
-		expect(await enabled("RAPIDAPI_KEY")).toBe(false);
-		process.env.RAPIDAPI_KEY = "key";
-		expect(await enabled("RAPIDAPI_KEY")).toBe(true);
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
+		process.env.PERPLEXITY_API_KEY = "key";
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
 	});
 
 	it("is unknown for a variable that is not a capability", async () => {
@@ -85,14 +83,37 @@ describe("the Context key is a setting, never a variable", () => {
 	});
 });
 
+describe("reading a person comes from the same Context key", () => {
+	const people = (stored: string | null) =>
+		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV_PEOPLE);
+
+	it("is on when a key is stored and off when it is not", () => {
+		expect(people("ctx")?.enabled).toBe(true);
+		expect(people(null)?.enabled).toBe(false);
+	});
+
+	it("points at the settings page rather than a variable name", () => {
+		expect(people(null)?.from).toBe("Settings → General");
+	});
+
+	it("turns on and off with the brand lookup, because it is one key", () => {
+		for (const stored of ["ctx", null]) {
+			expect(people(stored)?.enabled).toBe(
+				capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV)?.enabled ===
+					true,
+			);
+		}
+	});
+});
+
 describe("the unavailable result", () => {
 	it("says retrying will not help", () => {
-		const result = unavailable("RAPIDAPI_KEY");
+		const result = unavailable(CONTEXT_DEV_SOURCE);
 
 		expect(result.ok).toBe(false);
 		expect(result.configured).toBe(false);
 		expect(result.reason).toContain("retrying will not help");
-		expect(result.reason).toContain("RAPIDAPI_KEY");
+		expect(result.reason).toContain(CONTEXT_DEV_SOURCE);
 	});
 });
 
@@ -105,8 +126,7 @@ describe("the capability briefing", () => {
 	});
 
 	it("lists what is on and what is off, separately", () => {
-		process.env.RAPIDAPI_KEY = "key";
-		const markdown = markdownFor(capabilitiesFrom(null));
+		const markdown = markdownFor(capabilitiesFrom("ctx"));
 
 		expect(markdown).toContain("Available:");
 		expect(markdown).toContain("LinkedIn");
@@ -115,7 +135,7 @@ describe("the capability briefing", () => {
 	});
 
 	it("counts a stored Context key as configured", () => {
-		process.env.RAPIDAPI_KEY = "key";
+		process.env.PERPLEXITY_API_KEY = "key";
 
 		const markdown = markdownFor(capabilitiesFrom("ctx"));
 

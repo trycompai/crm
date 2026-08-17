@@ -1,5 +1,6 @@
 import { db } from "@crm/db";
 import { blobEnabled, isMirrored, mirror } from "@crm/db/blob";
+import { CONTEXT_DEV_PEOPLE, enabled } from "./capabilities";
 import { findPortrait, type PortraitSource } from "./portrait-sources";
 
 export type PortraitResult = {
@@ -140,6 +141,7 @@ export async function runPortrait({
 			companyDomain: contact.company?.domain ?? null,
 		},
 		spend,
+		await enabled(CONTEXT_DEV_PEOPLE),
 	);
 
 	if (!found.found) {

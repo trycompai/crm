@@ -21,7 +21,7 @@
         "@crm/env": "workspace:*",
         "@crm/telemetry": "workspace:*",
         "@crm/validation": "workspace:*",
-        "context.dev": "^2.7.0",
+        "context.dev": "2.10.0",
         "eve": "^0.29.4",
         "zod": "^4.4.3",
       },
@@ -1329,7 +1329,7 @@
 
     "content-type": ["content-type@1.0.5", "", {}, "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA=="],
 
-    "context.dev": ["context.dev@2.7.0", "", {}, "sha512-FuonQNWVxHNixuTPQmcWc1D9qPnqfD/MurXiOo12jEGK8zeZ4TvYRCZP67XRkUZwjah0niklnrBJj+QCDwohSw=="],
+    "context.dev": ["context.dev@2.10.0", "", {}, "sha512-hTymKw2SrPXWt+1JSPceQcbIgnX32PdSzR9qvAMXWK5qwDTB/kJE1YK5IIXkBUUzZG2rT5QQqwYAGFooYQ8Yow=="],
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 

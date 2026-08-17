@@ -32,16 +32,23 @@ That is the shape of every match: guess where to look, never what you will find.
 1. **`resolve_linkedin_profile`** with the email and company. It decomposes the
    local part and returns candidate slugs. These are leads, not answers.
 2. **`get_linkedin_profile`** on each candidate, passing the email, company name
-   and domain — **and the `contactId`**. It returns the profile *and a verdict*.
-   Passing the id is what lets it copy their photograph, which it does only if
-   the verdict comes back positive, in code, without asking you. Leaving it out
-   costs the contact their picture and saves nothing.
-3. **Read the verdict, not the profile.** It checks two things:
+   and domain — **and the `contactId`**. It returns the profile, their full work
+   history *and a verdict*, in one lookup. Passing the id is what lets it copy
+   their photograph, which it does only if the verdict comes back positive, in
+   code, without asking you. Leaving it out costs the contact their picture and
+   saves nothing.
+
+   It is the most expensive call you have, so read the candidates before you
+   spend one: two or three checked profiles is the whole budget for a contact.
+3. **Read the verdict, not the profile.** It checks three things:
+   - `emailMatches` — the profile lists the address we are identifying.
    - `employerMatches` — a current position matches the company we have.
    - `nameMatches` — the real name is consistent with the email local part
      (`y` + `okonkwo` → Tomi Okonkwo).
-4. **Both, or it is not them.** One of the two is not a weaker match, it is a
-   different person who happens to share something.
+4. **`emailMatches` settles it on its own.** The person put that address on their
+   own profile. Nothing else you can observe is stronger.
+5. **Otherwise both, or it is not them.** One of the other two is not a weaker
+   match, it is a different person who happens to share something.
 5. If no candidate passes, **stop**. Leaving "Pmarchetti" in the CRM is the correct
    outcome when you do not know.
 
@@ -55,10 +62,15 @@ Call `identify_contact` with what you actually saw:
 
 | What you have | Evidence to record | What happens |
 | --- | --- | --- |
-| Both checks pass | `linkedin.employer-and-name` | Written to the record. |
+| `emailMatches` is true | `profile.email-match` | Written to the record. |
+| Employer and name both pass | `linkedin.employer-and-name` | Written to the record. |
 | They replied from that address | `crm.thread-reply` | Written to the record. |
 | One check passes | `employer-only`, or the profile as `search.cites-profile` | Offered to a rep as a suggestion. |
 | Sources disagree | add a `contradiction` entry | Held. Nobody is shown a guess. |
+
+The `sourceUrl` to cite is the one the tool hands back — the profile URL the
+person's own record lists. A lookup that comes back with no source is a lookup
+you cannot write a fact from.
 
 The middle row is the case this exists for. Four Marchettis work at Fernhill; a
 human settles that in three seconds, and the old rule — throw away anything
