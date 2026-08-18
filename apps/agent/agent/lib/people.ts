@@ -1,13 +1,12 @@
 import { APIError } from "context.dev/core/error";
 import type { PersonEnrichResponse } from "context.dev/resources/people";
 import { z } from "zod";
+import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
 
 export type EnrichedMatch = PersonEnrichResponse["match"];
 
-const TIMEOUT_MS = 60_000;
-
-export const MATCH_FLOOR = 70;
+export const MATCH_FLOOR = CONTEXT.people.matchFloor;
 
 export type Organisation = {
 	name: string | null;
@@ -41,7 +40,6 @@ export type Person = {
 	email: string | null;
 	photoUrl: string | null;
 	profileUrl: string | null;
-	sourceUrl: string | null;
 	socialUrls: string[];
 	websiteUrls: string[];
 	skills: string[];
@@ -142,7 +140,7 @@ export async function personByProfileUrl(
 	try {
 		const response = await api.people.enrich({
 			social_urls: [profileUrl],
-			timeoutMS: TIMEOUT_MS,
+			timeoutMS: CONTEXT.timeoutMs,
 		});
 
 		return matchFrom(response.match);
@@ -184,22 +182,27 @@ function toPerson(raw: z.infer<typeof personShape>): Person {
 		email: raw.email,
 		photoUrl: photoUrl(raw.avatar_url),
 		profileUrl: profileUrl ?? null,
-		sourceUrl: profileUrl ?? socialUrls[0] ?? null,
 		socialUrls,
 		websiteUrls: raw.website_urls.flatMap((url) => (url ? [url] : [])),
 		skills: raw.skills.flatMap((skill) => (skill ? [skill] : [])),
 		currentRoles: current.concat(
 			experience.filter(
 				(role) =>
-					role.isCurrent &&
-					!current.some(
-						(held) => held.organisation.name === role.organisation.name,
-					),
+					role.isCurrent && !current.some((held) => sameRole(held, role)),
 			),
 		),
 		experience,
 		education: raw.education.map(toStudy),
 	};
+}
+
+function sameRole(held: Role, role: Role): boolean {
+	return (
+		held.organisation.name === role.organisation.name &&
+		held.title === role.title &&
+		held.startDate === role.startDate &&
+		held.endDate === role.endDate
+	);
 }
 
 function toRole(raw: z.infer<typeof roleShape>): Role {
@@ -253,7 +256,14 @@ export function photoUrl(raw: string | null): string | null {
 
 	try {
 		const url = new URL(raw.trim());
-		return url.protocol === "https:" ? url.toString() : null;
+		if (url.protocol !== "https:") return null;
+
+		const host = url.hostname.toLowerCase();
+		const trusted = CONTEXT.avatarHosts.some(
+			(allowed) => host === allowed || host.endsWith(`.${allowed}`),
+		);
+
+		return trusted ? url.toString() : null;
 	} catch {
 		return null;
 	}

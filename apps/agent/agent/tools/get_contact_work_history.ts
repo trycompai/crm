@@ -40,7 +40,7 @@ export default defineTool({
 		return {
 			found: true as const,
 			profile: result.person,
-			sourceUrl: result.person.sourceUrl,
+			sourceUrl: profileRef.profileUrl,
 			note: "Everything here is self-reported by the person. Write only what it says.",
 		};
 	},

@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	looksLikeSameCompany,
 	nameMatchesLocalPart,
+	sameDomain,
 	searchTerms,
 } from "../agent/lib/names";
 
@@ -79,5 +80,30 @@ describe("nameMatchesLocalPart", () => {
 		expect(
 			nameMatchesLocalPart({ firstName: null, lastName: null }, "pmarchetti"),
 		).toBe(false);
+	});
+});
+
+describe("sameDomain", () => {
+	it("keeps two hyphenated domains apart", () => {
+		expect(sameDomain("foo-bar.com", "foobar.com")).toBe(false);
+		expect(sameDomain("the-hub.io", "thehub.io")).toBe(false);
+	});
+
+	it("matches the same host however it is written", () => {
+		expect(sameDomain("https://www.Fernhill.com/careers", "fernhill.com")).toBe(
+			true,
+		);
+		expect(sameDomain("fernhill.com.", "FERNHILL.COM")).toBe(true);
+	});
+
+	it("keeps different companies apart", () => {
+		expect(sameDomain("fernhill.com", "brightwater.example")).toBe(false);
+		expect(sameDomain("mail.fernhill.com", "fernhill.com")).toBe(false);
+	});
+
+	it("refuses an empty or missing domain", () => {
+		expect(sameDomain(null, "fernhill.com")).toBe(false);
+		expect(sameDomain("", "fernhill.com")).toBe(false);
+		expect(sameDomain("fernhill.com", "")).toBe(false);
 	});
 });

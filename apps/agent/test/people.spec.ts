@@ -75,17 +75,16 @@ describe("reading a person out of an enrichment", () => {
 		expect(person.education[0]?.endDate).toBe("2017");
 	});
 
-	it("takes the LinkedIn URL as the source, not the first social link", () => {
+	it("takes the LinkedIn URL as the profile, not the first social link", () => {
 		const result = matchFrom(candidate(PERSON));
 
 		expect(result.outcome).toBe("found");
 		if (result.outcome !== "found") return;
 
 		expect(result.person.profileUrl).toBe(PROFILE);
-		expect(result.person.sourceUrl).toBe(PROFILE);
 	});
 
-	it("falls back to the first social link when there is no LinkedIn one", () => {
+	it("never treats another social page as the profile", () => {
 		const result = matchFrom(
 			candidate({ ...PERSON, social_urls: ["https://x.com/pmarchetti"] }),
 		);
@@ -94,16 +93,16 @@ describe("reading a person out of an enrichment", () => {
 		if (result.outcome !== "found") return;
 
 		expect(result.person.profileUrl).toBe(null);
-		expect(result.person.sourceUrl).toBe("https://x.com/pmarchetti");
+		expect(result.person.socialUrls).toEqual(["https://x.com/pmarchetti"]);
 	});
 
-	it("has no source at all when nothing points anywhere", () => {
+	it("has no profile at all when nothing points anywhere", () => {
 		const result = matchFrom(candidate({ ...PERSON, social_urls: [] }));
 
 		expect(result.outcome).toBe("found");
 		if (result.outcome !== "found") return;
 
-		expect(result.person.sourceUrl).toBe(null);
+		expect(result.person.profileUrl).toBe(null);
 	});
 
 	it("counts a current earlier role among the current ones", () => {
@@ -142,6 +141,42 @@ describe("reading a person out of an enrichment", () => {
 		expect(result.person.photoUrl).toBe(null);
 	});
 
+	it("refuses a face served from a host we do not trust", () => {
+		const result = matchFrom(
+			candidate({ ...PERSON, avatar_url: "https://evil.example/x.jpg" }),
+		);
+
+		expect(result.outcome).toBe("found");
+		if (result.outcome !== "found") return;
+
+		expect(result.person.photoUrl).toBe(null);
+	});
+
+	it("keeps both current roles held at one employer", () => {
+		const result = matchFrom(
+			candidate({
+				...PERSON,
+				experience: [
+					{
+						title: "Board member",
+						organization: { name: "Fernhill", domain: "fernhill.com" },
+						start_date: { year: 2023 },
+						is_current: true,
+					},
+					...PERSON.experience,
+				],
+			}),
+		);
+
+		expect(result.outcome).toBe("found");
+		if (result.outcome !== "found") return;
+
+		expect(result.person.currentRoles.map((role) => role.title)).toEqual([
+			"Head of Revenue",
+			"Board member",
+		]);
+	});
+
 	it("survives a profile with nothing on it", () => {
 		const result = matchFrom(
 			candidate({
@@ -159,7 +194,7 @@ describe("reading a person out of an enrichment", () => {
 		expect(result.person.fullName).toBe(null);
 		expect(result.person.location).toBe(null);
 		expect(result.person.photoUrl).toBe(null);
-		expect(result.person.sourceUrl).toBe(null);
+		expect(result.person.profileUrl).toBe(null);
 		expect(result.person.currentRoles).toEqual([]);
 		expect(result.person.experience).toEqual([]);
 	});

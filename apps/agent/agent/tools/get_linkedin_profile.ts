@@ -10,7 +10,7 @@ import { spend } from "../lib/focus";
 import {
 	looksLikeSameCompany,
 	nameMatchesLocalPart,
-	normalise,
+	sameDomain,
 } from "../lib/names";
 import { personByProfileUrl } from "../lib/people";
 import { storePortrait } from "../lib/portrait";
@@ -38,9 +38,8 @@ export default defineTool({
 		const charge = spend(2);
 		if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-		const result = await personByProfileUrl(
-			`https://www.linkedin.com/in/${slug}`,
-		);
+		const requestedUrl = `https://www.linkedin.com/in/${slug}`;
+		const result = await personByProfileUrl(requestedUrl);
 
 		if (result.outcome !== "found") {
 			return { found: false as const, reason: result.reason };
@@ -74,7 +73,7 @@ export default defineTool({
 		return {
 			found: true as const,
 			profile: person,
-			sourceUrl: person.sourceUrl,
+			sourceUrl: person.profileUrl ?? requestedUrl,
 			photo: portrait ?? undefined,
 			verdict: {
 				emailMatches,
@@ -95,11 +94,4 @@ export default defineTool({
 function sameEmail(left: string | null, right: string): boolean {
 	if (!left) return false;
 	return left.trim().toLowerCase() === right.trim().toLowerCase();
-}
-
-function sameDomain(left: string | null, right: string): boolean {
-	if (!left) return false;
-	const a = normalise(left);
-	const b = normalise(right);
-	return a !== "" && a === b;
 }

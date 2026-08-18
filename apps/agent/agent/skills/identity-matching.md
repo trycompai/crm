@@ -49,7 +49,7 @@ That is the shape of every match: guess where to look, never what you will find.
    own profile. Nothing else you can observe is stronger.
 5. **Otherwise both, or it is not them.** One of the other two is not a weaker
    match, it is a different person who happens to share something.
-5. If no candidate passes, **stop**. Leaving "Pmarchetti" in the CRM is the correct
+6. If no candidate passes, **stop**. Leaving "Pmarchetti" in the CRM is the correct
    outcome when you do not know.
 
 Somebody whose LinkedIn URL is **already on the record** has been through all of
@@ -72,7 +72,7 @@ The `sourceUrl` to cite is the one the tool hands back — the profile URL the
 person's own record lists. A lookup that comes back with no source is a lookup
 you cannot write a fact from.
 
-The middle row is the case this exists for. Four Marchettis work at Fernhill; a
+The `One check passes` row is the case this exists for. Four Marchettis work at Fernhill; a
 human settles that in three seconds, and the old rule — throw away anything
 short of certain — meant we paid for that lookup every run and learned nothing
 from it. A suggestion is not a failed match. It is the match, handed to the one

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTEXT } from "./context-config";
 import { extract, type JsonSchema } from "./context-dev";
 import { namesMatch } from "./names";
 import { personByProfileUrl, slugFromProfileUrl } from "./people";
@@ -29,10 +30,14 @@ export async function findPortrait(
 > {
 	const tried: string[] = [];
 
+	if (subject.linkedinUrl && !contextReady) {
+		tried.push("Context.dev is not connected, so LinkedIn was not read");
+	}
+
 	if (subject.linkedinUrl && contextReady) {
 		const slug = slugFromProfileUrl(subject.linkedinUrl);
 		if (slug) {
-			const charge = spend();
+			const charge = spend(CONTEXT.people.enrichCost);
 			if (!charge.ok) return { found: false, tried, reason: charge.reason };
 
 			const result = await personByProfileUrl(
@@ -61,6 +66,12 @@ export async function findPortrait(
 				url: `https://github.com/${encodeURIComponent(login)}.png?size=460`,
 			},
 		};
+	}
+
+	if (subject.companyDomain && subject.name && !contextReady) {
+		tried.push(
+			"Context.dev is not connected, so the company site was not read",
+		);
 	}
 
 	if (subject.companyDomain && subject.name && contextReady) {
