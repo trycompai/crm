@@ -9,7 +9,7 @@ import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
 import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
-import { retireAbandoned, staleTaskSweep } from "./stale-tasks";
+import { staleTaskSweep } from "./stale-tasks";
 import {
 	claimDue,
 	completeTask,
@@ -325,7 +325,6 @@ export const drainAll = collapsing(
 		const signal = controller.signal;
 
 		const sweep = (async () => {
-			await retireAbandoned();
 			await Promise.all([
 				runVisibleLane(signal),
 				runResearchLane(start, signal),

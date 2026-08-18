@@ -31,6 +31,7 @@ import { settle } from "../lib/enrichment";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
+import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
@@ -92,7 +93,8 @@ export async function closeTask(
 	const taskId = taskFromToken(token);
 	if (!taskId) return false;
 
-	const subject = await completeTask(taskId, outcome);
+	const subject =
+		(await completeTask(taskId, outcome)) ?? (await taskSubject(taskId));
 	if (subject) await settle(subject, status);
 
 	return true;
@@ -136,6 +138,7 @@ export default defineChannel({
 
 			waitUntil(
 				(async () => {
+					await reconcileStaleTasks();
 					await drainAll((task) =>
 						send(brief(task), {
 							auth: taskAuth(task),
