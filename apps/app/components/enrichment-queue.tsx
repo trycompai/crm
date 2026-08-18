@@ -65,6 +65,7 @@ export function EnrichmentQueue() {
 	const scheduled = queue.data?.scheduled ?? [];
 	const scheduledTotal = queue.data?.scheduledTotal ?? 0;
 	const visible = expanded ? rows : rows.slice(0, VISIBLE_ROWS);
+	const hidden = rows.length - visible.length;
 	const more = total - visible.length;
 
 	const openSubject = (subject: QueueSubject) => {
@@ -121,7 +122,7 @@ export function EnrichmentQueue() {
 				{more > 0 ? (
 					<div className="flex items-center justify-between px-4 py-3 text-xs">
 						<span className="text-muted-foreground">{more} more queued</span>
-						{expanded ? null : (
+						{hidden > 0 ? (
 							<button
 								type="button"
 								className="cursor-pointer text-primary"
@@ -129,7 +130,7 @@ export function EnrichmentQueue() {
 							>
 								Show all
 							</button>
-						)}
+						) : null}
 					</div>
 				) : null}
 
@@ -278,6 +279,12 @@ function ScheduledSection({
 						</span>
 					</button>
 				))}
+
+				{total > rows.length ? (
+					<div className="px-4 py-3 text-muted-foreground text-xs">
+						{total - rows.length} more are booked but not listed here
+					</div>
+				) : null}
 			</CollapsibleContent>
 		</Collapsible>
 	);
