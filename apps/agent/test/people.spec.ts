@@ -152,6 +152,16 @@ describe("reading a person out of an enrichment", () => {
 		expect(result.person.photoUrl).toBe(null);
 	});
 
+	it("keeps the face Context actually serves", () => {
+		const url = "https://media.brand.dev/pfp/2a3c58be-678b-5530-acc8.png";
+		const result = matchFrom(candidate({ ...PERSON, avatar_url: url }));
+
+		expect(result.outcome).toBe("found");
+		if (result.outcome !== "found") return;
+
+		expect(result.person.photoUrl).toBe(url);
+	});
+
 	it("keeps both current roles held at one employer", () => {
 		const result = matchFrom(
 			candidate({

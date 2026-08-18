@@ -9,10 +9,5 @@ export const CONTEXT = {
 		enrichCost: 2,
 	},
 
-	avatarHosts: [
-		"licdn.com",
-		"context.dev",
-		"contextdev.com",
-		"githubusercontent.com",
-	],
+	avatarHosts: ["brand.dev", "licdn.com"],
 } as const;
