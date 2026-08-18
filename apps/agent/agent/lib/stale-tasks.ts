@@ -55,27 +55,28 @@ export async function retireAbandoned(): Promise<TaskSubject[]> {
 }
 
 export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
-	try {
-		lastSweep = await runSweep();
-	} catch (cause) {
-		const error = cause instanceof Error ? cause.message : String(cause);
-		console.error(`[agent] Stale task reconciliation failed: ${error}`);
+	const sweep: StaleTaskSweep = {
+		scanned: 0,
+		closed: 0,
+		retired: 0,
+		released: 0,
+		waiting: 0,
+		unscanned: 0,
+		error: null,
+	};
 
-		lastSweep = {
-			scanned: 0,
-			closed: 0,
-			retired: 0,
-			released: 0,
-			waiting: 0,
-			unscanned: 0,
-			error,
-		};
+	try {
+		await runSweep(sweep);
+	} catch (cause) {
+		sweep.error = cause instanceof Error ? cause.message : String(cause);
+		console.error(`[agent] Stale task reconciliation failed: ${sweep.error}`);
 	}
 
-	return lastSweep;
+	lastSweep = sweep;
+	return sweep;
 }
 
-async function runSweep(): Promise<StaleTaskSweep> {
+async function runSweep(sweep: StaleTaskSweep): Promise<void> {
 	const now = new Date();
 
 	const where: Prisma.AgentTaskWhereInput = {
@@ -102,15 +103,8 @@ async function runSweep(): Promise<StaleTaskSweep> {
 		}),
 	]);
 
-	const sweep: StaleTaskSweep = {
-		scanned: tasks.length,
-		closed: 0,
-		retired: 0,
-		released: 0,
-		waiting: 0,
-		unscanned: Math.max(0, open - tasks.length),
-		error: null,
-	};
+	sweep.scanned = tasks.length;
+	sweep.unscanned = Math.max(0, open - tasks.length);
 
 	const completed = await completedSubjects(tasks);
 
@@ -152,8 +146,6 @@ async function runSweep(): Promise<StaleTaskSweep> {
 
 		sweep.released = count;
 	}
-
-	return sweep;
 }
 
 async function completedSubjects(

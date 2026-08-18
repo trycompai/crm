@@ -309,4 +309,28 @@ describe("running it twice", () => {
 
 		expect((await reconcileStaleTasks()).error).toBeNull();
 	});
+
+	it("keeps the counters a failed sweep already reached", async () => {
+		await queue({
+			contactId: (await someone(EnrichmentStatus.RUNNING)).id,
+			attempts: 1,
+			startedAt: new Date(Date.now() - 30 * MINUTE_MS),
+			leasedUntil: new Date(Date.now() - MINUTE_MS),
+		});
+
+		const updateMany = db.agentTask.updateMany;
+		db.agentTask.updateMany = () => {
+			throw new Error("the write failed");
+		};
+
+		let sweep: Awaited<ReturnType<typeof reconcileStaleTasks>>;
+		try {
+			sweep = await reconcileStaleTasks();
+		} finally {
+			db.agentTask.updateMany = updateMany;
+		}
+
+		expect(sweep.error).toBe("the write failed");
+		expect(sweep.scanned).toBeGreaterThanOrEqual(1);
+	});
 });
