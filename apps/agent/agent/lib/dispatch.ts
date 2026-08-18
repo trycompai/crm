@@ -9,14 +9,13 @@ import { collapsing, runLimited } from "./pool";
 import { runPortrait } from "./portrait";
 import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
+import { retireAbandoned, staleTaskSweep } from "./stale-tasks";
 import {
 	claimDue,
 	completeTask,
 	DIRECT_KINDS,
 	type LeasedTask,
 	noteSession,
-	retireExhausted,
-	type TaskSubject,
 } from "./tasks";
 
 export const VISIBLE_BATCH = DISPATCH.visible.batch;
@@ -25,24 +24,6 @@ export const VISIBLE_LEASE_MS = DISPATCH.visible.leaseMs;
 
 export const RESEARCH_BATCH = DISPATCH.research.batch;
 export const RESEARCH_LEASE_MS = DISPATCH.research.leaseMs;
-
-export async function retireAbandoned(): Promise<void> {
-	let abandoned: TaskSubject[] = [];
-
-	try {
-		abandoned = await retireExhausted();
-	} catch {
-		return;
-	}
-
-	for (const task of abandoned) {
-		await settle(
-			task,
-			EnrichmentStatus.FAILED,
-			"Research was attempted several times and never completed.",
-		).catch(() => {});
-	}
-}
 
 export async function runVisibleLane(signal?: AbortSignal): Promise<number> {
 	let handled = 0;
@@ -322,6 +303,7 @@ export function dispatchHealth() {
 		pendingStarts,
 		pendingItems,
 		unlinkedSessions,
+		staleTasks: staleTaskSweep(),
 		lastError: lastSweepError,
 	};
 }

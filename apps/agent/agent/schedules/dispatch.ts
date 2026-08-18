@@ -7,6 +7,7 @@ import {
 	queueDueAgentRuns,
 } from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
+import { reconcileStaleTasks } from "../lib/stale-tasks";
 
 export default defineSchedule({
 	cron: "* * * * *",
@@ -16,6 +17,7 @@ export default defineSchedule({
 				sweepBlankFacts(),
 
 				(async () => {
+					await reconcileStaleTasks();
 					await drainAll((task) =>
 						receive(crm, {
 							message: brief(task),

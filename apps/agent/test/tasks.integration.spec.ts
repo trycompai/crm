@@ -179,6 +179,19 @@ describe("retireExhausted", () => {
 
 		expect(await retireExhausted()).toHaveLength(0);
 	});
+
+	it("retires no more rows than the limit allows", async () => {
+		for (let row = 0; row < 3; row++) await queue();
+
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			const claimed = await claimDue(10, RESEARCH);
+			for (const task of claimed) await expire(task.id);
+		}
+
+		expect(await retireExhausted(2)).toHaveLength(2);
+		expect(await retireExhausted(2)).toHaveLength(1);
+		expect(await retireExhausted(2)).toHaveLength(0);
+	});
 });
 
 describe("completeTask", () => {
