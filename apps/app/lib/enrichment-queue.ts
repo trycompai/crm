@@ -1,8 +1,32 @@
+import { ENRICHMENT_PAGE_MAX } from "@crm/validation/enrichment-queue";
+
 const SECOND_MS = 1_000;
 const MINUTE_S = 60;
 const HOUR_S = 60 * MINUTE_S;
 
 export const NO_ELAPSED = "—";
+
+export type QueueFooter = {
+	more: number;
+	action: "show-all" | "load-more" | "none";
+};
+
+export function queueFooter(input: {
+	total: number;
+	fetched: number;
+	shown: number;
+	limit: number;
+}): QueueFooter {
+	const more = Math.max(0, input.total - input.shown);
+	if (more === 0) return { more: 0, action: "none" };
+
+	if (input.fetched > input.shown) return { more, action: "show-all" };
+
+	return {
+		more,
+		action: input.limit < ENRICHMENT_PAGE_MAX ? "load-more" : "none",
+	};
+}
 
 export function formatElapsed(seconds: number): string {
 	const whole = Math.max(0, Math.floor(seconds));

@@ -3,6 +3,7 @@ import {
 	elapsedLabel,
 	formatElapsed,
 	NO_ELAPSED,
+	queueFooter,
 } from "../lib/enrichment-queue";
 
 describe("how long a lookup has been going", () => {
@@ -55,5 +56,45 @@ describe("what the meta slot shows", () => {
 
 	it("shows a dash rather than NaN for an unreadable date", () => {
 		expect(elapsedLabel("running", "not a date", now)).toBe(NO_ELAPSED);
+	});
+});
+
+describe("what the queue footer offers", () => {
+	it("says nothing when every row is on screen", () => {
+		expect(queueFooter({ total: 3, fetched: 3, shown: 3, limit: 20 })).toEqual({
+			more: 0,
+			action: "none",
+		});
+	});
+
+	it("offers to show the rows already fetched", () => {
+		expect(
+			queueFooter({ total: 12, fetched: 12, shown: 5, limit: 20 }),
+		).toEqual({ more: 7, action: "show-all" });
+	});
+
+	it("offers to fetch the rows the server held back", () => {
+		expect(
+			queueFooter({ total: 60, fetched: 20, shown: 20, limit: 20 }),
+		).toEqual({ more: 40, action: "load-more" });
+	});
+
+	it("shows the rows it has before fetching more", () => {
+		expect(
+			queueFooter({ total: 60, fetched: 20, shown: 5, limit: 20 }),
+		).toEqual({ more: 55, action: "show-all" });
+	});
+
+	it("stops offering once the page maximum is reached", () => {
+		expect(
+			queueFooter({ total: 500, fetched: 200, shown: 200, limit: 200 }),
+		).toEqual({ more: 300, action: "none" });
+	});
+
+	it("never promises a negative number of rows", () => {
+		expect(queueFooter({ total: 0, fetched: 5, shown: 5, limit: 20 })).toEqual({
+			more: 0,
+			action: "none",
+		});
 	});
 });

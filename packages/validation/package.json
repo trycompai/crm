@@ -9,6 +9,7 @@
 		"./agent-events": "./src/agent-events.ts",
 		"./agent-manifest": "./src/agent-manifest.ts",
 		"./builder-question": "./src/builder-question.ts",
+		"./enrichment-queue": "./src/enrichment-queue.ts",
 		"./eve-stream": "./src/eve-stream.ts",
 		"./eve-tool": "./src/eve-tool.ts"
 	},

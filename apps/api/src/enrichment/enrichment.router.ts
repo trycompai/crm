@@ -1,5 +1,7 @@
+import { enrichmentQueueInput } from "@crm/validation/enrichment-queue";
 import { Inject } from "@nestjs/common";
-import { Query, Router, UseMiddlewares } from "nestjs-trpc";
+import { Input, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import type { z } from "zod";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { EnrichmentService } from "./enrichment.service";
 
@@ -10,8 +12,8 @@ export class EnrichmentRouter {
 		@Inject(EnrichmentService) private readonly enrichment: EnrichmentService,
 	) {}
 
-	@Query()
-	async queue() {
-		return this.enrichment.queue();
+	@Query({ input: enrichmentQueueInput })
+	async queue(@Input() input: z.infer<typeof enrichmentQueueInput>) {
+		return this.enrichment.queue(input.limit);
 	}
 }

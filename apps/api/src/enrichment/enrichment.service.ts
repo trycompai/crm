@@ -1,4 +1,8 @@
 import type { Db, Prisma } from "@crm/db";
+import {
+	ENRICHMENT_PAGE,
+	ENRICHMENT_PAGE_MAX,
+} from "@crm/validation/enrichment-queue";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import {
@@ -7,10 +11,6 @@ import {
 	enrichmentQueueLine,
 	enrichmentQueueState,
 } from "./enrichment-copy";
-
-const QUEUE_ROWS = 20;
-
-const SCHEDULED_ROWS = 20;
 
 export type EnrichmentQueueSubject =
 	| {
@@ -76,7 +76,8 @@ type QueuedTask = {
 export class EnrichmentService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async queue(): Promise<EnrichmentQueue> {
+	async queue(limit: number = ENRICHMENT_PAGE): Promise<EnrichmentQueue> {
+		const take = Math.min(Math.max(1, Math.trunc(limit)), ENRICHMENT_PAGE_MAX);
 		const now = new Date();
 
 		const named: Prisma.AgentTaskWhereInput = {
@@ -98,14 +99,14 @@ export class EnrichmentService {
 			this.db.agentTask.findMany({
 				where: dueWhere,
 				orderBy: [{ priority: "desc" }, { dueAt: "asc" }],
-				take: QUEUE_ROWS,
+				take,
 				select: TASK_SELECT,
 			}),
 			this.db.agentTask.count({ where: dueWhere }),
 			this.db.agentTask.findMany({
 				where: scheduledWhere,
 				orderBy: [{ dueAt: "asc" }],
-				take: SCHEDULED_ROWS,
+				take,
 				select: TASK_SELECT,
 			}),
 			this.db.agentTask.count({ where: scheduledWhere }),

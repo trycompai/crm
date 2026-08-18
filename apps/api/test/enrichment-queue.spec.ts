@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { ENRICHMENT_PAGE_MAX } from "@crm/validation/enrichment-queue";
 import { EnrichmentService } from "../src/enrichment/enrichment.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "enrichment-queue-spec";
@@ -95,5 +96,26 @@ describe("what the enrichment widget reads", () => {
 
 		expect(row?.subject.id).toBe(companyId);
 		expect(row?.line).toBe("Waiting");
+	});
+
+	it("hands back no more rows than the caller asked for", async () => {
+		const queue = await enrichment.queue(1);
+
+		expect(queue.rows.length).toBeLessThanOrEqual(1);
+		expect(queue.scheduled.length).toBeLessThanOrEqual(1);
+		expect(queue.total).toBeGreaterThanOrEqual(queue.rows.length);
+	});
+
+	it("refuses to fetch more than the page maximum", async () => {
+		const queue = await enrichment.queue(10_000);
+
+		expect(queue.rows.length).toBeLessThanOrEqual(ENRICHMENT_PAGE_MAX);
+		expect(queue.scheduled.length).toBeLessThanOrEqual(ENRICHMENT_PAGE_MAX);
+	});
+
+	it("treats a nonsense limit as one row, never as none", async () => {
+		const queue = await enrichment.queue(0);
+
+		expect(queue.rows.length).toBeLessThanOrEqual(1);
 	});
 });
