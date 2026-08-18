@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.14.0](https://github.com/trycompai/crm/compare/v1.13.0...v1.14.0) (2026-08-18)
+
+
+### Features
+
+* **agent:** read people from Context.dev instead of RapidAPI (CMP-86) ([#158](https://github.com/trycompai/crm/issues/158)) ([7b9288b](https://github.com/trycompai/crm/commit/7b9288b024f870fe5cb48b642255ebca645c261b))
+* enrichment queue widget (CMP-92) ([#159](https://github.com/trycompai/crm/issues/159)) ([5e11482](https://github.com/trycompai/crm/commit/5e11482bee237d94a6eca8dfecbe6e7850df9c7a))
+* page the enrichment queue (CMP-92) ([#160](https://github.com/trycompai/crm/issues/160)) ([8c1abb1](https://github.com/trycompai/crm/commit/8c1abb14f4a60e0f9232914958869acccd610f71))
+
+
+### Fixes
+
+* unblock the test suite and actually install the git hooks (CMP-83) ([#152](https://github.com/trycompai/crm/issues/152)) ([652135b](https://github.com/trycompai/crm/commit/652135be27e9c3e22c06e4d6cfb47746f5c6c9c1))
+
+
+### Refactors
+
+* clear anti-slop type assertions and conditional object spreads (CMP-81) ([#146](https://github.com/trycompai/crm/issues/146)) ([bfd4dad](https://github.com/trycompai/crm/commit/bfd4dadfd1df44566676902a2477bfa112ca1413))
+* parse every remaining I/O boundary into a domain type (CMP-82) ([#151](https://github.com/trycompai/crm/issues/151)) ([3fb9922](https://github.com/trycompai/crm/commit/3fb9922b63aae5e97518d6712037e70b21899a76))
+
+
+### Documentation
+
+* propose an i18n layer ([#143](https://github.com/trycompai/crm/issues/143)) ([64440c6](https://github.com/trycompai/crm/commit/64440c6827394af69659a1d0205574a6726868a8))
+
 ## [1.13.0](https://github.com/trycompai/crm/compare/v1.12.0...v1.13.0) (2026-08-12)
 
 
