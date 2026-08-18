@@ -1,5 +1,8 @@
 import { APIError } from "context.dev/core/error";
-import type { PersonEnrichResponse } from "context.dev/resources/people";
+import type {
+	PersonEnrichParams,
+	PersonEnrichResponse,
+} from "context.dev/resources/people";
 import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
@@ -144,6 +147,41 @@ export async function personByProfileUrl(
 		});
 
 		return matchFrom(response.match);
+	} catch (error) {
+		return classify(error);
+	}
+}
+
+export type IdentityClues = {
+	email: string;
+	firstName: string | null;
+	lastName: string | null;
+	companyName: string | null;
+	companyDomain: string | null;
+};
+
+export async function personByClues(
+	clues: IdentityClues,
+): Promise<PersonMatch> {
+	const api = await contextDev();
+	if (!api) {
+		return { outcome: "skipped", reason: "Context.dev is not configured." };
+	}
+
+	const params: PersonEnrichParams = {
+		email: clues.email,
+		timeoutMS: CONTEXT.timeoutMs,
+	};
+
+	if (clues.firstName) params.name = { first: clues.firstName };
+	if (clues.lastName) params.name = { ...params.name, last: clues.lastName };
+	if (clues.companyName) params.company = { name: clues.companyName };
+	if (clues.companyDomain) {
+		params.company = { ...params.company, domain: clues.companyDomain };
+	}
+
+	try {
+		return matchFrom((await api.people.enrich(params)).match);
 	} catch (error) {
 		return classify(error);
 	}

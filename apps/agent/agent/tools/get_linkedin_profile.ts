@@ -7,11 +7,7 @@ import {
 	unavailable,
 } from "../lib/capabilities";
 import { spend } from "../lib/focus";
-import {
-	looksLikeSameCompany,
-	nameMatchesLocalPart,
-	sameDomain,
-} from "../lib/names";
+import { verdictFor } from "../lib/identity";
 import { personByProfileUrl } from "../lib/people";
 import { storePortrait } from "../lib/portrait";
 
@@ -46,23 +42,10 @@ export default defineTool({
 		}
 
 		const person = result.person;
-		const local = email.split("@")[0] ?? "";
-
-		const employerMatches = person.currentRoles.some(
-			(role) =>
-				sameDomain(role.organisation.domain, companyDomain) ||
-				looksLikeSameCompany(
-					role.organisation.name ?? "",
-					companyName,
-					companyDomain,
-				),
-		);
-		const nameMatches = nameMatchesLocalPart(person, local);
-		const emailMatches = sameEmail(person.email, email);
-		const isSamePerson = emailMatches || (employerMatches && nameMatches);
+		const verdict = verdictFor(person, { email, companyName, companyDomain });
 
 		const portrait =
-			contactId && isSamePerson
+			contactId && verdict.isSamePerson
 				? await storePortrait({
 						contactId,
 						sourceUrl: person.photoUrl,
@@ -75,23 +58,7 @@ export default defineTool({
 			profile: person,
 			sourceUrl: person.profileUrl ?? requestedUrl,
 			photo: portrait ?? undefined,
-			verdict: {
-				emailMatches,
-				employerMatches,
-				nameMatches,
-				isSamePerson,
-				confidence:
-					emailMatches || (employerMatches && nameMatches)
-						? ("high" as const)
-						: employerMatches || nameMatches
-							? ("medium" as const)
-							: ("low" as const),
-			},
+			verdict,
 		};
 	},
 });
-
-function sameEmail(left: string | null, right: string): boolean {
-	if (!left) return false;
-	return left.trim().toLowerCase() === right.trim().toLowerCase();
-}

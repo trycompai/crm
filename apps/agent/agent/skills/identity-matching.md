@@ -16,12 +16,12 @@ Asking a model what it stands for produces "Paula Marchetti" — which happens t
 right, and would have been just as confident had it been wrong. You cannot tell
 the difference afterwards, which is why guessing is banned outright.
 
-What works is decomposition: `pmarchetti` contains the surname `marchetti`, and
-searching *that* alongside the company returns `linkedin.com/in/paulamarchetti`
-as the first result. The guess went into the **query**, and the answer came from
-the profile.
+What works is handing over every clue you already hold — the address itself, the
+name on the record, the employer and its domain — and letting the resolver match
+them against real profiles. The clues go into the **query**, and the answer comes
+from the profile.
 
-That is the shape of every match: guess where to look, never what you will find.
+That is the shape of every match: say where to look, never what you will find.
 
 ## The procedure
 
@@ -29,17 +29,20 @@ That is the shape of every match: guess where to look, never what you will find.
    have ever replied to us from that address, you already have the strongest
    evidence available anywhere — `crm.thread-reply` — and a signature block may
    hand you their title as well. Start every match here, not at a search engine.
-1. **`resolve_linkedin_profile`** with the email and company. It decomposes the
-   local part and returns candidate slugs. These are leads, not answers.
-2. **`get_linkedin_profile`** on each candidate, passing the email, company name
+1. **`resolve_linkedin_profile`** when the record holds no LinkedIn URL. Pass the
+   email, the company name and domain, and any first and last name the CRM has.
+   It returns one candidate and a verdict. A candidate is a lead, not an answer.
+2. **`get_linkedin_profile`** when the record already holds a LinkedIn URL, or to
+   check a candidate at a different URL. Pass the email, company name
    and domain — **and the `contactId`**. It returns the profile, their full work
    history *and a verdict*, in one lookup. Passing the id is what lets it copy
    their photograph, which it does only if the verdict comes back positive, in
    code, without asking you. Leaving it out costs the contact their picture and
    saves nothing.
 
-   It is the most expensive call you have, so read the candidates before you
-   spend one: two or three checked profiles is the whole budget for a contact.
+   Both calls cost the same, and they are the most expensive you have. Two or
+   three lookups is the whole budget for a contact, so do not run both when one
+   answers. A record with a LinkedIn URL needs step 2 only.
 3. **Read the verdict, not the profile.** It checks three things:
    - `emailMatches` — the profile lists the address we are identifying.
    - `employerMatches` — a current position matches the company we have.
