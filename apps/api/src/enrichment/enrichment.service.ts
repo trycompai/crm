@@ -1,8 +1,5 @@
 import type { Db, Prisma } from "@crm/db";
-import {
-	ENRICHMENT_PAGE,
-	ENRICHMENT_PAGE_MAX,
-} from "@crm/validation/enrichment-queue";
+import { ENRICHMENT_PAGE, pageSize } from "@crm/validation/enrichment-queue";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import {
@@ -77,7 +74,7 @@ export class EnrichmentService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async queue(limit: number = ENRICHMENT_PAGE): Promise<EnrichmentQueue> {
-		const take = Math.min(Math.max(1, Math.trunc(limit)), ENRICHMENT_PAGE_MAX);
+		const take = pageSize(limit);
 		const now = new Date();
 
 		const named: Prisma.AgentTaskWhereInput = {

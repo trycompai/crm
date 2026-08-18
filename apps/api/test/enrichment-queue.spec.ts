@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { ENRICHMENT_PAGE_MAX } from "@crm/validation/enrichment-queue";
+import {
+	ENRICHMENT_PAGE,
+	ENRICHMENT_PAGE_MAX,
+	enrichmentQueueInput,
+	pageSize,
+} from "@crm/validation/enrichment-queue";
 import { EnrichmentService } from "../src/enrichment/enrichment.service";
 
 const suffix = process.env.TEST_RUN_ID ?? "enrichment-queue-spec";
@@ -12,6 +17,8 @@ const enrichment = new EnrichmentService(db);
 
 const DAY_MS = 86_400_000;
 
+const EXTRA_ROWS = 8;
+
 let contactId: string;
 let companyId: string;
 let dueId: string;
@@ -20,6 +27,9 @@ let scheduledId: string;
 async function clean() {
 	await db.agentTask.deleteMany({ where: { kind } });
 	await db.contact.deleteMany({ where: { email } });
+	await db.contact.deleteMany({
+		where: { email: { endsWith: `-${suffix}@example.test` } },
+	});
 	await db.company.deleteMany({ where: { name } });
 }
 
@@ -61,6 +71,27 @@ beforeAll(async () => {
 
 	dueId = due.id;
 	scheduledId = scheduled.id;
+
+	for (let index = 0; index < EXTRA_ROWS; index++) {
+		const extra = await db.contact.create({
+			data: {
+				firstName: "Queue",
+				lastName: `Page ${index}`,
+				email: `page-${index}-${suffix}@example.test`,
+			},
+			select: { id: true },
+		});
+
+		await db.agentTask.create({
+			data: {
+				kind,
+				reason: "due now",
+				dueAt: new Date(Date.now() - 60_000),
+				budget: 4,
+				contactId: extra.id,
+			},
+		});
+	}
 });
 
 afterAll(clean);
@@ -98,24 +129,61 @@ describe("what the enrichment widget reads", () => {
 		expect(row?.line).toBe("Waiting");
 	});
 
-	it("hands back no more rows than the caller asked for", async () => {
-		const queue = await enrichment.queue(1);
+	it("hands back exactly the number of rows asked for", async () => {
+		const queue = await enrichment.queue(3);
 
-		expect(queue.rows.length).toBeLessThanOrEqual(1);
-		expect(queue.scheduled.length).toBeLessThanOrEqual(1);
-		expect(queue.total).toBeGreaterThanOrEqual(queue.rows.length);
+		expect(queue.rows).toHaveLength(3);
+		expect(queue.total).toBeGreaterThan(3);
 	});
 
-	it("refuses to fetch more than the page maximum", async () => {
-		const queue = await enrichment.queue(10_000);
+	it("counts every due task, not only the ones it returned", async () => {
+		const page = await enrichment.queue(3);
+		const all = await enrichment.queue(EXTRA_ROWS + 10);
 
-		expect(queue.rows.length).toBeLessThanOrEqual(ENRICHMENT_PAGE_MAX);
-		expect(queue.scheduled.length).toBeLessThanOrEqual(ENRICHMENT_PAGE_MAX);
+		expect(page.total).toBe(all.total);
+		expect(all.rows.length).toBeGreaterThan(page.rows.length);
 	});
 
 	it("treats a nonsense limit as one row, never as none", async () => {
-		const queue = await enrichment.queue(0);
+		expect(await enrichment.queue(0)).toHaveProperty("rows.length", 1);
+		expect(await enrichment.queue(-5)).toHaveProperty("rows.length", 1);
+	});
 
-		expect(queue.rows.length).toBeLessThanOrEqual(1);
+	it("reads the whole page when asked for more than exists", async () => {
+		const queue = await enrichment.queue(ENRICHMENT_PAGE_MAX);
+
+		expect(queue.rows).toHaveLength(Math.min(queue.total, ENRICHMENT_PAGE_MAX));
+	});
+});
+
+describe("the page size the queue will accept", () => {
+	it("never returns nothing", () => {
+		expect(pageSize(0)).toBe(1);
+		expect(pageSize(-100)).toBe(1);
+	});
+
+	it("never reads past the maximum", () => {
+		expect(pageSize(10_000)).toBe(ENRICHMENT_PAGE_MAX);
+		expect(pageSize(ENRICHMENT_PAGE_MAX + 1)).toBe(ENRICHMENT_PAGE_MAX);
+	});
+
+	it("keeps a sane request as it is", () => {
+		expect(pageSize(1)).toBe(1);
+		expect(pageSize(20)).toBe(20);
+		expect(pageSize(ENRICHMENT_PAGE_MAX)).toBe(ENRICHMENT_PAGE_MAX);
+	});
+
+	it("drops part rows and refuses a number that is not one", () => {
+		expect(pageSize(7.9)).toBe(7);
+		expect(pageSize(Number.NaN)).toBe(ENRICHMENT_PAGE);
+		expect(pageSize(Number.POSITIVE_INFINITY)).toBe(ENRICHMENT_PAGE);
+	});
+
+	it("refuses a limit past the maximum at the boundary", () => {
+		expect(enrichmentQueueInput.safeParse({ limit: 10_000 }).success).toBe(
+			false,
+		);
+		expect(enrichmentQueueInput.safeParse({ limit: 0 }).success).toBe(false);
+		expect(enrichmentQueueInput.parse({}).limit).toBe(ENRICHMENT_PAGE);
 	});
 });

@@ -26,7 +26,7 @@ import {
 	ENRICHMENT_PAGE,
 	ENRICHMENT_PAGE_MAX,
 } from "@crm/validation/enrichment-queue";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { elapsedLabel, queueFooter } from "@/lib/enrichment-queue";
@@ -59,6 +59,7 @@ export function EnrichmentQueue() {
 
 	const queue = useQuery({
 		...trpc.enrichment.queue.queryOptions({ limit }),
+		placeholderData: keepPreviousData,
 		refetchInterval: (query) =>
 			(query.state.data?.total ?? 0) > 0
 				? ENRICHMENT_POLL_MS
@@ -77,21 +78,21 @@ export function EnrichmentQueue() {
 		limit,
 	});
 
-	const openSubject = (subject: QueueSubject) => {
+	const close = () => {
 		setOpen(false);
+		setExpanded(false);
+		setLimit(ENRICHMENT_PAGE);
+	};
+
+	const openSubject = (subject: QueueSubject) => {
+		close();
 		openRecord({ kind: subject.kind, id: subject.id });
 	};
 
 	return (
 		<Popover
 			open={open}
-			onOpenChange={(next) => {
-				setOpen(next);
-				if (next) return;
-
-				setExpanded(false);
-				setLimit(ENRICHMENT_PAGE);
-			}}
+			onOpenChange={(next) => (next ? setOpen(true) : close())}
 		>
 			<PopoverTrigger asChild>
 				<Button variant="outline" size="sm">

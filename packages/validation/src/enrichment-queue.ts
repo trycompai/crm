@@ -14,3 +14,9 @@ export const enrichmentQueueInput = z.object({
 });
 
 export type EnrichmentQueueInput = z.infer<typeof enrichmentQueueInput>;
+
+export function pageSize(limit: number): number {
+	if (!Number.isFinite(limit)) return ENRICHMENT_PAGE;
+
+	return Math.min(Math.max(1, Math.trunc(limit)), ENRICHMENT_PAGE_MAX);
+}

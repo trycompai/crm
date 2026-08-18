@@ -69,14 +69,15 @@ jobs:
           fi
 
           {
-            echo "Could not retitle #$NUMBER, because $reason."
-            echo
-            echo "A pull request from a fork gives this workflow a read-only token, so"
-            echo "the title has to be fixed by hand. Suggested title:"
+            echo "The title needs changing, because $reason, but this workflow"
+            echo "could not write it. Set it by hand:"
             echo
             echo '```'
             echo "$title"
             echo '```'
+            echo
+            echo "A fork pull request grants a read-only token, which is the usual"
+            echo "cause. Check the step log for what the API returned."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: amannn/action-semantic-pull-request@v6
