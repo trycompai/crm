@@ -1,5 +1,5 @@
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
-import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+import { isEnrichmentKind, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { DISPATCH } from "./dispatch-config";
 import { settle } from "./enrichment";
 import { retireExhausted, type TaskSubject } from "./tasks";
@@ -24,6 +24,7 @@ export type StaleTaskSweep = {
 
 type OpenTask = {
 	id: string;
+	kind: string;
 	contactId: string | null;
 	companyId: string | null;
 	attempts: number;
@@ -91,6 +92,7 @@ async function runSweep(): Promise<StaleTaskSweep> {
 			take: SCAN,
 			select: {
 				id: true,
+				kind: true,
 				contactId: true,
 				companyId: true,
 				attempts: true,
@@ -129,7 +131,11 @@ async function runSweep(): Promise<StaleTaskSweep> {
 
 	if (landed.length > 0) {
 		const { count } = await db.agentTask.updateMany({
-			where: { id: { in: landed }, finishedAt: null },
+			where: {
+				id: { in: landed },
+				finishedAt: null,
+				OR: [{ leasedUntil: null }, { leasedUntil: { lt: now } }],
+			},
 			data: { finishedAt: now, outcome: LANDED_OUTCOME },
 		});
 
@@ -192,6 +198,7 @@ function finishedElsewhere(
 	task: OpenTask,
 	completed: Map<string, Date>,
 ): boolean {
+	if (!isEnrichmentKind(task.kind)) return false;
 	if (task.attempts === 0 || task.startedAt === null) return false;
 
 	const subjectId = task.contactId ?? task.companyId;

@@ -3,12 +3,14 @@ import { db, EnrichmentStatus } from "@crm/db";
 import { MAX_ATTEMPTS, RETIRED_OUTCOME } from "@crm/db/agent-tasks";
 import { reconcileStaleTasks } from "../agent/lib/stale-tasks";
 
-const kind = "test-stale";
+const kind = "recheck";
+
+const REASON = "stale-spec";
 
 const MINUTE_MS = 60_000;
 
 async function clear() {
-	await db.agentTask.deleteMany({ where: { kind } });
+	await db.agentTask.deleteMany({ where: { reason: REASON } });
 	await db.contact.deleteMany({ where: { email: { startsWith: "stale-" } } });
 	await db.company.deleteMany({ where: { name: { startsWith: "Stale Co " } } });
 }
@@ -40,6 +42,7 @@ async function anAccount(status: EnrichmentStatus, enrichedAt?: Date) {
 }
 
 async function queue(overrides: {
+	kind?: string;
 	contactId?: string;
 	companyId?: string;
 	attempts?: number;
@@ -49,8 +52,8 @@ async function queue(overrides: {
 }) {
 	return db.agentTask.create({
 		data: {
-			kind,
-			reason: "test",
+			kind: overrides.kind ?? kind,
+			reason: REASON,
 			dueAt: overrides.dueAt ?? new Date(Date.now() - MINUTE_MS),
 			priority: 0,
 			budget: 4,
@@ -163,6 +166,56 @@ describe("a task whose record is already done", () => {
 		const closed = await row(task.id);
 		expect(closed?.finishedAt).not.toBeNull();
 		expect(closed?.outcome).toContain("already up to date");
+	});
+
+	it("keeps event work that names a record the agent just enriched", async () => {
+		const account = await anAccount(
+			EnrichmentStatus.COMPLETE,
+			new Date(Date.now() - 29 * MINUTE_MS),
+		);
+		const task = await queue({
+			kind: "agent-event",
+			companyId: account.id,
+			attempts: 1,
+			startedAt: new Date(Date.now() - 30 * MINUTE_MS),
+			leasedUntil: new Date(Date.now() - MINUTE_MS),
+		});
+
+		await reconcileStaleTasks();
+
+		expect((await row(task.id))?.finishedAt).toBeNull();
+	});
+
+	it("never closes a row another sweep is holding", async () => {
+		const account = await anAccount(
+			EnrichmentStatus.COMPLETE,
+			new Date(Date.now() - 29 * MINUTE_MS),
+		);
+		const task = await queue({
+			companyId: account.id,
+			attempts: 1,
+			startedAt: new Date(Date.now() - 30 * MINUTE_MS),
+			leasedUntil: new Date(Date.now() - MINUTE_MS),
+		});
+
+		const findMany = db.agentTask.findMany;
+		db.agentTask.findMany = async (...args) => {
+			const rows = await findMany.apply(db.agentTask, args);
+			await db.agentTask.update({
+				where: { id: task.id },
+				data: { leasedUntil: new Date(Date.now() + 10 * MINUTE_MS) },
+			});
+
+			return rows;
+		};
+
+		try {
+			await reconcileStaleTasks();
+		} finally {
+			db.agentTask.findMany = findMany;
+		}
+
+		expect((await row(task.id))?.finishedAt).toBeNull();
 	});
 
 	it("keeps a record that finished before this work started", async () => {
