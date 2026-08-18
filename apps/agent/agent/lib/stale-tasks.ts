@@ -19,6 +19,7 @@ export type StaleTaskSweep = {
 	released: number;
 	waiting: number;
 	unscanned: number;
+	error: string | null;
 };
 
 type OpenTask = {
@@ -53,6 +54,27 @@ export async function retireAbandoned(): Promise<TaskSubject[]> {
 }
 
 export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
+	try {
+		lastSweep = await runSweep();
+	} catch (cause) {
+		const error = cause instanceof Error ? cause.message : String(cause);
+		console.error(`[agent] Stale task reconciliation failed: ${error}`);
+
+		lastSweep = {
+			scanned: 0,
+			closed: 0,
+			retired: 0,
+			released: 0,
+			waiting: 0,
+			unscanned: 0,
+			error,
+		};
+	}
+
+	return lastSweep;
+}
+
+async function runSweep(): Promise<StaleTaskSweep> {
 	const now = new Date();
 
 	const where: Prisma.AgentTaskWhereInput = {
@@ -85,6 +107,7 @@ export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
 		released: 0,
 		waiting: 0,
 		unscanned: Math.max(0, open - tasks.length),
+		error: null,
 	};
 
 	const completed = await completedSubjects(tasks);
@@ -124,7 +147,6 @@ export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
 		sweep.released = count;
 	}
 
-	lastSweep = sweep;
 	return sweep;
 }
 

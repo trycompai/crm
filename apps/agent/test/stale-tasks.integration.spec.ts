@@ -239,4 +239,21 @@ describe("running it twice", () => {
 		expect(second.released).toBe(0);
 		expect(second.retired).toBe(0);
 	});
+
+	it("reports a database failure instead of throwing", async () => {
+		const findMany = db.agentTask.findMany;
+		db.agentTask.findMany = () => {
+			throw new Error("the database is unreachable");
+		};
+
+		try {
+			const sweep = await reconcileStaleTasks();
+			expect(sweep.error).toBe("the database is unreachable");
+			expect(sweep.scanned).toBe(0);
+		} finally {
+			db.agentTask.findMany = findMany;
+		}
+
+		expect((await reconcileStaleTasks()).error).toBeNull();
+	});
 });
