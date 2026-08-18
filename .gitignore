@@ -46,3 +46,7 @@ yarn-error.log*
 # eve build output
 .eve
 .output
+/dogfood-output
+
+# Agent scratch files
+.scratch/
