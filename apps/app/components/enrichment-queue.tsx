@@ -90,7 +90,7 @@ export function EnrichmentQueue() {
 				</Button>
 			</PopoverTrigger>
 
-			<PopoverContent align="end" size="fit" className="w-90">
+			<PopoverContent align="end" size="panel">
 				<div className="flex items-center justify-between border-b px-4 py-3">
 					<span className="font-semibold text-popover-foreground text-sm">
 						Enriching now
@@ -221,7 +221,7 @@ function SubjectFace({ subject }: { subject: QueueSubject }) {
 	if (subject.kind === "contact") {
 		return (
 			<PersonAvatar
-				className="size-7"
+				size="sm"
 				src={subject.imageUrl}
 				name={subject.name}
 				email={subject.email}
@@ -231,7 +231,6 @@ function SubjectFace({ subject }: { subject: QueueSubject }) {
 
 	return (
 		<EntityLogo
-			className="size-7 rounded-md"
 			src={subject.logoUrl}
 			darkSrc={subject.logoDarkUrl}
 			tone={entityTone(subject.logoTone)}

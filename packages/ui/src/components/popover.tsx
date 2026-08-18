@@ -25,6 +25,7 @@ const popoverContentVariants = cva(
       size: {
         default: "w-72 gap-2.5 p-2.5",
         fit: "w-auto overflow-hidden p-0",
+        panel: "w-90 overflow-hidden p-0",
       },
     },
     defaultVariants: { size: "default" },
