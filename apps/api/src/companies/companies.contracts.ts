@@ -248,7 +248,7 @@ export const companyEnrichOutput = z.object({
 
 export const companyResearchOutput = z.object({
 	ok: z.literal(true),
-	queued: z.literal(true),
+	queued: z.boolean(),
 });
 
 export const companySetPrimaryContactOutput = z.object({

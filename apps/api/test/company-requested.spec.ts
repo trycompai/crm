@@ -9,6 +9,7 @@ const reason = `A rep asked for a fresh look (${suffix})`;
 const agent = new AgentTriggerService(db);
 
 let companyId: string;
+let bridgeSecret: string | undefined;
 
 async function clean() {
 	if (companyId) await db.agentTask.deleteMany({ where: { companyId } });
@@ -16,6 +17,9 @@ async function clean() {
 }
 
 beforeAll(async () => {
+	bridgeSecret = process.env.AGENT_BRIDGE_SECRET;
+	process.env.AGENT_BRIDGE_SECRET = "";
+
 	await db.company.deleteMany({ where: { name } });
 	const company = await db.company.create({
 		data: { name, domain: `requested-${suffix}.test`.toLowerCase() },
@@ -24,7 +28,15 @@ beforeAll(async () => {
 	companyId = company.id;
 });
 
-afterAll(clean);
+afterAll(async () => {
+	await clean();
+
+	if (bridgeSecret === undefined) {
+		delete process.env.AGENT_BRIDGE_SECRET;
+	} else {
+		process.env.AGENT_BRIDGE_SECRET = bridgeSecret;
+	}
+});
 
 describe("asking for a fresh look", () => {
 	it("says what it actually queued", async () => {

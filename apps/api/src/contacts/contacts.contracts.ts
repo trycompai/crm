@@ -272,7 +272,7 @@ export const contactNameOutput = z.object({
 
 export const contactEnrichOutput = z.object({
 	id: z.string(),
-	queued: z.literal(true),
+	queued: z.boolean(),
 });
 
 export const bulkResultOutput = z.object({

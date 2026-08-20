@@ -66,7 +66,12 @@ export async function runBrand({
 	}
 
 	if (!company.domain) {
-		await settle(companyId, EnrichmentStatus.SKIPPED, "No domain to look up.");
+		await settle(
+			companyId,
+			EnrichmentStatus.SKIPPED,
+			"No domain to look up.",
+			UNLESS_COMPLETE,
+		);
 		return { enriched: false, reason: "No domain on this company." };
 	}
 
@@ -158,13 +163,18 @@ export function brandOutcome(result: BrandResult): string {
 	return `Filled ${filled.join(", ")}.${mirrored.length > 0 ? ` Copied ${mirrored.length} image(s) in-house.` : ""}`;
 }
 
+type SettleGuard =
+	| typeof UNLESS_COMPLETE
+	| { enrichmentStatus: EnrichmentStatus };
+
 async function settle(
 	companyId: string,
 	status: EnrichmentStatus,
 	error: string,
+	guard: SettleGuard = { enrichmentStatus: EnrichmentStatus.RUNNING },
 ): Promise<void> {
 	await db.company.updateMany({
-		where: { id: companyId, enrichmentStatus: EnrichmentStatus.RUNNING },
+		where: { id: companyId, ...guard },
 		data: { enrichmentStatus: status, enrichmentError: error },
 	});
 }

@@ -181,9 +181,12 @@ describe("a task whose record is already done", () => {
 			leasedUntil: new Date(Date.now() - MINUTE_MS),
 		});
 
-		await reconcileStaleTasks();
+		const sweep = await reconcileStaleTasks();
+		expect(sweep.released).toBeGreaterThanOrEqual(1);
 
-		expect((await row(task.id))?.finishedAt).toBeNull();
+		const kept = await row(task.id);
+		expect(kept?.finishedAt).toBeNull();
+		expect(kept?.leasedUntil).toBeNull();
 	});
 
 	it("keeps meeting prep for a contact another task just enriched", async () => {
@@ -199,9 +202,12 @@ describe("a task whose record is already done", () => {
 			leasedUntil: new Date(Date.now() - MINUTE_MS),
 		});
 
-		await reconcileStaleTasks();
+		const sweep = await reconcileStaleTasks();
+		expect(sweep.released).toBeGreaterThanOrEqual(1);
 
-		expect((await row(task.id))?.finishedAt).toBeNull();
+		const kept = await row(task.id);
+		expect(kept?.finishedAt).toBeNull();
+		expect(kept?.leasedUntil).toBeNull();
 	});
 
 	it("keeps event work that names a record the agent just enriched", async () => {

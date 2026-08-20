@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { db, EnrichmentStatus } from "@crm/db";
+import { readContextDevKey, writeContextDevKey } from "@crm/db/settings";
+import { runBrand } from "../agent/lib/brand";
 import { settle } from "../agent/lib/enrichment";
 
 /**
@@ -130,5 +132,50 @@ describe("a brand task with no key", () => {
 		);
 
 		expect(await statusOf(id)).toBe(EnrichmentStatus.COMPLETE);
+	});
+});
+
+async function domainlessCompany(status: EnrichmentStatus) {
+	const row = await db.company.create({
+		data: {
+			name: `Keyless Probe ${created.length}`,
+			enrichmentStatus: status,
+		},
+		select: { id: true },
+	});
+
+	created.push(row.id);
+	return row.id;
+}
+
+describe("a brand task on a company with no domain", () => {
+	let key: string | null;
+
+	beforeAll(async () => {
+		key = await readContextDevKey(db);
+	});
+
+	afterAll(async () => {
+		await writeContextDevKey(db, key ?? "");
+	});
+
+	it("marks the company skipped, because no sweep will find it again", async () => {
+		await writeContextDevKey(db, "ctx-test-key");
+		const id = await domainlessCompany(EnrichmentStatus.PENDING);
+
+		const result = await runBrand({ companyId: id });
+
+		expect(result.enriched).toBe(false);
+		expect(await statusOf(id)).toBe(EnrichmentStatus.SKIPPED);
+	});
+
+	it("still leaves a keyless install's company pending for the sweep", async () => {
+		await writeContextDevKey(db, "");
+		const id = await domainlessCompany(EnrichmentStatus.PENDING);
+
+		const result = await runBrand({ companyId: id });
+
+		expect(result.enriched).toBe(false);
+		expect(await statusOf(id)).toBe(EnrichmentStatus.PENDING);
 	});
 });
