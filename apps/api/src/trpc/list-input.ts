@@ -68,25 +68,11 @@ export const FACET_ALL = "all";
 
 export const FACET_UNASSIGNED = "unassigned";
 
-/**
- * Splits a multi-select facet's chosen values into the "real" ids Prisma can
- * match with `in`, and whether a sentinel (unassigned owner, no company, …)
- * was among them — Prisma's `in` filter does not match `null` values.
- */
-export function splitSentinel(
-	values: string[],
-	sentinel: string,
-): { ids: string[]; includesSentinel: boolean } {
+export function splitSentinel(values: string[], sentinel: string) {
 	const ids = values.filter((value) => value !== sentinel);
 	return { ids, includesSentinel: ids.length !== values.length };
 }
 
-/**
- * An "is any of" filter for a nullable owner column. Returns an `OR`
- * fragment when both real ids and the unassigned sentinel are selected
- * together — merge this into `AND`, never spread it alongside another
- * `OR`-bearing fragment.
- */
 export function ownerFilter<
 	TWhere =
 		| { ownerId: { in: string[] } }
@@ -101,9 +87,7 @@ export function ownerFilter<
 	return { OR: [{ ownerId: { in: ids } }, { ownerId: null }] } as TWhere;
 }
 
-export function archivedFilter(archived: boolean): {
-	archivedAt: null | { not: null };
-} {
+export function archivedFilter(archived: boolean) {
 	return { archivedAt: archived ? { not: null } : null };
 }
 
@@ -115,11 +99,6 @@ function activityCutoff(days: number): Date {
 	return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-/**
- * "Active within N days" — selecting several windows is an OR, and the
- * loosest (largest) window already covers every tighter one, so it decides
- * alone.
- */
 export function activityFilter(
 	values: string[],
 ): { lastActivityAt: { gte: Date } } | undefined {

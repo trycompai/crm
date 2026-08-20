@@ -1,8 +1,10 @@
 "use client";
 
-import type { SortDirection, TableQueryState } from "@crm/ui/lib/table-query";
+import type { TableQueryState } from "@crm/ui/lib/table-query";
 import type { SavedViewFilters } from "@crm/validation/saved-view";
+import type { Nullable, Values } from "nuqs";
 import { useQueryStates } from "nuqs";
+import { z } from "zod";
 import type {
 	FieldFilters,
 	ListInput,
@@ -14,28 +16,50 @@ export type TableQuery<TTab extends string, TFacet extends string = never> = {
 	query: TableQueryState;
 	input: ListInput<TTab, TFacet>;
 	setArchived: (value: boolean) => void;
-	/** The current view, as a snapshot a saved view can be created from. */
 	currentView: SavedViewFilters;
-	/** Replaces every filter, sort, search and archived toggle in one shot. */
 	applyView: (view: SavedViewFilters) => void;
 };
 
 const FIELD_FILTER_PREFIX = "field:";
 
-/**
- * `ListSearchValues<TTab, TFacet>` is precise for callers with concrete
- * literal unions, but inside this generic hook TTab/TFacet are still
- * unresolved type parameters — a mapped type over them, intersected with the
- * fixed keys (`sort`, `fields`, …), makes TS conflate the branches when a
- * fixed key could theoretically also be a generic one. So internally this
- * hook reads/writes through a fully untyped `Record<string, unknown>` and
- * casts at each access; only the public return type promises precision.
- */
-type RawValues = Record<string, unknown>;
+const fieldFiltersValueSchema = z.record(z.string(), z.array(z.string()));
 
-type SetValues = (
-	update: Partial<RawValues> | ((prev: RawValues) => Partial<RawValues>),
-) => void;
+const queryValueSchema = z.union([
+	z.string(),
+	z.number(),
+	z.boolean(),
+	z.array(z.string()),
+	fieldFiltersValueSchema,
+	z.null(),
+]);
+
+type QueryValue = z.infer<typeof queryValueSchema>;
+
+const rawValuesSchema = z
+	.object({
+		q: z.string().default(""),
+		sort: z.string().default(""),
+		dir: z.string().default("asc"),
+		page: z.number().default(1),
+		fields: fieldFiltersValueSchema.default({}),
+		archived: z.boolean().default(false),
+	})
+	.catchall(queryValueSchema);
+
+type RawUpdate = Record<string, QueryValue | undefined>;
+
+const stringSchema = z.string();
+const stringArraySchema = z.array(z.string());
+
+function asString(value: QueryValue, fallback = ""): string {
+	const result = stringSchema.safeParse(value);
+	return result.success ? result.data : fallback;
+}
+
+function asStringArray(value: QueryValue): string[] {
+	const result = stringArraySchema.safeParse(value);
+	return result.success ? result.data : [];
+}
 
 export function useTableQuery<TTab extends string, TFacet extends string>(
 	searchParams: ListSearchParams<TTab, TFacet>,
@@ -43,23 +67,29 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 	const { parsers, config, toInput } = searchParams;
 	const { defaultDir, pageSize, tabId, facetIds, facetDefaults } = config;
 
-	const [state, rawSetState] = useQueryStates(parsers);
-	const values = state as RawValues;
-	const setValues = rawSetState as unknown as SetValues;
+	const [rawState, rawSetState] = useQueryStates(parsers);
+	const values = rawValuesSchema.parse(rawState);
 
-	const q = values.q as string;
-	const sort = values.sort as string;
-	const dir = values.dir as SortDirection;
-	const rawPage = values.page as number;
+	type NuqsValues = Partial<Nullable<Values<typeof parsers>>>;
+
+	function setValues(update: Partial<RawUpdate>): void {
+		rawSetState(update as NuqsValues);
+	}
+
+	const q = values.q;
+	const sort = values.sort;
+	const dir = values.dir === "desc" ? "desc" : "asc";
+	const rawPage = values.page;
 	const page = rawPage > 0 ? rawPage : 1;
-	const fields = values.fields as FieldFilters;
-	const tab = tabId ? (values[tabId] as string) : "all";
+	const fields = values.fields;
+	const archived = values.archived;
+	const tab = tabId ? asString(values[tabId]) : "all";
 
 	const filters: Record<string, string[]> = {};
 	if (tabId) filters[tabId] = [tab];
 	for (const id of facetIds ?? []) {
-		filters[id] =
-			(values[id] as string[] | undefined) ?? facetDefaults?.[id] ?? [];
+		const selected = asStringArray(values[id]);
+		filters[id] = selected.length > 0 ? selected : (facetDefaults?.[id] ?? []);
 	}
 	for (const [key, selected] of Object.entries(fields)) {
 		filters[`${FIELD_FILTER_PREFIX}${key}`] = selected;
@@ -74,9 +104,9 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 		tabId,
 		filters,
 		toggleSort: (id) =>
-			setValues((prev) =>
-				prev.sort === id
-					? { dir: prev.dir === "asc" ? "desc" : "asc", page: 1 }
+			setValues(
+				sort === id
+					? { dir: dir === "asc" ? "desc" : "asc", page: 1 }
 					: { sort: id, dir: defaultDir, page: 1 },
 			),
 		setSort: (id) => setValues({ sort: id, page: 1 }),
@@ -101,27 +131,27 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 	};
 
 	const input = toInput({
-		...values,
 		q,
 		sort,
 		dir,
 		page: rawPage,
 		fields,
-	} as unknown as ListSearchValues<TTab, TFacet>);
+		archived,
+		...Object.fromEntries(
+			[...(tabId ? [tabId] : []), ...(facetIds ?? [])].map((id) => [
+				id,
+				id === tabId ? tab : (filters[id] ?? []),
+			]),
+		),
+	} as ListSearchValues<TTab, TFacet>);
 
 	const setArchived = (value: boolean) =>
 		setValues({ archived: value, page: 1 });
 
-	const currentView: SavedViewFilters = {
-		q,
-		sort,
-		dir,
-		archived: values.archived as boolean,
-		filters,
-	};
+	const currentView: SavedViewFilters = { q, sort, dir, archived, filters };
 
 	const applyView = (view: SavedViewFilters) => {
-		const update: RawValues = {
+		const update: RawUpdate = {
 			q: view.q,
 			sort: view.sort,
 			dir: view.dir,
