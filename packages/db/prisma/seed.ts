@@ -6,7 +6,7 @@ import { fieldKeyFromLabel } from "../src/fields-shape";
 import {
 	ActivityType,
 	DealStage,
-	FieldEntity,
+	type FieldEntity,
 	FieldType,
 	RateSource,
 } from "../src/generated/prisma/enums";
@@ -528,7 +528,8 @@ async function seedCompanyFields(): Promise<SeededFieldSet> {
 
 function optionIdFor(field: SeededField, label: string): string {
 	const option = field.options.find((entry) => entry.label === label);
-	if (!option) throw new Error(`Seed field "${field.key}" has no "${label}" option.`);
+	if (!option)
+		throw new Error(`Seed field "${field.key}" has no "${label}" option.`);
 	return option.id;
 }
 
@@ -543,7 +544,10 @@ async function seedCompanyFieldValues(
 		await Promise.all([
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.accountType.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.accountType.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.accountType.id,
@@ -554,7 +558,10 @@ async function seedCompanyFieldValues(
 			}),
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.segment.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.segment.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.segment.id,
@@ -565,7 +572,10 @@ async function seedCompanyFieldValues(
 			}),
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.territory.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.territory.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.territory.id,
@@ -593,7 +603,10 @@ async function seedCompanyFieldValues(
 			}),
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.leadSource.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.leadSource.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.leadSource.id,
@@ -604,7 +617,10 @@ async function seedCompanyFieldValues(
 			}),
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.icpFitScore.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.icpFitScore.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.icpFitScore.id,
@@ -615,7 +631,10 @@ async function seedCompanyFieldValues(
 			}),
 			db.fieldValue.upsert({
 				where: {
-					fieldId_companyId: { fieldId: fields.bdrOwner.id, companyId: company.id },
+					fieldId_companyId: {
+						fieldId: fields.bdrOwner.id,
+						companyId: company.id,
+					},
 				},
 				create: {
 					fieldId: fields.bdrOwner.id,

@@ -793,7 +793,10 @@ export class DealsService {
 				]),
 			),
 			...Object.fromEntries(
-				Object.entries(fieldFacets).map(([key, counts]) => [`field:${key}`, counts]),
+				Object.entries(fieldFacets).map(([key, counts]) => [
+					`field:${key}`,
+					counts,
+				]),
 			),
 		};
 	}

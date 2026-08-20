@@ -643,7 +643,10 @@ describe("queueing a backfill", () => {
 		expect(second).toEqual({ queued: 0, merged: 1 });
 
 		const tasks = await db.agentTask.findMany({
-			where: { kind: "field-backfill", companyId: { in: [companyId, otherCompanyId] } },
+			where: {
+				kind: "field-backfill",
+				companyId: { in: [companyId, otherCompanyId] },
+			},
 			select: { companyId: true, payload: true },
 		});
 

@@ -40,9 +40,7 @@ export const revokeAccessOutput = z.object({
 	revoked: z.boolean(),
 });
 
-export type MicrosoftSourceStatus = z.infer<
-	typeof microsoftSourceStatusOutput
->;
+export type MicrosoftSourceStatus = z.infer<typeof microsoftSourceStatusOutput>;
 export type MicrosoftConnectionStatus = z.infer<
 	typeof microsoftConnectionStatusOutput
 >;

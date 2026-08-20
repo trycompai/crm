@@ -70,10 +70,7 @@ export class SavedViewsRouter {
 		output: savedViewDeleteOutput,
 		meta: restMeta("DELETE", "/saved-views/{id}", ["Saved Views"]),
 	})
-	async delete(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input("id") id: string,
-	) {
+	async delete(@Ctx() ctx: AuthedTrpcContext, @Input("id") id: string) {
 		return this.savedViews.delete(id, ctx.user.id);
 	}
 }

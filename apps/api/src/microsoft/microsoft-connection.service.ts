@@ -5,18 +5,18 @@ import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
 import { MailboxTokenService } from "../mailbox/mailbox-token.service";
 import { SyncStateService } from "../mailbox/sync-state.service";
-import type {
-	MicrosoftConnectionStatus,
-	MicrosoftSourceStatus,
-	PurgeSyncedDataOutput,
-	RevokeAccessOutput,
-} from "./microsoft.contracts";
 import {
 	MICROSOFT_PROVIDER_ID,
 	MICROSOFT_SYNC_SOURCES,
 	type MicrosoftSyncSource,
 	SCOPE_FOR_SOURCE,
 } from "./microsoft.constants";
+import type {
+	MicrosoftConnectionStatus,
+	MicrosoftSourceStatus,
+	PurgeSyncedDataOutput,
+	RevokeAccessOutput,
+} from "./microsoft.contracts";
 
 const PURGE_TIMEOUT_MS = 60_000;
 

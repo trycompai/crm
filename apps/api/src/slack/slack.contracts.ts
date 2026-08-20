@@ -122,9 +122,7 @@ export const slackRefreshPeopleOutput = z.object({
 	requested: z.boolean(),
 });
 
-export type SlackRefreshPeopleResult = z.infer<
-	typeof slackRefreshPeopleOutput
->;
+export type SlackRefreshPeopleResult = z.infer<typeof slackRefreshPeopleOutput>;
 
 export const slackCreateChannelOutput = z.object({
 	channel: z.object({

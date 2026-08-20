@@ -26,12 +26,12 @@ import {
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
-import { FIELDS_CONFIG } from "./fields-config";
 import type {
 	FieldCreateInput,
 	FieldReorderInput,
 	FieldUpdateData,
 } from "./fields.contracts";
+import { FIELDS_CONFIG } from "./fields-config";
 
 const WITH_OPTIONS = {
 	options: { orderBy: { position: "asc" } },
@@ -365,14 +365,22 @@ export class FieldsService {
 
 		const rows =
 			entity === "COMPANY"
-				? await this.db.company.findMany({ where, select: { id: true }, take: cap })
+				? await this.db.company.findMany({
+						where,
+						select: { id: true },
+						take: cap,
+					})
 				: entity === "CONTACT"
 					? await this.db.contact.findMany({
 							where,
 							select: { id: true },
 							take: cap,
 						})
-					: await this.db.deal.findMany({ where, select: { id: true }, take: cap });
+					: await this.db.deal.findMany({
+							where,
+							select: { id: true },
+							take: cap,
+						});
 
 		return rows.map((row) => row.id);
 	}
@@ -505,14 +513,19 @@ export class FieldsService {
 	 */
 	async filterFacetCounts(
 		entity: FieldEntity,
-		relationWhere: Prisma.CompanyWhereInput | Prisma.ContactWhereInput | Prisma.DealWhereInput,
+		relationWhere:
+			| Prisma.CompanyWhereInput
+			| Prisma.ContactWhereInput
+			| Prisma.DealWhereInput,
 		definitions: FieldDefinitionWithOptions[],
 	): Promise<Record<string, Record<string, number>>> {
 		const facetCounts: Record<string, Record<string, number>> = {};
 		if (definitions.length === 0) return facetCounts;
 
 		const relation = RELATIONS[entity];
-		const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+		const byId = new Map(
+			definitions.map((definition) => [definition.id, definition]),
+		);
 		const selectIds = definitions
 			.filter((definition) => definition.type === "SELECT")
 			.map((definition) => definition.id);
@@ -548,14 +561,17 @@ export class FieldsService {
 		for (const group of selectGroups) {
 			const definition = byId.get(group.fieldId);
 			if (!definition || !group.optionId) continue;
-			const bucket = (facetCounts[definition.key] ??= {});
-			bucket[group.optionId] = (bucket[group.optionId] ?? 0) + group._count._all;
+			const bucket = facetCounts[definition.key] ?? {};
+			facetCounts[definition.key] = bucket;
+			bucket[group.optionId] =
+				(bucket[group.optionId] ?? 0) + group._count._all;
 		}
 
 		for (const group of userGroups) {
 			const definition = byId.get(group.fieldId);
 			if (!definition || !group.userId) continue;
-			const bucket = (facetCounts[definition.key] ??= {});
+			const bucket = facetCounts[definition.key] ?? {};
+			facetCounts[definition.key] = bucket;
 			bucket[group.userId] = (bucket[group.userId] ?? 0) + group._count._all;
 		}
 
@@ -567,7 +583,9 @@ export class FieldsService {
 		definitions: FieldDefinitionWithOptions[],
 		selected: Record<string, string[]>,
 	): Array<{ fieldValues: { some: Prisma.FieldValueWhereInput } }> {
-		const byKey = new Map(definitions.map((definition) => [definition.key, definition]));
+		const byKey = new Map(
+			definitions.map((definition) => [definition.key, definition]),
+		);
 
 		return Object.entries(selected)
 			.filter(([, values]) => values.length > 0)

@@ -9,9 +9,7 @@ export const catalogModelOutput = z.object({
 	name: z.string(),
 	provider: z.string(),
 	contextWindowTokens: z.number(),
-	pricing: z
-		.object({ input: z.number(), output: z.number() })
-		.nullable(),
+	pricing: z.object({ input: z.number(), output: z.number() }).nullable(),
 });
 
 export type CatalogModel = z.infer<typeof catalogModelOutput>;

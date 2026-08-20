@@ -30,7 +30,6 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
-import { TrackingConfigService } from "./tracking-config.service";
 import type {
 	FoundInContainer,
 	SourceRow,
@@ -41,6 +40,7 @@ import type {
 	VisitedPage,
 	WebsiteActivity,
 } from "./tracking.contracts";
+import { TrackingConfigService } from "./tracking-config.service";
 
 @Injectable()
 export class TrackingService {

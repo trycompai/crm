@@ -1,7 +1,7 @@
 "use client";
 
-import type { SavedViewFilters } from "@crm/validation/saved-view";
 import type { SortDirection, TableQueryState } from "@crm/ui/lib/table-query";
+import type { SavedViewFilters } from "@crm/validation/saved-view";
 import { useQueryStates } from "nuqs";
 import type {
 	FieldFilters,

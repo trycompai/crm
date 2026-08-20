@@ -17,8 +17,8 @@ import {
 import type {
 	ApiKeyListInput,
 	ApiKeySummary,
-	CreatedApiKey,
 	CreateApiKeyInput,
+	CreatedApiKey,
 	RevokeApiKeyInput,
 } from "./api-keys.contracts";
 

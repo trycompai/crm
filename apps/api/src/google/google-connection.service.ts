@@ -7,6 +7,12 @@ import { InjectDatabase } from "../database/database.constants";
 import { MailboxMatchService } from "../mailbox/mailbox-match.service";
 import { MailboxTokenService } from "../mailbox/mailbox-token.service";
 import { SyncStateService } from "../mailbox/sync-state.service";
+import {
+	GOOGLE_PROVIDER_ID,
+	GOOGLE_SYNC_SOURCES,
+	type GoogleSyncSource,
+	SCOPE_FOR_SOURCE,
+} from "./google.constants";
 import type {
 	GoogleConnectionStatus,
 	GoogleSourceStatus,
@@ -14,12 +20,6 @@ import type {
 	RevokeAccessOutput,
 	SuppressDomainOutput,
 } from "./google.contracts";
-import {
-	GOOGLE_PROVIDER_ID,
-	GOOGLE_SYNC_SOURCES,
-	type GoogleSyncSource,
-	SCOPE_FOR_SOURCE,
-} from "./google.constants";
 
 const PURGE_TIMEOUT_MS = 60_000;
 

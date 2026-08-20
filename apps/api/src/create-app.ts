@@ -6,8 +6,8 @@ import {
 	type NestExpressApplication,
 } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import helmet from "helmet";
 import type { NextFunction, Request, Response } from "express";
+import helmet from "helmet";
 import { AppRouterHost } from "nestjs-trpc";
 import {
 	createOpenApiExpressMiddleware,
@@ -15,8 +15,8 @@ import {
 } from "trpc-to-openapi";
 import { AppModule } from "./app.module";
 import { ContextLogger } from "./logging/context-logger";
-import { createBaseTrpcContext } from "./trpc/trpc.context";
 import { REST_BRIDGE_PATH } from "./trpc/openapi";
+import { createBaseTrpcContext } from "./trpc/trpc.context";
 
 export async function createApp(): Promise<NestExpressApplication> {
 	const app = await NestFactory.create<NestExpressApplication>(
@@ -36,13 +36,16 @@ export async function createApp(): Promise<NestExpressApplication> {
 	);
 
 	let restBridge: ((req: Request, res: Response) => Promise<void>) | undefined;
-	app.use(REST_BRIDGE_PATH, (req: Request, res: Response, next: NextFunction) => {
-		if (!restBridge) {
-			next();
-			return;
-		}
-		void restBridge(req, res);
-	});
+	app.use(
+		REST_BRIDGE_PATH,
+		(req: Request, res: Response, next: NextFunction) => {
+			if (!restBridge) {
+				next();
+				return;
+			}
+			void restBridge(req, res);
+		},
+	);
 
 	const apiKeySecurityScheme = {
 		type: "apiKey",

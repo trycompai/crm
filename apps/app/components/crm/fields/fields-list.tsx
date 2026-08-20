@@ -250,7 +250,8 @@ export function FieldsList({
 													label,
 												})),
 												agentFilled:
-													template.type !== "USER" && template.type !== "NUMBER",
+													template.type !== "USER" &&
+													template.type !== "NUMBER",
 												required: false,
 												showOnSheet: true,
 												showOnTable: true,

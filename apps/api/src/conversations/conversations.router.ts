@@ -14,8 +14,8 @@ import { restMeta } from "../trpc/openapi";
 import { ConversationSharingService } from "./conversation-sharing.service";
 import {
 	builderConversationCreateInput,
-	builderConversationSubmitInput,
 	builderConversationDetailOutput,
+	builderConversationSubmitInput,
 	builderListOutput,
 	builderQuestionResponseInput,
 	builderResourceSearchInput,

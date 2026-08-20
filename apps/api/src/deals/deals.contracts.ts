@@ -127,7 +127,12 @@ export const dealBulkStageInput = bulkIdsInput.extend({
 
 export type DealBulkStageInput = z.infer<typeof dealBulkStageInput>;
 
-const fieldValueOutput = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const fieldValueOutput = z.union([
+	z.string(),
+	z.number(),
+	z.boolean(),
+	z.null(),
+]);
 
 const fieldOptionOutput = z.object({
 	id: z.string(),
