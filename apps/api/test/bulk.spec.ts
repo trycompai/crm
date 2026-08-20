@@ -105,7 +105,13 @@ describe("assigning an owner to a selection", () => {
 				ids: [first.id, second.id],
 				ownerId: secondOwnerId,
 			}),
-		).toEqual({ requested: 2, succeeded: 2, failed: 0, message: null });
+		).toEqual({
+			requested: 2,
+			succeeded: 2,
+			skipped: 0,
+			failed: 0,
+			message: null,
+		});
 
 		expect(
 			await db.contact.count({
@@ -125,7 +131,13 @@ describe("assigning an owner to a selection", () => {
 				ids: [only.id, only.id],
 				ownerId,
 			}),
-		).toEqual({ requested: 1, succeeded: 1, failed: 0, message: null });
+		).toEqual({
+			requested: 1,
+			succeeded: 1,
+			skipped: 0,
+			failed: 0,
+			message: null,
+		});
 	});
 
 	it("refuses an owner who does not work here", async () => {
@@ -168,6 +180,7 @@ describe("purging a selection", () => {
 		expect(await contacts.bulkPurge([first.id, second.id])).toEqual({
 			requested: 2,
 			succeeded: 2,
+			skipped: 0,
 			failed: 0,
 			message: null,
 		});
@@ -209,6 +222,7 @@ describe("purging a selection", () => {
 		expect(await companies.bulkPurge([doomed.id])).toEqual({
 			requested: 1,
 			succeeded: 1,
+			skipped: 0,
 			failed: 0,
 			message: null,
 		});
@@ -265,7 +279,13 @@ describe("moving a selection of deals to a stage", () => {
 				},
 				ownerId,
 			),
-		).toEqual({ requested: 2, succeeded: 2, failed: 0, message: null });
+		).toEqual({
+			requested: 2,
+			succeeded: 2,
+			skipped: 0,
+			failed: 0,
+			message: null,
+		});
 
 		const closed = await db.deal.findMany({
 			where: { id: { in: [first.id, second.id] } },

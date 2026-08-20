@@ -28,6 +28,21 @@ export type AgentTaskQueue = {
 	) => Promise<void>;
 };
 
+async function runWithConcurrency<T>(
+	items: readonly T[],
+	concurrency: number,
+	run: (item: T) => Promise<void>,
+): Promise<void> {
+	const queue = items[Symbol.iterator]();
+	const width = Math.max(1, Math.min(concurrency, items.length));
+
+	await Promise.all(
+		Array.from({ length: width }, async () => {
+			for (const item of queue) await run(item);
+		}),
+	);
+}
+
 @Injectable()
 export class AgentTriggerService {
 	private readonly logger = new Logger(AgentTriggerService.name);
@@ -188,17 +203,6 @@ export class AgentTriggerService {
 		return result;
 	}
 
-	/**
-	 * Queues one `field-backfill` task per record still missing a value for
-	 * one of `keys` — never an untargeted task with nothing in focus. A
-	 * record that already has a pending field-backfill task gets `keys`
-	 * merged into it instead of a second task, so a field added a day after
-	 * another still reaches records already queued.
-	 *
-	 * Locked per record with `lockIdempotencyKey`, the same guard `enqueue`
-	 * uses — two concurrent callers for the same record serialize on the
-	 * advisory lock rather than racing a separate find and create.
-	 */
 	async fieldBackfillRecords(
 		entity: FieldEntity,
 		keys: string[],
@@ -213,7 +217,7 @@ export class AgentTriggerService {
 		let queued = 0;
 		let merged = 0;
 
-		for (const id of ids) {
+		const queueOne = async (id: string): Promise<void> => {
 			try {
 				const outcome = await this.db.$transaction(async (tx) => {
 					await lockIdempotencyKey(
@@ -276,7 +280,13 @@ export class AgentTriggerService {
 					error instanceof Error ? error.stack : String(error),
 				);
 			}
-		}
+		};
+
+		await runWithConcurrency(
+			ids,
+			AGENT_DISPATCH.fieldBackfill.concurrency,
+			queueOne,
+		);
 
 		this.logger.log({
 			message: "Agent task queued",

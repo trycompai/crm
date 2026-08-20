@@ -12,7 +12,7 @@ import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -178,6 +178,11 @@ export function ContactsTable() {
 		);
 		return selection.ids.filter((id) => matching.has(id));
 	}, [rows, input.archived, selection.ids]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
+	useEffect(() => {
+		selection.clear();
+	}, [input.archived]);
 
 	const toggleArchived = (next: boolean) => {
 		selection.clear();

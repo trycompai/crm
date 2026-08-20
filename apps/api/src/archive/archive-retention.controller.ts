@@ -93,8 +93,11 @@ export class ArchiveRetentionController {
 			message: "Archive retention swept",
 			retentionDays,
 			companies: companies.succeeded,
+			companiesSkipped: companies.skipped,
 			contacts: contacts.succeeded,
+			contactsSkipped: contacts.skipped,
 			deals: deals.succeeded,
+			dealsSkipped: deals.skipped,
 		});
 
 		return { retentionDays, companies, contacts, deals };

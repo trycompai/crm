@@ -11,7 +11,7 @@ import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -168,6 +168,11 @@ export function DealsTable() {
 		);
 		return selection.ids.filter((id) => matching.has(id));
 	}, [rows, input.archived, selection.ids]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
+	useEffect(() => {
+		selection.clear();
+	}, [input.archived]);
 
 	const toggleArchived = (next: boolean) => {
 		selection.clear();

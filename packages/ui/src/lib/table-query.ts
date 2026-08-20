@@ -11,7 +11,7 @@ export type TableQueryState = {
 	toggleSort: (id: string) => void;
 	setSort: (id: string) => void;
 	setDir: (dir: SortDirection) => void;
-	setPage: (page: number) => void;
+	setPage: (page: number) => Promise<void>;
 	setTab: (value: string) => void;
 	setFilter: (id: string, values: string[]) => void;
 };

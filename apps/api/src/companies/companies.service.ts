@@ -529,6 +529,7 @@ export class CompaniesService {
 		return {
 			requested: ids.length,
 			succeeded: count,
+			skipped: 0,
 			failed: ids.length - count,
 			message: null,
 		};

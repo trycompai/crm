@@ -172,6 +172,7 @@ export function useCrmCache(): CrmCache {
 				],
 				[
 					...listKeys(),
+					...activityKeys(),
 					trpc.contacts.byId.queryKey(),
 					trpc.deals.byId.queryKey(),
 					trpc.dashboard.summary.queryKey(),
@@ -188,6 +189,7 @@ export function useCrmCache(): CrmCache {
 				],
 				[
 					...listKeys(),
+					...activityKeys(),
 					trpc.companies.byId.queryKey(),
 					trpc.deals.byId.queryKey(),
 					trpc.deals.contactOptions.queryKey(),

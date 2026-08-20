@@ -72,8 +72,8 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 
 	type NuqsValues = Partial<Nullable<Values<typeof parsers>>>;
 
-	function setValues(update: Partial<RawUpdate>): void {
-		rawSetState(update as NuqsValues);
+	function setValues(update: Partial<RawUpdate>): Promise<void> {
+		return rawSetState(update as NuqsValues).then(() => undefined);
 	}
 
 	const q = values.q;
