@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/trycompai/crm/compare/v1.15.1...v1.15.2) (2026-08-20)
+
+
+### Documentation
+
+* **api:** explain runtime openapi document and vendoring rules ([#170](https://github.com/trycompai/crm/issues/170)) ([630f2c9](https://github.com/trycompai/crm/commit/630f2c9f375b5ae084ed708d21bcdb563c774a4f))
+
 ## [1.15.1](https://github.com/trycompai/crm/compare/v1.15.0...v1.15.1) (2026-08-20)
 
 
