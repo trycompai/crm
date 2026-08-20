@@ -29,20 +29,16 @@ export function isDirectKind(kind: string): kind is DirectKind {
 	return (DIRECT_KINDS as readonly string[]).includes(kind);
 }
 
-export const ENRICHMENT_KINDS = [
-	"brand",
-	"portrait",
-	"identify",
-	"profile",
-	"recheck",
-	"company-profile",
-	"workspace-profile",
-] as const;
+export const CONTACT_STATUS_KINDS = ["identify", "profile", "recheck"] as const;
 
-export type EnrichmentKind = (typeof ENRICHMENT_KINDS)[number];
+export const COMPANY_STATUS_KINDS = ["brand"] as const;
 
-export function isEnrichmentKind(kind: string): kind is EnrichmentKind {
-	return (ENRICHMENT_KINDS as readonly string[]).includes(kind);
+export function ownsContactStatus(kind: string): boolean {
+	return (CONTACT_STATUS_KINDS as readonly string[]).includes(kind);
+}
+
+export function ownsCompanyStatus(kind: string): boolean {
+	return (COMPANY_STATUS_KINDS as readonly string[]).includes(kind);
 }
 
 export const MAX_ATTEMPTS = 3;

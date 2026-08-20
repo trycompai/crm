@@ -25,10 +25,10 @@ const userId = `user-${suffix}`;
 const stamp = new ActivityStampService(db);
 
 const agent = {
-	contactCreated: async () => undefined,
+	contactCreated: async () => true,
 	companyCreated: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
-	companyRequested: async () => undefined,
+	companyRequested: async () => true,
 } as unknown as AgentTriggerService;
 
 const directory = new CompanyDirectoryService(agent);

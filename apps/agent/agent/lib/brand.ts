@@ -2,6 +2,7 @@ import { db, EnrichmentStatus } from "@crm/db";
 import { mirrorBrandImages } from "./brand-images";
 import { brandToUpdate, filledFields, stillFillable } from "./brand-mapping";
 import { brandByDomain, contextDevEnabled } from "./context-dev";
+import { UNLESS_COMPLETE } from "./enrichment";
 
 export type BrandResult = {
 	enriched: boolean;
@@ -72,8 +73,8 @@ export async function runBrand({
 	const charge = spend(2);
 	if (!charge.ok) return { enriched: false, reason: charge.reason };
 
-	await db.company.update({
-		where: { id: companyId },
+	await db.company.updateMany({
+		where: { id: companyId, ...UNLESS_COMPLETE },
 		data: {
 			enrichmentStatus: EnrichmentStatus.RUNNING,
 			enrichmentError: null,
@@ -162,8 +163,8 @@ async function settle(
 	status: EnrichmentStatus,
 	error: string,
 ): Promise<void> {
-	await db.company.update({
-		where: { id: companyId },
+	await db.company.updateMany({
+		where: { id: companyId, enrichmentStatus: EnrichmentStatus.RUNNING },
 		data: { enrichmentStatus: status, enrichmentError: error },
 	});
 }

@@ -554,20 +554,26 @@ export class CompaniesService {
 	async enrich(id: string): Promise<{ id: string; queued: boolean }> {
 		const company = await this.db.company.findUnique({
 			where: { id },
-			select: { id: true },
+			select: { id: true, updatedAt: true },
 		});
 
 		if (!company) {
 			throw new NotFoundException(`No company with id ${id}.`);
 		}
 
-		await this.db.company.update({
-			where: { id },
-			data: { enrichmentStatus: "PENDING", enrichmentError: null },
-		});
-		await this.agent.companyRequested(id, "A rep asked for a fresh look");
+		const queued = await this.agent.companyRequested(
+			id,
+			"A rep asked for a fresh look",
+		);
 
-		return { id, queued: true };
+		if (queued) {
+			await this.db.company.updateMany({
+				where: { id, updatedAt: company.updatedAt },
+				data: { enrichmentStatus: "PENDING", enrichmentError: null },
+			});
+		}
+
+		return { id, queued };
 	}
 
 	async research(id: string, actingUserId: string) {
@@ -586,12 +592,12 @@ export class CompaniesService {
 			);
 		}
 
-		await this.agent.companyRequested(
+		const queued = await this.agent.companyRequested(
 			id,
 			`Briefing requested by a rep (${actingUserId})`,
 		);
 
-		return { ok: true as const, queued: true as const };
+		return { ok: true as const, queued };
 	}
 
 	async setPrimaryContact(companyId: string, contactId: string | null) {

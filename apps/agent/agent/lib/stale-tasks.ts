@@ -1,5 +1,9 @@
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
-import { isEnrichmentKind, MAX_ATTEMPTS } from "@crm/db/agent-tasks";
+import {
+	MAX_ATTEMPTS,
+	ownsCompanyStatus,
+	ownsContactStatus,
+} from "@crm/db/agent-tasks";
 import { DISPATCH } from "./dispatch-config";
 import { settle } from "./enrichment";
 import { retireExhausted, type TaskSubject } from "./tasks";
@@ -214,11 +218,15 @@ function finishedElsewhere(
 	task: OpenTask,
 	completed: Map<string, Date>,
 ): boolean {
-	if (!isEnrichmentKind(task.kind)) return false;
 	if (task.attempts === 0 || task.startedAt === null) return false;
 
 	const subjectId = task.contactId ?? task.companyId;
 	if (!subjectId) return false;
+
+	const owns = task.contactId
+		? ownsContactStatus(task.kind)
+		: ownsCompanyStatus(task.kind);
+	if (!owns) return false;
 
 	const enrichedAt = completed.get(subjectId);
 	if (!enrichedAt) return false;

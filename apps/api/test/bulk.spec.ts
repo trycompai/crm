@@ -19,9 +19,9 @@ const secondOwnerId = `second-owner-${suffix}`;
 const ours = { OR: [{ email: { endsWith: `@${domain}` } }] };
 
 const agent = {
-	contactCreated: async () => undefined,
+	contactCreated: async () => true,
 	companyCreated: async () => undefined,
-	companyRequested: async () => undefined,
+	companyRequested: async () => true,
 	withCrmEvents: withDiscardedCrmEvents,
 } as unknown as AgentTriggerService;
 

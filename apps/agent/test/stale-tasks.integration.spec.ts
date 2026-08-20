@@ -52,7 +52,7 @@ async function queue(overrides: {
 }) {
 	return db.agentTask.create({
 		data: {
-			kind: overrides.kind ?? kind,
+			kind: overrides.kind ?? (overrides.companyId ? "brand" : kind),
 			reason: REASON,
 			dueAt: overrides.dueAt ?? new Date(Date.now() - MINUTE_MS),
 			priority: 0,
@@ -166,6 +166,42 @@ describe("a task whose record is already done", () => {
 		const closed = await row(task.id);
 		expect(closed?.finishedAt).not.toBeNull();
 		expect(closed?.outcome).toContain("already up to date");
+	});
+
+	it("keeps research work on a company the brand task just finished", async () => {
+		const account = await anAccount(
+			EnrichmentStatus.COMPLETE,
+			new Date(Date.now() - 29 * MINUTE_MS),
+		);
+		const task = await queue({
+			kind: "company-profile",
+			companyId: account.id,
+			attempts: 1,
+			startedAt: new Date(Date.now() - 30 * MINUTE_MS),
+			leasedUntil: new Date(Date.now() - MINUTE_MS),
+		});
+
+		await reconcileStaleTasks();
+
+		expect((await row(task.id))?.finishedAt).toBeNull();
+	});
+
+	it("keeps meeting prep for a contact another task just enriched", async () => {
+		const contact = await someone(
+			EnrichmentStatus.COMPLETE,
+			new Date(Date.now() - 29 * MINUTE_MS),
+		);
+		const task = await queue({
+			kind: "meeting-prep",
+			contactId: contact.id,
+			attempts: 1,
+			startedAt: new Date(Date.now() - 30 * MINUTE_MS),
+			leasedUntil: new Date(Date.now() - MINUTE_MS),
+		});
+
+		await reconcileStaleTasks();
+
+		expect((await row(task.id))?.finishedAt).toBeNull();
 	});
 
 	it("keeps event work that names a record the agent just enriched", async () => {

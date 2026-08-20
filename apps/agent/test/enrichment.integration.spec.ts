@@ -35,7 +35,7 @@ async function contact() {
 function subjectOf(ids: { contactId?: string; companyId?: string }) {
 	return {
 		id: "task",
-		kind: "test",
+		kind: ids.contactId ? "identify" : "brand",
 		contactId: ids.contactId ?? null,
 		companyId: ids.companyId ?? null,
 	};
@@ -257,5 +257,183 @@ describe("the record follows the task", () => {
 		await db.contact.delete({ where: { id: person.id } });
 
 		await settle(subject, EnrichmentStatus.COMPLETE);
+	});
+
+	it("leaves a company the brand task already finished alone", async () => {
+		const org = await company();
+		const brand = subjectOf({ companyId: org.id });
+
+		await markRunning(brand);
+		await settle(brand, EnrichmentStatus.COMPLETE);
+
+		const profile = {
+			...brand,
+			id: "company-profile",
+			kind: "company-profile",
+		};
+		await markRunning(profile);
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichedAt: true },
+		});
+		expect(row?.enrichmentStatus).toBe("COMPLETE");
+		expect(row?.enrichedAt).not.toBeNull();
+	});
+
+	it("still stamps the hour a recheck finished on a complete contact", async () => {
+		const person = await contact();
+		const identify = subjectOf({ contactId: person.id });
+
+		await markRunning(identify);
+		await settle(identify, EnrichmentStatus.COMPLETE);
+
+		const first = await db.contact.findUniqueOrThrow({
+			where: { id: person.id },
+			select: { enrichedAt: true },
+		});
+
+		const recheck = { ...identify, id: "recheck", kind: "recheck" };
+		await settle(recheck, EnrichmentStatus.COMPLETE);
+
+		const second = await db.contact.findUniqueOrThrow({
+			where: { id: person.id },
+			select: { enrichmentStatus: true, enrichedAt: true },
+		});
+		expect(second.enrichmentStatus).toBe("COMPLETE");
+		expect(second.enrichedAt?.getTime()).toBeGreaterThanOrEqual(
+			first.enrichedAt?.getTime() ?? 0,
+		);
+	});
+
+	it("lets a finished run land on the fresh look that asked for it", async () => {
+		const person = await contact();
+
+		const row = await db.contact.findUniqueOrThrow({
+			where: { id: person.id },
+			select: { updatedAt: true },
+		});
+
+		const task = await db.agentTask.create({
+			data: {
+				contactId: person.id,
+				kind: "identify",
+				reason: "lifecycle",
+				attempts: 1,
+				dueAt: row.updatedAt,
+				finishedAt: new Date(row.updatedAt.getTime() + 1),
+			},
+			select: { id: true },
+		});
+
+		await settle(
+			{ ...subjectOf({ contactId: person.id }), id: task.id },
+			EnrichmentStatus.COMPLETE,
+		);
+
+		const done = await statusOfContact(person.id);
+		expect(done?.enrichmentStatus).toBe("COMPLETE");
+		expect(done?.enrichedAt).not.toBeNull();
+	});
+
+	it("leaves a fresh look to the newer task a late run cannot satisfy", async () => {
+		const person = await contact();
+
+		const row = await db.contact.findUniqueOrThrow({
+			where: { id: person.id },
+			select: { updatedAt: true },
+		});
+
+		const ended = await db.agentTask.create({
+			data: {
+				contactId: person.id,
+				kind: "identify",
+				reason: "lifecycle",
+				attempts: 1,
+				dueAt: row.updatedAt,
+				finishedAt: new Date(row.updatedAt.getTime() + 1),
+			},
+			select: { id: true },
+		});
+
+		await db.agentTask.create({
+			data: {
+				contactId: person.id,
+				kind: "recheck",
+				reason: "lifecycle",
+				dueAt: new Date(),
+			},
+			select: { id: true },
+		});
+
+		await settle(
+			{ ...subjectOf({ contactId: person.id }), id: ended.id },
+			EnrichmentStatus.COMPLETE,
+		);
+
+		expect((await statusOfContact(person.id))?.enrichmentStatus).toBe(
+			"PENDING",
+		);
+	});
+
+	it("never lets a company-profile session touch the company column", async () => {
+		const org = await company();
+		const brand = subjectOf({ companyId: org.id });
+
+		await markRunning(brand);
+
+		const profile = {
+			...brand,
+			id: "company-profile",
+			kind: "company-profile",
+		};
+		await settle(profile, EnrichmentStatus.FAILED, "the agent turn failed");
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("RUNNING");
+		expect(row?.enrichmentError).toBeNull();
+	});
+
+	it("never lets a portrait timeout mark a person failed", async () => {
+		const person = await contact();
+		const identify = subjectOf({ contactId: person.id });
+
+		await markRunning(identify);
+
+		const portrait = { ...identify, id: "portrait", kind: "portrait" };
+		await settle(portrait, EnrichmentStatus.FAILED, "the picture timed out");
+
+		const row = await db.contact.findUnique({
+			where: { id: person.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("RUNNING");
+		expect(row?.enrichmentError).toBeNull();
+	});
+
+	it("keeps that company complete when the later session fails", async () => {
+		const org = await company();
+		const brand = subjectOf({ companyId: org.id });
+
+		await markRunning(brand);
+		await settle(brand, EnrichmentStatus.COMPLETE);
+
+		const profile = {
+			...brand,
+			id: "company-profile",
+			kind: "company-profile",
+		};
+		await markRunning(profile);
+		await settle(profile, EnrichmentStatus.FAILED, "the agent turn failed");
+
+		const row = await db.company.findUnique({
+			where: { id: org.id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row?.enrichmentStatus).toBe("COMPLETE");
+		expect(row?.enrichmentError).toBeNull();
 	});
 });

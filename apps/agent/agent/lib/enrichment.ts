@@ -1,16 +1,46 @@
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { ownsCompanyStatus, ownsContactStatus } from "@crm/db/agent-tasks";
 import type { TaskSubject } from "./tasks";
 
+type StatusGuard =
+	| EnrichmentStatus
+	| { not: EnrichmentStatus }
+	| { in: EnrichmentStatus[] };
+
 type SettleGuard = {
-	enrichmentStatus?: EnrichmentStatus;
+	enrichmentStatus?: StatusGuard;
 	OR?: Array<{
 		enrichmentStatus: EnrichmentStatus;
 		updatedAt?: { lt: Date };
 	}>;
 };
 
+type OwnedColumns = {
+	contactId: string | null;
+	companyId: string | null;
+};
+
+export const UNLESS_COMPLETE = {
+	enrichmentStatus: { not: EnrichmentStatus.COMPLETE },
+} as const;
+
+function ownedColumns(subject: TaskSubject): OwnedColumns {
+	return {
+		contactId:
+			subject.contactId && ownsContactStatus(subject.kind)
+				? subject.contactId
+				: null,
+		companyId:
+			subject.companyId && ownsCompanyStatus(subject.kind)
+				? subject.companyId
+				: null,
+	};
+}
+
 export async function markRunning(subject: TaskSubject): Promise<void> {
-	await write(subject, EnrichmentStatus.RUNNING, null, false);
+	await write(ownedColumns(subject), EnrichmentStatus.RUNNING, null, {
+		...UNLESS_COMPLETE,
+	});
 }
 
 export async function settle(
@@ -18,16 +48,19 @@ export async function settle(
 	status: EnrichmentStatus,
 	error?: string,
 ): Promise<void> {
-	await write(subject, status, error ?? null, true);
+	const owned = ownedColumns(subject);
+	if (!owned.contactId && !owned.companyId) return;
+
+	await write(owned, status, error ?? null, await settleable(subject, status));
 }
 
 async function write(
-	subject: TaskSubject,
+	owned: OwnedColumns,
 	status: EnrichmentStatus,
 	error: string | null,
-	onlyIfRunning: boolean,
+	guard: SettleGuard,
 ): Promise<void> {
-	if (!subject.contactId && !subject.companyId) return;
+	if (!owned.contactId && !owned.companyId) return;
 
 	const data = {
 		enrichmentStatus: status,
@@ -35,20 +68,16 @@ async function write(
 		enrichedAt: status === EnrichmentStatus.COMPLETE ? new Date() : undefined,
 	};
 
-	const guard: SettleGuard = onlyIfRunning
-		? await settleable(subject, status)
-		: {};
-
-	if (subject.contactId) {
+	if (owned.contactId) {
 		await db.contact.updateMany({
-			where: { id: subject.contactId, ...guard },
+			where: { id: owned.contactId, ...guard },
 			data,
 		});
 	}
 
-	if (subject.companyId) {
+	if (owned.companyId) {
 		await db.company.updateMany({
-			where: { id: subject.companyId, ...guard },
+			where: { id: owned.companyId, ...guard },
 			data,
 		});
 	}
@@ -59,6 +88,30 @@ async function settleable(
 	status: EnrichmentStatus,
 ): Promise<SettleGuard> {
 	const running = { enrichmentStatus: EnrichmentStatus.RUNNING };
+
+	if (status === EnrichmentStatus.COMPLETE) {
+		const done = {
+			enrichmentStatus: {
+				in: [EnrichmentStatus.RUNNING, EnrichmentStatus.COMPLETE],
+			},
+		};
+
+		const endedAt = await taskEndedAt(subject.id);
+		if (!endedAt) return done;
+		if (await hasOpenRequest(subject)) return done;
+
+		return {
+			OR: [
+				running,
+				{ enrichmentStatus: EnrichmentStatus.COMPLETE },
+				{
+					enrichmentStatus: EnrichmentStatus.PENDING,
+					updatedAt: { lt: endedAt },
+				},
+			],
+		};
+	}
+
 	if (status !== EnrichmentStatus.FAILED) return running;
 
 	const endedAt = await taskEndedAt(subject.id);

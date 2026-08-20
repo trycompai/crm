@@ -71,22 +71,30 @@ export class AgentTriggerService {
 		});
 	}
 
-	async companyRequested(companyId: string, reason: string): Promise<void> {
-		await this.enqueue({
-			companyId,
-			kind: "brand",
-			reason,
-			priority: PRIORITY.brand,
-			budget: 2,
-		});
+	async companyRequested(companyId: string, reason: string): Promise<boolean> {
+		const brand = await this.enqueue(
+			{
+				companyId,
+				kind: "brand",
+				reason,
+				priority: PRIORITY.brand,
+				budget: 2,
+			},
+			true,
+		);
 
-		await this.enqueue({
-			companyId,
-			kind: "company-profile",
-			reason,
-			priority: PRIORITY.requested,
-			budget: 8,
-		});
+		const profile = await this.enqueue(
+			{
+				companyId,
+				kind: "company-profile",
+				reason,
+				priority: PRIORITY.requested,
+				budget: 8,
+			},
+			true,
+		);
+
+		return brand || profile;
 	}
 
 	async workspaceChanged(website: string, reason: string): Promise<void> {
@@ -98,14 +106,21 @@ export class AgentTriggerService {
 		});
 	}
 
-	async contactCreated(contactId: string, reason: string): Promise<void> {
-		await this.enqueue({
-			contactId,
-			kind: "identify",
-			reason,
-			priority: PRIORITY.identify,
-			budget: 4,
-		});
+	async contactCreated(
+		contactId: string,
+		reason: string,
+		required = false,
+	): Promise<boolean> {
+		return this.enqueue(
+			{
+				contactId,
+				kind: "identify",
+				reason,
+				priority: PRIORITY.identify,
+				budget: 4,
+			},
+			required,
+		);
 	}
 
 	async slackPeopleRequested(reason: string, required = false): Promise<void> {

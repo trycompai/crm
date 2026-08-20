@@ -671,29 +671,32 @@ export class ContactsService {
 		};
 	}
 
-	async enrich(id: string): Promise<{ id: string; queued: true }> {
+	async enrich(id: string): Promise<{ id: string; queued: boolean }> {
 		const contact = await this.db.contact.findUnique({
 			where: { id },
-			select: { id: true, imageUrl: true, linkedinUrl: true },
+			select: { id: true, imageUrl: true, linkedinUrl: true, updatedAt: true },
 		});
 
 		if (!contact) {
 			throw new NotFoundException(`No contact with id ${id}.`);
 		}
 
-		await this.db.contact.update({
-			where: { id },
-			data: { enrichmentStatus: "PENDING", enrichmentError: null },
-		});
-
-		await this.agent.contactCreated(
+		const queued = await this.agent.contactCreated(
 			id,
 			contact.linkedinUrl && !contact.imageUrl
 				? "A rep asked for a fresh look — they have a LinkedIn profile on file but no picture"
 				: "A rep asked for a fresh look",
+			true,
 		);
 
-		return { id, queued: true };
+		if (queued) {
+			await this.db.contact.updateMany({
+				where: { id, updatedAt: contact.updatedAt },
+				data: { enrichmentStatus: "PENDING", enrichmentError: null },
+			});
+		}
+
+		return { id, queued };
 	}
 
 	async decideFact(

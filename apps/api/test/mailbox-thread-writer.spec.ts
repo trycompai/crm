@@ -20,10 +20,10 @@ const rootId = `<root-${suffix}@mail.test>`;
 const movedRoot = `outlook-conversation:${suffix}`;
 
 const agent = {
-	contactCreated: async () => undefined,
+	contactCreated: async () => true,
 	companyCreated: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
-	companyRequested: async () => undefined,
+	companyRequested: async () => true,
 } as unknown as AgentTriggerService;
 
 const stamp = new ActivityStampService(db);

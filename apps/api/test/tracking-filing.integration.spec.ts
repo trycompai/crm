@@ -28,9 +28,10 @@ const queued: string[] = [];
 const agent = {
 	contactCreated: async (id: string) => {
 		queued.push(id);
+		return true;
 	},
 	companyCreated: async () => undefined,
-	companyRequested: async () => undefined,
+	companyRequested: async () => true,
 	withCrmEvents: withDiscardedCrmEvents,
 } as unknown as AgentTriggerService;
 

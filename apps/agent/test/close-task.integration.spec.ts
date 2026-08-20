@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db, EnrichmentStatus } from "@crm/db";
 import { closeTask, taskToken } from "../agent/channels/crm";
 
-const kind = "test-close-task";
+const kind = "identify";
 const email = `close-task-${crypto.randomUUID()}@example.test`;
 
+const taskIds: string[] = [];
+
 async function clear() {
-	await db.agentTask.deleteMany({ where: { kind } });
+	if (taskIds.length > 0) {
+		await db.agentTask.deleteMany({ where: { id: { in: taskIds.splice(0) } } });
+	}
 	await db.contact.deleteMany({ where: { email } });
 }
 
@@ -35,6 +39,8 @@ async function running() {
 		},
 		select: { id: true },
 	});
+
+	taskIds.push(task.id);
 
 	return { contactId: contact.id, taskId: task.id };
 }
