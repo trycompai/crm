@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/trycompai/crm/compare/v1.14.0...v1.15.0) (2026-08-20)
+
+
+### Features
+
+* **agent:** scope field backfill tasks to records missing values ([#163](https://github.com/trycompai/crm/issues/163)) ([3be7bbd](https://github.com/trycompai/crm/commit/3be7bbd69fe8b814ee2599a29b33e73f02a66245))
+
 ## [1.14.0](https://github.com/trycompai/crm/compare/v1.13.0...v1.14.0) (2026-08-18)
 
 
