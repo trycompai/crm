@@ -31,6 +31,7 @@ model User {
   factDecisions  ContactFact[]       @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
   fieldValues    FieldValue[]        @relation("FieldValueUser")
+  savedViews     SavedView[]         @relation("SavedViewOwner")
 
   createdAgentDefinitions AgentDefinition[]             @relation("AgentDefinitionCreator")
   createdAgentVersions    AgentVersion[]                @relation("AgentVersionCreator")
@@ -47,19 +48,21 @@ model User {
 
   ssoproviders SsoProvider[]
 
+  apiKeys Apikey[]
+
   @@unique([email])
   @@map("user")
 }
 
 model SlackMemberMatch {
-  id                  String   @id @default(cuid())
-  crmUserId           String   @unique
-  crmUser             User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
-  slackUserId         String?
-  slackHandle         String?
-  slackEmail          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id          String   @id @default(cuid())
+  crmUserId   String   @unique
+  crmUser     User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
+  slackUserId String?
+  slackHandle String?
+  slackEmail  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([slackUserId])
   @@map("slackMemberMatch")
@@ -277,7 +280,7 @@ enum AgentResponseRating {
 model Company {
   id          String  @id @default(cuid())
   name        String
-  domain      String? @unique
+  domain      String?
   website     String?
   description String?
 
@@ -316,6 +319,7 @@ model Company {
   source RecordSource @default(MANUAL)
 
   lastActivityAt DateTime?
+  archivedAt     DateTime?
 
   contacts       Contact[]           @relation("CompanyContacts")
   conversations  AgentConversation[]
@@ -327,9 +331,11 @@ model Company {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
+  @@unique([domain], map: "company_domain_active_key", where: { archivedAt: null })
   @@index([ownerId])
   @@index([name])
   @@index([lastActivityAt])
+  @@index([archivedAt])
   @@map("company")
 }
 
@@ -347,9 +353,11 @@ model Contact {
   id          String  @id @default(cuid())
   firstName   String
   lastName    String?
-  email       String? @unique
+  email       String?
   phone       String?
   title       String?
+  seniority   String?
+  function    String?
   linkedinUrl String?
   twitterUrl  String?
   githubUrl   String?
@@ -374,6 +382,7 @@ model Contact {
   source RecordSource @default(MANUAL)
 
   lastActivityAt DateTime?
+  archivedAt     DateTime?
 
   deals           DealContact[]
   activities      Activity[]
@@ -386,9 +395,11 @@ model Contact {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
+  @@unique([email], map: "contact_email_active_key", where: { archivedAt: null })
   @@index([companyId])
   @@index([ownerId])
   @@index([lastActivityAt])
+  @@index([archivedAt])
   @@map("contact")
 }
 
@@ -926,6 +937,7 @@ model Deal {
   fxRateAt     DateTime?
 
   lastActivityAt DateTime?
+  archivedAt     DateTime?
 
   contacts    DealContact[]
   activities  Activity[]
@@ -940,6 +952,7 @@ model Deal {
   @@index([lastActivityAt])
   @@index([baseAmount])
   @@index([currency])
+  @@index([archivedAt])
   @@map("deal")
 }
 
@@ -1005,10 +1018,11 @@ model FieldDefinition {
   agentFilled Boolean @default(true)
   agentBrief  String?
 
-  required    Boolean @default(false)
-  showOnSheet Boolean @default(true)
-  showOnTable Boolean @default(false)
-  position    Int
+  required     Boolean @default(false)
+  showOnSheet  Boolean @default(true)
+  showOnTable  Boolean @default(false)
+  showOnFilter Boolean @default(false)
+  position     Int
 
   archivedAt DateTime?
 
@@ -1072,6 +1086,24 @@ model FieldValue {
   @@index([optionId])
   @@index([userId])
   @@map("fieldValue")
+}
+
+model SavedView {
+  id      String      @id @default(cuid())
+  entity  FieldEntity
+  name    String
+  shared  Boolean     @default(false)
+  filters Json
+
+  ownerId String
+  owner   User   @relation("SavedViewOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([entity, ownerId, name])
+  @@index([entity, shared])
+  @@map("savedView")
 }
 
 model Activity {
@@ -1277,15 +1309,17 @@ model AppSetting {
 
   ratesRefreshedAt DateTime?
 
-  trackingSiteId           String?  @unique
-  trackingCrossDomain      Boolean  @default(true)
-  trackingLimitToDomains   Boolean  @default(true)
-  trackingCookieSubdomains Boolean  @default(false)
-  trackingSecureCookies    Boolean  @default(true)
-  trackingHonourDnt        Boolean  @default(true)
-  trackingCookieDays       Int      @default(395)
+  archiveRetentionDays Int @default(180)
+
+  trackingSiteId           String? @unique
+  trackingCrossDomain      Boolean @default(true)
+  trackingLimitToDomains   Boolean @default(true)
+  trackingCookieSubdomains Boolean @default(false)
+  trackingSecureCookies    Boolean @default(true)
+  trackingHonourDnt        Boolean @default(true)
+  trackingCookieDays       Int     @default(395)
   trackingConfigHash       String?
-  trackingPaused           Boolean  @default(false)
+  trackingPaused           Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 
@@ -1316,14 +1350,14 @@ model TrackedVisitor {
   contactId String?
   contact   Contact? @relation("VisitorContact", fields: [contactId], references: [id], onDelete: SetNull)
 
-  firstSource     String?
-  firstMedium     String?
-  firstCampaign   String?
-  firstTerm       String?
-  firstContent    String?
-  firstReferrer   String?
-  firstLanding    String?
-  firstTouchAt    DateTime?
+  firstSource   String?
+  firstMedium   String?
+  firstCampaign String?
+  firstTerm     String?
+  firstContent  String?
+  firstReferrer String?
+  firstLanding  String?
+  firstTouchAt  DateTime?
 
   lastSource   String?
   lastMedium   String?
@@ -1517,4 +1551,35 @@ model SsoProvider {
 
   @@unique([providerId])
   @@map("ssoProvider")
+}
+
+model Apikey {
+  id                  String    @id
+  configId            String    @default("default")
+  name                String?
+  start               String?
+  referenceId         String
+  user                User      @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  prefix              String?
+  key                 String
+  refillInterval      Int?
+  refillAmount        Int?
+  lastRefillAt        DateTime?
+  enabled             Boolean?  @default(true)
+  rateLimitEnabled    Boolean?  @default(true)
+  rateLimitTimeWindow Int?
+  rateLimitMax        Int?
+  requestCount        Int?      @default(0)
+  remaining           Int?
+  lastRequest         DateTime?
+  expiresAt           DateTime?
+  createdAt           DateTime
+  updatedAt           DateTime
+  permissions         String?
+  metadata            String?
+
+  @@index([referenceId])
+  @@index([configId])
+  @@index([key])
+  @@map("apikey")
 }

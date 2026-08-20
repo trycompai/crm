@@ -29,6 +29,22 @@ export function isDirectKind(kind: string): kind is DirectKind {
 	return (DIRECT_KINDS as readonly string[]).includes(kind);
 }
 
+export const ENRICHMENT_KINDS = [
+	"brand",
+	"portrait",
+	"identify",
+	"profile",
+	"recheck",
+	"company-profile",
+	"workspace-profile",
+] as const;
+
+export type EnrichmentKind = (typeof ENRICHMENT_KINDS)[number];
+
+export function isEnrichmentKind(kind: string): kind is EnrichmentKind {
+	return (ENRICHMENT_KINDS as readonly string[]).includes(kind);
+}
+
 export const MAX_ATTEMPTS = 3;
 
 export const RETIRED_OUTCOME = `Gave up after ${MAX_ATTEMPTS} attempts: the session never reported back.`;

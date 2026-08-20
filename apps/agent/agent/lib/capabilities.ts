@@ -5,6 +5,10 @@ import { readContextDevKey } from "@crm/db/settings";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
+export const CONTEXT_DEV_PEOPLE = "CONTEXT_DEV_PEOPLE";
+
+export const CONTEXT_DEV_SOURCE = "Context.dev key (Settings → General)";
+
 export type Capability = {
 	readonly id: string;
 	readonly label: string;
@@ -42,12 +46,6 @@ export function capabilitiesFrom(
 
 	return [
 		{
-			...fromEnv("RAPIDAPI_KEY"),
-			label: "LinkedIn",
-			gives:
-				"a person's real name, current title, employer and tenure, self-reported, and so authoritative on identity",
-		},
-		{
 			...fromEnv("PERPLEXITY_API_KEY"),
 			label: "Web research",
 			gives:
@@ -58,6 +56,14 @@ export function capabilitiesFrom(
 			from: "Settings → General",
 			label: "Company brand data",
 			gives: "a company's logo, industry, location and socials from its domain",
+			enabled: contextDev !== null,
+		},
+		{
+			id: CONTEXT_DEV_PEOPLE,
+			from: "Settings → General",
+			label: "LinkedIn",
+			gives:
+				"a person read back from a LinkedIn URL you already hold — their real name, bio, current title and employer, every earlier role with its dates, their education and their other public profiles, all self-reported and so authoritative on identity",
 			enabled: contextDev !== null,
 		},
 		{

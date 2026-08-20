@@ -23,15 +23,26 @@ const suffix = process.env.TEST_RUN_ID ?? "fields-spec";
 const domain = `fields-${suffix}.test`;
 const ownerId = `owner-${suffix}`;
 
-const queued: { entity: FieldEntity; key: string; reason: string }[] = [];
+const queued: {
+	entity: FieldEntity;
+	keys: string[];
+	ids: string[];
+	reason: string;
+}[] = [];
 
 const agent = {
 	contactCreated: async () => undefined,
 	companyCreated: async () => undefined,
 	companyRequested: async () => undefined,
 	withCrmEvents: withDiscardedCrmEvents,
-	fieldBackfill: async (entity: FieldEntity, key: string, reason: string) => {
-		queued.push({ entity, key, reason });
+	fieldBackfillRecords: async (
+		entity: FieldEntity,
+		keys: string[],
+		ids: string[],
+		reason: string,
+	) => {
+		queued.push({ entity, keys, ids, reason });
+		return { queued: ids.length, merged: 0 };
 	},
 } as unknown as AgentTriggerService;
 
@@ -68,9 +79,21 @@ async function clean() {
 		select: { id: true },
 	});
 	const companyIds = owned.map((row) => row.id);
+	const ownedContacts = await db.contact.findMany({
+		where: { companyId: { in: companyIds } },
+		select: { id: true },
+	});
+	const contactIds = ownedContacts.map((row) => row.id);
 
 	await db.agentTask.deleteMany({
-		where: { kind: "field-backfill", reason: { contains: "spec_" } },
+		where: {
+			kind: "field-backfill",
+			OR: [
+				{ reason: { contains: "spec_" } },
+				{ companyId: { in: companyIds } },
+				{ contactId: { in: contactIds } },
+			],
+		},
 	});
 	await db.deal.deleteMany({ where: { companyId: { in: companyIds } } });
 	await db.contact.deleteMany({ where: { companyId: { in: companyIds } } });
@@ -132,6 +155,7 @@ describe("field definitions", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		expect(field.key).toBe("spec_runs_on");
@@ -139,9 +163,13 @@ describe("field definitions", () => {
 			"AWS",
 			"Azure",
 		]);
-		expect(queued).toEqual([
-			{ entity: "COMPANY", key: "spec_runs_on", reason: "New field" },
-		]);
+		expect(queued).toHaveLength(1);
+		expect(queued[0]).toMatchObject({
+			entity: "COMPANY",
+			keys: ["spec_runs_on"],
+			reason: "New field: Spec runs on",
+		});
+		expect(queued[0]?.ids).toContain(companyId);
 	});
 
 	it("refuses a duplicate key", async () => {
@@ -156,6 +184,7 @@ describe("field definitions", () => {
 				required: false,
 				showOnSheet: true,
 				showOnTable: false,
+				showOnFilter: false,
 			}),
 		).rejects.toThrow(/already a field/);
 	});
@@ -196,6 +225,7 @@ describe("field definitions", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		let refused: Error | null = null;
@@ -242,6 +272,7 @@ describe("field definitions", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		const first = await fields.byKey("COMPANY", "spec_runs_on");
@@ -280,6 +311,7 @@ describe("field values", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		await fields.applyValues(db, "COMPANY", companyId, {
@@ -364,6 +396,7 @@ describe("field values", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		let refused: Error | null = null;
@@ -426,6 +459,7 @@ describe("a select option that was taken away", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		const gold = field.options.find((option) => option.label === "Gold");
@@ -474,6 +508,7 @@ describe("a select option that was taken away", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: true,
+			showOnFilter: false,
 		});
 
 		const rollout = field.options.find((option) => option.label === "Rollout");
@@ -520,6 +555,7 @@ describe("a record update that fails", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		const contact = await db.contact.create({
@@ -558,6 +594,7 @@ describe("a record update that fails", () => {
 			required: false,
 			showOnSheet: true,
 			showOnTable: false,
+			showOnFilter: false,
 		});
 
 		const deal = await db.deal.create({
@@ -585,21 +622,65 @@ describe("a record update that fails", () => {
 });
 
 describe("queueing a backfill", () => {
-	it("keeps one entity's field apart from another's with the same key", async () => {
+	it("targets the record, and merges a second field into the same pending task", async () => {
 		const trigger = new AgentTriggerService(db);
+		const otherCompanyId = await makeCompany("fields-co-2");
 
-		await trigger.fieldBackfill("COMPANY", "spec_website", "New field");
-		await trigger.fieldBackfill("CONTACT", "spec_website", "New field");
-		await trigger.fieldBackfill("COMPANY", "spec_website", "Brief changed");
+		const first = await trigger.fieldBackfillRecords(
+			"COMPANY",
+			["spec_website"],
+			[companyId, otherCompanyId],
+			"New field",
+		);
+		expect(first).toEqual({ queued: 2, merged: 0 });
+
+		const second = await trigger.fieldBackfillRecords(
+			"COMPANY",
+			["spec_segment"],
+			[companyId],
+			"New field",
+		);
+		expect(second).toEqual({ queued: 0, merged: 1 });
 
 		const tasks = await db.agentTask.findMany({
-			where: { kind: "field-backfill", reason: { contains: "spec_website" } },
-			select: { reason: true },
+			where: {
+				kind: "field-backfill",
+				companyId: { in: [companyId, otherCompanyId] },
+			},
+			select: { companyId: true, payload: true },
 		});
 
-		expect(tasks.map((task) => task.reason).sort()).toEqual([
-			"company.spec_website: New field",
-			"contact.spec_website: New field",
-		]);
+		expect(tasks).toHaveLength(2);
+		const mine = tasks.find((task) => task.companyId === companyId);
+		expect(mine?.payload).toEqual({
+			entity: "COMPANY",
+			keys: ["spec_website", "spec_segment"],
+		});
+	});
+
+	it("keeps a company's field apart from a contact's field with the same key", async () => {
+		const trigger = new AgentTriggerService(db);
+		const contact = await db.contact.create({
+			data: { firstName: "Backfill", email: `backfill@${domain}`, companyId },
+			select: { id: true },
+		});
+
+		await trigger.fieldBackfillRecords(
+			"CONTACT",
+			["spec_website"],
+			[contact.id],
+			"New field",
+		);
+
+		const tasks = await db.agentTask.findMany({
+			where: { kind: "field-backfill", contactId: contact.id },
+			select: { payload: true },
+		});
+
+		expect(tasks).toHaveLength(1);
+		expect(tasks[0]?.payload).toEqual({
+			entity: "CONTACT",
+			keys: ["spec_website"],
+		});
 	});
 });

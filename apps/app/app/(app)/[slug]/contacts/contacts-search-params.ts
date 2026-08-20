@@ -3,5 +3,12 @@ import { createListSearchParams } from "@/components/data-table/list-search-para
 export const contactsSearchParams = createListSearchParams({
 	defaultSort: "createdAt",
 	defaultDir: "desc",
-	facetIds: ["owner", "company"] as const,
+	facetIds: [
+		"owner",
+		"company",
+		"title",
+		"seniority",
+		"persona",
+		"activity",
+	] as const,
 });

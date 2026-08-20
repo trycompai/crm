@@ -32,6 +32,11 @@ export const DISPATCH = {
 		leaseMs: 10 * MINUTE_MS,
 	},
 
+	reconcile: {
+		scan: 200,
+		retire: 100,
+	},
+
 	sweep: {
 		timeoutMs: 4 * MINUTE_MS,
 		staleQueueMs: 5 * MINUTE_MS,

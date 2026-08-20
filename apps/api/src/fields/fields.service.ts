@@ -31,10 +31,17 @@ import type {
 	FieldReorderInput,
 	FieldUpdateData,
 } from "./fields.contracts";
+import { FIELDS_CONFIG } from "./fields-config";
 
 const WITH_OPTIONS = {
 	options: { orderBy: { position: "asc" } },
 } as const satisfies Prisma.FieldDefinitionInclude;
+
+const RELATIONS = {
+	COMPANY: "company",
+	CONTACT: "contact",
+	DEAL: "deal",
+} as const satisfies Record<FieldEntity, string>;
 
 @Injectable()
 export class FieldsService {
@@ -104,6 +111,7 @@ export class FieldsService {
 				required: input.required,
 				showOnSheet: input.showOnSheet,
 				showOnTable: input.showOnTable,
+				showOnFilter: input.showOnFilter,
 				position: (last?.position ?? -1) + 1,
 				options: usesOptions(input.type)
 					? {
@@ -118,10 +126,16 @@ export class FieldsService {
 		});
 
 		if (definition.agentFilled) {
-			await this.agent.fieldBackfill(
+			const ids = await this.missingRecordIds(
 				definition.entity,
-				definition.key,
-				"New field",
+				definition.id,
+				FIELDS_CONFIG.backfill.maxRecordsPerRun,
+			);
+			await this.agent.fieldBackfillRecords(
+				definition.entity,
+				[definition.key],
+				ids,
+				`New field: ${definition.label}`,
 			);
 		}
 
@@ -196,6 +210,7 @@ export class FieldsService {
 					required: data.required,
 					showOnSheet: data.showOnSheet,
 					showOnTable: data.showOnTable,
+					showOnFilter: data.showOnFilter,
 				},
 				include: WITH_OPTIONS,
 			});
@@ -206,10 +221,18 @@ export class FieldsService {
 		const turnedOn = data.agentFilled === true && !existing.agentFilled;
 
 		if (definition.agentFilled && (briefChanged || turnedOn)) {
-			await this.agent.fieldBackfill(
+			const ids = await this.missingRecordIds(
 				definition.entity,
-				definition.key,
-				"Brief changed",
+				definition.id,
+				FIELDS_CONFIG.backfill.maxRecordsPerRun,
+			);
+			await this.agent.fieldBackfillRecords(
+				definition.entity,
+				[definition.key],
+				ids,
+				briefChanged
+					? `Brief changed: ${definition.label}`
+					: `Turned on: ${definition.label}`,
 			);
 		}
 
@@ -284,6 +307,7 @@ export class FieldsService {
 			select: {
 				entity: true,
 				key: true,
+				label: true,
 				agentFilled: true,
 				archivedAt: true,
 			},
@@ -297,13 +321,68 @@ export class FieldsService {
 			);
 		}
 
-		await this.agent.fieldBackfill(
+		const ids = await this.missingRecordIds(
 			definition.entity,
-			definition.key,
+			id,
+			FIELDS_CONFIG.backfill.maxRecordsPerRun,
+		);
+		const result = await this.agent.fieldBackfillRecords(
+			definition.entity,
+			[definition.key],
+			ids,
 			"Asked to fill the rest",
 		);
 
-		return { queued: true };
+		return { queued: result.queued > 0 || result.merged > 0 };
+	}
+
+	/** Every agent-filled field is inherently blank on a record that was just created. */
+	async queueBackfillForNewRecord(
+		entity: FieldEntity,
+		recordId: string,
+	): Promise<void> {
+		const definitions = await this.db.fieldDefinition.findMany({
+			where: { entity, archivedAt: null, agentFilled: true },
+			select: { key: true },
+		});
+
+		if (definitions.length === 0) return;
+
+		await this.agent.fieldBackfillRecords(
+			entity,
+			definitions.map((definition) => definition.key),
+			[recordId],
+			"New record",
+		);
+	}
+
+	private async missingRecordIds(
+		entity: FieldEntity,
+		fieldId: string,
+		cap: number,
+	): Promise<string[]> {
+		const where = { fieldValues: { none: { fieldId } } };
+
+		const rows =
+			entity === "COMPANY"
+				? await this.db.company.findMany({
+						where,
+						select: { id: true },
+						take: cap,
+					})
+				: entity === "CONTACT"
+					? await this.db.contact.findMany({
+							where,
+							select: { id: true },
+							take: cap,
+						})
+					: await this.db.deal.findMany({
+							where,
+							select: { id: true },
+							take: cap,
+						});
+
+		return rows.map((row) => row.id);
 	}
 
 	async coverage(id: string): Promise<{ filled: number; total: number }> {
@@ -398,6 +477,133 @@ export class FieldsService {
 		}
 
 		return byRecord;
+	}
+
+	/**
+	 * SELECT and USER fields are the only types with a fixed, small
+	 * vocabulary a facet can count, but only the ones an admin turned on
+	 * (`showOnFilter`) actually render — same opt-in as `showOnTable`, so the
+	 * filter bar doesn't fill up with every field ever created.
+	 */
+	async filters(entity: FieldEntity): Promise<SerializedField[]> {
+		const definitions = await this.filterableFieldsFor(entity);
+		return definitions.map(serializeField);
+	}
+
+	async filterableFieldsFor(
+		entity: FieldEntity,
+	): Promise<FieldDefinitionWithOptions[]> {
+		return this.db.fieldDefinition.findMany({
+			where: {
+				entity,
+				archivedAt: null,
+				showOnFilter: true,
+				type: { in: ["SELECT", "USER"] },
+			},
+			include: WITH_OPTIONS,
+			orderBy: { position: "asc" },
+		});
+	}
+
+	/**
+	 * Counted by joining straight to the entity table through `FieldValue`'s
+	 * relation, filtered by the same search/archived condition as the rest of
+	 * that list's facets — never by first fetching every matching id, which
+	 * would not scale past a few thousand records.
+	 */
+	async filterFacetCounts(
+		entity: FieldEntity,
+		relationWhere:
+			| Prisma.CompanyWhereInput
+			| Prisma.ContactWhereInput
+			| Prisma.DealWhereInput,
+		definitions: FieldDefinitionWithOptions[],
+	): Promise<Record<string, Record<string, number>>> {
+		const facetCounts: Record<string, Record<string, number>> = {};
+		if (definitions.length === 0) return facetCounts;
+
+		const relation = RELATIONS[entity];
+		const byId = new Map(
+			definitions.map((definition) => [definition.id, definition]),
+		);
+		const selectIds = definitions
+			.filter((definition) => definition.type === "SELECT")
+			.map((definition) => definition.id);
+		const userIds = definitions
+			.filter((definition) => definition.type === "USER")
+			.map((definition) => definition.id);
+
+		const [selectGroups, userGroups] = await Promise.all([
+			selectIds.length > 0
+				? this.db.fieldValue.groupBy({
+						by: ["fieldId", "optionId"],
+						where: {
+							fieldId: { in: selectIds },
+							optionId: { not: null },
+							[relation]: relationWhere,
+						} as Prisma.FieldValueWhereInput,
+						_count: { _all: true },
+					})
+				: [],
+			userIds.length > 0
+				? this.db.fieldValue.groupBy({
+						by: ["fieldId", "userId"],
+						where: {
+							fieldId: { in: userIds },
+							userId: { not: null },
+							[relation]: relationWhere,
+						} as Prisma.FieldValueWhereInput,
+						_count: { _all: true },
+					})
+				: [],
+		]);
+
+		for (const group of selectGroups) {
+			const definition = byId.get(group.fieldId);
+			if (!definition || !group.optionId) continue;
+			const bucket = facetCounts[definition.key] ?? {};
+			facetCounts[definition.key] = bucket;
+			bucket[group.optionId] =
+				(bucket[group.optionId] ?? 0) + group._count._all;
+		}
+
+		for (const group of userGroups) {
+			const definition = byId.get(group.fieldId);
+			if (!definition || !group.userId) continue;
+			const bucket = facetCounts[definition.key] ?? {};
+			facetCounts[definition.key] = bucket;
+			bucket[group.userId] = (bucket[group.userId] ?? 0) + group._count._all;
+		}
+
+		return facetCounts;
+	}
+
+	/** Translates selected filter values (by field key) into `FieldValue` `AND` conditions. */
+	fieldFilters(
+		definitions: FieldDefinitionWithOptions[],
+		selected: Record<string, string[]>,
+	): Array<{ fieldValues: { some: Prisma.FieldValueWhereInput } }> {
+		const byKey = new Map(
+			definitions.map((definition) => [definition.key, definition]),
+		);
+
+		return Object.entries(selected)
+			.filter(([, values]) => values.length > 0)
+			.flatMap(([key, values]) => {
+				const definition = byKey.get(key);
+				if (!definition) return [];
+
+				return [
+					{
+						fieldValues: {
+							some:
+								definition.type === "USER"
+									? { fieldId: definition.id, userId: { in: values } }
+									: { fieldId: definition.id, optionId: { in: values } },
+						},
+					},
+				];
+			});
 	}
 
 	async applyValues(

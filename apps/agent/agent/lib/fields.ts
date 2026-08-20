@@ -6,12 +6,15 @@ import {
 	FieldValueError,
 	fieldKeyFromLabel,
 	type RecordField,
+	readValue,
 	recordColumn,
 	type SerializedField,
 	serializeField,
 	usesOptions,
 	writeValues,
 } from "@crm/db/fields";
+import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { currentFocus } from "./focus";
 
 const WITH_OPTIONS = { options: { orderBy: { position: "asc" } } } as const;
 
@@ -75,9 +78,34 @@ export async function writeField(input: {
 		};
 	}
 
+	const isBackfill = currentFocus().taskKind === "field-backfill";
+
 	try {
-		await writeValues(db, input.entity, input.recordId, definitions, {
-			[input.key]: input.value,
+		return await db.$transaction(async (tx) => {
+			if (isBackfill) {
+				const column = recordColumn(input.entity);
+				await lockIdempotencyKey(
+					tx,
+					`field-value:${definition.id}:${input.recordId}`,
+				);
+
+				const row = await tx.fieldValue.findFirst({
+					where: { fieldId: definition.id, [column]: input.recordId },
+				});
+
+				if (readValue(definition, row ?? undefined) !== null) {
+					return {
+						written: false,
+						reason: `"${input.key}" already has a value on this record. Someone filled it since this task was queued — leave it as is.`,
+					};
+				}
+			}
+
+			await writeValues(tx, input.entity, input.recordId, definitions, {
+				[input.key]: input.value,
+			});
+
+			return { written: true, key: input.key, value: input.value };
 		});
 	} catch (error) {
 		if (error instanceof FieldValueError) {
@@ -86,8 +114,6 @@ export async function writeField(input: {
 
 		throw error;
 	}
-
-	return { written: true, key: input.key, value: input.value };
 }
 
 export async function createField(input: {

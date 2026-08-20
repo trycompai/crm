@@ -10,4 +10,5 @@ export const AGENT_DISPATCH = {
 		redeliverWithinMs: 10 * MINUTE_MS,
 		redeliverBatch: 20,
 	},
+	fieldBackfill: { concurrency: 8 },
 } as const;

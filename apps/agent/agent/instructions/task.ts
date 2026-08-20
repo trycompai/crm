@@ -34,6 +34,8 @@ export default defineDynamic({
 
 			if (budget) setBudget(budget);
 
+			const fieldKeys = attributeText.parse(attributes.fieldKeys);
+
 			const { markdown, focus } = await sessionPreamble(
 				{
 					contactId: attributeText.parse(attributes.contactId),
@@ -45,10 +47,11 @@ export default defineDynamic({
 					kind,
 					reason: attributeText.parse(attributes.reason),
 					budget,
+					fieldKeys: fieldKeys ? fieldKeys.split(",") : null,
 				},
 			);
 
-			focusOn({ ...focus, sessionId: ctx.session.id });
+			focusOn({ ...focus, sessionId: ctx.session.id, taskKind: kind });
 
 			return defineInstructions({
 				markdown: `${RESEARCH_INSTRUCTIONS}\n\n${markdown}`,

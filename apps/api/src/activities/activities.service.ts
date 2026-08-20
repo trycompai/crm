@@ -11,18 +11,20 @@ import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	countsByKey,
-	FACET_ALL,
-	type ListResult,
 	type OrderByColumns,
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
 import type {
 	ActivityCreateInput,
+	ActivityEntry,
 	ActivityUpdateInput,
 	TaskListInput,
+	TaskListResult,
+	TimelineCounts,
 	TimelineFilter,
 	TimelineInput,
+	TimelineResult,
 } from "./activities.contracts";
 import {
 	isTaskWindow,
@@ -134,7 +136,7 @@ export class ActivitiesService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
-	async timeline(input: TimelineInput) {
+	async timeline(input: TimelineInput): Promise<TimelineResult> {
 		const where = this.anchor(input);
 		Object.assign(where, filterClause(input.filter));
 
@@ -161,7 +163,7 @@ export class ActivitiesService {
 
 	async timelineCounts(
 		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
-	) {
+	): Promise<TimelineCounts> {
 		const anchor = this.anchor(input);
 
 		const [all, notes, upcoming, done, email, meetings] = await Promise.all([
@@ -184,7 +186,10 @@ export class ActivitiesService {
 		return { all, notes, upcoming, done, email, meetings };
 	}
 
-	async create(input: ActivityCreateInput, actingUserId: string) {
+	async create(
+		input: ActivityCreateInput,
+		actingUserId: string,
+	): Promise<ActivityEntry> {
 		const companyId = await this.resolveCompanyId(input);
 
 		const isTask = input.type === ActivityType.TASK;
@@ -218,7 +223,7 @@ export class ActivitiesService {
 		return serializeEntry(activity);
 	}
 
-	async update(input: ActivityUpdateInput) {
+	async update(input: ActivityUpdateInput): Promise<ActivityEntry> {
 		await this.requireTask(input.id, "Only tasks can be edited.");
 
 		const updated = await this.db.activity.update({
@@ -230,7 +235,7 @@ export class ActivitiesService {
 		return serializeEntry(updated);
 	}
 
-	async complete(id: string, completed: boolean) {
+	async complete(id: string, completed: boolean): Promise<ActivityEntry> {
 		await this.requireTask(id, "Only tasks can be completed.");
 
 		const updated = await this.db.activity.update({
@@ -242,7 +247,7 @@ export class ActivitiesService {
 		return serializeEntry(updated);
 	}
 
-	async tasks(input: TaskListInput): Promise<ListResult<TaskRow>> {
+	async tasks(input: TaskListInput): Promise<TaskListResult> {
 		const where = this.taskWhere(input);
 		const { skip, take } = paginate(input);
 
@@ -270,10 +275,17 @@ export class ActivitiesService {
 		if (input.status === "open") where.completedAt = null;
 		if (input.status === "done") where.completedAt = { not: null };
 
-		if (input.createdBy !== FACET_ALL) where.createdById = input.createdBy;
+		if (input.createdBy.length > 0) {
+			where.createdById = { in: input.createdBy };
+		}
 
-		if (isTaskWindow(input.due)) {
-			Object.assign(where, taskWindowFilter(input.due, input.today));
+		const dueWindows = input.due.filter(isTaskWindow);
+		if (dueWindows.length > 0) {
+			where.AND = [
+				{
+					OR: dueWindows.map((window) => taskWindowFilter(window, input.today)),
+				},
+			];
 		}
 
 		return where;
@@ -402,8 +414,6 @@ function filterClause(filter: TimelineFilter): Prisma.ActivityWhereInput {
 }
 
 type Task = Prisma.ActivityGetPayload<{ select: typeof TASK_SELECT }>;
-
-type TaskRow = ReturnType<typeof serializeTask>;
 
 function serializeTask(task: Task) {
 	return {

@@ -1,5 +1,7 @@
 "use client";
 
+import Archive from "@carbon/icons-react/es/Archive";
+import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -15,12 +17,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
+import { useFieldFacets } from "@/components/crm/fields/field-facets";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { ListSearch } from "@/components/data-table/list-search";
+import { SavedViewsMenu } from "@/components/data-table/saved-views-menu";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
+import { ACTIVITY_FACET_OPTIONS } from "@/lib/activity-recency";
 import {
 	ENRICHMENT_FACET_OPTIONS,
 	ENRICHMENT_POLL_MS,
@@ -147,11 +152,30 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 	},
 ];
 
+const ARCHIVED_COLUMN: DataTableColumn<CompanyRow> = {
+	id: "archivedAt",
+	header: "Archived",
+	label: "Archived date",
+	sortable: true,
+	align: "right",
+	width: "w-[12%]",
+	cell: (row) => (
+		<span className="text-muted-foreground">
+			{row.archivedAt ? (
+				<LocalRelativeTime date={row.archivedAt} />
+			) : (
+				<EmptyCellValue />
+			)}
+		</span>
+	),
+};
+
 export function CompaniesTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
-	const { query, input } = useTableQuery(companiesSearchParams);
+	const table = useTableQuery(companiesSearchParams);
+	const { query, input, setArchived } = table;
 
 	const companies = useQuery({
 		...trpc.companies.list.queryOptions(input),
@@ -171,6 +195,7 @@ export function CompaniesTable() {
 	);
 
 	const facetCounts = companies.data?.facetCounts;
+	const fieldFacets = useFieldFacets("COMPANY", facetCounts);
 
 	const facets: DataTableFacet[] = [
 		{
@@ -198,15 +223,43 @@ export function CompaniesTable() {
 				(option) => (facetCounts?.enrichment?.[option.value] ?? 0) > 0,
 			),
 		},
+		{
+			id: "activity",
+			label: "Activity",
+			options: ACTIVITY_FACET_OPTIONS.filter(
+				(option) => (facetCounts?.activity?.[option.value] ?? 0) > 0,
+			),
+		},
+		...fieldFacets,
 	];
 
 	const fieldColumns = useFieldColumns<CompanyRow>("COMPANY");
-	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+	const columns = useMemo(
+		() =>
+			input.archived
+				? [...COLUMNS, ARCHIVED_COLUMN, ...fieldColumns]
+				: [...COLUMNS, ...fieldColumns],
+		[fieldColumns, input.archived],
+	);
 
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search companies by name or domain…" />}
+			actions={
+				<>
+					<SavedViewsMenu entity="COMPANY" table={table} />
+					<Button
+						variant={input.archived ? "contrast" : "outline"}
+						size="sm"
+						className="justify-start sm:justify-center"
+						onClick={() => setArchived(!input.archived)}
+					>
+						<Archive data-icon="inline-start" />
+						Archived
+					</Button>
+				</>
+			}
 			columns={columns}
 			rows={rows}
 			total={companies.data?.total ?? 0}
@@ -215,7 +268,11 @@ export function CompaniesTable() {
 			selection={{
 				state: selection,
 				actions: (
-					<CompaniesBulkActions ids={selection.ids} onDone={selection.clear} />
+					<CompaniesBulkActions
+						ids={selection.ids}
+						onDone={selection.clear}
+						archived={input.archived}
+					/>
 				),
 				rowLabel: (row) => row.name,
 			}}
@@ -223,7 +280,11 @@ export function CompaniesTable() {
 			loading={companies.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "company", id: row.id })}
-			empty="No companies match this view."
+			empty={
+				input.archived
+					? "No archived companies."
+					: "No companies match this view."
+			}
 		/>
 	);
 }

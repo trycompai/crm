@@ -8,11 +8,28 @@ import {
 	ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import {
+	ApiExcludeEndpoint,
+	ApiForbiddenResponse,
+	ApiHeader,
+	ApiOkResponse,
+	ApiOperation,
+	ApiServiceUnavailableResponse,
+	ApiTags,
+} from "@nestjs/swagger";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { ConversionService } from "./conversion.service";
 import { RatesService } from "./rates.service";
 
+@ApiTags("Internal — Cron")
+@ApiHeader({
+	name: "authorization",
+	description: "`Bearer <CRON_SECRET>`",
+	required: true,
+})
+@ApiForbiddenResponse({ description: "CRON_SECRET did not match." })
+@ApiServiceUnavailableResponse({ description: "CRON_SECRET is not set." })
 @Controller("internal/sync")
 export class RatesController {
 	private readonly logger = new Logger(RatesController.name);
@@ -28,12 +45,17 @@ export class RatesController {
 
 	@Get("rates")
 	@AllowAnonymous()
+	@ApiOperation({
+		summary: "Refresh exchange rates and convert amounts left pending",
+	})
+	@ApiOkResponse({ description: "Rates refreshed; conversion counts." })
 	async ratesViaGet(@Headers("authorization") authorization?: string) {
 		return this.run(authorization);
 	}
 
 	@Post("rates")
 	@AllowAnonymous()
+	@ApiExcludeEndpoint()
 	async ratesViaPost(@Headers("authorization") authorization?: string) {
 		return this.run(authorization);
 	}

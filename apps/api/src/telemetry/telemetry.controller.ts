@@ -8,10 +8,27 @@ import {
 	ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import {
+	ApiExcludeEndpoint,
+	ApiForbiddenResponse,
+	ApiHeader,
+	ApiOkResponse,
+	ApiOperation,
+	ApiServiceUnavailableResponse,
+	ApiTags,
+} from "@nestjs/swagger";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { RollupService } from "./rollup.service";
 
+@ApiTags("Internal — Cron")
+@ApiHeader({
+	name: "authorization",
+	description: "`Bearer <CRON_SECRET>`",
+	required: true,
+})
+@ApiForbiddenResponse({ description: "CRON_SECRET did not match." })
+@ApiServiceUnavailableResponse({ description: "CRON_SECRET is not set." })
 @Controller("internal/telemetry")
 export class TelemetryController {
 	private readonly logger = new Logger(TelemetryController.name);
@@ -26,12 +43,15 @@ export class TelemetryController {
 
 	@Get("rollup")
 	@AllowAnonymous()
+	@ApiOperation({ summary: "Roll up raw telemetry events into daily counts" })
+	@ApiOkResponse({ description: "The rollup ran." })
 	async rollupViaGet(@Headers("authorization") authorization?: string) {
 		return this.run(authorization);
 	}
 
 	@Post("rollup")
 	@AllowAnonymous()
+	@ApiExcludeEndpoint()
 	async rollupViaPost(@Headers("authorization") authorization?: string) {
 		return this.run(authorization);
 	}

@@ -9,7 +9,6 @@ export const ALLOWED_PROPERTIES = [
 	"postgres_version",
 	"seed_only",
 
-	"cap_rapidapi",
 	"cap_perplexity",
 	"cap_context_dev",
 	"cap_blob",

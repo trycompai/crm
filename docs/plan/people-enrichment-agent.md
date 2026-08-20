@@ -3,6 +3,12 @@
 An [eve](https://eve.dev/docs) agent that works out who the people in the CRM
 actually are, using real profile data rather than inference.
 
+**Historical.** The agent this planned is built and [`agent.md`](../agent.md)
+describes what it does now. One decision below did not survive: LinkedIn no
+longer comes from a third-party LinkedIn API of its own. Context's people enrich
+endpoint reads a person back from a URL, under the same key that already buys
+company brand data, so there is one vendor and one key rather than two.
+
 Read it with [`AGENTS.md`](../../AGENTS.md), [`api.md`](../api.md),
 [`design.md`](../design.md) and
 [`gmail-calendar-plan.md`](./gmail-calendar-plan.md), whose sync is what puts
@@ -158,7 +164,7 @@ markets, and anyone who does not keep a profile. §5.
 | --- | --- | --- |
 | Framework | eve, `apps/agent`, own Vercel project | Durable sessions, approval gating, schedules and evals are all things we would otherwise hand-roll. |
 | Model | `anthropic/claude-sonnet-5` via AI Gateway | The default. Routes over project OIDC, so no provider key to manage. Matching is not a frontier-model problem; revisit if eval scores say otherwise. |
-| LinkedIn access | LinkDAPI over RapidAPI, **profile + company endpoints only** | Its people *search* is broken — §0. Profile-by-slug and company-by-name are excellent. |
+| LinkedIn access | LinkDAPI, **profile + company endpoints only** | Its people *search* is broken — §0. Profile-by-slug and company-by-name are excellent. Superseded: Context's people enrich reads the same profile under the key we already hold. |
 | Finding the person | Context.dev web search resolves the LinkedIn slug | §0. The one thing LinkDAPI cannot do, and the thing a real search engine is good at. |
 | Tool surface | Curated tools, not an OpenAPI connection | Not cost — *predictability*. Half the advertised endpoints do not exist under the documented names (§0), so the surface has to be pinned to what is verified. |
 | CRM access | `@crm/db` directly | Already a workspace package. A second internal API would be plumbing with no reader. |
@@ -225,7 +231,7 @@ key to rotate. Note that `eve dev` never fires schedules on their cadence —
 there is a dispatch route for triggering one while iterating.
 
 **Monorepo wiring.** `apps/agent` joins the bun workspace and gets a
-`turbo.json` declaring `passThroughEnv` for `DATABASE_URL` and the RapidAPI key,
+`turbo.json` declaring `passThroughEnv` for `DATABASE_URL` and the vendor keys,
 matching how `apps/api` does it. `check-types` and `lint` join the root
 pipeline; `build` is `eve build`.
 

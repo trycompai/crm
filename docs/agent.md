@@ -122,6 +122,32 @@ to ration and nobody to scope it to.
   chain is not guaranteed to run at all. A cron in the agent is the only trigger here
   that is a fact rather than a hope.
 
+### Stale rows are closed on the dispatch tick
+
+`reconcileStaleTasks` (`lib/stale-tasks.ts`) runs before `drainAll`, every minute. Like
+the blank-field pass it is a database pass with no session, no model and no credits. It
+closes rows that are provably done or provably dead, so the queue a rep reads is the
+work that is actually happening.
+
+- **It only looks at work that is due.** A `recheck` booked ninety days out is not
+  stale, it is scheduled, and closing it would delete the next look at that contact.
+- **A live lease is never touched.** That is work in flight, whatever the record says.
+- **A record that completed after the task started closes the task** with a plain
+  outcome. That is the row the settle path failed to close: research landed, facts were
+  written, and the task sat open holding the contact on *Researching*.
+- **A dead lease with attempts left goes back to waiting**, and the lease is cleared so
+  the row reads as waiting rather than as running. Exhausted rows are retired by
+  `retireExhausted`, which is the one rule for giving up.
+- **Idempotent** — a second pass in the same minute closes nothing, because the rows it
+  closed have a `finishedAt` and the rows it released have no lease.
+- **Scans 200 rows a pass** and reports `unscanned` rather than a clean sweep it did not
+  make. The counts are in `dispatchHealth().staleTasks`, so a growing number of stale
+  rows is visible at `GET /internal/crm/dispatch-health`.
+
+**It is a safety net, not the fix.** The settle path still fails to close some rows;
+this pass keeps that from reaching a rep, and the count it reports is how you see the
+underlying bug getting worse.
+
 ### Backfills
 
 Sign-in sweep covers records never looked up (10 credits/company);
@@ -196,6 +222,10 @@ resolver, and `lib/context-dev.ts` memoises its client on the key string.
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.
+  **A unit is one metered vendor call, not one credit.** `spend(2)` is what a
+  billable lookup costs: a brand lookup is 10 Context credits, a person enrich is
+  20. Both charge 2, because the budget rations calls per contact and a session
+  with a budget of 4 must still be able to make two of them.
 - `lib/tasks.ts` — `claimDue` leases with `FOR UPDATE SKIP LOCKED`.
 - **`schedules/dispatch.ts` is the only schedule and decides nothing.** "Every N
   minutes, the oldest ten contacts" belongs in a `dueAt`.

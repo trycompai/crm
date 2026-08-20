@@ -18,6 +18,8 @@ const CONTACT_SELECT = {
 	firstName: true,
 	lastName: true,
 	title: true,
+	seniority: true,
+	function: true,
 	linkedinUrl: true,
 	twitterUrl: true,
 	githubUrl: true,
@@ -137,6 +139,8 @@ type Proposal = {
 		firstName: string;
 		lastName: string | null;
 		title: string | null;
+		seniority: string | null;
+		function: string | null;
 		linkedinUrl: string | null;
 		twitterUrl: string | null;
 		githubUrl: string | null;

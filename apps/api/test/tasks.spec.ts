@@ -130,7 +130,7 @@ describe("the tasks list", () => {
 	});
 
 	it("keeps a task with no due date, which the dashboard cannot show", async () => {
-		const result = await activities.tasks(input({ due: "none" }));
+		const result = await activities.tasks(input({ due: ["none"] }));
 
 		expect(result.rows.map((row) => row.subject)).toEqual([
 			`No due date ${suffix}`,
@@ -139,8 +139,8 @@ describe("the tasks list", () => {
 
 	it("ignores a due window it does not recognise", async () => {
 		const [bogus, wrongCase] = await Promise.all([
-			activities.tasks(input({ due: "bogus" })),
-			activities.tasks(input({ due: "OVERDUE" })),
+			activities.tasks(input({ due: ["bogus"] })),
+			activities.tasks(input({ due: ["OVERDUE"] })),
 		]);
 
 		expect(bogus.total).toBe(4);
@@ -176,7 +176,7 @@ describe("the tasks list", () => {
 	});
 
 	it("filters by who added the task", async () => {
-		const result = await activities.tasks(input({ createdBy: mateId }));
+		const result = await activities.tasks(input({ createdBy: [mateId] }));
 
 		expect(result.rows.map((row) => row.subject)).toEqual([
 			`Later this week ${suffix}`,
@@ -191,7 +191,7 @@ describe("the tasks list", () => {
 	});
 
 	it("carries the record a task hangs off", async () => {
-		const result = await activities.tasks(input({ due: "none" }));
+		const result = await activities.tasks(input({ due: ["none"] }));
 		const task = result.rows[0];
 
 		expect(task?.contact?.id).toBe(contactId);

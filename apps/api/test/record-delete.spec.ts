@@ -120,7 +120,7 @@ beforeAll(async () => {
 
 afterAll(clean);
 
-describe("deleting a contact", () => {
+describe("purging a contact", () => {
 	let contactId: string;
 
 	it("takes the record, its queued research and its transcript with it", async () => {
@@ -145,7 +145,7 @@ describe("deleting a contact", () => {
 			},
 		});
 
-		expect(await contacts.delete(contactId)).toEqual({
+		expect(await contacts.purge(contactId)).toEqual({
 			id: contactId,
 			name: "Gone Person",
 		});
@@ -222,7 +222,7 @@ describe("deleting a contact", () => {
 			}),
 		).toEqual({ email: asSynced });
 
-		await contacts.delete(created.id);
+		await contacts.purge(created.id);
 
 		expect(
 			await db.suppressedContact.findUnique({ where: { email: asSynced } }),
@@ -245,7 +245,7 @@ describe("deleting a contact", () => {
 	});
 });
 
-describe("deleting a company", () => {
+describe("purging a company", () => {
 	it("takes its deals and leaves its people without a company", async () => {
 		const company = await companies.create({
 			name: "Doomed",
@@ -264,7 +264,7 @@ describe("deleting a company", () => {
 
 		await parked({ companyId: company.id });
 
-		expect(await companies.delete(company.id)).toEqual({
+		expect(await companies.purge(company.id)).toEqual({
 			id: company.id,
 			name: "Doomed",
 		});
@@ -284,7 +284,7 @@ describe("deleting a company", () => {
 	});
 });
 
-describe("the activity stamps a delete leaves behind", () => {
+describe("the activity stamps a purge leaves behind", () => {
 	it("are recomputed on every record the deleted one's activities touched", async () => {
 		const company = await companies.create({
 			name: "Stamped",
@@ -317,7 +317,7 @@ describe("the activity stamps a delete leaves behind", () => {
 			at,
 		);
 
-		await contacts.delete(contact.id);
+		await contacts.purge(contact.id);
 
 		expect(
 			await db.company.findUnique({
@@ -361,7 +361,7 @@ describe("the activity stamps a delete leaves behind", () => {
 		});
 		await stamp.touch({ contactId: contact.id, dealId: deal.id }, at);
 
-		await companies.delete(company.id);
+		await companies.purge(company.id);
 
 		expect(
 			await db.contact.findUnique({

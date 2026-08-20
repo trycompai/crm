@@ -21,17 +21,16 @@ import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
+	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@crm/ui/components/popover";
 import { Spinner } from "@crm/ui/components/spinner";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import {
@@ -48,7 +47,6 @@ import type { TableQueryState } from "@crm/ui/lib/table-query";
 import { cn } from "@crm/ui/lib/utils";
 import { parseAsArrayOf, parseAsString, useQueryState } from "nuqs";
 import {
-	type ComponentProps,
 	Fragment,
 	type ReactNode,
 	useDeferredValue,
@@ -166,96 +164,103 @@ function SortIndicator({
 	);
 }
 
-function FacetTrigger({
-	label,
-	...props
-}: ComponentProps<typeof Button> & { label: string }) {
-	return (
-		<Button variant="outline" size="sm" className="justify-between" {...props}>
-			<span className="truncate">{label}</span>
-			<ChevronDown data-icon="inline-end" className="opacity-60" />
-		</Button>
-	);
+function facetLabel(facet: DataTableFacet, selected: string[]): string {
+	if (selected.length === 0) return facet.label;
+	if (selected.length === 1) {
+		const option = facet.options.find((o) => o.value === selected[0]);
+		return option?.label ?? facet.label;
+	}
+	return `${facet.label} (${selected.length})`;
 }
 
-function SearchableFacet({
+function toggle(selected: string[], value: string, checked: boolean): string[] {
+	return checked ? [...selected, value] : selected.filter((v) => v !== value);
+}
+
+function FacetSubmenu({
 	facet,
 	selected,
-	activeLabel,
-	onSelect,
+	onChange,
 }: {
 	facet: DataTableFacet;
-	selected: string;
-	activeLabel?: string;
-	onSelect: (value: string) => void;
+	selected: string[];
+	onChange: (values: string[]) => void;
 }) {
-	const [open, setOpen] = useState(false);
-	const [seen, setSeen] = useState<{ value: string; label: string } | null>(
-		null,
-	);
-
-	if (activeLabel && (seen?.value !== selected || seen.label !== activeLabel)) {
-		setSeen({ value: selected, label: activeLabel });
-	}
-
-	const label =
-		activeLabel ??
-		(seen?.value === selected ? seen.label : undefined) ??
-		facet.label;
-
-	const choose = (value: string) => {
-		setOpen(false);
-		facet.onSearchChange?.("");
-		onSelect(value);
-	};
-
 	return (
-		<Popover
-			open={open}
-			onOpenChange={(next) => {
-				setOpen(next);
-				if (!next) facet.onSearchChange?.("");
-			}}
-		>
-			<PopoverTrigger asChild>
-				<FacetTrigger label={label} />
-			</PopoverTrigger>
-			<PopoverContent align="start" size="fit" className="w-64">
-				<Command shouldFilter={facet.onSearchChange === undefined}>
-					<CommandInput
-						placeholder={`Search ${facet.label.toLowerCase()}…`}
-						value={facet.search}
-						onValueChange={facet.onSearchChange}
-					/>
-					<CommandList>
-						<CommandEmpty>{facet.empty ?? "Nothing matches."}</CommandEmpty>
-						<CommandGroup>
-							{facet.search?.trim() ? null : (
-								<CommandItem
-									value={facet.label}
-									disabled={facet.stale}
-									data-checked={selected === "all"}
-									onSelect={() => choose("all")}
-								>
-									{facet.label}
-								</CommandItem>
-							)}
-							{facet.options.map((option) => (
-								<CommandItem
+		<DropdownMenuSub>
+			<DropdownMenuSubTrigger>
+				<span className="flex-1">{facet.label}</span>
+				{selected.length > 0 && (
+					<span className="tabular-nums opacity-60">({selected.length})</span>
+				)}
+			</DropdownMenuSubTrigger>
+			<DropdownMenuSubContent className="max-h-72 min-w-52 overflow-hidden">
+				{facet.searchable ? (
+					<Command
+						shouldFilter={facet.onSearchChange === undefined}
+						className="max-h-72"
+					>
+						<CommandInput
+							placeholder={`Search ${facet.label.toLowerCase()}…`}
+							value={facet.search}
+							onValueChange={facet.onSearchChange}
+							onKeyDown={(event) => event.stopPropagation()}
+						/>
+						<CommandList>
+							<CommandEmpty>{facet.empty ?? "Nothing matches."}</CommandEmpty>
+							<CommandGroup>
+								{facet.options.map((option) => {
+									const checked = selected.includes(option.value);
+									return (
+										<CommandItem
+											key={option.value}
+											value={option.label}
+											disabled={facet.stale}
+											data-checked={checked}
+											onSelect={() =>
+												onChange(toggle(selected, option.value, !checked))
+											}
+										>
+											<Checkbox
+												checked={checked}
+												className="pointer-events-none"
+											/>
+											<span className="truncate">{option.label}</span>
+										</CommandItem>
+									);
+								})}
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				) : (
+					<div className="max-h-72 overflow-y-auto">
+						{selected.length > 0 && (
+							<>
+								<DropdownMenuItem onSelect={() => onChange([])}>
+									Clear
+								</DropdownMenuItem>
+								<DropdownMenuSeparator />
+							</>
+						)}
+						{facet.options.map((option) => {
+							const checked = selected.includes(option.value);
+							return (
+								<DropdownMenuCheckboxItem
 									key={option.value}
-									value={option.label}
-									disabled={facet.stale}
-									data-checked={selected === option.value}
-									onSelect={() => choose(option.value)}
+									checked={checked}
+									onSelect={(event) => event.preventDefault()}
+									onCheckedChange={(next) =>
+										onChange(toggle(selected, option.value, next))
+									}
 								>
-									<span className="truncate">{option.label}</span>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
+									{option.label}
+								</DropdownMenuCheckboxItem>
+							);
+						})}
+					</div>
+				)}
+			</DropdownMenuSubContent>
+		</DropdownMenuSub>
 	);
 }
 
@@ -321,18 +326,30 @@ export function DataTable<TRow, TSub = unknown>({
 	const pageSize = query.pageSize;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+	const availableFacets = useMemo(
+		() =>
+			(facets ?? []).filter(
+				(facet) =>
+					facet.options.length > 0 ||
+					facet.searchable ||
+					(query.filters[facet.id]?.length ?? 0) > 0,
+			),
+		[facets, query.filters],
+	);
+
 	const hasFilterControls =
 		tabs != null ||
-		(facets?.length ?? 0) > 0 ||
+		availableFacets.length > 0 ||
 		sortableColumns.length > 0 ||
 		anyExpandable ||
 		hideable.length > 0 ||
 		actions != null ||
 		leadingActions != null;
+	const activeFacetFilterCount = availableFacets.filter(
+		(facet) => (query.filters[facet.id]?.length ?? 0) > 0,
+	).length;
 	const activeFilterCount =
-		(tabs && query.tab !== "all" ? 1 : 0) +
-		(facets?.filter((facet) => (query.filters[facet.id] ?? "all") !== "all")
-			.length ?? 0);
+		(tabs && query.tab !== "all" ? 1 : 0) + activeFacetFilterCount;
 
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
@@ -440,48 +457,35 @@ export function DataTable<TRow, TSub = unknown>({
 					{leadingActions}
 
 					<div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center lg:ml-auto">
-						{facets?.map((facet) => {
-							const selected = query.filters[facet.id] ?? "all";
-							const active = facet.options.find((o) => o.value === selected);
-
-							if (facet.searchable) {
-								return (
-									<SearchableFacet
-										key={facet.id}
-										facet={facet}
-										selected={selected}
-										activeLabel={active?.label}
-										onSelect={(value) => query.setFilter(facet.id, value)}
-									/>
-								);
-							}
-
-							return (
-								<DropdownMenu key={facet.id}>
-									<DropdownMenuTrigger asChild>
-										<FacetTrigger label={active ? active.label : facet.label} />
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="min-w-44">
-										<DropdownMenuRadioGroup
-											value={selected}
-											onValueChange={(value) => query.setFilter(facet.id, value)}
-										>
-											<DropdownMenuRadioItem value="all">
-												{facet.label}
-											</DropdownMenuRadioItem>
-											{facet.options.map((option) => (
-												<DropdownMenuRadioItem
-													key={option.value}
-													value={option.value}
-												>
-													{option.label}
-												</DropdownMenuRadioItem>
-											))}
-										</DropdownMenuRadioGroup>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							);
-						})}
+						{availableFacets.length > 0 && (
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button
+										variant="outline"
+										size="sm"
+										className="justify-start sm:justify-center"
+									>
+										<Filter data-icon="inline-start" />
+										Filters
+										{activeFacetFilterCount > 0 && (
+											<span className="tabular-nums opacity-60">
+												({activeFacetFilterCount})
+											</span>
+										)}
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="min-w-48">
+									{availableFacets.map((facet) => (
+										<FacetSubmenu
+											key={facet.id}
+											facet={facet}
+											selected={query.filters[facet.id] ?? []}
+											onChange={(values) => query.setFilter(facet.id, values)}
+										/>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)}
 						{(sortableColumns.length > 0 || anyExpandable) && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>

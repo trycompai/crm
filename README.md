@@ -105,18 +105,20 @@ has, so it plans around what it actually has rather than discovering the gaps on
 failed call at a time, and it prints the list at startup:
 
 ```
-[agent] on   LinkedIn (RAPIDAPI_KEY)
 [agent] off  Web research (PERPLEXITY_API_KEY)
-[agent] off  Company brand data (Settings → General)
+[agent] on   Company brand data (Settings → General)
+[agent] on   LinkedIn (Settings → General)
 ```
 
-**Company brand data is [Context](https://link.context.dev/crm)** — the logo, the
-colours, the industry and the real name behind a domain, which is the difference
-between an account that arrives as itself and one that arrives as a grey square with
-its initials in it. It is the one key that is asked for rather than configured: it
-lives in a row, the onboarding asks for it, and **Settings → General** changes it
-afterwards, because a self-hoster's admin cannot redeploy to set an environment
-variable.
+**Company brand data and LinkedIn are both [Context](https://link.context.dev/crm)**,
+and both come from the same key. The first is the logo, the colours, the industry and
+the real name behind a domain, which is the difference between an account that arrives
+as itself and one that arrives as a grey square with its initials in it. The second
+reads a person back from a LinkedIn URL already on their record — their real name,
+current title, employer and every earlier role — which is what settles who an address
+belongs to. It is the one key that is asked for rather than configured: it lives in a
+row, the onboarding asks for it, and **Settings → General** changes it afterwards,
+because a self-hoster's admin cannot redeploy to set an environment variable.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
 a shell — the difference between a tool-caller and something that can keep a dossier,
@@ -309,7 +311,6 @@ short version:
 | --- | --- |
 | `API_URL` / `APP_URL` | Where the two halves are served. Only needed off localhost. |
 | `PERPLEXITY_API_KEY` | Lets the agent search the open web, with citations. |
-| `RAPIDAPI_KEY` | Lets the agent read LinkedIn profiles for identity. |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
 | `REDIS_URL` | A shared cache. Without it, per-instance and in-memory. |
 | `CRON_SECRET` | Guards the mailbox sync route. Required to use it. |

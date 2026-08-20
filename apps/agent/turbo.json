@@ -20,8 +20,7 @@
 				"BLOB_READ_WRITE_TOKEN",
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
-				"PERPLEXITY_API_KEY",
-				"RAPIDAPI_KEY"
+				"PERPLEXITY_API_KEY"
 			]
 		},
 		"dev:headless": {
@@ -34,8 +33,7 @@
 				"BLOB_READ_WRITE_TOKEN",
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
-				"PERPLEXITY_API_KEY",
-				"RAPIDAPI_KEY"
+				"PERPLEXITY_API_KEY"
 			]
 		},
 		/**

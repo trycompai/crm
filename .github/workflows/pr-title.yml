@@ -61,10 +61,24 @@ jobs:
 
           body=$(printf '%s\n\n<!-- pr-title: %s -->\n' \
             "$(printf '%s\n' "$body" | grep -v '^<!-- pr-title: ' || true)" "$title")
-          gh pr edit "$NUMBER" --title "$title" --body "$body"
 
-          echo "written=true" >> "$GITHUB_OUTPUT"
-          echo "Retitled #$NUMBER to \`$title\`, because $reason." >> "$GITHUB_STEP_SUMMARY"
+          if gh pr edit "$NUMBER" --title "$title" --body "$body"; then
+            echo "written=true" >> "$GITHUB_OUTPUT"
+            echo "Retitled #$NUMBER to \`$title\`, because $reason." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "The title needs changing, because $reason, but this workflow"
+            echo "could not write it. Set it by hand:"
+            echo
+            echo '```'
+            echo "$title"
+            echo '```'
+            echo
+            echo "A fork pull request grants a read-only token, which is the usual"
+            echo "cause. Check the step log for what the API returned."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: amannn/action-semantic-pull-request@v6
         id: lint

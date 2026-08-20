@@ -8,6 +8,8 @@ export type Opened = {
 	kind?: string | null;
 	reason?: string | null;
 	budget?: number | null;
+	/** Set only for a `field-backfill` task — the custom field key(s) still blank on this record. */
+	fieldKeys?: string[] | null;
 };
 
 export type Preamble = {
@@ -40,6 +42,19 @@ export async function composeClosing(
 
 async function closing(): Promise<string> {
 	return composeClosing(await identity());
+}
+
+function fieldBackfillLine(opened: Opened): string {
+	if (!opened.fieldKeys || opened.fieldKeys.length === 0) return "";
+
+	return [
+		`**This is a field-backfill task.** This record is missing a value for`,
+		`the custom field key(s) ${opened.fieldKeys.map((key) => `\`${key}\``).join(", ")}.`,
+		"Call `list_fields` for this record's entity type to read each field's",
+		"label, options and brief (what counts as an answer), then call",
+		"`set_field_value` with this record's id for any you find real evidence",
+		"for. Leave one blank rather than guess.",
+	].join(" ");
 }
 
 function opening(opened: Opened, questions: string): string {
@@ -113,6 +128,7 @@ export async function contactPreamble(
 		opened.budget
 			? `Budget: **${opened.budget}** vendor calls. Spend them where they matter.`
 			: "",
+		fieldBackfillLine(opened),
 		"",
 		opening(
 			opened,
@@ -197,6 +213,7 @@ export async function companyPreamble(
 		`You are working on **${company.name}**${
 			company.domain ? ` (${company.domain})` : ""
 		}${company.industry ? `, ${company.industry}` : ""} — company id \`${companyId}\`.`,
+		fieldBackfillLine(opened),
 		"",
 		opening(
 			opened,
@@ -285,6 +302,7 @@ export async function dealPreamble(
 			? [`The rep's own description of it: "${deal.description}"`]
 			: []),
 		people ? `People on it: ${people}` : "Nobody is attached to it yet.",
+		fieldBackfillLine(opened),
 		"",
 		opening(
 			opened,
@@ -293,10 +311,14 @@ export async function dealPreamble(
 		"",
 		"Start with `read_deal_history` on this deal id. It returns the stage clock, every stage this deal has moved through, the last reply from their side and the next meeting — which is how you answer *where does this stand* rather than reciting the stage field back.",
 		"",
-		"You can research the people and the company behind it with the usual tools — a deal itself has no fields to enrich, so anything you learn is recorded against them.",
+		opened.fieldKeys && opened.fieldKeys.length > 0
+			? "You can research the people and the company behind it with the usual tools too — most of what you learn about them is recorded against them, not the deal."
+			: "You can research the people and the company behind it with the usual tools — a deal itself has no fields to enrich, so anything you learn is recorded against them.",
 		"",
 		await closing(),
-	].join("\n");
+	]
+		.filter(Boolean)
+		.join("\n");
 
 	return { markdown, focus: { companyId: deal.company?.id ?? null } };
 }

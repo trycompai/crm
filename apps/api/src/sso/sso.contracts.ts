@@ -26,3 +26,45 @@ export const deleteSsoProviderInput = z.object({
 export type SsoProviderListInput = z.infer<typeof ssoProviderListInput>;
 export type RegisterSsoProviderInput = z.infer<typeof registerSsoProviderInput>;
 export type DeleteSsoProviderInput = z.infer<typeof deleteSsoProviderInput>;
+
+const ssoPublicProviderOutput = z.object({
+	providerId: z.string(),
+	name: z.string(),
+});
+
+export const ssoSignInOptionsOutput = z.object({
+	google: z.boolean(),
+	microsoft: z.boolean(),
+	providers: z.array(ssoPublicProviderOutput),
+});
+
+export type SignInOptions = z.infer<typeof ssoSignInOptionsOutput>;
+
+export const ssoSettingsOutput = z.object({
+	canConfigure: z.boolean(),
+	callbackBase: z.string(),
+});
+
+export type SsoSettings = z.infer<typeof ssoSettingsOutput>;
+
+export const ssoProviderOutput = z.object({
+	providerId: z.string(),
+	name: z.string(),
+	type: z.enum(["oidc", "saml"]),
+	issuer: z.string(),
+	domains: z.array(z.string()),
+	clientIdLastFour: z.string().nullable(),
+	callbackURL: z.string(),
+});
+
+export type SsoProvider = z.infer<typeof ssoProviderOutput>;
+
+export const ssoProviderListOutput = z.object({
+	rows: z.array(ssoProviderOutput),
+	total: z.number(),
+	facetCounts: z.record(z.string(), z.record(z.string(), z.number())),
+});
+
+export const deleteSsoProviderOutput = z.object({
+	providerId: z.string(),
+});

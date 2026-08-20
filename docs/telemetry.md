@@ -96,13 +96,16 @@ whose event never arrived, which cannot be recovered.
 
 #### Capabilities — booleans, never values
 
-`cap_rapidapi`, `cap_perplexity`, `cap_context_dev`, `cap_blob`, `cap_github`, `cap_redis`,
+`cap_perplexity`, `cap_context_dev`, `cap_blob`, `cap_github`, `cap_redis`,
 `cap_agent_bridge`, `cap_cron_secret`, `cap_ai_gateway`, `cap_google_oauth`, `cap_sso_provider`,
 `cap_tracking`, `is_marketing`.
 
 Each is only whether the key is set. `cap_context_dev` is whether an `AppSetting` row holds one,
 `cap_sso_provider` whether an `ssoProvider` row exists, `cap_tracking` whether a tracking site id
 has been minted — never the id itself. No key, value or last-four is sent.
+
+`cap_context_dev` covers both of the agent's Context capabilities: company brand data by domain,
+and reading a person off a LinkedIn URL. They are one key, so they are one boolean.
 
 #### The agent
 

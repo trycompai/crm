@@ -1,12 +1,7 @@
 import { canManageCurrency, workspaceRoleOf } from "@crm/auth";
 import type { Db } from "@crm/db";
 import { Prisma, RateSource } from "@crm/db";
-import {
-	CURRENCIES,
-	type CurrencyMeta,
-	currencyName,
-	normalizeCurrency,
-} from "@crm/db/currency";
+import { CURRENCIES, currencyName, normalizeCurrency } from "@crm/db/currency";
 import { writeReportingCurrency } from "@crm/db/settings";
 import {
 	BadRequestException,
@@ -15,35 +10,9 @@ import {
 	Logger,
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
-import { ConversionService, type Unconverted } from "./conversion.service";
+import { ConversionService } from "./conversion.service";
+import type { CurrencyRate, CurrencySettings } from "./currency.contracts";
 import { RatesService } from "./rates.service";
-
-export interface CurrencyRate {
-	currency: string;
-	name: string | null;
-	rate: number;
-	asOf: string;
-	source: RateSource;
-	provider: string | null;
-	overriding: boolean;
-}
-
-export interface CurrencyInUse {
-	currency: string;
-	name: string | null;
-	deals: number;
-	convertible: boolean;
-}
-
-export interface CurrencySettings {
-	reportingCurrency: string;
-	refreshedAt: string | null;
-	rates: CurrencyRate[];
-	inUse: CurrencyInUse[];
-	unconverted: Unconverted;
-	catalog: CurrencyMeta[];
-	canManage: boolean;
-}
 
 @Injectable()
 export class CurrencyService {

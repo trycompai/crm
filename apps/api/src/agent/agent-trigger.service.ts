@@ -1,7 +1,9 @@
 import { type Db, type FieldEntity, Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
+import { RECORD_ID_COLUMNS } from "@crm/db/fields";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AGENT_DISPATCH } from "./agent-dispatch.config";
@@ -25,6 +27,21 @@ export type AgentTaskQueue = {
 		channelName: string,
 	) => Promise<void>;
 };
+
+async function runWithConcurrency<T>(
+	items: readonly T[],
+	concurrency: number,
+	run: (item: T) => Promise<void>,
+): Promise<void> {
+	const queue = items[Symbol.iterator]();
+	const width = Math.max(1, Math.min(concurrency, items.length));
+
+	await Promise.all(
+		Array.from({ length: width }, async () => {
+			for (const item of queue) await run(item);
+		}),
+	);
+}
 
 @Injectable()
 export class AgentTriggerService {
@@ -186,54 +203,103 @@ export class AgentTriggerService {
 		return result;
 	}
 
-	async fieldBackfill(
+	async fieldBackfillRecords(
 		entity: FieldEntity,
-		key: string,
+		keys: string[],
+		ids: string[],
 		reason: string,
-	): Promise<void> {
-		const subject = `${entity.toLowerCase()}.${key}`;
-
-		try {
-			const pending = await this.db.agentTask.findFirst({
-				where: {
-					kind: "field-backfill",
-					finishedAt: null,
-					reason: { startsWith: `${subject}: ` },
-				},
-				select: { id: true },
-			});
-
-			if (pending) return;
-
-			await this.db.agentTask.create({
-				data: {
-					kind: "field-backfill",
-					reason: `${subject}: ${reason}`,
-					priority: PRIORITY.fieldBackfill,
-					budget: 8,
-					dueAt: new Date(),
-				},
-			});
-
-			this.logger.log({
-				message: "Agent task queued",
-				kind: "field-backfill",
-				entity,
-				key,
-			});
-
-			this.poke();
-		} catch (error) {
-			this.logger.error(
-				{
-					message: "Could not queue agent task",
-					kind: "field-backfill",
-					entity,
-					key,
-				},
-				error instanceof Error ? error.stack : String(error),
-			);
+	): Promise<{ queued: number; merged: number }> {
+		if (ids.length === 0 || keys.length === 0) {
+			return { queued: 0, merged: 0 };
 		}
+
+		const column = RECORD_ID_COLUMNS[entity];
+		let queued = 0;
+		let merged = 0;
+
+		const queueOne = async (id: string): Promise<void> => {
+			try {
+				const outcome = await this.db.$transaction(async (tx) => {
+					await lockIdempotencyKey(
+						tx,
+						`agent-task:field-backfill:${entity}:${id}`,
+					);
+
+					const pending = await tx.agentTask.findFirst({
+						where: {
+							kind: "field-backfill",
+							finishedAt: null,
+							[column]: id,
+						} as Prisma.AgentTaskWhereInput,
+						select: { id: true, payload: true },
+					});
+
+					if (!pending) {
+						await tx.agentTask.create({
+							data: {
+								[column]: id,
+								kind: "field-backfill",
+								reason,
+								priority: PRIORITY.fieldBackfill,
+								budget: 8,
+								dueAt: new Date(),
+								payload: { entity, keys } satisfies Prisma.InputJsonValue,
+							},
+						});
+						return "queued" as const;
+					}
+
+					const parsed = fieldBackfillPayload.safeParse(pending.payload);
+					const priorKeys = parsed.success ? parsed.data.keys : [];
+					const nextKeys = [...new Set([...priorKeys, ...keys])];
+					if (nextKeys.length === priorKeys.length) return "unchanged" as const;
+
+					await tx.agentTask.update({
+						where: { id: pending.id },
+						data: {
+							payload: {
+								entity,
+								keys: nextKeys,
+							} satisfies Prisma.InputJsonValue,
+						},
+					});
+					return "merged" as const;
+				});
+
+				if (outcome === "queued") queued += 1;
+				if (outcome === "merged") merged += 1;
+			} catch (error) {
+				this.logger.error(
+					{
+						message: "Could not queue agent task",
+						kind: "field-backfill",
+						entity,
+						keys,
+						recordId: id,
+					},
+					error instanceof Error ? error.stack : String(error),
+				);
+			}
+		};
+
+		await runWithConcurrency(
+			ids,
+			AGENT_DISPATCH.fieldBackfill.concurrency,
+			queueOne,
+		);
+
+		this.logger.log({
+			message: "Agent task queued",
+			kind: "field-backfill",
+			entity,
+			keys,
+			queued,
+			merged,
+		});
+
+		if (queued > 0 || merged > 0) this.poke();
+
+		return { queued, merged };
 	}
 
 	async meetingSoon(contactId: string, when: Date): Promise<void> {

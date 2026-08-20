@@ -5,11 +5,18 @@ import {
 	Logger,
 	ServiceUnavailableException,
 } from "@nestjs/common";
+import {
+	ApiOkResponse,
+	ApiOperation,
+	ApiServiceUnavailableResponse,
+	ApiTags,
+} from "@nestjs/swagger";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import { InjectDatabase } from "../database/database.constants";
 
 const SLOW_PROBE_MS = 250;
 
+@ApiTags("Health")
 @Controller("health")
 export class HealthController {
 	private readonly logger = new Logger(HealthController.name);
@@ -18,6 +25,15 @@ export class HealthController {
 
 	@Get()
 	@AllowAnonymous()
+	@ApiOperation({ summary: "Report API and database liveness" })
+	@ApiOkResponse({
+		description: "The API and its database are reachable.",
+		schema: { example: { status: "ok", database: "up" } },
+	})
+	@ApiServiceUnavailableResponse({
+		description: "The database did not respond.",
+		schema: { example: { status: "error", database: "down" } },
+	})
 	async check() {
 		const startedAt = process.hrtime.bigint();
 

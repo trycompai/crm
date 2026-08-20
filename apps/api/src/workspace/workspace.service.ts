@@ -22,7 +22,6 @@ import { normalizeDomain } from "../companies/domain";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	countsByKey,
-	FACET_ALL,
 	type ListResult,
 	type OrderByColumns,
 	paginate,
@@ -32,29 +31,9 @@ import type {
 	MemberListInput,
 	SetMemberRoleInput,
 	UpdateWorkspaceInput,
+	Workspace,
+	WorkspaceMember,
 } from "./workspace.contracts";
-
-export interface Workspace {
-	id: string;
-	slug: string;
-	name: string;
-	website: string | null;
-	onboarded: boolean;
-	viewerRole: WorkspaceRole | null;
-	canRename: boolean;
-	canChangeRoles: boolean;
-}
-
-export interface WorkspaceMember {
-	id: string;
-	userId: string;
-	name: string;
-	email: string;
-	image: string | null;
-	role: WorkspaceRole;
-	joinedAt: string;
-	isViewer: boolean;
-}
 
 const MEMBER_SELECT = {
 	id: true,
@@ -278,8 +257,8 @@ export class WorkspaceService {
 	private buildWhere(input: MemberListInput): Prisma.MemberWhereInput {
 		const where = this.searchWhere(input.q);
 
-		if (input.role !== FACET_ALL) {
-			where.role = input.role;
+		if (input.role.length > 0) {
+			where.role = { in: input.role };
 		}
 
 		return where;

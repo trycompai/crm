@@ -7,11 +7,11 @@ export type TableQueryState = {
 	pageSize: number;
 	tab: string;
 	tabId?: string;
-	filters: Record<string, string>;
+	filters: Record<string, string[]>;
 	toggleSort: (id: string) => void;
 	setSort: (id: string) => void;
 	setDir: (dir: SortDirection) => void;
-	setPage: (page: number) => void;
+	setPage: (page: number) => Promise<void>;
 	setTab: (value: string) => void;
-	setFilter: (id: string, value: string) => void;
+	setFilter: (id: string, values: string[]) => void;
 };

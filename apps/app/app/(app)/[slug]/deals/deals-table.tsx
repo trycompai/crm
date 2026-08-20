@@ -1,5 +1,7 @@
 "use client";
 
+import Archive from "@carbon/icons-react/es/Archive";
+import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -9,10 +11,11 @@ import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
+import { useFieldFacets } from "@/components/crm/fields/field-facets";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
@@ -123,11 +126,29 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 	},
 ];
 
+const ARCHIVED_COLUMN: DataTableColumn<DealRow> = {
+	id: "archivedAt",
+	header: "Archived",
+	label: "Archived date",
+	sortable: true,
+	align: "right",
+	width: "w-[12%]",
+	cell: (row) => (
+		<span className="text-muted-foreground">
+			{row.archivedAt ? (
+				<LocalRelativeTime date={row.archivedAt} />
+			) : (
+				<EmptyCellValue />
+			)}
+		</span>
+	),
+};
+
 export function DealsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
-	const { query, input } = useTableQuery(dealsSearchParams);
+	const { query, input, setArchived } = useTableQuery(dealsSearchParams);
 
 	const deals = useQuery({
 		...trpc.deals.list.queryOptions(input),
@@ -139,8 +160,28 @@ export function DealsTable() {
 	const selection = useTableSelection(
 		useMemo(() => rows.map((row) => row.id), [rows]),
 	);
+	const settledIds = useMemo(() => {
+		const matching = new Set(
+			rows
+				.filter((row) => Boolean(row.archivedAt) === input.archived)
+				.map((row) => row.id),
+		);
+		return selection.ids.filter((id) => matching.has(id));
+	}, [rows, input.archived, selection.ids]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
+	useEffect(() => {
+		selection.clear();
+	}, [input.archived]);
+
+	const toggleArchived = (next: boolean) => {
+		selection.clear();
+		if (!next && query.sort === "archivedAt") query.setSort("");
+		setArchived(next);
+	};
 
 	const facetCounts = deals.data?.facetCounts;
+	const fieldFacets = useFieldFacets("DEAL", facetCounts);
 
 	const facets: DataTableFacet[] = [
 		{
@@ -168,6 +209,7 @@ export function DealsTable() {
 					: [],
 			),
 		},
+		...fieldFacets,
 	];
 
 	const openValueCents = deals.data?.openValueCents;
@@ -177,12 +219,29 @@ export function DealsTable() {
 	const openPipelineCents = openValueCents ?? (uncounted > 0 ? 0 : null);
 
 	const fieldColumns = useFieldColumns<DealRow>("DEAL");
-	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+	const columns = useMemo(
+		() =>
+			input.archived
+				? [...COLUMNS, ARCHIVED_COLUMN, ...fieldColumns]
+				: [...COLUMNS, ...fieldColumns],
+		[fieldColumns, input.archived],
+	);
 
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search deals by name or company…" />}
+			actions={
+				<Button
+					variant={input.archived ? "contrast" : "outline"}
+					size="sm"
+					className="justify-start sm:justify-center"
+					onClick={() => toggleArchived(!input.archived)}
+				>
+					<Archive data-icon="inline-start" />
+					Archived
+				</Button>
+			}
 			columns={columns}
 			rows={rows}
 			total={deals.data?.total ?? 0}
@@ -199,7 +258,11 @@ export function DealsTable() {
 			selection={{
 				state: selection,
 				actions: (
-					<DealsBulkActions ids={selection.ids} onDone={selection.clear} />
+					<DealsBulkActions
+						ids={settledIds}
+						onDone={selection.clear}
+						archived={input.archived}
+					/>
 				),
 				rowLabel: (row) => row.name,
 			}}
@@ -207,9 +270,11 @@ export function DealsTable() {
 			loading={deals.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "deal", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "deal", id: row.id })}
-			empty="No deals match this view."
+			empty={
+				input.archived ? "No archived deals." : "No deals match this view."
+			}
 			meta={
-				openPipelineCents === null ? undefined : (
+				input.archived || openPipelineCents === null ? undefined : (
 					<span>
 						{deals.data?.total ?? 0} deals ·{" "}
 						<span className="tabular-nums">

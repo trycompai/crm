@@ -31,6 +31,7 @@ import { settle } from "../lib/enrichment";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
+import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
 
 const TASK_MARKER = "task:";
@@ -84,6 +85,21 @@ export function taskFromToken(token: string | undefined): string | null {
 	return id.length > 0 ? id : null;
 }
 
+export async function closeTask(
+	token: string | undefined,
+	outcome: string,
+	status: EnrichmentStatus = EnrichmentStatus.COMPLETE,
+): Promise<boolean> {
+	const taskId = taskFromToken(token);
+	if (!taskId) return false;
+
+	const subject =
+		(await completeTask(taskId, outcome)) ?? (await taskSubject(taskId));
+	if (subject) await settle(subject, status);
+
+	return true;
+}
+
 export default defineChannel({
 	routes: [
 		GET("/internal/crm/dispatch-health", async (request) => {
@@ -122,6 +138,7 @@ export default defineChannel({
 
 			waitUntil(
 				(async () => {
+					await reconcileStaleTasks();
 					await drainAll((task) =>
 						send(brief(task), {
 							auth: taskAuth(task),
@@ -248,12 +265,7 @@ export default defineChannel({
 		},
 
 		async "session.waiting"(_data, channel) {
-			const taskId = taskFromToken(channel.continuationToken);
-			if (taskId) {
-				const subject = await completeTask(taskId, "ran");
-				if (subject) await settle(subject, EnrichmentStatus.COMPLETE);
-				return;
-			}
+			if (await closeTask(channel.continuationToken, "ran")) return;
 
 			const conversationId = builderIdFromToken(channel.continuationToken);
 			if (!conversationId) return;
@@ -295,6 +307,8 @@ export default defineChannel({
 		},
 
 		async "session.completed"(_data, channel) {
+			if (await closeTask(channel.continuationToken, "ran")) return;
+
 			const conversationId = builderIdFromToken(channel.continuationToken);
 			if (conversationId) {
 				const { db } = await import("@crm/db");
@@ -330,6 +344,16 @@ export default defineChannel({
 		},
 
 		async "turn.cancelled"(_data, channel) {
+			if (
+				await closeTask(
+					channel.continuationToken,
+					"stopped",
+					EnrichmentStatus.SKIPPED,
+				)
+			) {
+				return;
+			}
+
 			const conversationId = builderIdFromToken(channel.continuationToken);
 			if (conversationId) {
 				const { db } = await import("@crm/db");

@@ -2,6 +2,7 @@ import ContextDev from "context.dev";
 import { APIError } from "context.dev/core/error";
 import { z } from "zod";
 import { contextDevKey } from "./capabilities";
+import { CONTEXT } from "./context-config";
 
 export type JsonSchema = {
 	type?:
@@ -64,11 +65,9 @@ export type SearchResult = {
 	markdown: string | null;
 };
 
-const TIMEOUT_MS = 60_000;
-
 let client: { key: string; api: ContextDev } | null = null;
 
-async function contextDev(): Promise<ContextDev | null> {
+export async function contextDev(): Promise<ContextDev | null> {
 	const key = await contextDevKey();
 
 	if (!key) {
@@ -99,8 +98,6 @@ export type KeyCheck =
  */
 const PROBE_EMAIL = "key-check@gmail.com";
 
-const VERIFY_TIMEOUT_MS = 15_000;
-
 export async function verifyKey(key: string): Promise<KeyCheck> {
 	const api = new ContextDev({ apiKey: key });
 
@@ -108,7 +105,7 @@ export async function verifyKey(key: string): Promise<KeyCheck> {
 		await api.brand.retrieve({
 			type: "by_email",
 			email: PROBE_EMAIL,
-			timeoutMS: VERIFY_TIMEOUT_MS,
+			timeoutMS: CONTEXT.verifyTimeoutMs,
 		});
 
 		return { outcome: "valid" };
@@ -143,14 +140,14 @@ export async function brandByDomain(
 	const params = {
 		type: "by_domain",
 		domain,
-		timeoutMS: TIMEOUT_MS,
+		timeoutMS: CONTEXT.timeoutMs,
 	} as const;
 
 	return lookup(maxAgeMs === undefined ? params : { ...params, maxAgeMs });
 }
 
 export async function brandByEmail(email: string): Promise<LookupResult> {
-	return lookup({ type: "by_email", email, timeoutMS: TIMEOUT_MS });
+	return lookup({ type: "by_email", email, timeoutMS: CONTEXT.timeoutMs });
 }
 
 export async function prefetch(domain: string): Promise<void> {
@@ -180,7 +177,7 @@ export async function extract(
 			schema,
 			instructions,
 			maxPages: 8,
-			timeoutMS: TIMEOUT_MS,
+			timeoutMS: CONTEXT.timeoutMs,
 		});
 		return { outcome: "found", data: response.data };
 	} catch (error) {
@@ -313,7 +310,7 @@ function recognisedKeyFailure(error: APIError): boolean {
 	);
 }
 
-function describe(cause: unknown): string {
+export function describe(cause: unknown): string {
 	if (cause instanceof APIError) {
 		return `${cause.status ?? "?"} ${errorCode(cause) ?? cause.message}`;
 	}

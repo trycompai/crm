@@ -10,11 +10,18 @@ import {
 import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
+import { restMeta } from "../trpc/openapi";
 import { ConversationService } from "./conversation.service";
 import {
 	calendarEventInput,
+	calendarEventOutput,
+	emailThreadOutput,
+	googleConnectionStatusOutput,
+	purgeSyncedDataOutput,
+	revokeAccessOutput,
 	setAutoCreateInput,
 	suppressDomainInput,
+	suppressDomainOutput,
 	threadInput,
 } from "./google.contracts";
 import { GoogleConnectionService } from "./google-connection.service";
@@ -31,28 +38,44 @@ export class GoogleRouter {
 		private readonly conversations: ConversationService,
 	) {}
 
-	@Query()
+	@Query({
+		output: googleConnectionStatusOutput,
+		meta: restMeta("GET", "/google/status", ["Google"]),
+	})
 	async status(@Ctx() ctx: AuthedTrpcContext) {
 		return this.connection.status(ctx.user.id);
 	}
 
-	@Mutation()
+	@Mutation({
+		output: purgeSyncedDataOutput,
+		meta: restMeta("POST", "/google/purge-synced-data", ["Google"]),
+	})
 	async purgeSyncedData(@Ctx() ctx: AuthedTrpcContext) {
 		return this.connection.purgeSyncedData(ctx.user.id);
 	}
 
-	@Mutation()
+	@Mutation({
+		output: revokeAccessOutput,
+		meta: restMeta("POST", "/google/revoke", ["Google"]),
+	})
 	async revokeAccess(@Ctx() ctx: AuthedTrpcContext) {
 		return this.connection.revoke(ctx.user.id);
 	}
 
-	@Mutation()
+	@Mutation({
+		output: googleConnectionStatusOutput,
+		meta: restMeta("POST", "/google/sync", ["Google"]),
+	})
 	async syncNow(@Ctx() ctx: AuthedTrpcContext) {
 		await this.sync.runForUser(ctx.user.id);
 		return this.connection.status(ctx.user.id);
 	}
 
-	@Mutation({ input: setAutoCreateInput })
+	@Mutation({
+		input: setAutoCreateInput,
+		output: googleConnectionStatusOutput,
+		meta: restMeta("PATCH", "/google/auto-create", ["Google"]),
+	})
 	async setAutoCreate(
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof setAutoCreateInput>,
@@ -65,7 +88,11 @@ export class GoogleRouter {
 		return this.connection.status(ctx.user.id);
 	}
 
-	@Mutation({ input: suppressDomainInput })
+	@Mutation({
+		input: suppressDomainInput,
+		output: suppressDomainOutput,
+		meta: restMeta("POST", "/google/suppress-domain", ["Google"]),
+	})
 	async suppressDomain(@Input() input: z.infer<typeof suppressDomainInput>) {
 		return this.connection.suppressDomain(input.domain, {
 			reason: input.reason,
@@ -73,12 +100,20 @@ export class GoogleRouter {
 		});
 	}
 
-	@Query({ input: threadInput })
+	@Query({
+		input: threadInput,
+		output: emailThreadOutput,
+		meta: restMeta("GET", "/google/threads/{threadId}", ["Google"]),
+	})
 	async thread(@Input("threadId") threadId: string) {
 		return this.conversations.thread(threadId);
 	}
 
-	@Query({ input: calendarEventInput })
+	@Query({
+		input: calendarEventInput,
+		output: calendarEventOutput,
+		meta: restMeta("GET", "/google/events/{eventId}", ["Google"]),
+	})
 	async event(@Input("eventId") eventId: string) {
 		return this.conversations.event(eventId);
 	}

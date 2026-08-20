@@ -15,6 +15,9 @@ export function subtitleFor(kind: RecordKind): string {
 
 export const STANDARD_ROW = "Standard fields";
 export const STANDARD_NOTE = "reorder and hide only";
+export const SUGGESTED_ROW = "Suggested fields";
+export const SUGGESTED_NOTE = "one click to add";
+export const ADD = "Add";
 export const CUSTOM_GROUP = "Custom fields";
 export const DRAG_NOTE = "Drag to order";
 export const ARCHIVED_ROW = "Archived";
@@ -23,6 +26,7 @@ export const NEW_FIELD = "New field";
 export const ORDER_NOTE = "Order here is the order on the sheet";
 export const MANUAL_ONLY = "Manual only";
 export const TABLE_NOTE = "also a column on the table";
+export const FILTER_NOTE = "also a filter";
 
 export const EMPTY_TITLE = "No custom fields yet";
 export const EMPTY_BODY =
@@ -69,12 +73,22 @@ const TABLE_PLACEMENT = {
 	DEAL: "Offer as a column on the Deals table",
 } satisfies Record<FieldEntity, string>;
 
+const FILTER_PLACEMENT = {
+	COMPANY: "Offer as a filter on the Companies table",
+	CONTACT: "Offer as a filter on the Contacts table",
+	DEAL: "Offer as a filter on the Deals table",
+} satisfies Record<FieldEntity, string>;
+
 export function sheetPlacement(entity: FieldEntity): string {
 	return SHEET_PLACEMENT[entity];
 }
 
 export function tablePlacement(entity: FieldEntity): string {
 	return TABLE_PLACEMENT[entity];
+}
+
+export function filterPlacement(entity: FieldEntity): string {
+	return FILTER_PLACEMENT[entity];
 }
 
 export const ENTITY_TABS = [

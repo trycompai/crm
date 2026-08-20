@@ -16,12 +16,12 @@ Asking a model what it stands for produces "Paula Marchetti" — which happens t
 right, and would have been just as confident had it been wrong. You cannot tell
 the difference afterwards, which is why guessing is banned outright.
 
-What works is decomposition: `pmarchetti` contains the surname `marchetti`, and
-searching *that* alongside the company returns `linkedin.com/in/paulamarchetti`
-as the first result. The guess went into the **query**, and the answer came from
-the profile.
+What works is handing over every clue you already hold — the address itself, the
+name on the record, the employer and its domain — and letting the resolver match
+them against real profiles. The clues go into the **query**, and the answer comes
+from the profile.
 
-That is the shape of every match: guess where to look, never what you will find.
+That is the shape of every match: say where to look, never what you will find.
 
 ## The procedure
 
@@ -29,20 +29,30 @@ That is the shape of every match: guess where to look, never what you will find.
    have ever replied to us from that address, you already have the strongest
    evidence available anywhere — `crm.thread-reply` — and a signature block may
    hand you their title as well. Start every match here, not at a search engine.
-1. **`resolve_linkedin_profile`** with the email and company. It decomposes the
-   local part and returns candidate slugs. These are leads, not answers.
-2. **`get_linkedin_profile`** on each candidate, passing the email, company name
-   and domain — **and the `contactId`**. It returns the profile *and a verdict*.
-   Passing the id is what lets it copy their photograph, which it does only if
-   the verdict comes back positive, in code, without asking you. Leaving it out
-   costs the contact their picture and saves nothing.
-3. **Read the verdict, not the profile.** It checks two things:
+1. **`resolve_linkedin_profile`** when the record holds no LinkedIn URL. Pass the
+   email, the company name and domain, and any first and last name the CRM has.
+   It returns one candidate and a verdict. A candidate is a lead, not an answer.
+2. **`get_linkedin_profile`** when the record already holds a LinkedIn URL, or to
+   check a candidate at a different URL. Pass the email, company name
+   and domain — **and the `contactId`**. It returns the profile, their full work
+   history *and a verdict*, in one lookup. Passing the id is what lets it copy
+   their photograph, which it does only if the verdict comes back positive, in
+   code, without asking you. Leaving it out costs the contact their picture and
+   saves nothing.
+
+   Both calls cost the same, and they are the most expensive you have. Two or
+   three lookups is the whole budget for a contact, so do not run both when one
+   answers. A record with a LinkedIn URL needs step 2 only.
+3. **Read the verdict, not the profile.** It checks three things:
+   - `emailMatches` — the profile lists the address we are identifying.
    - `employerMatches` — a current position matches the company we have.
    - `nameMatches` — the real name is consistent with the email local part
      (`y` + `okonkwo` → Tomi Okonkwo).
-4. **Both, or it is not them.** One of the two is not a weaker match, it is a
-   different person who happens to share something.
-5. If no candidate passes, **stop**. Leaving "Pmarchetti" in the CRM is the correct
+4. **`emailMatches` settles it on its own.** The person put that address on their
+   own profile. Nothing else you can observe is stronger.
+5. **Otherwise both, or it is not them.** One of the other two is not a weaker
+   match, it is a different person who happens to share something.
+6. If no candidate passes, **stop**. Leaving "Pmarchetti" in the CRM is the correct
    outcome when you do not know.
 
 Somebody whose LinkedIn URL is **already on the record** has been through all of
@@ -55,12 +65,17 @@ Call `identify_contact` with what you actually saw:
 
 | What you have | Evidence to record | What happens |
 | --- | --- | --- |
-| Both checks pass | `linkedin.employer-and-name` | Written to the record. |
+| `emailMatches` is true | `profile.email-match` | Written to the record. |
+| Employer and name both pass | `linkedin.employer-and-name` | Written to the record. |
 | They replied from that address | `crm.thread-reply` | Written to the record. |
 | One check passes | `employer-only`, or the profile as `search.cites-profile` | Offered to a rep as a suggestion. |
 | Sources disagree | add a `contradiction` entry | Held. Nobody is shown a guess. |
 
-The middle row is the case this exists for. Four Marchettis work at Fernhill; a
+The `sourceUrl` to cite is the one the tool hands back — the profile URL the
+person's own record lists. A lookup that comes back with no source is a lookup
+you cannot write a fact from.
+
+The `One check passes` row is the case this exists for. Four Marchettis work at Fernhill; a
 human settles that in three seconds, and the old rule — throw away anything
 short of certain — meant we paid for that lookup every run and learned nothing
 from it. A suggestion is not a failed match. It is the match, handed to the one

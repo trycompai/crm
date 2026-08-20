@@ -30,92 +30,17 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import type {
+	FoundInContainer,
+	SourceRow,
+	TouchSummary,
+	TrackedDomainRow,
+	TrackingSettings,
+	VerifyResult,
+	VisitedPage,
+	WebsiteActivity,
+} from "./tracking.contracts";
 import { TrackingConfigService } from "./tracking-config.service";
-
-export interface TrackedDomainRow {
-	id: string;
-	host: string;
-	scope: DomainScope;
-	pageViews: number;
-	lastSeenAt: string | null;
-}
-
-export interface TrackingSettings {
-	siteId: string | null;
-	ready: boolean;
-	scriptUrl: string;
-	snippet: string | null;
-	tagManagerSnippet: string | null;
-	crossDomain: boolean;
-	limitToDomains: boolean;
-	cookieSubdomains: boolean;
-	secureCookies: boolean;
-	honourDnt: boolean;
-	cookieDays: number;
-	paused: boolean;
-	cookieLifetimes: { days: number; label: string }[];
-	domains: TrackedDomainRow[];
-	receivingSince: string | null;
-	pageViews: number;
-	submissions: number;
-	canManage: boolean;
-}
-
-export interface VisitedPage {
-	host: string;
-	path: string;
-	views: number;
-	lastSeenAt: string;
-}
-
-export interface TouchSummary {
-	label: string;
-	source: string;
-	medium: string | null;
-	campaign: string | null;
-	landing: string | null;
-	referrer: string | null;
-	at: string | null;
-}
-
-export interface WebsiteActivity {
-	identified: boolean;
-	visitors: number;
-	views: number;
-	lastSeenAt: string | null;
-	pages: VisitedPage[];
-	firstTouch: TouchSummary | null;
-	lastTouch: TouchSummary | null;
-}
-
-export interface SourceRow {
-	source: string;
-	medium: string | null;
-	views: number;
-	contacts: number;
-}
-
-export interface FoundInContainer {
-	id: string;
-	carriesSiteId: boolean;
-}
-
-export type VerifyResult =
-	| {
-			status: "found";
-			host: string;
-			responseMs: number;
-			allowed: boolean;
-			pageView: boolean;
-			container: FoundInContainer | null;
-	  }
-	| {
-			status: "missing";
-			host: string;
-			responseMs: number;
-			containers: string[];
-	  }
-	| { status: "unreachable"; host: string; detail: string };
 
 @Injectable()
 export class TrackingService {

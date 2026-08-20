@@ -1,6 +1,7 @@
 "use client";
 
-import TrashCan from "@carbon/icons-react/es/TrashCan";
+import Archive from "@carbon/icons-react/es/Archive";
+import Undo from "@carbon/icons-react/es/Undo";
 import type { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -43,17 +44,19 @@ function deals(count: number): string {
 export function DealsBulkActions({
 	ids,
 	onDone,
+	archived,
 }: {
 	ids: string[];
 	onDone: () => void;
+	archived: boolean;
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const users = useQuery(trpc.users.list.queryOptions());
 	const reasonId = useId();
-	const [confirming, setConfirming] = useState(false);
 	const [closing, setClosing] = useState<DealStage | null>(null);
 	const [reason, setReason] = useState("");
+	const [confirming, setConfirming] = useState(false);
 
 	const onError = (error: { message: string }) => toast.error(error.message);
 
@@ -81,11 +84,33 @@ export function DealsBulkActions({
 		}),
 	);
 
-	const remove = useMutation(
-		trpc.deals.bulkDelete.mutationOptions({
+	const archive = useMutation(
+		trpc.deals.bulkArchive.mutationOptions({
 			onSuccess: async (result, variables) => {
 				await cache.removedMany({ kind: "deal", ids: variables.ids });
-				reportBulk(result, (count) => `${deals(count)} deleted.`);
+				reportBulk(result, (count) => `${deals(count)} archived.`);
+				onDone();
+			},
+			onError,
+		}),
+	);
+
+	const restore = useMutation(
+		trpc.deals.bulkRestore.mutationOptions({
+			onSuccess: async (result) => {
+				await cache.deal();
+				reportBulk(result, (count) => `${deals(count)} restored.`);
+				onDone();
+			},
+			onError,
+		}),
+	);
+
+	const purge = useMutation(
+		trpc.deals.bulkPurge.mutationOptions({
+			onSuccess: async (result, variables) => {
+				await cache.removedMany({ kind: "deal", ids: variables.ids });
+				reportBulk(result, (count) => `${deals(count)} deleted forever.`);
 				setConfirming(false);
 				onDone();
 			},
@@ -93,8 +118,42 @@ export function DealsBulkActions({
 		}),
 	);
 
+	if (archived) {
+		const archivedPending = restore.isPending || purge.isPending;
+
+		return (
+			<>
+				<BulkActionsMenu pending={archivedPending}>
+					<DropdownMenuGroup>
+						<DropdownMenuItem onSelect={() => restore.mutate({ ids })}>
+							<Undo />
+							Restore
+						</DropdownMenuItem>
+					</DropdownMenuGroup>
+					<DropdownMenuSeparator />
+					<DropdownMenuGroup>
+						<DropdownMenuItem
+							variant="destructive"
+							onSelect={() => setConfirming(true)}
+						>
+							Delete forever
+						</DropdownMenuItem>
+					</DropdownMenuGroup>
+				</BulkActionsMenu>
+
+				<BulkDeleteDialog
+					open={confirming}
+					onOpenChange={setConfirming}
+					title={`Delete ${deals(ids.length)} forever?`}
+					description="Everything filed against them — activity, notes, the amounts in your pipeline — goes too. This cannot be undone."
+					onConfirm={() => purge.mutate({ ids })}
+				/>
+			</>
+		);
+	}
+
 	const pending =
-		assignOwner.isPending || setStage.isPending || remove.isPending;
+		assignOwner.isPending || setStage.isPending || archive.isPending;
 
 	return (
 		<>
@@ -128,12 +187,9 @@ export function DealsBulkActions({
 				</DropdownMenuSub>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
-					<DropdownMenuItem
-						variant="destructive"
-						onSelect={() => setConfirming(true)}
-					>
-						<TrashCan />
-						Delete
+					<DropdownMenuItem onSelect={() => archive.mutate({ ids })}>
+						<Archive />
+						Archive
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
 			</BulkActionsMenu>
@@ -201,14 +257,6 @@ export function DealsBulkActions({
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			<BulkDeleteDialog
-				open={confirming}
-				onOpenChange={setConfirming}
-				title={`Delete ${deals(ids.length)}?`}
-				description="Everything filed against them — activity, notes, the amounts in your pipeline — goes too. This cannot be undone."
-				onConfirm={() => remove.mutate({ ids })}
-			/>
 		</>
 	);
 }

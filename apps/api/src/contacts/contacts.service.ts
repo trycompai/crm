@@ -7,6 +7,7 @@ import {
 	Prisma as PrismaNamespace,
 	type RecordSource,
 } from "@crm/db";
+import type { FieldDefinitionWithOptions } from "@crm/db/fields";
 import {
 	ConflictException,
 	Injectable,
@@ -15,6 +16,7 @@ import {
 } from "@nestjs/common";
 import { AgentQueueService } from "../agent/agent-queue.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
+import { ARCHIVE } from "../archive/archive-config";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
 import {
 	ActivityStampService,
@@ -25,20 +27,24 @@ import { blankToNull, normalizeEmail, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
 import {
+	activityFacetCounts,
+	activityFilter,
+	archivedFilter,
 	countsByKey,
-	FACET_ALL,
 	FACET_UNASSIGNED,
 	type ListResult,
 	type OrderByColumns,
 	ownerFilter,
 	paginate,
 	resolveOrderBy,
+	splitSentinel,
 } from "../trpc/list-input";
 import type {
 	ContactBulkCompanyInput,
 	ContactBulkOwnerInput,
 	ContactCreateInput,
 	ContactListInput,
+	ContactRow,
 	ContactUpdateInput,
 	FactDecisionInput,
 } from "./contacts.contracts";
@@ -66,36 +72,11 @@ type FactColumns = Record<string, string | undefined>;
 
 const FACT_COLUMNS: FactColumns = {
 	title: "title",
+	seniority: "seniority",
+	function: "function",
 	linkedinUrl: "linkedinUrl",
 	twitterUrl: "twitterUrl",
 	githubUrl: "githubUrl",
-};
-
-export type ContactRow = {
-	id: string;
-	firstName: string;
-	lastName: string | null;
-	email: string | null;
-	title: string | null;
-	imageUrl: string | null;
-	company: {
-		id: string;
-		name: string;
-		domain: string | null;
-		iconUrl: string | null;
-		iconDarkUrl: string | null;
-		iconTone: string | null;
-		logoUrl: string | null;
-	} | null;
-	owner: {
-		id: string;
-		name: string;
-		email: string;
-		image: string | null;
-	} | null;
-	lastActivityAt: string | null;
-	createdAt: string;
-	fields: Record<string, string | number | boolean | null>;
 };
 
 const SORTABLE: OrderByColumns<Prisma.ContactOrderByWithRelationInput[]> = {
@@ -106,6 +87,7 @@ const SORTABLE: OrderByColumns<Prisma.ContactOrderByWithRelationInput[]> = {
 	createdAt: (dir) => [{ createdAt: dir }],
 	owner: (dir) => [{ owner: { name: dir } }, { lastName: "asc" }],
 	lastActivity: (dir) => [{ lastActivityAt: { sort: dir, nulls: "last" } }],
+	archivedAt: (dir) => [{ archivedAt: { sort: dir, nulls: "last" } }],
 };
 
 @Injectable()
@@ -122,7 +104,8 @@ export class ContactsService {
 	) {}
 
 	async list(input: ContactListInput): Promise<ListResult<ContactRow>> {
-		const where = this.buildWhere(input);
+		const filterableFields = await this.fields.filterableFieldsFor("CONTACT");
+		const where = this.buildWhere(input, filterableFields);
 		const { skip, take } = paginate(input);
 
 		const [rows, total, facetCounts] = await Promise.all([
@@ -143,10 +126,11 @@ export class ContactsService {
 					owner: { select: OWNER_SELECT },
 					lastActivityAt: true,
 					createdAt: true,
+					archivedAt: true,
 				},
 			}),
 			this.db.contact.count({ where }),
-			this.facetCounts(input),
+			this.facetCounts(input, filterableFields),
 		]);
 
 		const tableFields = await this.fields.tableValuesFor(
@@ -159,6 +143,7 @@ export class ContactsService {
 				...row,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),
+				archivedAt: row.archivedAt?.toISOString() ?? null,
 				fields: tableFields.get(row.id) ?? {},
 			})),
 			total,
@@ -183,6 +168,7 @@ export class ContactsService {
 				enrichmentStatus: true,
 				enrichmentError: true,
 				createdAt: true,
+				archivedAt: true,
 				brief: {
 					select: {
 						narrative: true,
@@ -240,7 +226,8 @@ export class ContactsService {
 			contact.company?.id ?? null,
 		);
 
-		const { deals, createdAt, brief, facts, company, ...rest } = contact;
+		const { deals, createdAt, archivedAt, brief, facts, company, ...rest } =
+			contact;
 
 		return {
 			...rest,
@@ -248,6 +235,7 @@ export class ContactsService {
 			fields: await this.fields.valuesFor("CONTACT", id),
 			queued: await this.queue.isQueued({ contactId: id }),
 			createdAt: createdAt.toISOString(),
+			archivedAt: archivedAt?.toISOString() ?? null,
 			brief: brief
 				? {
 						...brief,
@@ -277,7 +265,10 @@ export class ContactsService {
 
 		if (email) {
 			const existing = await this.db.contact.findFirst({
-				where: { email: { equals: email, mode: "insensitive" } },
+				where: {
+					email: { equals: email, mode: "insensitive" },
+					archivedAt: null,
+				},
 				select: { id: true, firstName: true, lastName: true },
 			});
 			if (existing) {
@@ -337,6 +328,17 @@ export class ContactsService {
 			contact.id,
 			"Added by a rep, with nothing on the record yet",
 		);
+		this.fields
+			.queueBackfillForNewRecord("CONTACT", contact.id)
+			.catch((error: Error) => {
+				this.logger.error(
+					{
+						message: "Contact backfill queueing failed",
+						contactId: contact.id,
+					},
+					error.stack,
+				);
+			});
 
 		return {
 			id: contact.id,
@@ -345,15 +347,70 @@ export class ContactsService {
 		};
 	}
 
-	async delete(id: string): Promise<{ id: string; name: string }> {
+	async archive(id: string): Promise<{ id: string; name: string }> {
+		try {
+			const contact = await this.db.contact.update({
+				where: { id },
+				data: { archivedAt: new Date() },
+				select: { firstName: true, lastName: true },
+			});
+
+			this.logger.log({ message: "Contact archived", contactId: id });
+
+			return { id, name: nameOf(contact) };
+		} catch (error) {
+			throw this.translate(error, id);
+		}
+	}
+
+	async restore(id: string): Promise<{ id: string; name: string }> {
+		try {
+			const contact = await this.db.contact.update({
+				where: { id },
+				data: { archivedAt: null },
+				select: { firstName: true, lastName: true },
+			});
+
+			this.logger.log({ message: "Contact restored", contactId: id });
+
+			return { id, name: nameOf(contact) };
+		} catch (error) {
+			throw this.translate(error, id);
+		}
+	}
+
+	async purge(id: string): Promise<{ id: string; name: string }>;
+	async purge(
+		id: string,
+		guard: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null>;
+	async purge(
+		id: string,
+		guard?: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null> {
 		let deleted: {
 			targets: StampTargets;
 			name: string;
 			suppressed: boolean;
-		};
+		} | null;
 
 		try {
 			deleted = await this.db.$transaction(async (tx) => {
+				const [row] = await tx.$queryRaw<Array<{ archivedAt: Date | null }>>`
+					SELECT "archivedAt" FROM contact WHERE id = ${id} FOR UPDATE
+				`;
+
+				if (!row) {
+					if (guard) return null;
+					throw new NotFoundException(`No contact with id ${id}.`);
+				}
+				if (
+					guard &&
+					(!row.archivedAt || row.archivedAt > guard.archivedBefore)
+				) {
+					return null;
+				}
+
 				const targets = await this.stamp.targetsOf({ contactId: id }, tx);
 
 				await tx.agentTask.deleteMany({ where: { contactId: id } });
@@ -364,9 +421,7 @@ export class ContactsService {
 					select: { firstName: true, lastName: true, email: true },
 				});
 
-				const name = [contact.firstName, contact.lastName]
-					.filter(Boolean)
-					.join(" ");
+				const name = nameOf(contact);
 				const suppress = normalizeEmail(contact.email ?? "");
 
 				if (suppress) {
@@ -386,15 +441,30 @@ export class ContactsService {
 			throw this.translate(error, id);
 		}
 
+		if (!deleted) return null;
+
 		await this.stamp.recomputeAfterDelete(deleted.targets, { contactId: id });
 
 		this.logger.log({
-			message: "Contact deleted",
+			message: "Contact purged",
 			contactId: id,
 			suppressed: deleted.suppressed,
 		});
 
 		return { id, name: deleted.name };
+	}
+
+	async purgeExpired(before: Date): Promise<BulkResult> {
+		const expired = await this.db.contact.findMany({
+			where: { archivedAt: { lte: before } },
+			select: { id: true },
+			take: ARCHIVE.prune.maxBatch,
+		});
+
+		return runBulk(
+			expired.map((row) => row.id),
+			(id) => this.purge(id, { archivedBefore: before }),
+		);
 	}
 
 	async update(id: string, input: ContactUpdateInput) {
@@ -471,6 +541,7 @@ export class ContactsService {
 		return {
 			requested: ids.length,
 			succeeded: count,
+			skipped: 0,
 			failed: ids.length - count,
 			message: null,
 		};
@@ -504,6 +575,7 @@ export class ContactsService {
 		return {
 			requested: ids.length,
 			succeeded: count,
+			skipped: 0,
 			failed: ids.length - count,
 			message: null,
 		};
@@ -513,8 +585,16 @@ export class ContactsService {
 		return runBulk(ids, (id) => this.enrich(id));
 	}
 
-	async bulkDelete(ids: string[]): Promise<BulkResult> {
-		return runBulk(ids, (id) => this.delete(id));
+	async bulkArchive(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.archive(id));
+	}
+
+	async bulkRestore(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.restore(id));
+	}
+
+	async bulkPurge(ids: string[]): Promise<BulkResult> {
+		return runBulk(ids, (id) => this.purge(id));
 	}
 
 	private async allowAgain(
@@ -710,27 +790,66 @@ export class ContactsService {
 		};
 	}
 
-	private buildWhere(input: ContactListInput): Prisma.ContactWhereInput {
-		const where: Prisma.ContactWhereInput = {
-			...this.searchFilter(input.q),
-			...ownerFilter(input.owner),
-		};
+	private companyFilter(
+		values: string[],
+	): Prisma.ContactWhereInput | undefined {
+		if (values.length === 0) return undefined;
 
-		if (input.company !== FACET_ALL) {
-			where.companyId = input.company === NO_COMPANY ? null : input.company;
-		}
-
-		if (input.source !== FACET_ALL) {
-			where.source = input.source as RecordSource;
-		}
-
-		return where;
+		const { ids, includesSentinel } = splitSentinel(values, NO_COMPANY);
+		if (includesSentinel && ids.length === 0) return { companyId: null };
+		if (!includesSentinel) return { companyId: { in: ids } };
+		return { OR: [{ companyId: { in: ids } }, { companyId: null }] };
 	}
 
-	private async facetCounts(input: ContactListInput) {
-		const where = this.searchFilter(input.q);
+	private buildWhere(
+		input: ContactListInput,
+		filterableFields: FieldDefinitionWithOptions[],
+	): Prisma.ContactWhereInput {
+		const and: Prisma.ContactWhereInput[] = [
+			this.searchFilter(input.q),
+			archivedFilter(input.archived),
+			...this.fields.fieldFilters(filterableFields, input.fields),
+		];
 
-		const [owners, companies, sources] = await Promise.all([
+		const owner = ownerFilter<Prisma.ContactWhereInput>(input.owner);
+		if (owner) and.push(owner);
+
+		const company = this.companyFilter(input.company);
+		if (company) and.push(company);
+
+		if (input.source.length > 0) {
+			and.push({ source: { in: input.source as RecordSource[] } });
+		}
+		if (input.title.length > 0) and.push({ title: { in: input.title } });
+		if (input.seniority.length > 0) {
+			and.push({ seniority: { in: input.seniority } });
+		}
+		if (input.persona.length > 0) and.push({ function: { in: input.persona } });
+
+		const activity = activityFilter(input.activity);
+		if (activity) and.push(activity);
+
+		return { AND: and };
+	}
+
+	private async facetCounts(
+		input: ContactListInput,
+		filterableFields: FieldDefinitionWithOptions[],
+	) {
+		const where = {
+			AND: [this.searchFilter(input.q), archivedFilter(input.archived)],
+		};
+
+		const [
+			owners,
+			companies,
+			sources,
+			titles,
+			seniorities,
+			personas,
+			activity,
+			fieldFacets,
+		] = await Promise.all([
 			this.db.contact.groupBy({
 				by: ["ownerId"],
 				where,
@@ -746,12 +865,41 @@ export class ContactsService {
 				where,
 				_count: { _all: true },
 			}),
+			this.db.contact.groupBy({
+				by: ["title"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["seniority"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["function"],
+				where,
+				_count: { _all: true },
+			}),
+			activityFacetCounts((activityWhere) =>
+				this.db.contact.count({ where: { AND: [where, activityWhere] } }),
+			),
+			this.fields.filterFacetCounts("CONTACT", where, filterableFields),
 		]);
 
 		return {
 			owner: countsByKey(owners, "ownerId", FACET_UNASSIGNED),
 			company: countsByKey(companies, "companyId", NO_COMPANY),
 			source: countsByKey(sources, "source"),
+			title: countsByKey(titles, "title"),
+			seniority: countsByKey(seniorities, "seniority"),
+			persona: countsByKey(personas, "function"),
+			activity,
+			...Object.fromEntries(
+				Object.entries(fieldFacets).map(([key, counts]) => [
+					`field:${key}`,
+					counts,
+				]),
+			),
 		};
 	}
 
@@ -768,4 +916,11 @@ export class ContactsService {
 		}
 		throw cause;
 	}
+}
+
+function nameOf(contact: {
+	firstName: string;
+	lastName: string | null;
+}): string {
+	return [contact.firstName, contact.lastName].filter(Boolean).join(" ");
 }

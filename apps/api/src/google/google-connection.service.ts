@@ -1,5 +1,5 @@
 import { isGoogleConfigured, signsInWithGoogle } from "@crm/auth";
-import { type Db, GoogleSyncStatus, type Prisma } from "@crm/db";
+import type { Db, Prisma } from "@crm/db";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { normalizeDomain } from "../companies/domain";
 import { ActivityStampService } from "../crm/activity-stamp.service";
@@ -13,25 +13,15 @@ import {
 	type GoogleSyncSource,
 	SCOPE_FOR_SOURCE,
 } from "./google.constants";
+import type {
+	GoogleConnectionStatus,
+	GoogleSourceStatus,
+	PurgeSyncedDataOutput,
+	RevokeAccessOutput,
+	SuppressDomainOutput,
+} from "./google.contracts";
 
 const PURGE_TIMEOUT_MS = 60_000;
-
-export type SourceStatus = {
-	source: GoogleSyncSource;
-	connected: boolean;
-	status: GoogleSyncStatus | null;
-	lastSyncedAt: string | null;
-	lastError: string | null;
-	autoCreate: boolean;
-};
-
-export type ConnectionStatus = {
-	configured: boolean;
-	linked: boolean;
-	required: boolean;
-	hasRefreshToken: boolean;
-	sources: SourceStatus[];
-};
 
 @Injectable()
 export class GoogleConnectionService {
@@ -45,7 +35,7 @@ export class GoogleConnectionService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
-	async status(userId: string): Promise<ConnectionStatus> {
+	async status(userId: string): Promise<GoogleConnectionStatus> {
 		await this.onConnected(userId);
 
 		const [granted, rows, hasRefreshToken, accounts] = await Promise.all([
@@ -57,7 +47,7 @@ export class GoogleConnectionService {
 
 		const bySource = new Map(rows.map((row) => [row.source, row]));
 
-		const sources = GOOGLE_SYNC_SOURCES.map((source): SourceStatus => {
+		const sources = GOOGLE_SYNC_SOURCES.map((source): GoogleSourceStatus => {
 			const row = bySource.get(source);
 			const connected = granted.has(SCOPE_FOR_SOURCE[source]);
 
@@ -124,7 +114,7 @@ export class GoogleConnectionService {
 		}
 	}
 
-	async purgeSyncedData(userId: string): Promise<{ purged: number }> {
+	async purgeSyncedData(userId: string): Promise<PurgeSyncedDataOutput> {
 		const mine: Prisma.EmailMessageWhereInput = {
 			syncedByUserId: userId,
 			gmailMessageId: { not: null },
@@ -163,7 +153,7 @@ export class GoogleConnectionService {
 		return { purged };
 	}
 
-	async revoke(userId: string): Promise<{ revoked: boolean }> {
+	async revoke(userId: string): Promise<RevokeAccessOutput> {
 		for (const source of GOOGLE_SYNC_SOURCES) {
 			await this.state.remove(userId, source);
 		}
@@ -188,7 +178,7 @@ export class GoogleConnectionService {
 	async suppressDomain(
 		domain: string,
 		options: { reason?: string; purge: boolean },
-	): Promise<{ domain: string; purged: number }> {
+	): Promise<SuppressDomainOutput> {
 		const normalised = normalizeDomain(domain);
 		if (!normalised) {
 			throw new NotFoundException(`"${domain}" is not a domain.`);

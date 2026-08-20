@@ -22,7 +22,7 @@ import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
-import { CopyValue } from "./copy-value";
+import { CopyValue } from "../copy-value";
 import { ssoSearchParams } from "./sso-search-params";
 
 type ProviderRow = RouterOutputs["sso"]["list"]["rows"][number];

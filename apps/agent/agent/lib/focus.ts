@@ -5,6 +5,7 @@ export const focus = defineState("crm.focus", () => ({
 	contactId: null as string | null,
 	companyId: null as string | null,
 	sessionId: null as string | null,
+	taskKind: null as string | null,
 	spent: 0,
 	budget: 4,
 	exhausted: false,
@@ -13,14 +14,19 @@ export const focus = defineState("crm.focus", () => ({
 export type CurrentFocus = {
 	contactId: string | null;
 	sessionId: string | null;
+	taskKind: string | null;
 };
 
 export function currentFocus(): CurrentFocus {
 	try {
 		const state = focus.get();
-		return { contactId: state.contactId, sessionId: state.sessionId };
+		return {
+			contactId: state.contactId,
+			sessionId: state.sessionId,
+			taskKind: state.taskKind,
+		};
 	} catch {
-		return { contactId: null, sessionId: null };
+		return { contactId: null, sessionId: null, taskKind: null };
 	}
 }
 
@@ -28,12 +34,14 @@ export function focusOn(input: {
 	contactId?: string | null;
 	companyId?: string | null;
 	sessionId?: string | null;
+	taskKind?: string | null;
 }): void {
 	focus.update((current) => ({
 		...current,
 		contactId: input.contactId ?? current.contactId,
 		companyId: input.companyId ?? current.companyId,
 		sessionId: input.sessionId ?? current.sessionId,
+		taskKind: input.taskKind ?? current.taskKind,
 	}));
 }
 

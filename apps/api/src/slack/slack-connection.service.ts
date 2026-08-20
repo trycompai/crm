@@ -16,8 +16,15 @@ import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
 import type {
 	SlackChannelsInput,
+	SlackChannelsResult,
 	SlackCreateChannelInput,
+	SlackCreateChannelResult,
+	SlackDisconnectResult,
 	SlackJoinChannelInput,
+	SlackJoinChannelResult,
+	SlackMatches,
+	SlackRefreshPeopleResult,
+	SlackStatus,
 } from "./slack.contracts";
 import { SlackChannelsService } from "./slack-channels.service";
 import { SLACK, type SlackSyncState } from "./slack-config";
@@ -34,7 +41,7 @@ export class SlackConnectionService {
 		private readonly access: AgentAccessService,
 	) {}
 
-	async status(userId: string) {
+	async status(userId: string): Promise<SlackStatus> {
 		const role = await this.access.assertMember(userId);
 		const [account, agents, matches, memberCount, grant] = await Promise.all([
 			this.db.account.findFirst({
@@ -98,7 +105,7 @@ export class SlackConnectionService {
 		};
 	}
 
-	async matches(userId: string) {
+	async matches(userId: string): Promise<SlackMatches> {
 		await this.access.assertMember(userId);
 		const [members, syncing] = await Promise.all([
 			this.db.member.findMany({
@@ -154,7 +161,7 @@ export class SlackConnectionService {
 			: "stalled";
 	}
 
-	async refreshPeople(userId: string) {
+	async refreshPeople(userId: string): Promise<SlackRefreshPeopleResult> {
 		await this.access.assertMember(userId);
 		const account = await this.db.account.findFirst({
 			where: { providerId: "slack", accessToken: { not: null } },
@@ -171,7 +178,10 @@ export class SlackConnectionService {
 		return { requested: true };
 	}
 
-	async channels(input: SlackChannelsInput, userId: string) {
+	async channels(
+		input: SlackChannelsInput,
+		userId: string,
+	): Promise<SlackChannelsResult> {
 		await this.access.assertMember(userId);
 
 		const take = input.limit ?? SLACK.channels.pageSize;
@@ -215,7 +225,10 @@ export class SlackConnectionService {
 		};
 	}
 
-	async joinChannel(input: SlackJoinChannelInput, userId: string) {
+	async joinChannel(
+		input: SlackJoinChannelInput,
+		userId: string,
+	): Promise<SlackJoinChannelResult> {
 		await this.access.assertMember(userId);
 		const channel = await this.db.slackChannel.findUnique({
 			where: { id: input.channelId },
@@ -239,7 +252,10 @@ export class SlackConnectionService {
 		return { queued: true, alreadyJoined: false };
 	}
 
-	async createChannel(input: SlackCreateChannelInput, userId: string) {
+	async createChannel(
+		input: SlackCreateChannelInput,
+		userId: string,
+	): Promise<SlackCreateChannelResult> {
 		await this.access.assertMember(userId);
 		const existing = await this.db.slackChannel.findFirst({
 			where: { name: input.name },
@@ -252,7 +268,7 @@ export class SlackConnectionService {
 		return this.slackChannels.create(input.name, input.isPrivate);
 	}
 
-	async disconnect(userId: string) {
+	async disconnect(userId: string): Promise<SlackDisconnectResult> {
 		const role = await this.access.assertMember(userId);
 
 		if (!canManageConnections(role)) {

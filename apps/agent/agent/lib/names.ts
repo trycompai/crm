@@ -91,6 +91,23 @@ export function domainOf(email: string): string | null {
 	return at > 0 ? email.slice(at + 1).toLowerCase() : null;
 }
 
+export function hostOf(value: string): string {
+	const trimmed = value.trim().toLowerCase();
+	if (trimmed === "") return "";
+
+	const withoutScheme = trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
+	const host = withoutScheme.split("/")[0]?.split("@").pop() ?? "";
+
+	return host.replace(/^www\./, "").replace(/\.$/, "");
+}
+
+export function sameDomain(left: string | null, right: string): boolean {
+	if (!left) return false;
+
+	const a = hostOf(left);
+	return a !== "" && a === hostOf(right);
+}
+
 export function namesMatch(a: string | null, b: string | null): boolean {
 	const left = words(a);
 	const right = words(b);

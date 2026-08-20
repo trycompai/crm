@@ -34,6 +34,7 @@
 		"@nestjs/config": "^4.0.4",
 		"@nestjs/core": "^11.0.1",
 		"@nestjs/platform-express": "^11.0.1",
+		"@nestjs/swagger": "^11.4.7",
 		"@thallesp/nestjs-better-auth": "^2.7.0",
 		"@trpc/server": "^11.18.0",
 		"@vercel/blob": "^2.6.1",
@@ -46,6 +47,7 @@
 		"nestjs-trpc": "^2.13.0",
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "^7.8.1",
+		"trpc-to-openapi": "^3.3.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {

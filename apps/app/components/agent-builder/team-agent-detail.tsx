@@ -349,8 +349,7 @@ function DraftAgentActions({
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 	const workspaceUrl = useWorkspaceUrl();
-	const deployable =
-		version?.status === "READY" || version?.status === "DEPLOYED";
+	const deployable = version?.status === "READY";
 	const deploy = useMutation(
 		trpc.agents.deploy.mutationOptions({
 			onSuccess: async () => {

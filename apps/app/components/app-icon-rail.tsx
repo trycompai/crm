@@ -1,8 +1,6 @@
 "use client";
 
 import Building from "@carbon/icons-react/es/Building";
-import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
-import Chat from "@carbon/icons-react/es/Chat";
 import Close from "@carbon/icons-react/es/Close";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Partnership from "@carbon/icons-react/es/Partnership";
@@ -10,7 +8,9 @@ import Settings from "@carbon/icons-react/es/Settings";
 import Task from "@carbon/icons-react/es/Task";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
+import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
+import Bot from "@crm/ui/components/icons/bot";
 import {
 	Sheet,
 	SheetContent,
@@ -34,7 +34,8 @@ import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 type RailItem = {
 	title: string;
 	href: string;
-	icon: CarbonIconType;
+	icon: CarbonIcon;
+	iconClassName?: string;
 	match: "exact" | "prefix";
 	related?: string[];
 };
@@ -44,7 +45,8 @@ const ITEMS: RailItem[] = [
 	{
 		title: "Chat",
 		href: "/chat",
-		icon: Chat,
+		icon: Bot,
+		iconClassName: "size-5",
 		match: "prefix",
 		related: ["/agents"],
 	},
@@ -98,7 +100,7 @@ function RailLink({
 						aria-current={active ? "page" : undefined}
 						transitionTypes={["nav-lateral"]}
 					>
-						<Icon icon={item.icon} />
+						<Icon icon={item.icon} className={item.iconClassName} />
 						<span className="sr-only">{item.title}</span>
 					</Link>
 				</Button>
@@ -140,7 +142,7 @@ function MobileRailLink({
 					item.title === "Chat" ? "nav-forward" : "nav-lateral",
 				]}
 			>
-				<Icon icon={item.icon} />
+				<Icon icon={item.icon} className={item.iconClassName} />
 				<span>{item.title}</span>
 			</Link>
 		</Button>
@@ -177,7 +179,7 @@ function MobileRailIconLink({
 				aria-current={active ? "page" : undefined}
 				onClick={onNavigate}
 			>
-				<Icon icon={item.icon} />
+				<Icon icon={item.icon} className={item.iconClassName} />
 				<span className="sr-only">{item.title}</span>
 			</Link>
 		</Button>
@@ -199,7 +201,7 @@ export function AppIconRailFallback() {
 					disabled
 					className="text-muted-foreground"
 				>
-					<Icon icon={item.icon} />
+					<Icon icon={item.icon} className={item.iconClassName} />
 					<span className="sr-only">{item.title}</span>
 				</Button>
 			))}

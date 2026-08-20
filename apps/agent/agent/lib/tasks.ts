@@ -70,16 +70,25 @@ export async function claimDue(
 	);
 }
 
-export async function retireExhausted(): Promise<TaskSubject[]> {
+export async function retireExhausted(
+	limit: number = DISPATCH.reconcile.retire,
+): Promise<TaskSubject[]> {
 	const now = new Date();
 
 	return db.$queryRaw<TaskSubject[]>`
 		UPDATE "agentTask" AS t
 		SET "finishedAt" = ${now},
 			"outcome" = ${RETIRED_OUTCOME}
-		WHERE t."finishedAt" IS NULL
-			AND t."attempts" >= ${MAX_ATTEMPTS}
-			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
+		WHERE t.id IN (
+			SELECT c.id
+			FROM "agentTask" AS c
+			WHERE c."finishedAt" IS NULL
+				AND c."attempts" >= ${MAX_ATTEMPTS}
+				AND (c."leasedUntil" IS NULL OR c."leasedUntil" < ${now})
+			ORDER BY c."dueAt" ASC
+			LIMIT ${limit}
+			FOR UPDATE SKIP LOCKED
+		)
 		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind;
 	`;
 }
