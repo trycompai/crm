@@ -30,7 +30,7 @@ const EXTERNALS = [
 	"cardinal",
 ];
 
-const VENDOR_ROOTS = ["express"];
+const VENDOR_ROOTS = ["express", "@nestjs/swagger", "reflect-metadata"];
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(funcDir, { recursive: true });
