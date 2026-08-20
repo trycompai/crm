@@ -1,3 +1,4 @@
+import { apiKey } from "@better-auth/api-key";
 import { sso } from "@better-auth/sso";
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
@@ -6,6 +7,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { organization } from "better-auth/plugins/organization";
+import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
 import { ensureWorkspaceMembership } from "./organization";
@@ -227,6 +229,20 @@ export const auth = betterAuth({
 
 		sso({
 			organizationProvisioning: { disabled: true },
+		}),
+
+		apiKey({
+			apiKeyHeaders: API_KEY_HEADER,
+			defaultPrefix: API_KEY_PREFIX,
+			enableSessionForAPIKeys: true,
+			requireName: true,
+			defaultKeyLength: 32,
+			maximumNameLength: 64,
+			rateLimit: { enabled: false },
+			keyExpiration: {
+				maxExpiresIn: API_KEY_EXPIRATION.maxDays,
+				minExpiresIn: API_KEY_EXPIRATION.minDays,
+			},
 		}),
 	],
 

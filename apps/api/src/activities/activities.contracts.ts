@@ -1,4 +1,5 @@
 import { ActivityType } from "@crm/db";
+import { activityMeta } from "@crm/validation/activity-meta";
 import { z } from "zod";
 
 const COMPOSABLE_TYPES = [
@@ -10,6 +11,18 @@ const COMPOSABLE_TYPES = [
 ] as const;
 
 const composableEnum = z.enum(COMPOSABLE_TYPES);
+
+const ALL_ACTIVITY_TYPES = [
+	ActivityType.NOTE,
+	ActivityType.CALL,
+	ActivityType.EMAIL,
+	ActivityType.MEETING,
+	ActivityType.TASK,
+	ActivityType.STAGE_CHANGE,
+	ActivityType.ENRICHMENT,
+] as const;
+
+const activityTypeOutput = z.enum(ALL_ACTIVITY_TYPES);
 
 const TIMELINE_FILTERS = [
 	"all",
@@ -75,3 +88,96 @@ export const myTasksInput = z.object({
 });
 
 export type MyTasksInput = z.infer<typeof myTasksInput>;
+
+const activityAuthorOutput = z.object({
+	id: z.string(),
+	name: z.string(),
+	email: z.string(),
+	image: z.string().nullable(),
+});
+
+const activityCompanyRefOutput = z
+	.object({
+		id: z.string(),
+		name: z.string(),
+	})
+	.nullable();
+
+const activityContactRefOutput = z
+	.object({
+		id: z.string(),
+		firstName: z.string(),
+		lastName: z.string().nullable(),
+	})
+	.nullable();
+
+const activityDealRefOutput = z
+	.object({
+		id: z.string(),
+		name: z.string(),
+	})
+	.nullable();
+
+const activityEmailThreadOutput = z
+	.object({
+		id: z.string(),
+		messageCount: z.number(),
+		lastMessageAt: z.string(),
+	})
+	.nullable();
+
+const activityCalendarEventOutput = z
+	.object({
+		id: z.string(),
+		startsAt: z.string(),
+		endsAt: z.string(),
+		isAllDay: z.boolean(),
+		location: z.string().nullable(),
+		conferenceUrl: z.string().nullable(),
+		attendeeCount: z.number(),
+	})
+	.nullable();
+
+export const activityEntryOutput = z.object({
+	id: z.string(),
+	type: activityTypeOutput,
+	subject: z.string().nullable(),
+	body: z.string().nullable(),
+	occurredAt: z.string().nullable(),
+	dueAt: z.string().nullable(),
+	completedAt: z.string().nullable(),
+	meta: activityMeta,
+	createdAt: z.string(),
+	createdBy: activityAuthorOutput,
+	company: activityCompanyRefOutput,
+	contact: activityContactRefOutput,
+	deal: activityDealRefOutput,
+	emailThread: activityEmailThreadOutput,
+	calendarEvent: activityCalendarEventOutput,
+});
+
+export type ActivityEntry = z.infer<typeof activityEntryOutput>;
+
+export const timelineOutput = z.object({
+	entries: z.array(activityEntryOutput),
+	nextCursor: z.string().nullable(),
+});
+
+export type TimelineResult = z.infer<typeof timelineOutput>;
+
+export const timelineCountsOutput = z.object({
+	all: z.number(),
+	notes: z.number(),
+	upcoming: z.number(),
+	done: z.number(),
+	email: z.number(),
+	meetings: z.number(),
+});
+
+export type TimelineCounts = z.infer<typeof timelineCountsOutput>;
+
+export const myTasksOutput = z.array(activityEntryOutput);
+
+export const activityCreateOutput = activityEntryOutput;
+
+export const completeOutput = activityEntryOutput;

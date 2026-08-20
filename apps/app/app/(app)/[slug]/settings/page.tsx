@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { AgentModel } from "./agent-model";
+import { ArchiveRetention } from "./archive-retention";
 import { ResearchKey } from "./research-key";
 import { WorkspaceForm } from "./workspace-form";
 
@@ -52,6 +53,7 @@ async function Settings() {
 		queryClient.prefetchQuery(trpc.settings.agentModel.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.modelCatalog.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.researchKey.queryOptions()),
+		queryClient.prefetchQuery(trpc.settings.archiveRetention.queryOptions()),
 	]);
 
 	return (
@@ -59,6 +61,7 @@ async function Settings() {
 			<div className="flex max-w-3xl flex-col gap-6">
 				<WorkspaceForm />
 				<ResearchKey />
+				<ArchiveRetention />
 				<AgentModel />
 			</div>
 		</HydrateClient>

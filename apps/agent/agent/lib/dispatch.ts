@@ -1,4 +1,5 @@
 import { EnrichmentStatus } from "@crm/db";
+import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
 import { queueEventAgentRuns } from "./custom-agent-dispatch";
@@ -243,6 +244,11 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 	if (task.companyId) records.companyId = task.companyId;
 	if (task.dealId) records.dealId = task.dealId;
 
+	if (task.kind === "field-backfill") {
+		const parsed = fieldBackfillPayload.safeParse(task.payload);
+		if (parsed.success) records.fieldKeys = parsed.data.keys.join(",");
+	}
+
 	return {
 		...base,
 		attributes: {
@@ -388,10 +394,14 @@ export function brief(task: LeasedTask): string {
 			? `This is attempt ${task.attempts}; the earlier one did not finish. Carry on from what is already in this thread rather than starting again. `
 			: "";
 
-	return again + work(task.kind, task.reason);
+	return again + work(task.kind, task.reason, task.payload);
 }
 
-function work(kind: string, reason: string): string {
+function work(
+	kind: string,
+	reason: string,
+	payload: LeasedTask["payload"],
+): string {
 	switch (kind) {
 		case "identify":
 			return "Work out who this contact actually is, and record what you find. Read what we already have before spending anything.";
@@ -404,6 +414,11 @@ function work(kind: string, reason: string): string {
 			return "This company's brand, industry, location and links are filled in separately and may already be there. Read the account, fill anything still missing, and write a brief if there is something worth saying.";
 		case "workspace-profile":
 			return "Write the profile of the company you work for, so that every other session knows who we are. Read our own site and keep it short.";
+		case "field-backfill": {
+			const parsed = fieldBackfillPayload.safeParse(payload);
+			const keys = parsed.success ? parsed.data.keys.join(", ") : reason;
+			return `This record is missing a value for the custom field(s) ${keys}. Call list_fields for this record's type, read each field's brief, and call set_field_value only where you find real evidence — leave it blank rather than guess.`;
+		}
 		default:
 			return `Handle this: ${reason}`;
 	}

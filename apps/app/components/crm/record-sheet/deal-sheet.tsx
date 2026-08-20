@@ -206,6 +206,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 							record={{ kind: "deal", id: deal.id }}
 							name={deal.name}
 							consequence={`Its stage history, notes and agent conversations go too. ${deal.company.name} and the ${deal.contacts.length === 1 ? "person" : "people"} on it stay in the CRM.`}
+							archivedAt={deal.archivedAt}
 						/>
 					</>
 				) : null

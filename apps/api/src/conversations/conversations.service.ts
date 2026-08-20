@@ -22,39 +22,13 @@ import { conversationShareTokenHash } from "./conversation-share-token";
 import type {
 	BuilderConversationCreateInput,
 	BuilderConversationSubmitInput,
+	BuilderConversationSummary,
 	BuilderQuestionResponseInput,
 	ConversationEventsInput,
 	ConversationListInput,
 	ConversationSaveInput,
+	ConversationSummary,
 } from "./conversations.contracts";
-
-export interface ConversationSummary {
-	id: string;
-	sessionId: string;
-	continuationToken: string | null;
-	streamIndex: number;
-	title: string | null;
-	messageCount: number;
-	lastMessageAt: string;
-}
-
-export interface BuilderConversationSummary {
-	id: string;
-	sessionId: string | null;
-	continuationToken: string | null;
-	streamIndex: number;
-	title: string | null;
-	messageCount: number;
-	lastMessageAt: string;
-	lastAssistantAt: string | null;
-	unread: boolean;
-	state: "working" | "unread" | "deployed" | "idle";
-	agent: {
-		id: string;
-		name: string;
-		status: string;
-	} | null;
-}
 
 type ReplayedRequest = {
 	id: string;

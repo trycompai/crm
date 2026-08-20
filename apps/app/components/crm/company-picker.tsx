@@ -143,9 +143,9 @@ export function CompanyMenuSearch({
 							disabled={stale}
 							onSelect={() => onSelect(company.id)}
 						>
-							<span className="truncate">{company.name}</span>
+							<span className="w-32 shrink-0 truncate">{company.name}</span>
 							{company.domain ? (
-								<span className="ml-auto truncate text-muted-foreground text-xs">
+								<span className="truncate text-muted-foreground text-xs">
 									{company.domain}
 								</span>
 							) : null}

@@ -11,9 +11,12 @@ import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import type {
 	ActivityCreateInput,
+	ActivityEntry,
 	MyTasksInput,
+	TimelineCounts,
 	TimelineFilter,
 	TimelineInput,
+	TimelineResult,
 } from "./activities.contracts";
 
 const AUTHOR_SELECT = {
@@ -74,7 +77,7 @@ export class ActivitiesService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
-	async timeline(input: TimelineInput) {
+	async timeline(input: TimelineInput): Promise<TimelineResult> {
 		const where = this.anchor(input);
 		Object.assign(where, filterClause(input.filter));
 
@@ -101,7 +104,7 @@ export class ActivitiesService {
 
 	async timelineCounts(
 		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
-	) {
+	): Promise<TimelineCounts> {
 		const anchor = this.anchor(input);
 
 		const [all, notes, upcoming, done, email, meetings] = await Promise.all([
@@ -124,7 +127,10 @@ export class ActivitiesService {
 		return { all, notes, upcoming, done, email, meetings };
 	}
 
-	async create(input: ActivityCreateInput, actingUserId: string) {
+	async create(
+		input: ActivityCreateInput,
+		actingUserId: string,
+	): Promise<ActivityEntry> {
 		const companyId = await this.resolveCompanyId(input);
 
 		const isTask = input.type === ActivityType.TASK;
@@ -158,7 +164,7 @@ export class ActivitiesService {
 		return serializeEntry(activity);
 	}
 
-	async complete(id: string, completed: boolean) {
+	async complete(id: string, completed: boolean): Promise<ActivityEntry> {
 		const activity = await this.db.activity.findUnique({
 			where: { id },
 			select: { type: true },
@@ -181,7 +187,10 @@ export class ActivitiesService {
 		return serializeEntry(updated);
 	}
 
-	async myTasks(input: MyTasksInput, actingUserId: string) {
+	async myTasks(
+		input: MyTasksInput,
+		actingUserId: string,
+	): Promise<ActivityEntry[]> {
 		const now = new Date();
 		const where: Prisma.ActivityWhereInput = {
 			type: ActivityType.TASK,

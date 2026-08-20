@@ -1,7 +1,8 @@
 "use client";
 
+import Archive from "@carbon/icons-react/es/Archive";
 import Renew from "@carbon/icons-react/es/Renew";
-import TrashCan from "@carbon/icons-react/es/TrashCan";
+import Undo from "@carbon/icons-react/es/Undo";
 import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
@@ -31,15 +32,17 @@ function contacts(count: number): string {
 export function ContactsBulkActions({
 	ids,
 	onDone,
+	archived,
 }: {
 	ids: string[];
 	onDone: () => void;
+	archived: boolean;
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const users = useQuery(trpc.users.list.queryOptions());
-	const [confirming, setConfirming] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [confirming, setConfirming] = useState(false);
 	const companySearch = useRef<HTMLInputElement>(null);
 
 	const onError = (error: { message: string }) => toast.error(error.message);
@@ -80,11 +83,33 @@ export function ContactsBulkActions({
 		}),
 	);
 
-	const remove = useMutation(
-		trpc.contacts.bulkDelete.mutationOptions({
+	const archive = useMutation(
+		trpc.contacts.bulkArchive.mutationOptions({
 			onSuccess: async (result, variables) => {
 				await cache.removedMany({ kind: "contact", ids: variables.ids });
-				reportBulk(result, (count) => `${contacts(count)} deleted.`);
+				reportBulk(result, (count) => `${contacts(count)} archived.`);
+				onDone();
+			},
+			onError,
+		}),
+	);
+
+	const restore = useMutation(
+		trpc.contacts.bulkRestore.mutationOptions({
+			onSuccess: async (result) => {
+				await cache.contact();
+				reportBulk(result, (count) => `${contacts(count)} restored.`);
+				onDone();
+			},
+			onError,
+		}),
+	);
+
+	const purge = useMutation(
+		trpc.contacts.bulkPurge.mutationOptions({
+			onSuccess: async (result, variables) => {
+				await cache.removedMany({ kind: "contact", ids: variables.ids });
+				reportBulk(result, (count) => `${contacts(count)} deleted forever.`);
 				setConfirming(false);
 				onDone();
 			},
@@ -92,69 +117,90 @@ export function ContactsBulkActions({
 		}),
 	);
 
+	if (archived) {
+		const pending = restore.isPending || purge.isPending;
+
+		return (
+			<>
+				<BulkActionsMenu pending={pending}>
+					<DropdownMenuGroup>
+						<DropdownMenuItem onSelect={() => restore.mutate({ ids })}>
+							<Undo />
+							Restore
+						</DropdownMenuItem>
+					</DropdownMenuGroup>
+					<DropdownMenuSeparator />
+					<DropdownMenuGroup>
+						<DropdownMenuItem
+							variant="destructive"
+							onSelect={() => setConfirming(true)}
+						>
+							Delete forever
+						</DropdownMenuItem>
+					</DropdownMenuGroup>
+				</BulkActionsMenu>
+
+				<BulkDeleteDialog
+					open={confirming}
+					onOpenChange={setConfirming}
+					title={`Delete ${contacts(ids.length)} forever?`}
+					description="Their email addresses are suppressed, so the inbox sync will not file them again. This cannot be undone."
+					onConfirm={() => purge.mutate({ ids })}
+				/>
+			</>
+		);
+	}
+
 	const pending =
 		assignOwner.isPending ||
 		setCompany.isPending ||
 		enrich.isPending ||
-		remove.isPending;
+		archive.isPending;
 
 	return (
-		<>
-			<BulkActionsMenu
-				pending={pending}
-				open={menuOpen}
-				onOpenChange={setMenuOpen}
-			>
-				<BulkOwnerMenu
-					users={users.data ?? []}
-					unassignedLabel="Nobody"
-					onSelect={(ownerId) => assignOwner.mutate({ ids, ownerId })}
-				/>
-				<DropdownMenuSub>
-					<DropdownMenuSubTrigger>Move to company</DropdownMenuSubTrigger>
-					<DropdownMenuSubContent
-						className="w-64 p-0"
-						onFocus={(event) => {
-							if (event.target === event.currentTarget) {
-								companySearch.current?.focus();
-							}
-						}}
-					>
-						<CompanyMenuSearch
-							none="No company"
-							inputRef={companySearch}
-							onSelect={(companyId) => {
-								setMenuOpen(false);
-								setCompany.mutate({ ids, companyId });
-							}}
-						/>
-					</DropdownMenuSubContent>
-				</DropdownMenuSub>
-				<DropdownMenuGroup>
-					<DropdownMenuItem onSelect={() => enrich.mutate({ ids })}>
-						<Renew />
-						Re-enrich
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-				<DropdownMenuSeparator />
-				<DropdownMenuGroup>
-					<DropdownMenuItem
-						variant="destructive"
-						onSelect={() => setConfirming(true)}
-					>
-						<TrashCan />
-						Delete
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-			</BulkActionsMenu>
-
-			<BulkDeleteDialog
-				open={confirming}
-				onOpenChange={setConfirming}
-				title={`Delete ${contacts(ids.length)}?`}
-				description="Their email addresses are suppressed, so the inbox sync will not file them again. This cannot be undone."
-				onConfirm={() => remove.mutate({ ids })}
+		<BulkActionsMenu
+			pending={pending}
+			open={menuOpen}
+			onOpenChange={setMenuOpen}
+		>
+			<BulkOwnerMenu
+				users={users.data ?? []}
+				unassignedLabel="Nobody"
+				onSelect={(ownerId) => assignOwner.mutate({ ids, ownerId })}
 			/>
-		</>
+			<DropdownMenuSub>
+				<DropdownMenuSubTrigger>Move to company</DropdownMenuSubTrigger>
+				<DropdownMenuSubContent
+					className="w-64 p-0"
+					onFocus={(event) => {
+						if (event.target === event.currentTarget) {
+							companySearch.current?.focus();
+						}
+					}}
+				>
+					<CompanyMenuSearch
+						none="No company"
+						inputRef={companySearch}
+						onSelect={(companyId) => {
+							setMenuOpen(false);
+							setCompany.mutate({ ids, companyId });
+						}}
+					/>
+				</DropdownMenuSubContent>
+			</DropdownMenuSub>
+			<DropdownMenuGroup>
+				<DropdownMenuItem onSelect={() => enrich.mutate({ ids })}>
+					<Renew />
+					Re-enrich
+				</DropdownMenuItem>
+			</DropdownMenuGroup>
+			<DropdownMenuSeparator />
+			<DropdownMenuGroup>
+				<DropdownMenuItem onSelect={() => archive.mutate({ ids })}>
+					<Archive />
+					Archive
+				</DropdownMenuItem>
+			</DropdownMenuGroup>
+		</BulkActionsMenu>
 	);
 }

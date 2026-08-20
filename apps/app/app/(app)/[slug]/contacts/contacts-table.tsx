@@ -1,5 +1,7 @@
 "use client";
 
+import Archive from "@carbon/icons-react/es/Archive";
+import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -14,12 +16,15 @@ import { useMemo, useState } from "react";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
+import { useFieldFacets } from "@/components/crm/fields/field-facets";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { ListSearch } from "@/components/data-table/list-search";
+import { SavedViewsMenu } from "@/components/data-table/saved-views-menu";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
+import { ACTIVITY_FACET_OPTIONS } from "@/lib/activity-recency";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { ContactsBulkActions } from "./contacts-bulk-actions";
@@ -120,11 +125,30 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 	},
 ];
 
+const ARCHIVED_COLUMN: DataTableColumn<ContactRow> = {
+	id: "archivedAt",
+	header: "Archived",
+	label: "Archived date",
+	sortable: true,
+	align: "right",
+	width: "w-[12%]",
+	cell: (row) => (
+		<span className="text-muted-foreground">
+			{row.archivedAt ? (
+				<LocalRelativeTime date={row.archivedAt} />
+			) : (
+				<EmptyCellValue />
+			)}
+		</span>
+	),
+};
+
 export function ContactsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
-	const { query, input } = useTableQuery(contactsSearchParams);
+	const table = useTableQuery(contactsSearchParams);
+	const { query, input, setArchived } = table;
 
 	const contacts = useQuery({
 		...trpc.contacts.list.queryOptions(input),
@@ -148,6 +172,7 @@ export function ContactsTable() {
 	);
 
 	const facetCounts = contacts.data?.facetCounts;
+	const fieldFacets = useFieldFacets("CONTACT", facetCounts);
 
 	const facets: DataTableFacet[] = [
 		{
@@ -179,15 +204,64 @@ export function ContactsTable() {
 				})),
 			].filter((option) => (facetCounts?.company?.[option.value] ?? 0) > 0),
 		},
+		{
+			id: "title",
+			label: "Title",
+			options: Object.keys(facetCounts?.title ?? {})
+				.sort()
+				.map((value) => ({ value, label: value })),
+		},
+		{
+			id: "seniority",
+			label: "Seniority",
+			options: Object.keys(facetCounts?.seniority ?? {})
+				.sort()
+				.map((value) => ({ value, label: value })),
+		},
+		{
+			id: "persona",
+			label: "Persona",
+			options: Object.keys(facetCounts?.persona ?? {})
+				.sort()
+				.map((value) => ({ value, label: value })),
+		},
+		{
+			id: "activity",
+			label: "Activity",
+			options: ACTIVITY_FACET_OPTIONS.filter(
+				(option) => (facetCounts?.activity?.[option.value] ?? 0) > 0,
+			),
+		},
+		...fieldFacets,
 	];
 
 	const fieldColumns = useFieldColumns<ContactRow>("CONTACT");
-	const columns = useMemo(() => [...COLUMNS, ...fieldColumns], [fieldColumns]);
+	const columns = useMemo(
+		() =>
+			input.archived
+				? [...COLUMNS, ARCHIVED_COLUMN, ...fieldColumns]
+				: [...COLUMNS, ...fieldColumns],
+		[fieldColumns, input.archived],
+	);
 
 	return (
 		<DataTable
 			query={query}
 			search={<ListSearch placeholder="Search by name, email or company…" />}
+			actions={
+				<>
+					<SavedViewsMenu entity="CONTACT" table={table} />
+					<Button
+						variant={input.archived ? "contrast" : "outline"}
+						size="sm"
+						className="justify-start sm:justify-center"
+						onClick={() => setArchived(!input.archived)}
+					>
+						<Archive data-icon="inline-start" />
+						Archived
+					</Button>
+				</>
+			}
 			columns={columns}
 			rows={rows}
 			total={contacts.data?.total ?? 0}
@@ -196,7 +270,11 @@ export function ContactsTable() {
 			selection={{
 				state: selection,
 				actions: (
-					<ContactsBulkActions ids={selection.ids} onDone={selection.clear} />
+					<ContactsBulkActions
+						ids={selection.ids}
+						onDone={selection.clear}
+						archived={input.archived}
+					/>
 				),
 				rowLabel: (row) => contactName(row),
 			}}
@@ -204,7 +282,11 @@ export function ContactsTable() {
 			loading={contacts.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "contact", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "contact", id: row.id })}
-			empty="No contacts match this view."
+			empty={
+				input.archived
+					? "No archived contacts."
+					: "No contacts match this view."
+			}
 		/>
 	);
 }

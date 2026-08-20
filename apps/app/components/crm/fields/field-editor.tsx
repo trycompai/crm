@@ -55,6 +55,7 @@ import {
 	BRIEF_LABEL,
 	CANCEL,
 	FILL_REST,
+	filterPlacement,
 	KEY_HELP,
 	KEY_LABEL,
 	LABEL_LABEL,
@@ -83,6 +84,7 @@ type Draft = {
 	agentBrief: string;
 	showOnSheet: boolean;
 	showOnTable: boolean;
+	showOnFilter: boolean;
 };
 
 const TYPE_HINTS = {
@@ -117,6 +119,7 @@ function draftFrom(field: FieldRecord | undefined): Draft {
 		agentBrief: field?.agentBrief ?? "",
 		showOnSheet: field?.showOnSheet ?? true,
 		showOnTable: field?.showOnTable ?? false,
+		showOnFilter: field?.showOnFilter ?? false,
 	};
 }
 
@@ -230,6 +233,7 @@ export function FieldEditor({
 			agentBrief: draft.agentBrief.trim() || null,
 			showOnSheet: draft.showOnSheet,
 			showOnTable: draft.showOnTable,
+			showOnFilter: draft.showOnFilter,
 		};
 
 		if (field) {
@@ -402,6 +406,17 @@ export function FieldEditor({
 						/>
 						{tablePlacement(entity)}
 					</FieldLabel>
+					{draft.type === "SELECT" || draft.type === "USER" ? (
+						<FieldLabel className="items-center gap-2 font-normal">
+							<Checkbox
+								checked={draft.showOnFilter}
+								onCheckedChange={(checked) =>
+									patch({ showOnFilter: checked === true })
+								}
+							/>
+							{filterPlacement(entity)}
+						</FieldLabel>
+					) : null}
 				</div>
 			</div>
 

@@ -18,6 +18,7 @@
 		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
+		"@better-auth/api-key": "1.6.25",
 		"@better-auth/sso": "1.6.25",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",

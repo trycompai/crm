@@ -15,6 +15,10 @@ export const fieldByKeyInput = z.object({
 	key: z.string().trim().min(1),
 });
 
+export const fieldEntityInput = z.object({
+	entity: fieldEntity,
+});
+
 const fieldOptionInput = z.object({
 	id: z.string().optional(),
 	label: z.string().trim().min(1, "An option needs a label."),
@@ -30,6 +34,7 @@ export const fieldCreateInput = z.object({
 	required: z.boolean().default(false),
 	showOnSheet: z.boolean().default(true),
 	showOnTable: z.boolean().default(false),
+	showOnFilter: z.boolean().default(false),
 });
 
 export type FieldCreateInput = z.infer<typeof fieldCreateInput>;
@@ -43,6 +48,7 @@ const fieldUpdateData = z.object({
 	required: z.boolean().optional(),
 	showOnSheet: z.boolean().optional(),
 	showOnTable: z.boolean().optional(),
+	showOnFilter: z.boolean().optional(),
 });
 
 export type FieldUpdateData = z.infer<typeof fieldUpdateData>;
@@ -67,3 +73,42 @@ const recordFieldValue = z.union(
 );
 
 export const recordFieldValues = z.record(z.string(), recordFieldValue);
+
+const fieldOptionOutput = z.object({
+	id: z.string(),
+	label: z.string(),
+	position: z.number(),
+});
+
+export const serializedFieldOutput = z.object({
+	id: z.string(),
+	entity: fieldEntity,
+	key: z.string(),
+	label: z.string(),
+	type: z.enum(FIELD_TYPES),
+	typeLabel: z.string(),
+	agentFilled: z.boolean(),
+	agentBrief: z.string().nullable(),
+	required: z.boolean(),
+	showOnSheet: z.boolean(),
+	showOnTable: z.boolean(),
+	showOnFilter: z.boolean(),
+	position: z.number(),
+	archived: z.boolean(),
+	options: z.array(fieldOptionOutput),
+});
+
+export const fieldListOutput = z.array(serializedFieldOutput);
+
+export const fieldFiltersOutput = z.array(serializedFieldOutput);
+
+export const fieldReorderOutput = z.array(serializedFieldOutput);
+
+export const fieldCoverageOutput = z.object({
+	filled: z.number(),
+	total: z.number(),
+});
+
+export const fieldDeleteOutput = z.object({ id: z.string() });
+
+export const fieldBackfillOutput = z.object({ queued: z.boolean() });

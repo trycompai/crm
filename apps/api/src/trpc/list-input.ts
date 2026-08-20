@@ -68,9 +68,75 @@ export const FACET_ALL = "all";
 
 export const FACET_UNASSIGNED = "unassigned";
 
-export function ownerFilter(
-	value: string,
-): { ownerId: string | null } | undefined {
-	if (value === FACET_ALL) return undefined;
-	return { ownerId: value === FACET_UNASSIGNED ? null : value };
+/**
+ * Splits a multi-select facet's chosen values into the "real" ids Prisma can
+ * match with `in`, and whether a sentinel (unassigned owner, no company, …)
+ * was among them — Prisma's `in` filter does not match `null` values.
+ */
+export function splitSentinel(
+	values: string[],
+	sentinel: string,
+): { ids: string[]; includesSentinel: boolean } {
+	const ids = values.filter((value) => value !== sentinel);
+	return { ids, includesSentinel: ids.length !== values.length };
+}
+
+/**
+ * An "is any of" filter for a nullable owner column. Returns an `OR`
+ * fragment when both real ids and the unassigned sentinel are selected
+ * together — merge this into `AND`, never spread it alongside another
+ * `OR`-bearing fragment.
+ */
+export function ownerFilter<
+	TWhere =
+		| { ownerId: { in: string[] } }
+		| { ownerId: null }
+		| { OR: unknown[] },
+>(values: string[]): TWhere | undefined {
+	if (values.length === 0) return undefined;
+
+	const { ids, includesSentinel } = splitSentinel(values, FACET_UNASSIGNED);
+	if (includesSentinel && ids.length === 0) return { ownerId: null } as TWhere;
+	if (!includesSentinel) return { ownerId: { in: ids } } as TWhere;
+	return { OR: [{ ownerId: { in: ids } }, { ownerId: null }] } as TWhere;
+}
+
+export function archivedFilter(archived: boolean): {
+	archivedAt: null | { not: null };
+} {
+	return { archivedAt: archived ? { not: null } : null };
+}
+
+export const ACTIVITY_WINDOWS = ["7", "30", "90"] as const;
+
+export type ActivityWindow = (typeof ACTIVITY_WINDOWS)[number];
+
+function activityCutoff(days: number): Date {
+	return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * "Active within N days" — selecting several windows is an OR, and the
+ * loosest (largest) window already covers every tighter one, so it decides
+ * alone.
+ */
+export function activityFilter(
+	values: string[],
+): { lastActivityAt: { gte: Date } } | undefined {
+	if (values.length === 0) return undefined;
+	const days = values.reduce((max, value) => Math.max(max, Number(value)), 0);
+	return { lastActivityAt: { gte: activityCutoff(days) } };
+}
+
+export async function activityFacetCounts(
+	countWhere: (where: { lastActivityAt: { gte: Date } }) => Promise<number>,
+): Promise<FacetCount> {
+	const counts = await Promise.all(
+		ACTIVITY_WINDOWS.map((days) =>
+			countWhere({ lastActivityAt: { gte: activityCutoff(Number(days)) } }),
+		),
+	);
+	return Object.fromEntries(
+		ACTIVITY_WINDOWS.map((days, index) => [days, counts[index]]),
+	) as FacetCount;
 }

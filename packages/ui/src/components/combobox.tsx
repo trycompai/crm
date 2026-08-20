@@ -114,9 +114,9 @@ function Combobox({
 										onValueChange(option.value);
 									}}
 								>
-									<span className="truncate">{option.label}</span>
+									<span className="w-32 shrink-0 truncate">{option.label}</span>
 									{option.hint ? (
-										<span className="ml-auto truncate text-muted-foreground text-xs">
+										<span className="truncate text-muted-foreground text-xs">
 											{option.hint}
 										</span>
 									) : null}

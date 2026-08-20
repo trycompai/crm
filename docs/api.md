@@ -207,12 +207,38 @@ picker reads.
 - **`role` is blanked to null, never stored as `""`** — `blankToNull`, as everywhere
   else.
 
-## Deleting a record
+## Deleting a record is archive first, purge later
 
-`contacts.delete`, `companies.delete`, `deals.delete`. No soft delete, no archive.
+`contacts.archive`, `companies.archive`, `deals.archive` set `archivedAt`. Nothing
+else changes — no suppression, no cascade cleanup, no stamp recompute — because the
+row is still there, just filtered out of every list.
 
-- **A deleted contact is suppressed by address**, or the sync recreates them from the
-  next thread. `ContactsService.delete` writes `SuppressedContact`, and
+- **`archivedFilter(input.archived)` is in every `buildWhere` and every `facetCounts`
+  where.** A list call defaults to `archived: false`; the Archived view is the same
+  procedure with `archived: true`. There is no third "everything" mode — mixing
+  active and archived rows in one table is exactly what this feature removes.
+- **`archive`/`restore` are a bare `update({ archivedAt })`, nothing more.** They do
+  not touch `AgentTask`, `SuppressedContact`, or `lastActivityAt` — the record is
+  unchanged, only hidden.
+- **`purge` is the old `delete`.** Same transaction, same suppression, same
+  `AgentTask`/`AgentEvent` cleanup, same `ActivityStampService.recomputeAfterDelete`.
+  Read the rest of this section as `purge`'s contract, not `archive`'s.
+- **A rep can `purge` straight from the Archived view — retention is a ceiling, not a
+  wait.** `bulkPurge`/the per-record "Delete forever" action call it directly, no
+  different from the cron.
+
+**Pruning**: `ArchiveRetentionController` (`internal/archive/prune`, `CRON_SECRET`-gated,
+`apps/api/vercel.json`) reads `AppSetting.archiveRetentionDays`
+(`readArchiveRetentionDays`, `@crm/db/settings`, default 180) and calls each service's
+`purgeExpired(before)` — `findMany({ archivedAt: { lte: before } })` capped at
+`ARCHIVE.prune.maxBatch` (`archive/archive-config.ts`), then `purge` per row through
+the ordinary `runBulk`. Settings → General has the day count
+(`settings.archiveRetention` / `setArchiveRetention`).
+
+Below is `purge`'s contract — everything that used to be `delete`'s:
+
+- **A purged contact is suppressed by address**, or the sync recreates them from the
+  next thread. `ContactsService.purge` writes `SuppressedContact`, and
   `externalParticipants` drops it like a `SuppressedDomain` — one filter covering
   contact creation, company auto-creation and attribution.
 - **Keyed lower case.** `normalizeEmail` (`crm/values.ts`) is the one canonicaliser,
@@ -223,11 +249,11 @@ picker reads.
   404 is that statement's own `P2025` through `translate`.
 - **Adding them back lifts the suppression** via `allowAgain` **inside the write's
   transaction**. Never automatic.
-- **Deleting a company does not suppress its domain** — its people survive with no
+- **Purging a company does not suppress its domain** — its people survive with no
   company, and domain suppression stays the explicit Settings → Connections control.
 - **Clear `AgentTask` and `AgentEvent` yourself** — they carry `contactId`/`companyId`
   with no foreign key, so nothing cascades.
-- **Recompute `lastActivityAt` on exactly the records the delete reached.**
+- **Recompute `lastActivityAt` on exactly the records the purge reached.**
   `ActivityStampService.targetsOf(where)` collects them *inside* the transaction (the
   evidence is what gets deleted); `recomputeMany` restamps. A company's `where` must
   follow its deals: `{ OR: [{ companyId }, { deal: { companyId } }] }`.

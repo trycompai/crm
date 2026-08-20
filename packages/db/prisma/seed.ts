@@ -2,9 +2,12 @@ import { mirror } from "../src/blob";
 import { db } from "../src/client";
 import { DEFAULT_REPORTING_CURRENCY } from "../src/currency";
 import { resolveFavicon } from "../src/favicon";
+import { fieldKeyFromLabel } from "../src/fields-shape";
 import {
 	ActivityType,
 	DealStage,
+	FieldEntity,
+	FieldType,
 	RateSource,
 } from "../src/generated/prisma/enums";
 import { readReportingCurrency, SETTINGS_ID } from "../src/settings";
@@ -422,6 +425,209 @@ async function seedIcons(
 	console.log(`Resolved ${resolved} of ${missing.length} company icons.`);
 }
 
+const ACCOUNT_TYPES = ["Prospect", "Customer", "Partner", "Churned"] as const;
+const SEGMENT_TIERS = ["Enterprise", "Mid-Market", "SMB"] as const;
+const TERRITORIES = ["AMER", "EMEA", "APAC"] as const;
+const LIFECYCLE_STAGES = [
+	"Lead",
+	"MQL",
+	"SQL",
+	"Opportunity",
+	"Customer",
+] as const;
+const LEAD_SOURCES = ["Inbound", "Outbound", "Event"] as const;
+
+type SeededField = {
+	id: string;
+	key: string;
+	options: { id: string; label: string }[];
+};
+
+type SeededFieldSet = {
+	accountType: SeededField;
+	segment: SeededField;
+	territory: SeededField;
+	lifecycleStage: SeededField;
+	leadSource: SeededField;
+	icpFitScore: SeededField;
+	bdrOwner: SeededField;
+};
+
+async function upsertField(
+	entity: FieldEntity,
+	label: string,
+	type: FieldType,
+	position: number,
+	options: readonly string[] = [],
+): Promise<SeededField> {
+	const key = fieldKeyFromLabel(label);
+	const definition = await db.fieldDefinition.upsert({
+		where: { entity_key: { entity, key } },
+		create: {
+			entity,
+			key,
+			label,
+			type,
+			showOnTable: false,
+			showOnFilter: false,
+			agentFilled: type !== "USER" && type !== "NUMBER",
+			position,
+			options: {
+				create: options.map((optionLabel, index) => ({
+					label: optionLabel,
+					position: index,
+				})),
+			},
+		},
+		update: {},
+		include: { options: true },
+	});
+
+	return {
+		id: definition.id,
+		key: definition.key,
+		options: definition.options,
+	};
+}
+
+async function seedCompanyFields(): Promise<SeededFieldSet> {
+	const [
+		accountType,
+		segment,
+		territory,
+		lifecycleStage,
+		leadSource,
+		icpFitScore,
+		bdrOwner,
+	] = await Promise.all([
+		upsertField("COMPANY", "Account type", FieldType.SELECT, 0, ACCOUNT_TYPES),
+		upsertField("COMPANY", "Segment", FieldType.SELECT, 1, SEGMENT_TIERS),
+		upsertField("COMPANY", "Territory", FieldType.SELECT, 2, TERRITORIES),
+		upsertField(
+			"COMPANY",
+			"Lifecycle stage",
+			FieldType.SELECT,
+			3,
+			LIFECYCLE_STAGES,
+		),
+		upsertField("COMPANY", "Lead source", FieldType.SELECT, 4, LEAD_SOURCES),
+		upsertField("COMPANY", "ICP fit score", FieldType.NUMBER, 5),
+		upsertField("COMPANY", "BDR owner", FieldType.USER, 6),
+	]);
+
+	return {
+		accountType,
+		segment,
+		territory,
+		lifecycleStage,
+		leadSource,
+		icpFitScore,
+		bdrOwner,
+	};
+}
+
+function optionIdFor(field: SeededField, label: string): string {
+	const option = field.options.find((entry) => entry.label === label);
+	if (!option) throw new Error(`Seed field "${field.key}" has no "${label}" option.`);
+	return option.id;
+}
+
+async function seedCompanyFieldValues(
+	fields: SeededFieldSet,
+	companies: { id: string }[],
+	ownerIds: string[],
+): Promise<void> {
+	for (const company of companies) {
+		const accountType = pick(ACCOUNT_TYPES);
+
+		await Promise.all([
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.accountType.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.accountType.id,
+					companyId: company.id,
+					optionId: optionIdFor(fields.accountType, accountType),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.segment.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.segment.id,
+					companyId: company.id,
+					optionId: optionIdFor(fields.segment, pick(SEGMENT_TIERS)),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.territory.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.territory.id,
+					companyId: company.id,
+					optionId: optionIdFor(fields.territory, pick(TERRITORIES)),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: {
+						fieldId: fields.lifecycleStage.id,
+						companyId: company.id,
+					},
+				},
+				create: {
+					fieldId: fields.lifecycleStage.id,
+					companyId: company.id,
+					optionId: optionIdFor(
+						fields.lifecycleStage,
+						accountType === "Customer" ? "Customer" : pick(LIFECYCLE_STAGES),
+					),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.leadSource.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.leadSource.id,
+					companyId: company.id,
+					optionId: optionIdFor(fields.leadSource, pick(LEAD_SOURCES)),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.icpFitScore.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.icpFitScore.id,
+					companyId: company.id,
+					number: integer(40, 95),
+				},
+				update: {},
+			}),
+			db.fieldValue.upsert({
+				where: {
+					fieldId_companyId: { fieldId: fields.bdrOwner.id, companyId: company.id },
+				},
+				create: {
+					fieldId: fields.bdrOwner.id,
+					companyId: company.id,
+					userId: pick(ownerIds),
+				},
+				update: {},
+			}),
+		]);
+	}
+}
+
 type SeededContact = { id: string; companyId: string };
 
 async function seedContacts(
@@ -773,10 +979,13 @@ async function main() {
 	const contacts = await seedContacts(companies, ownerIds);
 	const deals = await seedDeals(companies, contacts, ownerIds);
 	const activities = await seedActivities(companies, contacts, deals, ownerIds);
+	const companyFields = await seedCompanyFields();
+	await seedCompanyFieldValues(companyFields, companies, ownerIds);
 
 	console.log(
 		`Seeded ${companies.length} companies, ${contacts.length} contacts, ` +
-			`${deals.length} deals, ${activities} activities, ${rates} exchange rates.`,
+			`${deals.length} deals, ${activities} activities, ${rates} exchange rates, ` +
+			"7 company fields.",
 	);
 }
 

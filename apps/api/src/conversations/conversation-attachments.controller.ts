@@ -7,17 +7,35 @@ import {
 	Res,
 	StreamableFile,
 } from "@nestjs/common";
+import {
+	ApiCookieAuth,
+	ApiOkResponse,
+	ApiOperation,
+	ApiParam,
+	ApiQuery,
+	ApiTags,
+} from "@nestjs/swagger";
 import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
 import type { Response } from "express";
 import { ConversationsService } from "./conversations.service";
 
 type CrmSession = UserSession<typeof auth>;
 
+@ApiTags("Conversations")
+@ApiCookieAuth("better-auth.session_token")
 @Controller("api/conversations/attachments")
 export class ConversationAttachmentsController {
 	constructor(private readonly conversations: ConversationsService) {}
 
 	@Get(":id")
+	@ApiOperation({ summary: "Download a conversation attachment" })
+	@ApiParam({ name: "id", description: "Attachment id." })
+	@ApiQuery({
+		name: "share",
+		required: false,
+		description: "Share token, for a link opened outside a session.",
+	})
+	@ApiOkResponse({ description: "The attachment's raw bytes." })
 	async read(
 		@Param("id") id: string,
 		@Query("share") shareToken: string | undefined,

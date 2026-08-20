@@ -3,36 +3,23 @@ import {
 	DEFAULT_AGENT_MODEL,
 	maskKey,
 	readAgentModel,
+	readArchiveRetentionDays,
 	readContextDevKey,
 	writeAgentModel,
+	writeArchiveRetentionDays,
 	writeContextDevKey,
 } from "@crm/db/settings";
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ResearchKeyService } from "../agent/research-key.service";
 import { BackfillService } from "../backfill/backfill.service";
 import { InjectDatabase } from "../database/database.constants";
-import {
-	type CatalogModel,
-	ModelCatalogService,
-} from "./model-catalog.service";
-
-export interface AgentModelSettings {
-	selectedId: string | null;
-	effectiveId: string;
-	defaultId: string;
-	effective: CatalogModel | null;
-	updatedAt: string | null;
-}
-
-export interface ModelCatalogResult {
-	models: CatalogModel[];
-	available: boolean;
-}
-
-export interface ResearchKeySettings {
-	configured: boolean;
-	hint: string | null;
-}
+import { ModelCatalogService } from "./model-catalog.service";
+import type {
+	AgentModelSettings,
+	ArchiveRetentionSettings,
+	ModelCatalogResult,
+	ResearchKeySettings,
+} from "./settings.contracts";
 
 @Injectable()
 export class SettingsService {
@@ -141,5 +128,20 @@ export class SettingsService {
 			});
 
 		return this.researchKey();
+	}
+
+	async archiveRetention(): Promise<ArchiveRetentionSettings> {
+		return { days: await readArchiveRetentionDays(this.db) };
+	}
+
+	async setArchiveRetention(days: number): Promise<ArchiveRetentionSettings> {
+		const saved = await writeArchiveRetentionDays(this.db, days);
+
+		this.logger.log({
+			message: "Archive retention changed",
+			days: saved,
+		});
+
+		return { days: saved };
 	}
 }

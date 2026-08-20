@@ -1,7 +1,9 @@
 import { type Db, type FieldEntity, Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
+import { RECORD_ID_COLUMNS } from "@crm/db/fields";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AGENT_DISPATCH } from "./agent-dispatch.config";
@@ -186,53 +188,111 @@ export class AgentTriggerService {
 		return result;
 	}
 
-	async fieldBackfill(
+	/**
+	 * Queues one `field-backfill` task per record still missing a value for
+	 * one of `keys` — never an untargeted task with nothing in focus. A
+	 * record that already has a pending field-backfill task gets `keys`
+	 * merged into it instead of a second task, so a field added a day after
+	 * another still reaches records already queued.
+	 */
+	async fieldBackfillRecords(
 		entity: FieldEntity,
-		key: string,
+		keys: string[],
+		ids: string[],
 		reason: string,
-	): Promise<void> {
-		const subject = `${entity.toLowerCase()}.${key}`;
+	): Promise<{ queued: number; merged: number }> {
+		if (ids.length === 0 || keys.length === 0) {
+			return { queued: 0, merged: 0 };
+		}
+
+		const column = RECORD_ID_COLUMNS[entity];
+		const recordIdOf = (row: {
+			contactId: string | null;
+			companyId: string | null;
+			dealId: string | null;
+		}): string | null =>
+			entity === "CONTACT"
+				? row.contactId
+				: entity === "COMPANY"
+					? row.companyId
+					: row.dealId;
 
 		try {
-			const pending = await this.db.agentTask.findFirst({
+			const existing = await this.db.agentTask.findMany({
 				where: {
 					kind: "field-backfill",
 					finishedAt: null,
-					reason: { startsWith: `${subject}: ` },
-				},
-				select: { id: true },
-			});
-
-			if (pending) return;
-
-			await this.db.agentTask.create({
-				data: {
-					kind: "field-backfill",
-					reason: `${subject}: ${reason}`,
-					priority: PRIORITY.fieldBackfill,
-					budget: 8,
-					dueAt: new Date(),
+					[column]: { in: ids },
+				} as Prisma.AgentTaskWhereInput,
+				select: {
+					id: true,
+					contactId: true,
+					companyId: true,
+					dealId: true,
+					payload: true,
 				},
 			});
+
+			const covered = new Set(
+				existing
+					.map((row) => recordIdOf(row))
+					.filter((id): id is string => id !== null),
+			);
+			const fresh = ids.filter((id) => !covered.has(id));
+
+			if (fresh.length > 0) {
+				await this.db.agentTask.createMany({
+					data: fresh.map((id) => ({
+						[column]: id,
+						kind: "field-backfill",
+						reason,
+						priority: PRIORITY.fieldBackfill,
+						budget: 8,
+						dueAt: new Date(),
+						payload: { entity, keys } satisfies Prisma.InputJsonValue,
+					})),
+				});
+			}
+
+			let merged = 0;
+			for (const row of existing) {
+				const parsed = fieldBackfillPayload.safeParse(row.payload);
+				const priorKeys = parsed.success ? parsed.data.keys : [];
+				const nextKeys = [...new Set([...priorKeys, ...keys])];
+				if (nextKeys.length === priorKeys.length) continue;
+
+				await this.db.agentTask.update({
+					where: { id: row.id },
+					data: {
+						payload: { entity, keys: nextKeys } satisfies Prisma.InputJsonValue,
+					},
+				});
+				merged += 1;
+			}
 
 			this.logger.log({
 				message: "Agent task queued",
 				kind: "field-backfill",
 				entity,
-				key,
+				keys,
+				queued: fresh.length,
+				merged,
 			});
 
-			this.poke();
+			if (fresh.length > 0 || merged > 0) this.poke();
+
+			return { queued: fresh.length, merged };
 		} catch (error) {
 			this.logger.error(
 				{
 					message: "Could not queue agent task",
 					kind: "field-backfill",
 					entity,
-					key,
+					keys,
 				},
 				error instanceof Error ? error.stack : String(error),
 			);
+			return { queued: 0, merged: 0 };
 		}
 	}
 

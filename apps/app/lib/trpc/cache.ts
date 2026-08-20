@@ -11,6 +11,12 @@ type Options = {
 
 type RecordKind = "company" | "contact" | "deal";
 
+const ENTITY_FOR = {
+	company: "COMPANY",
+	contact: "CONTACT",
+	deal: "DEAL",
+} as const satisfies Record<RecordKind, string>;
+
 type RemovedRecord = { kind: RecordKind; id: string };
 
 type RemovedRecords = { kind: RecordKind; ids: string[] };
@@ -21,6 +27,7 @@ export type CrmCache = {
 	deal(id?: string, options?: Options): Promise<void>;
 	fields(entity?: RecordKind, options?: Options): Promise<void>;
 	fieldCoverage(id?: string, options?: Options): Promise<void>;
+	savedViews(entity?: RecordKind, options?: Options): Promise<void>;
 	removed(record: RemovedRecord): Promise<void>;
 	removedMany(records: RemovedRecords): Promise<void>;
 	conversationRemoved(id: string): Promise<void>;
@@ -32,6 +39,7 @@ export type CrmCache = {
 	workspace(options?: Options): Promise<void>;
 	slack(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
+	apiKeys(options?: Options): Promise<void>;
 	tracking(options?: Options): Promise<void>;
 	everything(): Promise<void>;
 };
@@ -132,6 +140,19 @@ export function useCrmCache(): CrmCache {
 					id
 						? trpc.fields.coverage.queryKey({ id })
 						: trpc.fields.coverage.queryKey(),
+				],
+				[],
+				options,
+			),
+
+		savedViews: (entity, options) =>
+			run(
+				[
+					entity
+						? trpc.savedViews.list.queryKey({
+								entity: ENTITY_FOR[entity],
+							})
+						: trpc.savedViews.list.queryKey(),
 				],
 				[],
 				options,
@@ -248,6 +269,7 @@ export function useCrmCache(): CrmCache {
 				[
 					trpc.settings.agentModel.queryKey(),
 					trpc.settings.researchKey.queryKey(),
+					trpc.settings.archiveRetention.queryKey(),
 				],
 				[],
 				options,
@@ -285,6 +307,8 @@ export function useCrmCache(): CrmCache {
 				[trpc.sso.settings.queryKey(), trpc.sso.signInOptions.queryKey()],
 				options,
 			),
+
+		apiKeys: (options) => run([trpc.apiKeys.list.pathKey()], [], options),
 
 		tracking: (options) =>
 			run(

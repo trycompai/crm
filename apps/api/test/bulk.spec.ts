@@ -154,7 +154,7 @@ describe("assigning an owner to a selection", () => {
 	});
 });
 
-describe("deleting a selection", () => {
+describe("purging a selection", () => {
 	it("suppresses every address, exactly as deleting them one by one would", async () => {
 		const first = await contacts.create({
 			firstName: "Gone",
@@ -165,7 +165,7 @@ describe("deleting a selection", () => {
 			email: `also-gone@${domain}`,
 		});
 
-		expect(await contacts.bulkDelete([first.id, second.id])).toEqual({
+		expect(await contacts.bulkPurge([first.id, second.id])).toEqual({
 			requested: 2,
 			succeeded: 2,
 			failed: 0,
@@ -185,10 +185,7 @@ describe("deleting a selection", () => {
 			email: `doomed@${domain}`,
 		});
 
-		const result = await contacts.bulkDelete([
-			survivor.id,
-			`missing-${suffix}`,
-		]);
+		const result = await contacts.bulkPurge([survivor.id, `missing-${suffix}`]);
 
 		expect(result.succeeded).toBe(1);
 		expect(result.failed).toBe(1);
@@ -209,7 +206,7 @@ describe("deleting a selection", () => {
 			ownerId,
 		});
 
-		expect(await companies.bulkDelete([doomed.id])).toEqual({
+		expect(await companies.bulkPurge([doomed.id])).toEqual({
 			requested: 1,
 			succeeded: 1,
 			failed: 0,

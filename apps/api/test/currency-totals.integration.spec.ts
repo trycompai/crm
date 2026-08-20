@@ -234,9 +234,11 @@ describe("the deals list", () => {
 			sort: "amount",
 			dir: "desc",
 			status: "open",
-			owner: userId,
-			stage: "all",
-			closing: "all",
+			owner: [userId],
+			stage: [],
+			closing: [],
+			fields: {},
+			archived: false,
 		});
 
 		expect(list.reportingCurrency).toBe("USD");
