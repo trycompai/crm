@@ -58,45 +58,50 @@ export async function createApp(): Promise<NestExpressApplication> {
 	// routing (wired up during init) otherwise shadows anything registered after
 	// it. The factory form defers building the document (which needs the tRPC
 	// router, only available post-init) to first request instead.
-	SwaggerModule.setup("", app, () => {
-		const { appRouter } = app.get(AppRouterHost);
+	SwaggerModule.setup(
+		"",
+		app,
+		() => {
+			const { appRouter } = app.get(AppRouterHost);
 
-		const trpcDocument = generateOpenApiDocument(appRouter, {
-			title: "CRM API — tRPC bridge",
-			description:
-				"Every tRPC procedure, reachable over REST for tooling that cannot speak tRPC. Same validation, same middlewares, same services as the tRPC transport — this only translates the wire format.",
-			version: "1.0",
-			baseUrl: `${apiUrl}${REST_BRIDGE_PATH}`,
-			securitySchemes: { apiKey: apiKeySecurityScheme },
-		});
+			const trpcDocument = generateOpenApiDocument(appRouter, {
+				title: "CRM API — tRPC bridge",
+				description:
+					"Every tRPC procedure, reachable over REST for tooling that cannot speak tRPC. Same validation, same middlewares, same services as the tRPC transport — this only translates the wire format.",
+				version: "1.0",
+				baseUrl: `${apiUrl}${REST_BRIDGE_PATH}`,
+				securitySchemes: { apiKey: apiKeySecurityScheme },
+			});
 
-		const swaggerConfig = new DocumentBuilder()
-			.setTitle("CRM API")
-			.setDescription(
-				`REST surface of the CRM API — auth, health, the internal cron routes, and a generated REST bridge (under ${REST_BRIDGE_PATH}) for every tRPC procedure.`,
-			)
-			.setVersion("1.0")
-			.addCookieAuth(SESSION_COOKIE_NAME)
-			.addApiKey(apiKeySecurityScheme, "apiKey")
-			.build();
-		const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+			const swaggerConfig = new DocumentBuilder()
+				.setTitle("CRM API")
+				.setDescription(
+					`REST surface of the CRM API — auth, health, the internal cron routes, and a generated REST bridge (under ${REST_BRIDGE_PATH}) for every tRPC procedure.`,
+				)
+				.setVersion("1.0")
+				.addCookieAuth(SESSION_COOKIE_NAME)
+				.addApiKey(apiKeySecurityScheme, "apiKey")
+				.build();
+			const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
 
-		swaggerDocument.paths = {
-			...swaggerDocument.paths,
-			...(trpcDocument.paths as typeof swaggerDocument.paths),
-		};
-		swaggerDocument.components = {
-			...swaggerDocument.components,
-			schemas: {
-				...swaggerDocument.components?.schemas,
-				...(trpcDocument.components?.schemas as NonNullable<
-					typeof swaggerDocument.components
-				>["schemas"]),
-			},
-		};
+			swaggerDocument.paths = {
+				...swaggerDocument.paths,
+				...(trpcDocument.paths as typeof swaggerDocument.paths),
+			};
+			swaggerDocument.components = {
+				...swaggerDocument.components,
+				schemas: {
+					...swaggerDocument.components?.schemas,
+					...(trpcDocument.components?.schemas as NonNullable<
+						typeof swaggerDocument.components
+					>["schemas"]),
+				},
+			};
 
-		return swaggerDocument;
-	});
+			return swaggerDocument;
+		},
+		{ jsonDocumentUrl: "openapi.json" },
+	);
 
 	await app.init();
 
