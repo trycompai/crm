@@ -68,7 +68,7 @@ export class SavedViewsService {
 
 			return this.serialize(row, userId);
 		} catch (error) {
-			throw this.translate(error);
+			throw this.translate(error, id);
 		}
 	}
 
@@ -78,7 +78,11 @@ export class SavedViewsService {
 			throw new NotFoundException(`No saved view with id ${id}.`);
 		}
 
-		await this.db.savedView.delete({ where: { id } });
+		try {
+			await this.db.savedView.delete({ where: { id } });
+		} catch (error) {
+			throw this.translate(error, id);
+		}
 
 		return { id };
 	}
@@ -108,12 +112,14 @@ export class SavedViewsService {
 		};
 	}
 
-	private translate(cause: unknown): never {
-		if (
-			cause instanceof PrismaNamespace.PrismaClientKnownRequestError &&
-			cause.code === "P2002"
-		) {
-			throw new ConflictException("You already have a view with that name.");
+	private translate(cause: unknown, id?: string): never {
+		if (cause instanceof PrismaNamespace.PrismaClientKnownRequestError) {
+			if (cause.code === "P2002") {
+				throw new ConflictException("You already have a view with that name.");
+			}
+			if (cause.code === "P2025") {
+				throw new NotFoundException(`No saved view with id ${id}.`);
+			}
 		}
 		throw cause;
 	}

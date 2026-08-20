@@ -1,4 +1,4 @@
-import { API_KEY_HEADER, apiUrl } from "@crm/auth";
+import { API_KEY_HEADER, apiUrl, SESSION_COOKIE_NAME } from "@crm/auth";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import {
@@ -76,7 +76,7 @@ export async function createApp(): Promise<NestExpressApplication> {
 				`REST surface of the CRM API — auth, health, the internal cron routes, and a generated REST bridge (under ${REST_BRIDGE_PATH}) for every tRPC procedure.`,
 			)
 			.setVersion("1.0")
-			.addCookieAuth("better-auth.session_token")
+			.addCookieAuth(SESSION_COOKIE_NAME)
 			.addApiKey(apiKeySecurityScheme, "apiKey")
 			.build();
 		const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);

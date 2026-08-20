@@ -51,7 +51,7 @@ export default defineDynamic({
 				},
 			);
 
-			focusOn({ ...focus, sessionId: ctx.session.id });
+			focusOn({ ...focus, sessionId: ctx.session.id, taskKind: kind });
 
 			return defineInstructions({
 				markdown: `${RESEARCH_INSTRUCTIONS}\n\n${markdown}`,

@@ -95,6 +95,14 @@ export const ACTIVITY_WINDOWS = ["7", "30", "90"] as const;
 
 export type ActivityWindow = (typeof ACTIVITY_WINDOWS)[number];
 
+const activityWindowSet: ReadonlySet<string> = new Set(ACTIVITY_WINDOWS);
+
+export const activityFacetInput = z
+	.array(z.string())
+	.refine((values) => values.every((value) => activityWindowSet.has(value)), {
+		message: `Activity must be one of: ${ACTIVITY_WINDOWS.join(", ")}.`,
+	});
+
 function activityCutoff(days: number): Date {
 	return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }

@@ -53,6 +53,12 @@ export function SavedViewsMenu({
 	const [name, setName] = useState("");
 	const [shared, setShared] = useState(false);
 
+	const closeDialog = () => {
+		setDialogOpen(false);
+		setName("");
+		setShared(false);
+	};
+
 	const settle = () => cache.savedViews(RECORD_KIND[entity]);
 
 	const create = useMutation(
@@ -60,9 +66,7 @@ export function SavedViewsMenu({
 			onSuccess: async () => {
 				await settle();
 				toast.success("View saved.");
-				setDialogOpen(false);
-				setName("");
-				setShared(false);
+				closeDialog();
 			},
 			onError: (error) => toast.error(error.message),
 		}),
@@ -123,7 +127,10 @@ export function SavedViewsMenu({
 				</DropdownMenuContent>
 			</DropdownMenu>
 
-			<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+			<Dialog
+				open={dialogOpen}
+				onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Save this view</DialogTitle>
@@ -150,7 +157,7 @@ export function SavedViewsMenu({
 						</Field>
 					</div>
 					<DialogFooter>
-						<Button variant="outline" onClick={() => setDialogOpen(false)}>
+						<Button variant="outline" onClick={closeDialog}>
 							Cancel
 						</Button>
 						<Button
@@ -183,19 +190,18 @@ function ViewItem({
 	onDelete: () => void;
 }) {
 	return (
-		<DropdownMenuItem className="justify-between gap-2" onSelect={onApply}>
-			<span className="truncate">{view.name}</span>
-			<Button
-				variant="ghost"
-				size="icon-xs"
-				onClick={(event) => {
-					event.stopPropagation();
-					onDelete();
-				}}
+		<div className="flex items-center gap-1">
+			<DropdownMenuItem className="min-w-0 flex-1" onSelect={onApply}>
+				<span className="truncate">{view.name}</span>
+			</DropdownMenuItem>
+			<DropdownMenuItem
+				variant="destructive"
+				className="shrink-0"
+				onSelect={onDelete}
 			>
 				<Close />
 				<span className="sr-only">Delete {view.name}</span>
-			</Button>
-		</DropdownMenuItem>
+			</DropdownMenuItem>
+		</div>
 	);
 }

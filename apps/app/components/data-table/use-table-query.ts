@@ -1,6 +1,6 @@
 "use client";
 
-import type { TableQueryState } from "@crm/ui/lib/table-query";
+import type { SortDirection, TableQueryState } from "@crm/ui/lib/table-query";
 import type { SavedViewFilters } from "@crm/validation/saved-view";
 import type { Nullable, Values } from "nuqs";
 import { useQueryStates } from "nuqs";
@@ -65,7 +65,7 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 	searchParams: ListSearchParams<TTab, TFacet>,
 ): TableQuery<TTab, TFacet> {
 	const { parsers, config, toInput } = searchParams;
-	const { defaultDir, pageSize, tabId, facetIds, facetDefaults } = config;
+	const { defaultDir, pageSize, tabId, facetIds } = config;
 
 	const [rawState, rawSetState] = useQueryStates(parsers);
 	const values = rawValuesSchema.parse(rawState);
@@ -88,8 +88,7 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 	const filters: Record<string, string[]> = {};
 	if (tabId) filters[tabId] = [tab];
 	for (const id of facetIds ?? []) {
-		const selected = asStringArray(values[id]);
-		filters[id] = selected.length > 0 ? selected : (facetDefaults?.[id] ?? []);
+		filters[id] = asStringArray(values[id]);
 	}
 	for (const [key, selected] of Object.entries(fields)) {
 		filters[`${FIELD_FILTER_PREFIX}${key}`] = selected;
@@ -104,11 +103,15 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 		tabId,
 		filters,
 		toggleSort: (id) =>
-			setValues(
-				sort === id
-					? { dir: dir === "asc" ? "desc" : "asc", page: 1 }
-					: { sort: id, dir: defaultDir, page: 1 },
-			),
+			rawSetState((old) => {
+				const current = rawValuesSchema.parse(old);
+				const nextDir: SortDirection = current.dir === "asc" ? "desc" : "asc";
+				const update: RawUpdate =
+					current.sort === id
+						? { dir: nextDir, page: 1 }
+						: { sort: id, dir: defaultDir, page: 1 };
+				return update as NuqsValues;
+			}),
 		setSort: (id) => setValues({ sort: id, page: 1 }),
 		setDir: (nextDir) => setValues({ dir: nextDir, page: 1 }),
 		setPage: (next) => setValues({ page: next }),
@@ -165,6 +168,8 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 		for (const [key, selected] of Object.entries(view.filters)) {
 			if (key.startsWith(FIELD_FILTER_PREFIX)) {
 				nextFields[key.slice(FIELD_FILTER_PREFIX.length)] = selected;
+			} else if (key === tabId) {
+				update[key] = selected[0] ?? "all";
 			} else {
 				update[key] = selected;
 			}

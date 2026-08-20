@@ -223,6 +223,7 @@ export function FieldEditor({
 
 	const key = field?.key ?? fieldKeyFromLabel(draft.label);
 	const saving = create.isPending || update.isPending;
+	const filterable = draft.type === "SELECT" || draft.type === "USER";
 
 	const save = () => {
 		const payload = {
@@ -233,7 +234,7 @@ export function FieldEditor({
 			agentBrief: draft.agentBrief.trim() || null,
 			showOnSheet: draft.showOnSheet,
 			showOnTable: draft.showOnTable,
-			showOnFilter: draft.showOnFilter,
+			showOnFilter: filterable && draft.showOnFilter,
 		};
 
 		if (field) {
@@ -406,7 +407,7 @@ export function FieldEditor({
 						/>
 						{tablePlacement(entity)}
 					</FieldLabel>
-					{draft.type === "SELECT" || draft.type === "USER" ? (
+					{filterable ? (
 						<FieldLabel className="items-center gap-2 font-normal">
 							<Checkbox
 								checked={draft.showOnFilter}

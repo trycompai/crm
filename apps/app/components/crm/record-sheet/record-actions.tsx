@@ -54,7 +54,7 @@ function useArchiveRecord(record: RecordRef) {
 			toast.success(
 				`${archived.name || `The ${NOUN[record.kind]}`} was archived.`,
 			);
-			void cache.removed(record);
+			void cache[record.kind](record.id);
 		},
 		onError: (error: { message: string }) => toast.error(error.message),
 	};

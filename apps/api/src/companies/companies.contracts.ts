@@ -3,14 +3,14 @@ import { FIELD_TYPES } from "@crm/db/fields";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { fieldEntity, recordFieldValues } from "../fields/fields.contracts";
-import { listInput } from "../trpc/list-input";
+import { activityFacetInput, listInput } from "../trpc/list-input";
 
 export const companyListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
 	industry: z.array(z.string()).default([]),
 	enrichment: z.array(z.string()).default([]),
 	source: z.array(z.string()).default([]),
-	activity: z.array(z.string()).default([]),
+	activity: activityFacetInput.default([]),
 	fields: z.record(z.string(), z.array(z.string())).default({}),
 	archived: z.boolean().default(false),
 });

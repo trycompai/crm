@@ -131,6 +131,7 @@ function CreateApiKeyForm() {
 									value={name}
 									onChange={(event) => setName(event.target.value)}
 									placeholder="CI pipeline"
+									maxLength={64}
 									autoComplete="off"
 									autoCapitalize="off"
 									autoCorrect="off"

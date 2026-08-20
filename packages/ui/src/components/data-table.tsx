@@ -326,8 +326,14 @@ export function DataTable<TRow, TSub = unknown>({
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
 	const availableFacets = useMemo(
-		() => (facets ?? []).filter((facet) => facet.options.length > 0),
-		[facets],
+		() =>
+			(facets ?? []).filter(
+				(facet) =>
+					facet.options.length > 0 ||
+					facet.searchable ||
+					(query.filters[facet.id]?.length ?? 0) > 0,
+			),
+		[facets, query.filters],
 	);
 
 	const hasFilterControls =

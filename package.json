@@ -44,9 +44,5 @@
 	"workspaces": [
 		"apps/*",
 		"packages/*"
-	],
-	"dependencies": {
-		"@better-auth/api-key": "1.6.25",
-		"trpc-to-openapi": "^3.3.0"
-	}
+	]
 }

@@ -1,4 +1,4 @@
-import type { auth } from "@crm/auth";
+import { type auth, SESSION_COOKIE_NAME } from "@crm/auth";
 import {
 	Controller,
 	Get,
@@ -22,7 +22,7 @@ import { ConversationsService } from "./conversations.service";
 type CrmSession = UserSession<typeof auth>;
 
 @ApiTags("Conversations")
-@ApiCookieAuth("better-auth.session_token")
+@ApiCookieAuth(SESSION_COOKIE_NAME)
 @Controller("api/conversations/attachments")
 export class ConversationAttachmentsController {
 	constructor(private readonly conversations: ConversationsService) {}

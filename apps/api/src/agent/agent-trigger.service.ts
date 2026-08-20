@@ -194,6 +194,10 @@ export class AgentTriggerService {
 	 * record that already has a pending field-backfill task gets `keys`
 	 * merged into it instead of a second task, so a field added a day after
 	 * another still reaches records already queued.
+	 *
+	 * Locked per record with `lockIdempotencyKey`, the same guard `enqueue`
+	 * uses — two concurrent callers for the same record serialize on the
+	 * advisory lock rather than racing a separate find and create.
 	 */
 	async fieldBackfillRecords(
 		entity: FieldEntity,
@@ -206,94 +210,86 @@ export class AgentTriggerService {
 		}
 
 		const column = RECORD_ID_COLUMNS[entity];
-		const recordIdOf = (row: {
-			contactId: string | null;
-			companyId: string | null;
-			dealId: string | null;
-		}): string | null =>
-			entity === "CONTACT"
-				? row.contactId
-				: entity === "COMPANY"
-					? row.companyId
-					: row.dealId;
+		let queued = 0;
+		let merged = 0;
 
-		try {
-			const existing = await this.db.agentTask.findMany({
-				where: {
-					kind: "field-backfill",
-					finishedAt: null,
-					[column]: { in: ids },
-				} as Prisma.AgentTaskWhereInput,
-				select: {
-					id: true,
-					contactId: true,
-					companyId: true,
-					dealId: true,
-					payload: true,
-				},
-			});
+		for (const id of ids) {
+			try {
+				const outcome = await this.db.$transaction(async (tx) => {
+					await lockIdempotencyKey(
+						tx,
+						`agent-task:field-backfill:${entity}:${id}`,
+					);
 
-			const covered = new Set(
-				existing
-					.map((row) => recordIdOf(row))
-					.filter((id): id is string => id !== null),
-			);
-			const fresh = ids.filter((id) => !covered.has(id));
+					const pending = await tx.agentTask.findFirst({
+						where: {
+							kind: "field-backfill",
+							finishedAt: null,
+							[column]: id,
+						} as Prisma.AgentTaskWhereInput,
+						select: { id: true, payload: true },
+					});
 
-			if (fresh.length > 0) {
-				await this.db.agentTask.createMany({
-					data: fresh.map((id) => ({
-						[column]: id,
+					if (!pending) {
+						await tx.agentTask.create({
+							data: {
+								[column]: id,
+								kind: "field-backfill",
+								reason,
+								priority: PRIORITY.fieldBackfill,
+								budget: 8,
+								dueAt: new Date(),
+								payload: { entity, keys } satisfies Prisma.InputJsonValue,
+							},
+						});
+						return "queued" as const;
+					}
+
+					const parsed = fieldBackfillPayload.safeParse(pending.payload);
+					const priorKeys = parsed.success ? parsed.data.keys : [];
+					const nextKeys = [...new Set([...priorKeys, ...keys])];
+					if (nextKeys.length === priorKeys.length) return "unchanged" as const;
+
+					await tx.agentTask.update({
+						where: { id: pending.id },
+						data: {
+							payload: {
+								entity,
+								keys: nextKeys,
+							} satisfies Prisma.InputJsonValue,
+						},
+					});
+					return "merged" as const;
+				});
+
+				if (outcome === "queued") queued += 1;
+				if (outcome === "merged") merged += 1;
+			} catch (error) {
+				this.logger.error(
+					{
+						message: "Could not queue agent task",
 						kind: "field-backfill",
-						reason,
-						priority: PRIORITY.fieldBackfill,
-						budget: 8,
-						dueAt: new Date(),
-						payload: { entity, keys } satisfies Prisma.InputJsonValue,
-					})),
-				});
-			}
-
-			let merged = 0;
-			for (const row of existing) {
-				const parsed = fieldBackfillPayload.safeParse(row.payload);
-				const priorKeys = parsed.success ? parsed.data.keys : [];
-				const nextKeys = [...new Set([...priorKeys, ...keys])];
-				if (nextKeys.length === priorKeys.length) continue;
-
-				await this.db.agentTask.update({
-					where: { id: row.id },
-					data: {
-						payload: { entity, keys: nextKeys } satisfies Prisma.InputJsonValue,
+						entity,
+						keys,
+						recordId: id,
 					},
-				});
-				merged += 1;
+					error instanceof Error ? error.stack : String(error),
+				);
 			}
-
-			this.logger.log({
-				message: "Agent task queued",
-				kind: "field-backfill",
-				entity,
-				keys,
-				queued: fresh.length,
-				merged,
-			});
-
-			if (fresh.length > 0 || merged > 0) this.poke();
-
-			return { queued: fresh.length, merged };
-		} catch (error) {
-			this.logger.error(
-				{
-					message: "Could not queue agent task",
-					kind: "field-backfill",
-					entity,
-					keys,
-				},
-				error instanceof Error ? error.stack : String(error),
-			);
-			return { queued: 0, merged: 0 };
 		}
+
+		this.logger.log({
+			message: "Agent task queued",
+			kind: "field-backfill",
+			entity,
+			keys,
+			queued,
+			merged,
+		});
+
+		if (queued > 0 || merged > 0) this.poke();
+
+		return { queued, merged };
 	}
 
 	async meetingSoon(contactId: string, when: Date): Promise<void> {

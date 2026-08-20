@@ -32,7 +32,7 @@ import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import { CopyValue } from "./copy-value";
+import { CopyValue } from "../copy-value";
 
 const FORM = "add-sso-provider";
 

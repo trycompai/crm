@@ -1,12 +1,13 @@
 import type { SortDirection } from "@crm/ui/lib/table-query";
 import {
 	createLoader,
+	type GenericParserBuilder,
 	type LoaderFunction,
 	type ParserBuilder,
-	parseAsArrayOf,
 	parseAsBoolean,
 	parseAsInteger,
 	parseAsJson,
+	parseAsNativeArrayOf,
 	parseAsString,
 	parseAsStringLiteral,
 } from "nuqs/server";
@@ -15,7 +16,7 @@ import { z } from "zod";
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
 
 type StringParser = ParserBuilder<string> & { defaultValue: string };
-type ArrayParser = ParserBuilder<string[]> & { defaultValue: string[] };
+type ArrayParser = GenericParserBuilder<string[]> & { defaultValue: string[] };
 
 const fieldFiltersSchema = z.record(z.string(), z.array(z.string()));
 
@@ -95,7 +96,7 @@ export function createListSearchParams<
 
 	const facetExtras: Record<string, ArrayParser> = {};
 	for (const id of facetIds) {
-		facetExtras[id] = parseAsArrayOf(parseAsString).withDefault(
+		facetExtras[id] = parseAsNativeArrayOf(parseAsString).withDefault(
 			facetDefaults?.[id] ?? [],
 		);
 	}

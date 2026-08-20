@@ -166,6 +166,9 @@ export function ApiKeysTable() {
 	const revoke = useMutation(
 		trpc.apiKeys.revoke.mutationOptions({
 			onSuccess: async () => {
+				if (apiKeys.data?.rows.length === 1 && query.page > 1) {
+					query.setPage(query.page - 1);
+				}
 				await cache.apiKeys();
 				toast.success("API key revoked.");
 			},

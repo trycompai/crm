@@ -160,6 +160,20 @@ export function DealsTable() {
 	const selection = useTableSelection(
 		useMemo(() => rows.map((row) => row.id), [rows]),
 	);
+	const settledIds = useMemo(() => {
+		const matching = new Set(
+			rows
+				.filter((row) => Boolean(row.archivedAt) === input.archived)
+				.map((row) => row.id),
+		);
+		return selection.ids.filter((id) => matching.has(id));
+	}, [rows, input.archived, selection.ids]);
+
+	const toggleArchived = (next: boolean) => {
+		selection.clear();
+		if (!next && query.sort === "archivedAt") query.setSort("");
+		setArchived(next);
+	};
 
 	const facetCounts = deals.data?.facetCounts;
 	const fieldFacets = useFieldFacets("DEAL", facetCounts);
@@ -217,7 +231,7 @@ export function DealsTable() {
 					variant={input.archived ? "contrast" : "outline"}
 					size="sm"
 					className="justify-start sm:justify-center"
-					onClick={() => setArchived(!input.archived)}
+					onClick={() => toggleArchived(!input.archived)}
 				>
 					<Archive data-icon="inline-start" />
 					Archived
@@ -240,7 +254,7 @@ export function DealsTable() {
 				state: selection,
 				actions: (
 					<DealsBulkActions
-						ids={selection.ids}
+						ids={settledIds}
 						onDone={selection.clear}
 						archived={input.archived}
 					/>

@@ -265,7 +265,10 @@ export class ContactsService {
 
 		if (email) {
 			const existing = await this.db.contact.findFirst({
-				where: { email: { equals: email, mode: "insensitive" } },
+				where: {
+					email: { equals: email, mode: "insensitive" },
+					archivedAt: null,
+				},
 				select: { id: true, firstName: true, lastName: true },
 			});
 			if (existing) {
@@ -325,7 +328,17 @@ export class ContactsService {
 			contact.id,
 			"Added by a rep, with nothing on the record yet",
 		);
-		void this.fields.queueBackfillForNewRecord("CONTACT", contact.id);
+		this.fields
+			.queueBackfillForNewRecord("CONTACT", contact.id)
+			.catch((error: Error) => {
+				this.logger.error(
+					{
+						message: "Contact backfill queueing failed",
+						contactId: contact.id,
+					},
+					error.stack,
+				);
+			});
 
 		return {
 			id: contact.id,
@@ -366,15 +379,38 @@ export class ContactsService {
 		}
 	}
 
-	async purge(id: string): Promise<{ id: string; name: string }> {
+	async purge(id: string): Promise<{ id: string; name: string }>;
+	async purge(
+		id: string,
+		guard: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null>;
+	async purge(
+		id: string,
+		guard?: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null> {
 		let deleted: {
 			targets: StampTargets;
 			name: string;
 			suppressed: boolean;
-		};
+		} | null;
 
 		try {
 			deleted = await this.db.$transaction(async (tx) => {
+				const [row] = await tx.$queryRaw<Array<{ archivedAt: Date | null }>>`
+					SELECT "archivedAt" FROM contact WHERE id = ${id} FOR UPDATE
+				`;
+
+				if (!row) {
+					if (guard) return null;
+					throw new NotFoundException(`No contact with id ${id}.`);
+				}
+				if (
+					guard &&
+					(!row.archivedAt || row.archivedAt > guard.archivedBefore)
+				) {
+					return null;
+				}
+
 				const targets = await this.stamp.targetsOf({ contactId: id }, tx);
 
 				await tx.agentTask.deleteMany({ where: { contactId: id } });
@@ -405,6 +441,8 @@ export class ContactsService {
 			throw this.translate(error, id);
 		}
 
+		if (!deleted) return null;
+
 		await this.stamp.recomputeAfterDelete(deleted.targets, { contactId: id });
 
 		this.logger.log({
@@ -425,7 +463,7 @@ export class ContactsService {
 
 		return runBulk(
 			expired.map((row) => row.id),
-			(id) => this.purge(id),
+			(id) => this.purge(id, { archivedBefore: before }),
 		);
 	}
 

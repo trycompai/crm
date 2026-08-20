@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parse } from "./index";
 
 export const savedViewFilters = z.object({
 	q: z.string().default(""),
@@ -11,5 +12,5 @@ export const savedViewFilters = z.object({
 export type SavedViewFilters = z.infer<typeof savedViewFilters>;
 
 export function parseSavedViewFilters(value: unknown): SavedViewFilters {
-	return savedViewFilters.parse(value);
+	return parse(savedViewFilters, value, "saved view filters");
 }

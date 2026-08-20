@@ -47,7 +47,7 @@ export class FieldsRouter {
 	@Query({
 		input: fieldEntityInput,
 		output: fieldFiltersOutput,
-		meta: restMeta("GET", "/fields/{entity}/filters", ["Fields"]),
+		meta: restMeta("GET", "/fields/{entity}/filterable", ["Fields"]),
 	})
 	async filters(@Input() input: z.infer<typeof fieldEntityInput>) {
 		return this.fields.filters(input.entity);

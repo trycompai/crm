@@ -9,7 +9,7 @@ import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
-import { listInput } from "../trpc/list-input";
+import { activityFacetInput, listInput } from "../trpc/list-input";
 
 export const contactListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
@@ -18,7 +18,7 @@ export const contactListInput = listInput.extend({
 	title: z.array(z.string()).default([]),
 	seniority: z.array(z.string()).default([]),
 	persona: z.array(z.string()).default([]),
-	activity: z.array(z.string()).default([]),
+	activity: activityFacetInput.default([]),
 	fields: z.record(z.string(), z.array(z.string())).default({}),
 	archived: z.boolean().default(false),
 });

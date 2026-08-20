@@ -41,15 +41,20 @@ Every field from his note, what backs it today, and the plan to close it.
 
 ### Companies view
 
+All seven rows below are already seeded as `FieldDefinition` rows
+(`seedCompanyFields` in `packages/db/prisma/seed.ts`) with real option sets. The
+gap is not the field — it is that none of them show on the table or reach the
+filter bar yet.
+
 | Field he wants | Where it stands today | Plan | Effort |
 | --- | --- | --- | --- |
-| Account type (prospect / customer / partner / churned) | Does not exist | New admin-defined `SELECT` field | Small |
-| Inside Sales / BDR owner (separate from AE / account owner) | One owner only, used as AE owner | New `USER`-type field, sits beside Owner | Small |
-| Segment / tier | Does not exist | New `SELECT` field | Small |
-| ICP fit score | Does not exist | New `NUMBER` field now; agent scoring is a natural next step, not a v1 requirement | Small |
-| Territory | Does not exist | New `SELECT` field | Small |
-| Lifecycle stage | Does not exist | New `SELECT` field with a defined stage list | Small |
-| Lead source (IB / OB / Event) | A `source` enum records how a row entered the CRM (manual, import, email…) — a different question | New `SELECT` field, kept separate from `source` | Small |
+| Account type (prospect / customer / partner / churned) | Seeded `SELECT` field — Prospect, Customer, Partner, Churned | Turn on table + filter | Small |
+| Inside Sales / BDR owner (separate from AE / account owner) | Seeded `USER` field, sits beside Owner | Turn on table + filter | Small |
+| Segment / tier | Seeded `SELECT` field — Enterprise, Mid-Market, SMB | Turn on table + filter | Small |
+| ICP fit score | Seeded `NUMBER` field; agent scoring is a natural next step, not a v1 requirement | Turn on table + filter | Small |
+| Territory | Seeded `SELECT` field — AMER, EMEA, APAC | Turn on table + filter | Small |
+| Lifecycle stage | Seeded `SELECT` field — Lead, MQL, SQL, Opportunity, Customer, … | Turn on table + filter | Small |
+| Lead source (IB / OB / Event) | Seeded `SELECT` field — Inbound, Outbound, Event, kept separate from the `source` enum that records how a row entered the CRM | Turn on table + filter | Small |
 
 ### Contacts view
 
@@ -92,8 +97,9 @@ Resolves: unlocks every field below · engagement / activity recency
 
 ### Phase 2 — Company segmentation fields
 
-Seed and ship the seven Company fields from the gap map — account type, BDR
-owner, segment/tier, territory, lifecycle stage, lead source, ICP fit score.
+Turn on table and filter visibility for the seven Company fields from the gap
+map — account type, BDR owner, segment/tier, territory, lifecycle stage, lead
+source, ICP fit score. All seven are already seeded; nothing new to create.
 
 Resolves: account type · BDR owner · segment/tier · territory · lifecycle
 stage · lead source · ICP fit score

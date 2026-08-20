@@ -275,8 +275,8 @@ export class CompaniesService {
 		const domain = normalizeDomain(input.domain);
 
 		if (domain) {
-			const existing = await this.db.company.findUnique({
-				where: { domain },
+			const existing = await this.db.company.findFirst({
+				where: { domain, archivedAt: null },
 				select: { id: true, name: true },
 			});
 			if (existing) {
@@ -425,17 +425,52 @@ export class CompaniesService {
 		}
 	}
 
-	async purge(id: string): Promise<{ id: string; name: string }> {
-		let deleted: { targets: StampTargets; name: string };
+	async purge(id: string): Promise<{ id: string; name: string }>;
+	async purge(
+		id: string,
+		guard: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null>;
+	async purge(
+		id: string,
+		guard?: { archivedBefore: Date },
+	): Promise<{ id: string; name: string } | null> {
+		let deleted: { targets: StampTargets; name: string } | null;
 
 		try {
 			deleted = await this.db.$transaction(async (tx) => {
+				const [row] = await tx.$queryRaw<Array<{ archivedAt: Date | null }>>`
+					SELECT "archivedAt" FROM company WHERE id = ${id} FOR UPDATE
+				`;
+
+				if (!row) {
+					if (guard) return null;
+					throw new NotFoundException(`No company with id ${id}.`);
+				}
+				if (
+					guard &&
+					(!row.archivedAt || row.archivedAt > guard.archivedBefore)
+				) {
+					return null;
+				}
+
 				const targets = await this.stamp.targetsOf(
 					{ OR: [{ companyId: id }, { deal: { companyId: id } }] },
 					tx,
 				);
 
-				await tx.agentTask.deleteMany({ where: { companyId: id } });
+				const deals = await tx.deal.findMany({
+					where: { companyId: id },
+					select: { id: true },
+				});
+
+				await tx.agentTask.deleteMany({
+					where: {
+						OR: [
+							{ companyId: id },
+							{ dealId: { in: deals.map((deal) => deal.id) } },
+						],
+					},
+				});
 
 				const company = await tx.company.delete({
 					where: { id },
@@ -447,6 +482,8 @@ export class CompaniesService {
 		} catch (error) {
 			throw this.translate(error, id);
 		}
+
+		if (!deleted) return null;
 
 		await this.stamp.recomputeAfterDelete(deleted.targets, { companyId: id });
 
@@ -468,7 +505,7 @@ export class CompaniesService {
 
 		return runBulk(
 			expired.map((row) => row.id),
-			(id) => this.purge(id),
+			(id) => this.purge(id, { archivedBefore: before }),
 		);
 	}
 

@@ -12,6 +12,9 @@ const LANDED_OUTCOME =
 const RETIRED_ERROR =
 	"Research was attempted several times and never completed.";
 
+const UNTARGETED_OUTCOME =
+	"No record was ever attached to this task, so it can never be worked. Retired.";
+
 export type StaleTaskSweep = {
 	scanned: number;
 	closed: number;
@@ -27,6 +30,7 @@ type OpenTask = {
 	kind: string;
 	contactId: string | null;
 	companyId: string | null;
+	dealId: string | null;
 	attempts: number;
 	leasedUntil: Date | null;
 	startedAt: Date | null;
@@ -96,6 +100,7 @@ async function runSweep(sweep: StaleTaskSweep): Promise<void> {
 				kind: true,
 				contactId: true,
 				companyId: true,
+				dealId: true,
 				attempts: true,
 				leasedUntil: true,
 				startedAt: true,
@@ -109,9 +114,15 @@ async function runSweep(sweep: StaleTaskSweep): Promise<void> {
 	const completed = await completedSubjects(tasks);
 
 	const landed: string[] = [];
+	const untargeted: string[] = [];
 	const dead: string[] = [];
 
 	for (const task of tasks) {
+		if (isUntargetedFieldBackfill(task)) {
+			untargeted.push(task.id);
+			continue;
+		}
+
 		if (finishedElsewhere(task, completed)) {
 			landed.push(task.id);
 			continue;
@@ -134,6 +145,19 @@ async function runSweep(sweep: StaleTaskSweep): Promise<void> {
 		});
 
 		sweep.closed = count;
+	}
+
+	if (untargeted.length > 0) {
+		const { count } = await db.agentTask.updateMany({
+			where: {
+				id: { in: untargeted },
+				finishedAt: null,
+				OR: [{ leasedUntil: null }, { leasedUntil: { lt: now } }],
+			},
+			data: { finishedAt: now, outcome: UNTARGETED_OUTCOME },
+		});
+
+		sweep.closed += count;
 	}
 
 	sweep.retired = (await retireAbandoned()).length;
@@ -200,6 +224,15 @@ function finishedElsewhere(
 	if (!enrichedAt) return false;
 
 	return enrichedAt.getTime() >= task.startedAt.getTime();
+}
+
+function isUntargetedFieldBackfill(task: OpenTask): boolean {
+	return (
+		task.kind === "field-backfill" &&
+		!task.contactId &&
+		!task.companyId &&
+		!task.dealId
+	);
 }
 
 function unique(ids: readonly (string | null)[]): string[] {

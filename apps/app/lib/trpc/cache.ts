@@ -127,7 +127,12 @@ export function useCrmCache(): CrmCache {
 	return {
 		fields: (entity, options) =>
 			run(
-				[trpc.fields.list.queryKey()],
+				[
+					trpc.fields.list.queryKey(),
+					entity
+						? trpc.fields.filters.queryKey({ entity: ENTITY_FOR[entity] })
+						: trpc.fields.filters.queryKey(),
+				],
 				entity
 					? [RECORD_BY_ID[entity](), RECORD_LIST[entity]()]
 					: [...Object.values(RECORD_BY_ID).map((key) => key()), ...listKeys()],

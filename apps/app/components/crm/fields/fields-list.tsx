@@ -254,7 +254,7 @@ export function FieldsList({
 													template.type !== "NUMBER",
 												required: false,
 												showOnSheet: true,
-												showOnTable: true,
+												showOnTable: false,
 												showOnFilter: false,
 											})
 										}

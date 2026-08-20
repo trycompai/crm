@@ -15,7 +15,7 @@ import {
 	InputGroupInput,
 } from "@crm/ui/components/input-group";
 import type { RouterOutputs } from "@/lib/trpc/types";
-import { CopyValue } from "./copy-value";
+import { CopyValue } from "../copy-value";
 
 type CreatedApiKey = RouterOutputs["apiKeys"]["create"];
 

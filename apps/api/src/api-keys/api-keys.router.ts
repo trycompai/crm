@@ -11,6 +11,7 @@ import {
 import type { z } from "zod";
 import type { AuthedTrpcContext, BaseTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
+import { SessionOnlyMiddleware } from "../trpc/middlewares/session-only.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
 	apiKeyListInput,
@@ -27,7 +28,7 @@ function headersOf(ctx: BaseTrpcContext): Headers {
 }
 
 @Router({ alias: "apiKeys" })
-@UseMiddlewares(AuthMiddleware)
+@UseMiddlewares(AuthMiddleware, SessionOnlyMiddleware)
 export class ApiKeysRouter {
 	constructor(
 		@Inject(ApiKeysService) private readonly apiKeys: ApiKeysService,

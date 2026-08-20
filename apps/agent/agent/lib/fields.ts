@@ -6,12 +6,14 @@ import {
 	FieldValueError,
 	fieldKeyFromLabel,
 	type RecordField,
+	readValue,
 	recordColumn,
 	type SerializedField,
 	serializeField,
 	usesOptions,
 	writeValues,
 } from "@crm/db/fields";
+import { currentFocus } from "./focus";
 
 const WITH_OPTIONS = { options: { orderBy: { position: "asc" } } } as const;
 
@@ -73,6 +75,20 @@ export async function writeField(input: {
 			written: false,
 			reason: `"${input.key}" is marked manual only, so a rep keeps it by hand.`,
 		};
+	}
+
+	if (currentFocus().taskKind === "field-backfill") {
+		const column = recordColumn(input.entity);
+		const row = await db.fieldValue.findFirst({
+			where: { fieldId: definition.id, [column]: input.recordId },
+		});
+
+		if (readValue(definition, row ?? undefined) !== null) {
+			return {
+				written: false,
+				reason: `"${input.key}" already has a value on this record. Someone filled it since this task was queued — leave it as is.`,
+			};
+		}
 	}
 
 	try {
