@@ -141,6 +141,28 @@ self-hoster's admin cannot redeploy.
   Only `check-types` and `dev` run it. If the app cannot see a new procedure, it has
   not run.
 
+## The OpenAPI document is built at runtime, not committed
+
+`GET /openapi.json` serves one document: Nest's own controllers plus a REST bridge
+under `/rest` generated from every tRPC procedure. Swagger UI renders it at `/`.
+`createApp` builds both halves and merges them, so nothing is generated at build
+time and no file is checked in — the document is whatever the routers are.
+
+`SwaggerModule.setup` runs **before** `app.init()`, because it registers its Express
+routes synchronously and Nest's own routing would otherwise shadow them. The factory
+form defers building the document to the first request, which is what lets it read
+the tRPC router that only exists after init.
+
+Two rules follow for the serverless build:
+
+- `@nestjs/swagger` stays in `EXTERNALS` in `apps/api/scripts/build-func.mjs`, because
+  `swagger-ui-dist` resolves its assets from disk at runtime and cannot be bundled.
+- Anything external must be **vendored**, and vendoring follows non-optional
+  `peerDependencies`, not only `dependencies`. Nest packages declare their runtime
+  needs as peers, so following `dependencies` alone ships a function that throws
+  `MODULE_NOT_FOUND` on the first request. Adding a name to `EXTERNALS` without
+  checking it lands in `.vercel/output` breaks production, and the build stays green.
+
 ## Two mail providers, one pipeline
 
 `apps/api/src/mailbox` is everything neither Google nor Microsoft owns:
