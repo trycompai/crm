@@ -33,6 +33,7 @@ import { parseAsBoolean, useQueryState } from "nuqs";
 import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -61,7 +62,7 @@ function CreateCompanyForm() {
 	const cache = useCrmCache();
 
 	const [open, setOpen] = useQueryState(
-		"new",
+		SEARCH_PARAM.dialog.create,
 		parseAsBoolean.withDefault(false),
 	);
 	const [name, setName] = useState("");

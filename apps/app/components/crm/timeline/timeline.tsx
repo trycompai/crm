@@ -14,13 +14,13 @@ import { cn } from "@crm/ui/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useQueryState } from "nuqs";
 import { DetailSheetEmpty, SECTION_TITLE } from "@/components/detail-sheet";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useTRPC } from "@/lib/trpc/client";
 import { useHydrated } from "@/lib/use-hydrated";
 import { ActivityComposer } from "./activity-composer";
 import { TimelineEntry, type TimelineEntryData } from "./timeline-entry";
 import {
 	historyFilter,
-	TIMELINE_PARAM,
 	TIMELINE_TABS,
 	type TimelineTab,
 	timelineTabParser,
@@ -158,7 +158,10 @@ export function Timeline({ anchor }: { anchor: TimelineAnchor }) {
 	const trpc = useTRPC();
 	const hydrated = useHydrated();
 
-	const [tab, setTab] = useQueryState(TIMELINE_PARAM, timelineTabParser);
+	const [tab, setTab] = useQueryState(
+		SEARCH_PARAM.record.timeline,
+		timelineTabParser,
+	);
 
 	const counts = useQuery(trpc.activities.timelineCounts.queryOptions(anchor));
 

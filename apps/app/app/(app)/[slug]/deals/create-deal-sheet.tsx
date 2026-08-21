@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { CompanyPicker } from "@/components/crm/company-picker";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { dealStageLabel, OPEN_STAGES } from "@/lib/deal-stage";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -65,7 +66,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const cache = useCrmCache();
 
 	const [open, setOpen] = useQueryState(
-		"new",
+		SEARCH_PARAM.dialog.create,
 		parseAsBoolean.withDefault(false),
 	);
 	const [name, setName] = useState("");

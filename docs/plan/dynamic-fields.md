@@ -4,7 +4,7 @@ Fields a workspace defines for itself, on companies, contacts and deals, edited
 from one sheet that opens from any record.
 
 The visual design is in Paper, file **CRM**, page **crm - lewis**, artboards
-`Dynamic fields — cog placement`, `/companies?record=company:abcd&fields=company`,
+`Dynamic fields — cog placement`, `/companies?record=company:abcd&manageFields=company`,
 `Dynamic fields — new field & empty` and `Dynamic fields — on the record`. This
 document is the half Paper cannot hold: the model, the API and the agent.
 
@@ -39,7 +39,7 @@ deal can still fix a contact field without closing anything.
 State lives in the URL beside `record`, in `record-stack.ts`:
 
 ```
-/companies?record=company:abcd&fields=company
+/companies?record=company:abcd&manageFields=company
 ```
 
 so it is shareable, Escape and Back close it in the right order, and the record

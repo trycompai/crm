@@ -7,10 +7,8 @@ import {
 	useQueryStates,
 } from "nuqs";
 import { useCallback, useMemo } from "react";
-import {
-	TIMELINE_PARAM,
-	timelineTabParser,
-} from "@/components/crm/timeline/timeline-search-params";
+import { timelineTabParser } from "@/components/crm/timeline/timeline-search-params";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 
 const RECORD_KINDS = ["company", "contact", "deal"] as const;
 
@@ -28,13 +26,15 @@ const FORM_TAB = {
 } satisfies Record<RecordForm, string>;
 
 const params = {
-	record: parseAsArrayOf(parseAsString, ",").withDefault([]),
-	tab: parseAsString,
-	add: parseAsStringLiteral(RECORD_FORMS),
-	thread: parseAsString,
-	fields: parseAsStringLiteral(RECORD_KINDS),
-	field: parseAsString,
-	[TIMELINE_PARAM]: timelineTabParser,
+	[SEARCH_PARAM.record.stack]: parseAsArrayOf(parseAsString, ",").withDefault(
+		[],
+	),
+	[SEARCH_PARAM.record.tab]: parseAsString,
+	[SEARCH_PARAM.record.add]: parseAsStringLiteral(RECORD_FORMS),
+	[SEARCH_PARAM.record.thread]: parseAsString,
+	[SEARCH_PARAM.fieldsSheet.entity]: parseAsStringLiteral(RECORD_KINDS),
+	[SEARCH_PARAM.fieldsSheet.field]: parseAsString,
+	[SEARCH_PARAM.record.timeline]: timelineTabParser,
 };
 
 export function recordKey(ref: RecordRef): string {
@@ -51,7 +51,8 @@ function parseRef(raw: string): RecordRef | null {
 }
 
 export function useRecordStack() {
-	const [{ record }, setParams] = useQueryStates(params);
+	const [values, setParams] = useQueryStates(params);
+	const record = values[SEARCH_PARAM.record.stack];
 
 	const stack = useMemo(
 		() => record.map(parseRef).filter((ref): ref is RecordRef => ref !== null),
@@ -62,13 +63,14 @@ export function useRecordStack() {
 		(next: RecordRef[], history: "push" | "replace") => {
 			void setParams(
 				{
-					record: next.length === 0 ? null : next.map(recordKey),
-					tab: null,
-					add: null,
-					thread: null,
-					fields: null,
-					field: null,
-					[TIMELINE_PARAM]: null,
+					[SEARCH_PARAM.record.stack]:
+						next.length === 0 ? null : next.map(recordKey),
+					[SEARCH_PARAM.record.tab]: null,
+					[SEARCH_PARAM.record.add]: null,
+					[SEARCH_PARAM.record.thread]: null,
+					[SEARCH_PARAM.fieldsSheet.entity]: null,
+					[SEARCH_PARAM.fieldsSheet.field]: null,
+					[SEARCH_PARAM.record.timeline]: null,
 				},
 				{ history },
 			);
@@ -108,50 +110,66 @@ export function useOpenRecord() {
 }
 
 export function useFieldsSheet() {
-	const [{ fields, field }, setParams] = useQueryStates(params);
+	const [values, setParams] = useQueryStates(params);
+	const entity = values[SEARCH_PARAM.fieldsSheet.entity];
+	const field = values[SEARCH_PARAM.fieldsSheet.field];
 
 	const open = useCallback(
-		(kind: RecordKind) => void setParams({ fields: kind, field: null }),
+		(kind: RecordKind) =>
+			void setParams({
+				[SEARCH_PARAM.fieldsSheet.entity]: kind,
+				[SEARCH_PARAM.fieldsSheet.field]: null,
+			}),
 		[setParams],
 	);
 
 	const close = useCallback(
-		() => void setParams({ fields: null, field: null }),
+		() =>
+			void setParams({
+				[SEARCH_PARAM.fieldsSheet.entity]: null,
+				[SEARCH_PARAM.fieldsSheet.field]: null,
+			}),
 		[setParams],
 	);
 
 	const edit = useCallback(
-		(key: string | null) => void setParams({ field: key }),
+		(key: string | null) =>
+			void setParams({ [SEARCH_PARAM.fieldsSheet.field]: key }),
 		[setParams],
 	);
 
-	return { entity: fields, field, open, close, edit };
+	return { entity, field, open, close, edit };
 }
 
 export function useRecordSheetView(fallbackTab: string) {
-	const [{ tab, add, thread }, setParams] = useQueryStates(params);
+	const [values, setParams] = useQueryStates(params);
+	const tab = values[SEARCH_PARAM.record.tab];
+	const add = values[SEARCH_PARAM.record.add];
+	const thread = values[SEARCH_PARAM.record.thread];
 
 	const active = add ? FORM_TAB[add] : (tab ?? fallbackTab);
 
 	const setTab = useCallback(
 		(next: string) => {
 			void setParams({
-				tab: next === fallbackTab ? null : next,
-				add: null,
-				thread: null,
-				[TIMELINE_PARAM]: null,
+				[SEARCH_PARAM.record.tab]: next === fallbackTab ? null : next,
+				[SEARCH_PARAM.record.add]: null,
+				[SEARCH_PARAM.record.thread]: null,
+				[SEARCH_PARAM.record.timeline]: null,
 			});
 		},
 		[setParams, fallbackTab],
 	);
 
 	const setForm = useCallback(
-		(next: RecordForm | null) => void setParams({ add: next }),
+		(next: RecordForm | null) =>
+			void setParams({ [SEARCH_PARAM.record.add]: next }),
 		[setParams],
 	);
 
 	const setThread = useCallback(
-		(next: string | null) => void setParams({ thread: next }),
+		(next: string | null) =>
+			void setParams({ [SEARCH_PARAM.record.thread]: next }),
 		[setParams],
 	);
 

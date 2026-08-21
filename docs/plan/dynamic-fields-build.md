@@ -41,11 +41,11 @@ Paper file **CRM**, page **crm - lewis**:
 | `/companies?record=company:abcd` | Cog in the DETAILS header; custom fields inline; a pending agent suggestion |
 | `/contacts?record=contact:abcd` | Cog placement only |
 | `/deals?record=deal:abcd` | Cog placement only |
-| `…&fields=company` | The fields sheet — list state |
-| `…&fields=company (first run)` | Empty state |
-| `…&fields=company&field=new` | Create a field |
-| `…&fields=company&field=runs_on` | Edit a field, with coverage |
-| `…&fields=company&field=runs_on (archive)` | Archive confirmation |
+| `…&manageFields=company` | The fields sheet — list state |
+| `…&manageFields=company (first run)` | Empty state |
+| `…&manageFields=company&manageField=new` | Create a field |
+| `…&manageFields=company&manageField=runs_on` | Edit a field, with coverage |
+| `…&manageFields=company&manageField=runs_on (archive)` | Archive confirmation |
 
 **Take values from the file, not from screenshots.** `get_jsx`,
 `get_computed_styles`, `get_node_info`. A screenshot will not tell you whether a

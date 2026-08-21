@@ -2,6 +2,7 @@
 
 import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useQueryState } from "nuqs";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import {
 	OVERVIEW_SCOPES,
 	type OverviewScope,
@@ -37,7 +38,10 @@ export function OverviewScopeToggleFallback() {
 }
 
 export function OverviewScopeToggle() {
-	const [scope, setScope] = useQueryState("scope", overviewParsers.scope);
+	const [scope, setScope] = useQueryState(
+		SEARCH_PARAM.overview.scope,
+		overviewParsers[SEARCH_PARAM.overview.scope],
+	);
 
 	return (
 		<ToggleGroup

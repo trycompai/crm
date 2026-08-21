@@ -12,6 +12,10 @@ import {
 	parseAsStringLiteral,
 } from "nuqs/server";
 import { z } from "zod";
+import {
+	assertUnreservedSearchParamKeys,
+	SEARCH_PARAM,
+} from "@/lib/search-param-keys";
 
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
 
@@ -23,10 +27,14 @@ const fieldFiltersSchema = z.record(z.string(), z.array(z.string()));
 export type FieldFilters = z.infer<typeof fieldFiltersSchema>;
 
 export const searchParsers = {
-	q: parseAsString.withDefault(""),
-	page: parseAsInteger.withDefault(1).withOptions({ history: "push" }),
-	fields: parseAsJson<FieldFilters>(fieldFiltersSchema.parse).withDefault({}),
-	archived: parseAsBoolean.withDefault(false),
+	[SEARCH_PARAM.list.q]: parseAsString.withDefault(""),
+	[SEARCH_PARAM.list.page]: parseAsInteger
+		.withDefault(1)
+		.withOptions({ history: "push" }),
+	[SEARCH_PARAM.list.fields]: parseAsJson<FieldFilters>(
+		fieldFiltersSchema.parse,
+	).withDefault({}),
+	[SEARCH_PARAM.list.archived]: parseAsBoolean.withDefault(false),
 };
 
 type ListParsers<TTab extends string, TFacet extends string> = {
@@ -91,6 +99,11 @@ export function createListSearchParams<
 		facetDefaults,
 	} = config;
 
+	assertUnreservedSearchParamKeys(
+		[...(tabId ? [tabId] : []), ...facetIds],
+		"createListSearchParams",
+	);
+
 	const tabExtras: Record<string, StringParser> = {};
 	if (tabId) tabExtras[tabId] = parseAsString.withDefault("all");
 
@@ -103,8 +116,9 @@ export function createListSearchParams<
 
 	const parsers = {
 		...searchParsers,
-		sort: parseAsString.withDefault(defaultSort),
-		dir: parseAsStringLiteral(SORT_DIRECTIONS).withDefault(defaultDir),
+		[SEARCH_PARAM.list.sort]: parseAsString.withDefault(defaultSort),
+		[SEARCH_PARAM.list.dir]:
+			parseAsStringLiteral(SORT_DIRECTIONS).withDefault(defaultDir),
 		...tabExtras,
 		...facetExtras,
 	} as ListParsers<TTab, TFacet>;

@@ -32,6 +32,7 @@ import { useMutation } from "@tanstack/react-query";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
+import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -75,7 +76,7 @@ function CreateApiKeyForm() {
 	const expirationId = useId();
 
 	const [open, setOpen] = useQueryState(
-		"new",
+		SEARCH_PARAM.dialog.create,
 		parseAsBoolean.withDefault(false),
 	);
 	const [name, setName] = useState("");
