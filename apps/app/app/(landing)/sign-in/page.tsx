@@ -95,8 +95,10 @@ async function SignIn({
 
 				<p className="text-center text-muted-foreground text-sm/5">
 					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — or MICROSOFT_CLIENT_ID
-					and MICROSOFT_CLIENT_SECRET — in the root .env file and restart. Your
-					own identity provider can be added from Settings once somebody is
+					and MICROSOFT_CLIENT_SECRET — in the root .env file and restart. For
+					local development without OAuth, mint a session with{" "}
+					<code className="text-xs">bun run --filter=api dev:session</code>.
+					Your own identity provider can be added from Settings once somebody is
 					signed in.
 				</p>
 			</>
