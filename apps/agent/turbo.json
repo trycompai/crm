@@ -10,7 +10,7 @@
 			"dependsOn": ["topo", "^build"]
 		},
 		"dev": {
-			"dependsOn": ["$TURBO_EXTENDS$"],
+			"dependsOn": ["$TURBO_EXTENDS$", "@crm/db#db:generate"],
 			"cache": false,
 			"interactive": true,
 			"persistent": true,
@@ -24,7 +24,7 @@
 			]
 		},
 		"dev:headless": {
-			"dependsOn": ["$TURBO_EXTENDS$"],
+			"dependsOn": ["$TURBO_EXTENDS$", "@crm/db#db:generate"],
 			"cache": false,
 			"persistent": true,
 			"passThroughEnv": [
