@@ -148,3 +148,30 @@ never reuse one from an example, a tutorial, or another environment.
 bun run --filter=api test
 bun run --filter=agent test    # integration specs need DATABASE_URL + real Postgres
 ```
+
+### The test database rebuilds itself when it drifts
+
+`bun run db:test` creates `crm_test` and runs `migrate deploy` on it. The database
+name must end in `_test`; the suite deletes rows it expects to put back, so it
+refuses anything else.
+
+**`migrate deploy` only applies migrations that are missing. It never removes a
+table, a column or a constraint the database has and the schema does not.** A
+`crm_test` built on a branch that was later abandoned therefore keeps that branch's
+objects forever, and `db:test` used to report `already exists` and move on. The
+extra objects are invisible until one of them rejects a write, and then the failure
+names a constraint that appears in no migration and in no schema — a stray
+`trackedEvent_visitorId_fkey` once failed seven tracking specs this way, on every
+branch, for as long as the database survived.
+
+So `db:test` now checks the database it found and rebuilds it when either is true:
+
+- **It holds a migration this branch does not have.** The database came from
+  another branch. The name of the first one is printed.
+- **It no longer matches `schema.prisma`**, by `prisma migrate diff`. Something
+  was pushed or altered by hand.
+
+A rebuild drops the database and re-runs every migration, and it says which of the
+two reasons fired. Force one with `bun run db:test --reset`. Nothing else in the
+repo may drop a database, and this may only because the `_test` suffix is checked
+first.

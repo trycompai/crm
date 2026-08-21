@@ -1,5 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import pg from "pg";
+
+const SCHEMA = join(dirname(import.meta.dirname), "prisma", "schema.prisma");
+const MIGRATIONS = join(dirname(import.meta.dirname), "prisma", "migrations");
 
 const url = resolve();
 
@@ -20,7 +25,7 @@ if (!name.endsWith("_test")) {
 	]);
 }
 
-await create(url, name);
+await create(url, name, process.argv.includes("--reset"));
 migrate(url);
 
 if (!process.env.TEST_DATABASE_URL) {
@@ -35,7 +40,11 @@ if (!process.env.TEST_DATABASE_URL) {
 	);
 }
 
-async function create(target: string, database: string): Promise<void> {
+async function create(
+	target: string,
+	database: string,
+	forced: boolean,
+): Promise<void> {
 	const maintenance = new URL(target);
 	maintenance.pathname = "/postgres";
 	maintenance.search = "";
@@ -60,8 +69,17 @@ async function create(target: string, database: string): Promise<void> {
 		);
 
 		if (existing.rowCount) {
-			console.log(`  ${database} already exists`);
-			return;
+			const reason = forced
+				? "you asked for --reset"
+				: await stale(target, database);
+
+			if (!reason) {
+				console.log(`  ${database} already exists`);
+				return;
+			}
+
+			console.log(`  rebuilding ${database}: ${reason}`);
+			await drop(client, database);
 		}
 
 		await client.query(`CREATE DATABASE "${database}"`);
@@ -71,11 +89,91 @@ async function create(target: string, database: string): Promise<void> {
 	}
 }
 
+async function drop(client: pg.Client, database: string): Promise<void> {
+	await client.query(
+		`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+		 WHERE datname = $1 AND pid <> pg_backend_pid()`,
+		[database],
+	);
+	await client.query(`DROP DATABASE IF EXISTS "${database}"`);
+}
+
+async function stale(target: string, database: string): Promise<string | null> {
+	const applied = await appliedMigrations(target);
+
+	if (applied === null) return null;
+
+	const onDisk = new Set(
+		existsSync(MIGRATIONS)
+			? readdirSync(MIGRATIONS, { withFileTypes: true })
+					.filter((entry) => entry.isDirectory())
+					.map((entry) => entry.name)
+			: [],
+	);
+
+	const foreign = applied.filter((migration) => !onDisk.has(migration));
+
+	if (foreign.length > 0) {
+		return `${database} holds ${foreign.length} migration(s) this branch does not have, starting with ${foreign[0]}`;
+	}
+
+	return drifted(target) ? `${database} no longer matches schema.prisma` : null;
+}
+
+async function appliedMigrations(target: string): Promise<string[] | null> {
+	const client = new pg.Client({ connectionString: target });
+
+	try {
+		await client.connect();
+	} catch {
+		return null;
+	}
+
+	try {
+		const rows = await client.query<{ migration_name: string }>(
+			`SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL`,
+		);
+		return rows.rows.map((row) => row.migration_name);
+	} catch {
+		return null;
+	} finally {
+		await client.end();
+	}
+}
+
+function drifted(target: string): boolean {
+	const result = spawnSync(
+		"prisma",
+		[
+			"migrate",
+			"diff",
+			"--from-config-datasource",
+			"--to-schema",
+			SCHEMA,
+			"--exit-code",
+		],
+		{ stdio: "ignore", env: { ...process.env, DATABASE_URL: target } },
+	);
+
+	return result.status === 2;
+}
+
 function migrate(target: string): void {
 	const result = spawnSync("prisma", ["migrate", "deploy"], {
 		stdio: "inherit",
 		env: { ...process.env, DATABASE_URL: target },
 	});
+
+	if (result.error) {
+		fail([
+			"Could not run prisma migrate deploy.",
+			"Run this through the package script, which puts prisma on PATH:",
+			"",
+			"    bun run db:test",
+			"",
+			result.error.message,
+		]);
+	}
 
 	if (result.status !== 0) process.exit(result.status ?? 1);
 }
