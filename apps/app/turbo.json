@@ -40,7 +40,8 @@
 				"DATABASE_URL",
 				"IS_MARKETING",
 				"NEXT_PUBLIC_API_URL",
-				"NEXT_PUBLIC_AUTH_URL"
+				"NEXT_PUBLIC_AUTH_URL",
+				"APP_PORT"
 			]
 		}
 	}
