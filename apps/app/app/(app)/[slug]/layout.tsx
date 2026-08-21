@@ -6,37 +6,42 @@ import { AppIconRail, AppIconRailFallback } from "@/components/app-icon-rail";
 import { QuickSwitcher } from "@/components/crm/quick-switcher";
 import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host";
 import { MobileNavProvider } from "@/components/mobile-nav";
+import { ViewerDayProvider } from "@/components/viewer-day";
 import { requireMailboxAccess } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+
+const PRERENDER_DAY = "1970-01-01";
 
 export default function AppLayout({
 	children,
 	params,
 }: LayoutProps<"/[slug]">) {
 	return (
-		<MobileNavProvider>
-			<div className="isolate flex h-svh flex-col">
-				<Suspense fallback={<AppHeaderFallback />}>
-					<WorkspaceHeader params={params} />
-				</Suspense>
-
-				<div className="flex min-h-0 flex-1">
-					<Suspense fallback={<AppIconRailFallback />}>
-						<AppIconRail />
+		<ViewerDayProvider initialDay={PRERENDER_DAY}>
+			<MobileNavProvider>
+				<div className="isolate flex h-svh flex-col">
+					<Suspense fallback={<AppHeaderFallback />}>
+						<WorkspaceHeader params={params} />
 					</Suspense>
-					{children}
+
+					<div className="flex min-h-0 flex-1">
+						<Suspense fallback={<AppIconRailFallback />}>
+							<AppIconRail />
+						</Suspense>
+						{children}
+					</div>
+
+					<Suspense fallback={null}>
+						<RecordSheetHost />
+					</Suspense>
+
+					<Suspense fallback={null}>
+						<QuickSwitcher />
+					</Suspense>
 				</div>
-
-				<Suspense fallback={null}>
-					<RecordSheetHost />
-				</Suspense>
-
-				<Suspense fallback={null}>
-					<QuickSwitcher />
-				</Suspense>
-			</div>
-		</MobileNavProvider>
+			</MobileNavProvider>
+		</ViewerDayProvider>
 	);
 }
 

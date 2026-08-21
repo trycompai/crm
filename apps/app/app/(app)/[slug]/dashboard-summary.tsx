@@ -34,7 +34,11 @@ import { toast } from "sonner";
 import { DealStageIndicator } from "@/components/crm/deal-stage";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { LocalRelativeTime } from "@/components/local-date-time";
+import {
+	LocalRelativeDay,
+	LocalRelativeTime,
+} from "@/components/local-date-time";
+import { useViewerDay } from "@/components/viewer-day";
 import { activityLabel } from "@/lib/activity-presentation";
 import { dealStageColor } from "@/lib/deal-stage";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
@@ -94,6 +98,7 @@ export function DashboardSummary() {
 	const cache = useCrmCache();
 	const openRecord = useOpenRecord();
 	const workspaceUrl = useWorkspaceUrl();
+	const today = useViewerDay();
 
 	const [scope] = useQueryState(
 		SEARCH_PARAM.overview.scope,
@@ -101,7 +106,7 @@ export function DashboardSummary() {
 	);
 
 	const summaryQuery = useQuery({
-		...trpc.dashboard.summary.queryOptions({ scope }),
+		...trpc.dashboard.summary.queryOptions({ scope, today }),
 		placeholderData: (previous) => previous,
 	});
 
@@ -204,6 +209,11 @@ export function DashboardSummary() {
 								? "Every task you have logged is either done or still to come"
 								: `${formatCount(overdueTasks.length, "task")} past due`}
 						</CardDescription>
+						<CardAction>
+							<Button asChild variant="contrast" size="sm">
+								<Link href={workspaceUrl("/tasks")}>Open tasks</Link>
+							</Button>
+						</CardAction>
 					</CardHeader>
 					<CardPanel>
 						{overdueTasks.length === 0 ? (
@@ -247,7 +257,7 @@ export function DashboardSummary() {
 												tone="error"
 												label={
 													task.dueAt ? (
-														<LocalRelativeTime date={task.dueAt} />
+														<LocalRelativeDay date={task.dueAt} />
 													) : (
 														"No due date"
 													)

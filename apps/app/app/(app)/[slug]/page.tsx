@@ -1,3 +1,5 @@
+import { toDay } from "@crm/ui/lib/format";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import {
 	PageShell,
@@ -7,6 +9,7 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 } from "@/components/page-shell";
+import { ViewerDayProvider } from "@/components/viewer-day";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
@@ -49,19 +52,26 @@ export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
 async function Summary({
 	searchParams,
 }: Pick<PageProps<"/[slug]">, "searchParams">) {
+	await connection();
 	const [, { scope }] = await Promise.all([
 		requireSession(),
 		loadOverviewSearchParams(searchParams),
 	]);
 
 	const queryClient = getServerQueryClient();
+	const today = toDay(new Date());
 	await queryClient.prefetchQuery(
-		getServerTrpc().dashboard.summary.queryOptions({ scope }),
+		getServerTrpc().dashboard.summary.queryOptions({
+			scope,
+			today,
+		}),
 	);
 
 	return (
 		<HydrateClient>
-			<DashboardSummary />
+			<ViewerDayProvider initialDay={today}>
+				<DashboardSummary />
+			</ViewerDayProvider>
 		</HydrateClient>
 	);
 }
