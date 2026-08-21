@@ -11,9 +11,6 @@ node_modules
 .env.*
 !.env.example
 
-# Host-port remaps (5432 already taken, etc.). Copy from the example.
-/docker-compose.override.yml
-
 # Testing
 coverage
 

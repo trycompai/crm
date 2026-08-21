@@ -1,6 +1,0 @@
-# Copy to docker-compose.override.yml when host 5432 is already taken.
-# Compose 2.24+ `!override` replaces the published ports instead of merging.
-services:
-  postgres:
-    ports: !override
-      - "5434:5432"
