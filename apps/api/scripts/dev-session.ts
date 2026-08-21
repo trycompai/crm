@@ -65,8 +65,10 @@ await db.session.upsert({
 const cookieValue = await signCookieValue(token);
 console.log(`${COOKIE_NAME}=${cookieValue}`);
 
-if (process.stderr.isTTY || process.stdout.isTTY) {
-	const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+if (process.stderr.isTTY) {
+	const appUrl = (process.env.APP_URL ?? "http://localhost:3000")
+		.split(",")[0]
+		.trim();
 	console.error(`\nTo sign in on ${appUrl}:`);
 	console.error("Paste this in the DevTools Console (F12) and press Enter:\n");
 	console.error(
