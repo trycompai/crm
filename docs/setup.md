@@ -24,6 +24,10 @@ run needs `db:migrate` only for the seed that follows it. When the database and
 they do not match — reconcile with `db:migrate`, or `db:reset` when the divergence
 is an edited migration that has already been applied.
 
+When developing without Google or Microsoft OAuth configured, mint a local session
+with `bun run --filter=api dev:session` and paste the printed snippet into the
+browser DevTools Console on `http://localhost:3000` to sign in.
+
 ## Google Cloud
 
 - **Enable the Gmail API and the Google Calendar API** on the project.

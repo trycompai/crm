@@ -62,6 +62,15 @@ await db.session.upsert({
 	update: { expiresAt },
 });
 
-console.log(`${COOKIE_NAME}=${await signCookieValue(token)}`);
+const cookieValue = await signCookieValue(token);
+console.log(`${COOKIE_NAME}=${cookieValue}`);
+
+if (process.stdout.isTTY) {
+	console.log("\nTo sign in on http://localhost:3000:");
+	console.log("Paste this in the DevTools Console (F12) and press Enter:\n");
+	console.log(
+		`  document.cookie = "${COOKIE_NAME}=${cookieValue}; path=/; max-age=${SESSION_DAYS * 86400}"; location.href = "/";\n`,
+	);
+}
 
 await db.$disconnect();

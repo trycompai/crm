@@ -335,7 +335,8 @@ Scope any of them with a Turborepo filter: `bun run dev --filter=api`.
 
 Because sign-in goes through an identity provider, there is no way to get a session from a terminal —
 `dev:session` writes the rows Better Auth would have written and prints the cookie it
-would have set. It refuses to run with `NODE_ENV=production`.
+would have set, along with a console snippet to log in directly on `http://localhost:3000`.
+It refuses to run with `NODE_ENV=production`.
 
 ## Deploying
 
