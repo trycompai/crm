@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.3](https://github.com/trycompai/crm/compare/v1.15.2...v1.15.3) (2026-08-21)
+
+
+### Fixes
+
+* **app:** prevent url param collision between fields sheet and table filter ([#175](https://github.com/trycompai/crm/issues/175)) ([1cebe1e](https://github.com/trycompai/crm/commit/1cebe1e5b3087007c4eac8b18add38ff9e8dd69b))
+* stop a finished enrichment reading as failed ([#173](https://github.com/trycompai/crm/issues/173)) ([2946580](https://github.com/trycompai/crm/commit/2946580afdd43419ce08165a0d55ba9d084c554e))
+
 ## [1.15.2](https://github.com/trycompai/crm/compare/v1.15.1...v1.15.2) (2026-08-20)
 
 
