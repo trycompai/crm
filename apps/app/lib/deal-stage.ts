@@ -17,12 +17,12 @@ type DealStagePresentation = Record<
 >;
 
 const PRESENTATION: DealStagePresentation = {
-	DEMO_BOOKED: { label: "Demo booked", tone: "neutral" },
-	QUALIFIED_TO_BUY: { label: "Qualified to buy", tone: "info" },
-	DECISION_MAKER_BOUGHT_IN: { label: "Decision maker in", tone: "info" },
-	CONTRACT_SENT: { label: "Contract sent", tone: "warning" },
-	CLOSED_WON: { label: "Closed won", tone: "success" },
-	CLOSED_LOST: { label: "Closed lost", tone: "error" },
+	DEMO_BOOKED: { label: "New Enquiry", tone: "neutral" },
+	QUALIFIED_TO_BUY: { label: "Pricing In Progress", tone: "info" },
+	DECISION_MAKER_BOUGHT_IN: { label: "Quote Ready", tone: "info" },
+	CONTRACT_SENT: { label: "Quote Sent", tone: "warning" },
+	CLOSED_WON: { label: "Booked", tone: "success" },
+	CLOSED_LOST: { label: "Lost / Cancelled", tone: "error" },
 	UNQUALIFIED_TO_BUY: { label: "Unqualified", tone: "neutral" },
 };
 

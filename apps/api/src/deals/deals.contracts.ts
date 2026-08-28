@@ -1,4 +1,10 @@
-import { DealStage } from "@crm/db";
+import {
+	CalendarStatus,
+	DealStage,
+	InvoiceStatus,
+	PaymentStatus,
+	QuoteStatus,
+} from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
@@ -41,6 +47,24 @@ const stageEnum = z.enum(
 	Object.values(DealStage) as [DealStage, ...DealStage[]],
 );
 
+const quoteStatusEnum = z.enum(
+	Object.values(QuoteStatus) as [QuoteStatus, ...QuoteStatus[]],
+);
+
+const invoiceStatusEnum = z.enum(
+	Object.values(InvoiceStatus) as [InvoiceStatus, ...InvoiceStatus[]],
+);
+
+const paymentStatusEnum = z.enum(
+	Object.values(PaymentStatus) as [PaymentStatus, ...PaymentStatus[]],
+);
+
+const calendarStatusEnum = z.enum(
+	Object.values(CalendarStatus) as [CalendarStatus, ...CalendarStatus[]],
+);
+
+const nullableDateTime = z.string().nullable().optional();
+
 export const dealCreateInput = z.object({
 	name: z.string().trim().min(1, "A deal needs a name."),
 	companyId: z.string().min(1, "A deal belongs to a company."),
@@ -61,6 +85,19 @@ const dealUpdateInput = z.object({
 	amountCents,
 	currency: currencyCode.optional(),
 	expectedCloseDate: z.string().nullable().optional(),
+	quoteStatus: quoteStatusEnum.optional(),
+	invoiceStatus: invoiceStatusEnum.optional(),
+	paymentStatus: paymentStatusEnum.optional(),
+	calendarStatus: calendarStatusEnum.optional(),
+	googleCalendarEventId: z.string().nullable().optional(),
+	quoteSentAt: nullableDateTime,
+	invoiceRequestedAt: nullableDateTime,
+	invoiceSentAt: nullableDateTime,
+	depositPaidAt: nullableDateTime,
+	fullyPaidAt: nullableDateTime,
+	calendarAddedAt: nullableDateTime,
+	depositAmountCents: amountCents,
+	balanceAmountCents: amountCents,
 	fields: recordFieldValues.optional(),
 });
 
@@ -230,11 +267,24 @@ export const dealDetailOutput = z.object({
 	description: z.string().nullable(),
 	stage: stageEnum,
 	currency: z.string(),
+	quoteStatus: quoteStatusEnum,
+	invoiceStatus: invoiceStatusEnum,
+	paymentStatus: paymentStatusEnum,
+	calendarStatus: calendarStatusEnum,
+	googleCalendarEventId: z.string().nullable(),
+	quoteSentAt: z.string().nullable(),
+	invoiceRequestedAt: z.string().nullable(),
+	invoiceSentAt: z.string().nullable(),
+	depositPaidAt: z.string().nullable(),
+	fullyPaidAt: z.string().nullable(),
+	calendarAddedAt: z.string().nullable(),
 	closedReason: z.string().nullable(),
 	company: dealCompanyDetailOutput,
 	owner: dealOwnerOutput,
 	fields: z.array(recordFieldOutput),
 	amountCents: z.number().nullable(),
+	depositAmountCents: z.number().nullable(),
+	balanceAmountCents: z.number().nullable(),
 	baseAmountCents: z.number().nullable(),
 	reportingCurrency: z.string(),
 	fxRate: z.number().nullable(),

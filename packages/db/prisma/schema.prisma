@@ -178,6 +178,31 @@ enum DealStage {
   CLOSED_LOST
 }
 
+enum QuoteStatus {
+  NOT_READY
+  READY
+  SENT
+  REJECTED
+}
+
+enum InvoiceStatus {
+  NOT_REQUESTED
+  REQUESTED
+  SENT
+}
+
+enum PaymentStatus {
+  UNPAID
+  DEPOSIT_PAID
+  FULLY_PAID
+}
+
+enum CalendarStatus {
+  NOT_ADDED
+  ADDED
+  FAILED
+}
+
 enum ActivityType {
   NOTE
   CALL
@@ -930,6 +955,20 @@ model Deal {
   expectedCloseDate DateTime?
   closedAt          DateTime?
   closedReason      String?
+
+  quoteStatus           QuoteStatus    @default(NOT_READY)
+  invoiceStatus         InvoiceStatus  @default(NOT_REQUESTED)
+  paymentStatus         PaymentStatus  @default(UNPAID)
+  calendarStatus        CalendarStatus @default(NOT_ADDED)
+  googleCalendarEventId String?
+  quoteSentAt           DateTime?
+  invoiceRequestedAt    DateTime?
+  invoiceSentAt         DateTime?
+  depositPaidAt         DateTime?
+  fullyPaidAt           DateTime?
+  calendarAddedAt       DateTime?
+  depositAmount         Decimal?       @db.Decimal(14, 2)
+  balanceAmount         Decimal?       @db.Decimal(14, 2)
 
   baseAmount   Decimal?  @db.Decimal(24, 4)
   baseCurrency String?

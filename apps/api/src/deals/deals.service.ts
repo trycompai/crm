@@ -202,6 +202,19 @@ export class DealsService {
 				stageChangedAt: true,
 				amount: true,
 				currency: true,
+				quoteStatus: true,
+				invoiceStatus: true,
+				paymentStatus: true,
+				calendarStatus: true,
+				googleCalendarEventId: true,
+				quoteSentAt: true,
+				invoiceRequestedAt: true,
+				invoiceSentAt: true,
+				depositPaidAt: true,
+				fullyPaidAt: true,
+				calendarAddedAt: true,
+				depositAmount: true,
+				balanceAmount: true,
 				baseAmount: true,
 				fxRate: true,
 				fxRateAt: true,
@@ -226,9 +239,17 @@ export class DealsService {
 		const {
 			contacts,
 			amount,
+			depositAmount,
+			balanceAmount,
 			baseAmount,
 			fxRate,
 			fxRateAt,
+			quoteSentAt,
+			invoiceRequestedAt,
+			invoiceSentAt,
+			depositPaidAt,
+			fullyPaidAt,
+			calendarAddedAt,
 			archivedAt,
 			...rest
 		} = deal;
@@ -237,10 +258,18 @@ export class DealsService {
 			...rest,
 			fields: await this.fields.valuesFor("DEAL", id),
 			amountCents: toCents(amount),
+			depositAmountCents: toCents(depositAmount),
+			balanceAmountCents: toCents(balanceAmount),
 			baseAmountCents: toCents(baseAmount),
 			reportingCurrency: await this.conversion.reportingCurrency(),
 			fxRate: fxRate?.toNumber() ?? null,
 			fxRateAt: fxRateAt?.toISOString() ?? null,
+			quoteSentAt: dateIso(quoteSentAt),
+			invoiceRequestedAt: dateIso(invoiceRequestedAt),
+			invoiceSentAt: dateIso(invoiceSentAt),
+			depositPaidAt: dateIso(depositPaidAt),
+			fullyPaidAt: dateIso(fullyPaidAt),
+			calendarAddedAt: dateIso(calendarAddedAt),
 			stageChangedAt: deal.stageChangedAt.toISOString(),
 			expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			closedAt: deal.closedAt?.toISOString() ?? null,
@@ -329,6 +358,46 @@ export class DealsService {
 		}
 		if (input.expectedCloseDate !== undefined) {
 			data.expectedCloseDate = parseDate(input.expectedCloseDate);
+		}
+		if (input.quoteStatus !== undefined) data.quoteStatus = input.quoteStatus;
+		if (input.invoiceStatus !== undefined) {
+			data.invoiceStatus = input.invoiceStatus;
+		}
+		if (input.paymentStatus !== undefined) {
+			data.paymentStatus = input.paymentStatus;
+		}
+		if (input.calendarStatus !== undefined) {
+			data.calendarStatus = input.calendarStatus;
+		}
+		if (input.googleCalendarEventId !== undefined) {
+			data.googleCalendarEventId =
+				input.googleCalendarEventId === null
+					? null
+					: blankToNull(input.googleCalendarEventId);
+		}
+		if (input.quoteSentAt !== undefined) {
+			data.quoteSentAt = parseDate(input.quoteSentAt);
+		}
+		if (input.invoiceRequestedAt !== undefined) {
+			data.invoiceRequestedAt = parseDate(input.invoiceRequestedAt);
+		}
+		if (input.invoiceSentAt !== undefined) {
+			data.invoiceSentAt = parseDate(input.invoiceSentAt);
+		}
+		if (input.depositPaidAt !== undefined) {
+			data.depositPaidAt = parseDate(input.depositPaidAt);
+		}
+		if (input.fullyPaidAt !== undefined) {
+			data.fullyPaidAt = parseDate(input.fullyPaidAt);
+		}
+		if (input.calendarAddedAt !== undefined) {
+			data.calendarAddedAt = parseDate(input.calendarAddedAt);
+		}
+		if (input.depositAmountCents !== undefined) {
+			data.depositAmount = fromCents(input.depositAmountCents);
+		}
+		if (input.balanceAmountCents !== undefined) {
+			data.balanceAmount = fromCents(input.balanceAmountCents);
 		}
 
 		if (input.amountCents !== undefined || input.currency !== undefined) {
@@ -888,4 +957,8 @@ function parseDate(value: string | null | undefined): Date | null {
 		throw new BadRequestException(`"${value}" is not a date.`);
 	}
 	return date;
+}
+
+function dateIso(value: Date | null): string | null {
+	return value?.toISOString() ?? null;
 }

@@ -120,6 +120,31 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 	year: "numeric",
 };
 
+const QUOTE_STATUS_LABELS = {
+	NOT_READY: "Not Ready",
+	READY: "Ready",
+	SENT: "Sent",
+	REJECTED: "Rejected",
+} as const;
+
+const INVOICE_STATUS_LABELS = {
+	NOT_REQUESTED: "Not Requested",
+	REQUESTED: "Requested",
+	SENT: "Sent",
+} as const;
+
+const PAYMENT_STATUS_LABELS = {
+	UNPAID: "Unpaid",
+	DEPOSIT_PAID: "Deposit Paid",
+	FULLY_PAID: "Fully Paid",
+} as const;
+
+const CALENDAR_STATUS_LABELS = {
+	NOT_ADDED: "Not Added",
+	ADDED: "Added",
+	FAILED: "Failed",
+} as const;
+
 export function DealSheet({ dealId }: { dealId: string }) {
 	const trpc = useTRPC();
 	const openRecord = useOpenRecord();
@@ -292,6 +317,8 @@ function DealOverview({ deal }: { deal: Deal }) {
 				) : null}
 			</DetailSheetSection>
 
+			<EventBookingStatus deal={deal} />
+
 			<DetailSheetSection title="Details" action={<FieldsCog kind="deal" />}>
 				<DetailSheetProperties>
 					<InlineField
@@ -369,6 +396,90 @@ function DealOverview({ deal }: { deal: Deal }) {
 			<WhereItStands deal={deal} />
 		</DetailSheetBody>
 	);
+}
+
+function EventBookingStatus({ deal }: { deal: Deal }) {
+	const currency = dealCurrency(deal.currency);
+
+	return (
+		<DetailSheetSection title="Event / booking status">
+			<DetailSheetProperties>
+				<BookingStatusProperty
+					label="Quote"
+					value={statusLabel(QUOTE_STATUS_LABELS, deal.quoteStatus)}
+					date={deal.quoteSentAt}
+				/>
+				<BookingStatusProperty
+					label="Invoice"
+					value={statusLabel(INVOICE_STATUS_LABELS, deal.invoiceStatus)}
+					date={deal.invoiceSentAt ?? deal.invoiceRequestedAt}
+				/>
+				<BookingStatusProperty
+					label="Payment"
+					value={statusLabel(PAYMENT_STATUS_LABELS, deal.paymentStatus)}
+					date={deal.fullyPaidAt ?? deal.depositPaidAt}
+				/>
+				<BookingStatusProperty
+					label="Calendar"
+					value={statusLabel(CALENDAR_STATUS_LABELS, deal.calendarStatus)}
+					date={deal.calendarAddedAt}
+				/>
+				<DetailSheetProperty label="Deposit">
+					{deal.depositAmountCents === null ? (
+						<EmptyCellValue />
+					) : (
+						<span className="tabular-nums">
+							{formatMoney(deal.depositAmountCents, currency)}
+						</span>
+					)}
+				</DetailSheetProperty>
+				<DetailSheetProperty label="Balance">
+					{deal.balanceAmountCents === null ? (
+						<EmptyCellValue />
+					) : (
+						<span className="tabular-nums">
+							{formatMoney(deal.balanceAmountCents, currency)}
+						</span>
+					)}
+				</DetailSheetProperty>
+				{deal.googleCalendarEventId ? (
+					<DetailSheetProperty label="Calendar event" wide>
+						<span className="truncate">{deal.googleCalendarEventId}</span>
+					</DetailSheetProperty>
+				) : null}
+			</DetailSheetProperties>
+		</DetailSheetSection>
+	);
+}
+
+function BookingStatusProperty({
+	label,
+	value,
+	date,
+}: {
+	label: string;
+	value: string;
+	date: string | null;
+}) {
+	return (
+		<DetailSheetProperty label={label}>
+			<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+				<span>{value}</span>
+				{date ? (
+					<span className="text-muted-foreground">
+						<LocalDateTime date={date} options={DATE_OPTIONS} />
+					</span>
+				) : null}
+			</span>
+		</DetailSheetProperty>
+	);
+}
+
+function statusLabel<T extends Record<string, string>>(
+	labels: T,
+	value: string,
+): string {
+	return labels[value] ?? value;
 }
 
 function WhereItStands({ deal }: { deal: Deal }) {
