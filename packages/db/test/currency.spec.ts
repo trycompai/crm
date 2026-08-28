@@ -74,6 +74,7 @@ describe("normalizeCurrency and isCurrencyCode", () => {
 			"CHF",
 			"HKD",
 			"SGD",
+			"PLN",
 			"ZAR",
 		]);
 	});
