@@ -27,6 +27,7 @@ export type AgentModelSettings = z.infer<typeof agentModelOutput>;
 export const modelCatalogOutput = z.object({
 	models: z.array(catalogModelOutput),
 	available: z.boolean(),
+	source: z.enum(["vercel", "orcarouter"]),
 });
 
 export type ModelCatalogResult = z.infer<typeof modelCatalogOutput>;
