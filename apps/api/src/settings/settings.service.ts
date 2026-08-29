@@ -82,7 +82,11 @@ export class SettingsService {
 
 	async modelCatalog(): Promise<ModelCatalogResult> {
 		const models = await this.catalog.models();
-		return { models: models ?? [], available: models !== null };
+		return {
+			models: models ?? [],
+			available: models !== null,
+			source: this.catalog.source(),
+		};
 	}
 
 	async researchKey(): Promise<ResearchKeySettings> {

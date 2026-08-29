@@ -115,6 +115,7 @@ single place that knows what is set.
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
+| `ORCAROUTER_API_KEY` | List models from OrcaRouter on the settings page instead of the Vercel AI Gateway |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`

@@ -37,6 +37,11 @@ type CatalogModel = {
 	pricing: { input: number; output: number } | null;
 };
 
+const SOURCE_LABEL = {
+	vercel: "Vercel AI Gateway",
+	orcarouter: "OrcaRouter",
+} as const;
+
 const FOLLOW_DEFAULT = "__default__";
 
 function perMillion(rate: number): string {
@@ -90,6 +95,7 @@ export function AgentModel() {
 	const { selectedId, effectiveId, defaultId, effective } = settings.data;
 	const models = catalog.data?.models ?? [];
 	const unavailable = catalog.data !== undefined && !catalog.data.available;
+	const source = catalog.data?.source ?? "vercel";
 
 	const defaultModel = models.find((model) => model.id === defaultId);
 	const current = selectedId ?? FOLLOW_DEFAULT;
@@ -111,7 +117,7 @@ export function AgentModel() {
 			<CardHeader>
 				<CardTitle>Research agent</CardTitle>
 				<CardDescription>
-					The model the agent thinks with, routed through the Vercel AI Gateway.
+					The model the agent thinks with, via {SOURCE_LABEL[source]}.
 				</CardDescription>
 			</CardHeader>
 
@@ -174,7 +180,7 @@ export function AgentModel() {
 
 				<p className="text-muted-foreground text-xs">
 					{unavailable
-						? `Could not reach the AI Gateway to list models. The agent is still running ${effectiveId}.`
+						? `Could not reach ${SOURCE_LABEL[source]} to list models. The agent is still running ${effectiveId}.`
 						: effective
 							? `${effectiveId} · ${contextHint(effective.contextWindowTokens)}${
 									priceHint(effective) ? ` · ${priceHint(effective)}` : ""
