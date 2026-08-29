@@ -13,17 +13,20 @@
 	"scripts": {
 		"auth:generate": "better-auth generate --config src/auth.ts --output ../db/prisma/schema.prisma --y",
 		"check-types": "tsc --noEmit",
+		"oauth:reconcile-client": "bun scripts/reconcile-oauth-client.ts",
+		"oauth:register-client": "bun scripts/register-oauth-client.ts",
 		"lint": "biome check .",
 		"test": "bun test",
 		"clean": "rm -rf .turbo node_modules"
 	},
 	"dependencies": {
-		"@better-auth/api-key": "1.6.25",
-		"@better-auth/sso": "1.6.25",
+		"@better-auth/api-key": "1.7.2",
+		"@better-auth/oauth-provider": "1.7.2",
+		"@better-auth/sso": "1.7.2",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"@crm/validation": "workspace:*",
-		"better-auth": "^1.6.25",
+		"better-auth": "1.7.2",
 		"zod": "^4.4.3"
 	},
 	"peerDependencies": {
@@ -35,7 +38,7 @@
 		}
 	},
 	"devDependencies": {
-		"@better-auth/cli": "^1.4.22",
+		"@better-auth/cli": "1.4.22",
 		"@crm/typescript-config": "workspace:*",
 		"@types/node": "^24.10.1",
 		"@types/react": "^19.2.18",

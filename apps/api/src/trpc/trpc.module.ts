@@ -5,6 +5,7 @@ import { formatTrpcError } from "./error-formatter";
 import { AuthMiddleware } from "./middlewares/auth.middleware";
 import { DomainErrorMiddleware } from "./middlewares/domain-error.middleware";
 import { LoggingMiddleware } from "./middlewares/logging.middleware";
+import { OAuthScopeMiddleware } from "./middlewares/oauth-scope.middleware";
 import { SessionOnlyMiddleware } from "./middlewares/session-only.middleware";
 import { TrpcContext } from "./trpc.context";
 import { TrpcErrorHandler } from "./trpc-error.handler";
@@ -17,7 +18,11 @@ import { TrpcErrorHandler } from "./trpc-error.handler";
 			logger: new ContextLogger(),
 			errorFormatter: formatTrpcError,
 			onError: TrpcErrorHandler,
-			globalMiddlewares: [LoggingMiddleware, DomainErrorMiddleware],
+			globalMiddlewares: [
+				LoggingMiddleware,
+				DomainErrorMiddleware,
+				OAuthScopeMiddleware,
+			],
 		}),
 	],
 	providers: [
@@ -25,6 +30,7 @@ import { TrpcErrorHandler } from "./trpc-error.handler";
 		TrpcErrorHandler,
 		LoggingMiddleware,
 		DomainErrorMiddleware,
+		OAuthScopeMiddleware,
 		AuthMiddleware,
 		SessionOnlyMiddleware,
 	],

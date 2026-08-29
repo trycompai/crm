@@ -14,6 +14,7 @@ import {
 	generateOpenApiDocument,
 } from "trpc-to-openapi";
 import { AppModule } from "./app.module";
+import { RequestPrincipalService } from "./auth/request-principal.service";
 import { ContextLogger } from "./logging/context-logger";
 import { REST_BRIDGE_PATH } from "./trpc/openapi";
 import { createBaseTrpcContext } from "./trpc/trpc.context";
@@ -52,6 +53,12 @@ export async function createApp(): Promise<NestExpressApplication> {
 		in: "header",
 		name: API_KEY_HEADER,
 	} as const;
+	const oauthSecurityScheme = {
+		type: "http",
+		scheme: "bearer",
+		bearerFormat: "JWT",
+		description: "CompCRM OAuth access token with crm.read or crm.write scope.",
+	} as const;
 
 	// SwaggerModule.setup() registers its Express routes synchronously, so it must
 	// happen before app.init() the same way the REST bridge does — Nest's own
@@ -70,7 +77,10 @@ export async function createApp(): Promise<NestExpressApplication> {
 					"Every tRPC procedure, reachable over REST for tooling that cannot speak tRPC. Same validation, same middlewares, same services as the tRPC transport — this only translates the wire format.",
 				version: "1.0",
 				baseUrl: `${apiUrl}${REST_BRIDGE_PATH}`,
-				securitySchemes: { apiKey: apiKeySecurityScheme },
+				securitySchemes: {
+					apiKey: apiKeySecurityScheme,
+					oauth: oauthSecurityScheme,
+				},
 			});
 
 			const swaggerConfig = new DocumentBuilder()
@@ -81,8 +91,22 @@ export async function createApp(): Promise<NestExpressApplication> {
 				.setVersion("1.0")
 				.addCookieAuth(SESSION_COOKIE_NAME)
 				.addApiKey(apiKeySecurityScheme, "apiKey")
+				.addBearerAuth(oauthSecurityScheme, "oauth")
 				.build();
 			const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+			for (const path of Object.values(trpcDocument.paths ?? {})) {
+				for (const method of [
+					"get",
+					"post",
+					"put",
+					"patch",
+					"delete",
+				] as const) {
+					const operation = path[method];
+					if (!operation?.security?.length) continue;
+					operation.security = [{ cookie: [] }, { apiKey: [] }, { oauth: [] }];
+				}
+			}
 
 			swaggerDocument.paths = {
 				...swaggerDocument.paths,
@@ -90,6 +114,10 @@ export async function createApp(): Promise<NestExpressApplication> {
 			};
 			swaggerDocument.components = {
 				...swaggerDocument.components,
+				securitySchemes: {
+					...swaggerDocument.components?.securitySchemes,
+					...trpcDocument.components?.securitySchemes,
+				},
 				schemas: {
 					...swaggerDocument.components?.schemas,
 					...(trpcDocument.components?.schemas as NonNullable<
@@ -106,10 +134,11 @@ export async function createApp(): Promise<NestExpressApplication> {
 	await app.init();
 
 	const { appRouter } = app.get(AppRouterHost);
+	const principals = app.get(RequestPrincipalService);
 
 	restBridge = createOpenApiExpressMiddleware({
 		router: appRouter,
-		createContext: ({ req }) => createBaseTrpcContext(req),
+		createContext: ({ req }) => createBaseTrpcContext(req, principals),
 	});
 
 	return app;

@@ -13,6 +13,17 @@ export {
 	isMicrosoftConfigured,
 	isSlackConfigured,
 } from "./env";
+export { ensureOfficialOAuthClient } from "./oauth-client";
+export {
+	isOAuthScope,
+	OAUTH,
+	OAUTH_SCOPES,
+	type OAuthScope,
+} from "./oauth-config";
+export {
+	getProtectedResourceMetadata,
+	verifyAccessTokenRequest,
+} from "./oauth-resource";
 export {
 	canChangeRole,
 	canManageConnections,

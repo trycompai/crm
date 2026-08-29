@@ -20,7 +20,13 @@ const PROVIDERS = {
 	microsoft: { label: "Continue with Microsoft", Logo: MicrosoftLogo },
 } as const satisfies Record<MailboxProviderId, ProviderChoice>;
 
-export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
+export function SocialSignIn({
+	provider,
+	oauthQuery,
+}: {
+	provider: MailboxProviderId;
+	oauthQuery: string | null;
+}) {
 	const [pending, setPending] = useState(false);
 
 	const { label, Logo } = PROVIDERS[provider];
@@ -35,10 +41,14 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 
 		const origin = window.location.origin;
 
+		const errorUrl = new URL("/sign-in", origin);
+		if (oauthQuery) errorUrl.search = oauthQuery;
+
 		const { error } = await signIn.social({
 			provider,
 			callbackURL: `${origin}/`,
-			errorCallbackURL: `${origin}/sign-in`,
+			errorCallbackURL: errorUrl.toString(),
+			...(oauthQuery && { oauth_query: oauthQuery }),
 		});
 
 		if (error) fail(error.message);

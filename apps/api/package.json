@@ -38,7 +38,7 @@
 		"@thallesp/nestjs-better-auth": "^2.7.0",
 		"@trpc/server": "^11.18.0",
 		"@vercel/blob": "^2.6.1",
-		"better-auth": "^1.6.25",
+		"better-auth": "1.7.2",
 		"cache-manager": "^7.2.9",
 		"class-transformer": "^0.5.1",
 		"class-validator": "^0.15.1",

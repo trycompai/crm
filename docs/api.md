@@ -77,7 +77,7 @@ request.
 - **Both reads run concurrently**, but order decides which is *asked* — the research
   read is never made while onboarding is open.
 - **An unreachable API fails open** (`unknown` lets the request through).
-- **`/sign-in`, `/grant-access`, `/eve` are ungated.** `/sign-in` is the only path a
+- **`/sign-in`, `/grant-access`, `/eve`, `/oauth` are ungated.** `/sign-in` is the only path a
   stranger may read; `/` joins it only when `IS_MARKETING` is set.
 - **There is no way past the key gate but to answer** — Skip stranded installs, every
   later company sitting `PENDING` with nothing saying so.
@@ -128,9 +128,29 @@ self-hoster's admin cannot redeploy.
 
 ## tRPC is the data surface; REST is auth and health only
 
+### Three credentials, one principal
+
+`RequestPrincipalService` resolves a session cookie, `x-api-key`, or CompCRM OAuth token.
+
+It rejects requests that contain more than one credential type.
+
+OAuth tokens require the CompCRM issuer, API audience, active client, and current user.
+
+OAuth tRPC queries require `crm.read`.
+
+OAuth tRPC mutations require `crm.write`.
+
+Nest controllers use `RequestPrincipalGuard` and the same principal.
+
+API-key management remains session-only.
+
+Better Auth publishes OAuth and OpenID Connect endpoints under `/api/auth`.
+
+The root well-known routes expose authorization-server and protected-resource metadata.
+
 - **One router per module**, `*.router.ts` (the codegen glob), with
-  `@Router({ alias })` and `@UseMiddlewares(AuthMiddleware)`. **No `AuthMiddleware`
-  means public — there is no other guard.**
+	`@Router({ alias })` and `@UseMiddlewares(AuthMiddleware)`. A router without
+	`AuthMiddleware` remains public on the tRPC transport.
 - **Routers are thin**: zod in, service call out; Prisma lives in `*.service.ts`.
 - Services throw Nest's `HttpException` family; `DomainErrorMiddleware` maps them.
 - **Filter, sort and paginate in Prisma.** List procedures take `listInput` and return
@@ -147,6 +167,8 @@ self-hoster's admin cannot redeploy.
 under `/rest` generated from every tRPC procedure. Swagger UI renders it at `/`.
 `createApp` builds both halves and merges them, so nothing is generated at build
 time and no file is checked in — the document is whatever the routers are.
+
+Protected operations describe cookie, API-key, and OAuth bearer alternatives.
 
 `SwaggerModule.setup` runs **before** `app.init()`, because it registers its Express
 routes synchronously and Nest's own routing would otherwise shadow them. The factory

@@ -12,7 +12,8 @@ import type { AuthedTrpcContext, BaseTrpcContext } from "../context.types";
 export class AuthMiddleware implements TRPCMiddleware {
 	async use(opts: MiddlewareOptions): Promise<MiddlewareResponse> {
 		const ctx = opts.ctx as BaseTrpcContext;
-		const user = ctx.session?.user;
+		const principal = ctx.principal;
+		const user = principal?.user;
 
 		if (!user) {
 			throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -20,7 +21,7 @@ export class AuthMiddleware implements TRPCMiddleware {
 
 		setRequestUserId(user.id);
 
-		const nextCtx: AuthedTrpcContext = { ...ctx, user };
+		const nextCtx: AuthedTrpcContext = { ...ctx, principal, user };
 		return opts.next({ ctx: nextCtx });
 	}
 }

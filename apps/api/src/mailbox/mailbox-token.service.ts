@@ -81,8 +81,18 @@ export class MailboxTokenService {
 		}
 
 		try {
+			const account = await this.db.account.findFirst({
+				where: { userId, providerId },
+				select: { accountId: true },
+			});
+			if (!account) {
+				return {
+					outcome: "needs-reconnect",
+					reason: `${label(providerId)} has no connected account.`,
+				};
+			}
 			const { accessToken } = await auth.api.getAccessToken({
-				body: { providerId, userId },
+				body: { accountId: account.accountId, userId },
 			});
 
 			if (!accessToken) {

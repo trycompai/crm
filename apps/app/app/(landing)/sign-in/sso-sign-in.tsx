@@ -11,7 +11,13 @@ export type SsoProvider = {
 	name: string;
 };
 
-export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
+export function SsoSignIn({
+	providers,
+	oauthQuery,
+}: {
+	providers: SsoProvider[];
+	oauthQuery: string | null;
+}) {
 	const [pending, setPending] = useState<string | null>(null);
 
 	async function handleClick(providerId: string) {
@@ -19,10 +25,14 @@ export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
 
 		const origin = window.location.origin;
 
+		const errorUrl = new URL("/sign-in", origin);
+		if (oauthQuery) errorUrl.search = oauthQuery;
+
 		const { error } = await signIn.sso({
 			providerId,
 			callbackURL: `${origin}/`,
-			errorCallbackURL: `${origin}/sign-in`,
+			errorCallbackURL: errorUrl.toString(),
+			...(oauthQuery && { oauth_query: oauthQuery }),
 		});
 
 		if (error) {

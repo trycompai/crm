@@ -1,4 +1,4 @@
-import { type auth, SESSION_COOKIE_NAME } from "@crm/auth";
+import { SESSION_COOKIE_NAME } from "@crm/auth";
 import {
 	Controller,
 	Get,
@@ -8,21 +8,24 @@ import {
 	StreamableFile,
 } from "@nestjs/common";
 import {
+	ApiBearerAuth,
 	ApiCookieAuth,
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
 	ApiQuery,
+	ApiSecurity,
 	ApiTags,
 } from "@nestjs/swagger";
-import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
 import type { Response } from "express";
+import type { RequestPrincipal } from "../auth/request-principal";
+import { Principal } from "../auth/request-principal.decorator";
 import { ConversationsService } from "./conversations.service";
-
-type CrmSession = UserSession<typeof auth>;
 
 @ApiTags("Conversations")
 @ApiCookieAuth(SESSION_COOKIE_NAME)
+@ApiSecurity("apiKey")
+@ApiBearerAuth("oauth")
 @Controller("api/conversations/attachments")
 export class ConversationAttachmentsController {
 	constructor(private readonly conversations: ConversationsService) {}
@@ -39,12 +42,12 @@ export class ConversationAttachmentsController {
 	async read(
 		@Param("id") id: string,
 		@Query("share") shareToken: string | undefined,
-		@Session() session: CrmSession,
+		@Principal() principal: RequestPrincipal,
 		@Res({ passthrough: true }) response: Response,
 	) {
 		const attachment = await this.conversations.attachment(
 			id,
-			session.user.id,
+			principal.user.id,
 			shareToken,
 		);
 		const content = Buffer.from(attachment.content);

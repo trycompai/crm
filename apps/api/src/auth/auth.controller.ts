@@ -1,23 +1,23 @@
-import { type auth, SESSION_COOKIE_NAME } from "@crm/auth";
+import { SESSION_COOKIE_NAME } from "@crm/auth";
 import { Controller, Get } from "@nestjs/common";
 import {
+	ApiBearerAuth,
 	ApiCookieAuth,
 	ApiOkResponse,
 	ApiOperation,
+	ApiSecurity,
 	ApiTags,
 	ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import {
-	OptionalAuth,
-	Session,
-	type UserSession,
-} from "@thallesp/nestjs-better-auth";
+import { OptionalAuth } from "@thallesp/nestjs-better-auth";
 import { AuthService } from "./auth.service";
-
-type CrmSession = UserSession<typeof auth>;
+import type { RequestPrincipal } from "./request-principal";
+import { Principal } from "./request-principal.decorator";
 
 @ApiTags("Auth")
 @ApiCookieAuth(SESSION_COOKIE_NAME)
+@ApiSecurity("apiKey")
+@ApiBearerAuth("oauth")
 @Controller("auth")
 export class AuthController {
 	constructor(private readonly authService: AuthService) {}
@@ -26,8 +26,8 @@ export class AuthController {
 	@ApiOperation({ summary: "Get the signed-in user's profile" })
 	@ApiOkResponse({ description: "The signed-in user's profile." })
 	@ApiUnauthorizedResponse({ description: "No valid session." })
-	async getMe(@Session() session: CrmSession) {
-		return { user: await this.authService.getProfile(session.user.id) };
+	async getMe(@Principal() principal: RequestPrincipal) {
+		return { user: await this.authService.getProfile(principal.user.id) };
 	}
 
 	@Get("session")
@@ -38,15 +38,15 @@ export class AuthController {
 	@ApiOkResponse({
 		description: "Whether the request is authenticated, and as whom.",
 	})
-	getSession(@Session() session?: CrmSession) {
-		if (!session) {
+	getSession(@Principal() principal: RequestPrincipal | null) {
+		if (!principal) {
 			return { authenticated: false, user: null };
 		}
 
 		return {
 			authenticated: true,
-			user: { id: session.user.id, email: session.user.email },
-			expiresAt: session.session.expiresAt,
+			user: { id: principal.user.id, email: principal.user.email },
+			expiresAt: principal.expiresAt,
 		};
 	}
 }

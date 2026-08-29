@@ -1,8 +1,11 @@
+import { auth } from "@crm/auth";
 import type { MailboxProviderId } from "@crm/auth/scopes";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { Suspense } from "react";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
+import { serializeOAuthQuery, signInSearchParams } from "@/lib/oauth-query";
 import { getSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { SocialSignIn } from "./social-sign-in";
@@ -60,13 +63,25 @@ export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
 async function SignIn({
 	searchParams,
 }: Pick<PageProps<"/sign-in">, "searchParams">) {
-	const [session, options, { method }] = await Promise.all([
+	const [session, options, params] = await Promise.all([
 		currentSession(),
 		signInOptions(),
 		searchParams,
 	]);
+	const parsedParams = signInSearchParams.parse(params);
+	const oauthQuery = parsedParams.sig
+		? serializeOAuthQuery(parsedParams)
+		: null;
+	const method = parsedParams.method;
 
 	if (session) {
+		if (oauthQuery) {
+			const continuation = await auth.api.oauth2Continue({
+				body: { oauth_query: oauthQuery },
+				headers: await headers(),
+			});
+			if ("url" in continuation) redirect(continuation.url);
+		}
 		redirect("/");
 	}
 
@@ -110,9 +125,15 @@ async function SignIn({
 				description="Sign in with your account to continue."
 			/>
 
-			{showSso ? <SsoSignIn providers={providers} /> : null}
+			{showSso ? (
+				<SsoSignIn providers={providers} oauthQuery={oauthQuery} />
+			) : null}
 			{social.map((provider) => (
-				<SocialSignIn key={provider} provider={provider} />
+				<SocialSignIn
+					key={provider}
+					provider={provider}
+					oauthQuery={oauthQuery}
+				/>
 			))}
 		</>
 	);

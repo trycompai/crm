@@ -1,4 +1,5 @@
 import { apiKey } from "@better-auth/api-key";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { sso } from "@better-auth/sso";
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
@@ -6,10 +7,12 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
+import { jwt } from "better-auth/plugins/jwt";
 import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
+import { OAUTH, OAUTH_SCOPES } from "./oauth-config";
 import { ensureWorkspaceMembership } from "./organization";
 import {
 	GOOGLE_PROVIDER_ID,
@@ -32,7 +35,7 @@ import {
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 const slackOAuth = env.slack;
 const slackRedirectUri = new URL(
-	"/api/auth/oauth2/callback/slack",
+	"/api/auth/callback/slack",
 	env.apiUrl,
 ).toString();
 
@@ -72,6 +75,7 @@ if (env.microsoft) {
 export const auth = betterAuth({
 	appName: "CRM",
 	baseURL: env.apiUrl,
+	disabledPaths: ["/token"],
 
 	database: prismaAdapter(db, {
 		provider: "postgresql",
@@ -122,6 +126,43 @@ export const auth = betterAuth({
 	},
 
 	plugins: [
+		jwt({
+			disableSettingJwtHeader: true,
+			jwt: {
+				issuer: OAUTH.issuer,
+				audience: OAUTH.resource,
+				expirationTime: OAUTH.accessTokenTtlSeconds,
+			},
+		}),
+		oauthProvider({
+			loginPage: OAUTH.loginPage,
+			consentPage: OAUTH.consentPage,
+			scopes: [...OAUTH_SCOPES],
+			resources: [
+				{
+					identifier: OAUTH.resource,
+					name: "CompCRM API",
+					accessTokenTtl: OAUTH.accessTokenTtlSeconds,
+					refreshTokenTtl: OAUTH.refreshTokenTtlSeconds,
+					allowedScopes: [...OAUTH_SCOPES],
+				},
+			],
+			resourceSeedMode: "overwrite",
+			cachedResources: new Set([OAUTH.resource]),
+			enforcePerClientResources: true,
+			clientRegistrationDefaultResources: [OAUTH.resource],
+			cachedTrustedClients: new Set([OAUTH.officialClient.id]),
+			accessTokenExpiresIn: OAUTH.accessTokenTtlSeconds,
+			idTokenExpiresIn: OAUTH.idTokenTtlSeconds,
+			refreshTokenExpiresIn: OAUTH.refreshTokenTtlSeconds,
+			refreshTokenReuseInterval: OAUTH.refreshTokenReuseIntervalSeconds,
+			codeExpiresIn: OAUTH.authorizationCodeTtlSeconds,
+			grantTypes: ["authorization_code", "refresh_token"],
+			allowDynamicClientRegistration: false,
+			allowUnauthenticatedClientRegistration: false,
+			clientPrivileges: () => false,
+			resourcePrivileges: () => false,
+		}),
 		...(slackOAuth
 			? [
 					genericOAuth({

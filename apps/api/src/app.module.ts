@@ -49,7 +49,11 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		AppCacheModule,
 		DatabaseModule,
 		CrmModule,
-		BetterAuthModule.forRoot({ auth, middleware: logAuthRoute }),
+		BetterAuthModule.forRoot({
+			auth,
+			middleware: logAuthRoute,
+			disableGlobalAuthGuard: true,
+		}),
 		AuthModule,
 		HealthModule,
 		TrpcModule,
