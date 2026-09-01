@@ -77,6 +77,14 @@ export class EnvironmentVariables {
 	SLACK_CLIENT_SECRET?: string;
 
 	@IsOptional()
+	@IsString()
+	HUBSPOT_CLIENT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	HUBSPOT_CLIENT_SECRET?: string;
+
+	@IsOptional()
 	@IsUrl({ require_tld: false })
 	API_URL?: string;
 

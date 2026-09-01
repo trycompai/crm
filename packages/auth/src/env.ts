@@ -46,6 +46,10 @@ const slackCredentials = ():
 	| { clientId: string; clientSecret: string }
 	| undefined => pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
 
+const hubspotCredentials = ():
+	| { clientId: string; clientSecret: string }
+	| undefined => pair("HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET");
+
 const apiUrl =
 	optional("API_URL") ?? optional("BETTER_AUTH_URL") ?? DEFAULT_API_URL;
 
@@ -62,6 +66,7 @@ export const env = {
 	google: googleCredentials(),
 	microsoft: microsoftCredentials(),
 	slack: slackCredentials(),
+	hubspot: hubspotCredentials(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",
@@ -77,6 +82,10 @@ export function isMicrosoftConfigured(): boolean {
 
 export function isSlackConfigured(): boolean {
 	return env.slack !== undefined;
+}
+
+export function isHubspotConfigured(): boolean {
+	return env.hubspot !== undefined;
 }
 
 export { apiUrl, appUrl };

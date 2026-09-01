@@ -17,6 +17,7 @@
 		"./fields": "./src/fields.ts",
 		"./fields-shape": "./src/fields-shape.ts",
 		"./fx": "./src/fx.ts",
+		"./hubspot": "./src/hubspot.ts",
 		"./images": "./src/images.ts",
 		"./idempotency": "./src/idempotency.ts",
 		"./json": "./src/json.ts",

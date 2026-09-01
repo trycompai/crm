@@ -83,6 +83,8 @@ const VERBS: ToolVerbs = {
 	set_field_value: "Filled in a custom field",
 	manage_fields: "Changed what the CRM tracks",
 	archive_field: "Asked to retire a field",
+	list_hubspot_deals: "Read the deals in HubSpot",
+	read_hubspot_deal: "Read one deal in HubSpot",
 
 	load_skill: "Read its instructions for this",
 	web_search: "Searched the web",

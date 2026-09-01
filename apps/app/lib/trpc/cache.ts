@@ -38,6 +38,7 @@ export type CrmCache = {
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
 	slack(options?: Options): Promise<void>;
+	hubspot(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
 	apiKeys(options?: Options): Promise<void>;
 	tracking(options?: Options): Promise<void>;
@@ -307,6 +308,8 @@ export function useCrmCache(): CrmCache {
 				[],
 				options,
 			),
+
+		hubspot: (options) => run([trpc.hubspot.status.queryKey()], [], options),
 
 		sso: (options) =>
 			run(

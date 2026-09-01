@@ -24,13 +24,18 @@ import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { ConnectionPage, ConnectionPageLoading } from "../connection-page";
 import { type ConnectionQuery, connectErrorOf } from "../oauth-connection-page";
+import { ScopeGroups } from "../scope-groups";
 import { SlackChannels } from "./slack-channels";
 import {
 	SlackConnectButton,
 	SlackReconnectButton,
 } from "./slack-connect-button";
 import { SlackDisconnectButton } from "./slack-disconnect-button";
-import { SlackScopeGroups } from "./slack-scope-groups";
+
+const SCOPE_CAPTION =
+	"Broad means the whole workspace, not one channel. Open a group to see the details.";
+
+const WITHHELD_NOTE = "Slack held this one back, so it is off.";
 
 const PRIVATE_CHANNEL_SCOPES = [
 	"groups:read",
@@ -91,10 +96,12 @@ async function SlackConnectionPageContent({
 					time.
 				</p>
 			</header>
-			<SlackScopeGroups
+			<ScopeGroups
+				caption={SCOPE_CAPTION}
 				groups={groupScopes([...SLACK_REQUESTED_SCOPES])}
 				title="What you are handing over"
 				withheld={[]}
+				withheldNote={WITHHELD_NOTE}
 			/>
 			<PlainList
 				title="What it will never do"
@@ -202,10 +209,12 @@ function ConnectedSlack({
 				</p>
 			</header>
 			<MissingGrant missing={missing} slug={slug} />
-			<SlackScopeGroups
+			<ScopeGroups
+				caption={SCOPE_CAPTION}
 				groups={groupScopes(status.scopes)}
 				title="What this workspace granted"
 				withheld={missing.map(toLine)}
+				withheldNote={WITHHELD_NOTE}
 			/>
 			<SlackChannels />
 			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">

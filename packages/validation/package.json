@@ -14,6 +14,7 @@
 		"./eve-tool": "./src/eve-tool.ts",
 		"./field-backfill": "./src/field-backfill.ts",
 		"./field-templates": "./src/field-templates.ts",
+		"./hubspot": "./src/hubspot.ts",
 		"./saved-view": "./src/saved-view.ts"
 	},
 	"scripts": {

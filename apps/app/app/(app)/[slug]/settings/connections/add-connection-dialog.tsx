@@ -3,6 +3,7 @@
 import Plug from "@carbon/icons-react/es/Plug";
 import DocusignLogo from "@crm/ui/components/brand-logos/docusign";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import HubspotLogo from "@crm/ui/components/brand-logos/hubspot";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import StripeLogo from "@crm/ui/components/brand-logos/stripe";
@@ -55,6 +56,14 @@ export function AddConnectionDialog({
 							name="Slack"
 							description="Let deployed agents notify approved channels and people"
 							href={`/${slug}/settings/connections/slack`}
+						/>
+					) : null}
+					{!connected.includes("HubSpot") ? (
+						<CatalogRow
+							logo={HubspotLogo}
+							name="HubSpot"
+							description="Read which deals HubSpot records as won and as lost"
+							href={`/${slug}/settings/connections/hubspot`}
 						/>
 					) : null}
 					{!connected.includes("Microsoft 365") ? (

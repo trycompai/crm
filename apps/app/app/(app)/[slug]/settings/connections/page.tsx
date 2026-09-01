@@ -1,4 +1,5 @@
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import HubspotLogo from "@crm/ui/components/brand-logos/hubspot";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
@@ -30,10 +31,11 @@ async function ConnectionsSettingsPageContent({
 	const [{ slug }, query] = await Promise.all([params, searchParams]);
 	const queryClient = getServerQueryClient();
 	const trpc = getServerTrpc();
-	const [google, microsoft, slack] = await Promise.all([
+	const [google, microsoft, slack, hubspot] = await Promise.all([
 		queryClient.fetchQuery(trpc.google.status.queryOptions()),
 		queryClient.fetchQuery(trpc.microsoft.status.queryOptions()),
 		queryClient.fetchQuery(trpc.slack.status.queryOptions()),
+		queryClient.fetchQuery(trpc.hubspot.status.queryOptions()),
 	]);
 	const rows = [
 		...(google.linked
@@ -59,6 +61,21 @@ async function ConnectionsSettingsPageContent({
 						sends: "Messages to approved channels and people",
 						href: `/${slug}/settings/connections/slack`,
 						logo: SlackLogo,
+					},
+				]
+			: []),
+		...(hubspot.connected
+			? [
+					{
+						name: "HubSpot",
+						status: hubspot.revokedAt
+							? "Access revoked in HubSpot"
+							: `Connected to ${hubspot.portalDomain ?? hubspot.portalId}`,
+						bringsIn:
+							"Every deal in the account, and which stage of which pipeline means won or lost",
+						sends: "Nothing, so nothing here can change HubSpot",
+						href: `/${slug}/settings/connections/hubspot`,
+						logo: HubspotLogo,
 					},
 				]
 			: []),
@@ -126,6 +143,12 @@ async function ConnectionsSettingsPageContent({
 							name="Slack"
 							description="Let deployed agents notify approved channels and people"
 							href={`/${slug}/settings/connections/slack`}
+						/>
+						<StarterRow
+							logo={HubspotLogo}
+							name="HubSpot"
+							description="Read which deals HubSpot records as won and as lost"
+							href={`/${slug}/settings/connections/hubspot`}
 						/>
 						<StarterRow
 							logo={MicrosoftLogo}

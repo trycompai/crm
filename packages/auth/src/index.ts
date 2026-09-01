@@ -5,14 +5,29 @@ export {
 	DAY_SECONDS,
 } from "./api-keys";
 export { type Auth, auth, type Session, type SessionUser } from "./auth";
+export { connectGuard, GUARDED_CONNECTIONS } from "./connect-guard";
 export { AUTH_COOKIE_PREFIX, SESSION_COOKIE_NAME } from "./cookies";
 export {
 	apiUrl,
 	appUrl,
 	isGoogleConfigured,
+	isHubspotConfigured,
 	isMicrosoftConfigured,
 	isSlackConfigured,
 } from "./env";
+export {
+	describeHubspotScopes,
+	HUBSPOT_REQUESTED_SCOPES,
+	HUBSPOT_REQUIRED_SCOPES,
+	HUBSPOT_SCOPE_GROUPS,
+	HUBSPOT_SCOPES,
+	type HubspotScope,
+	type HubspotScopeGroup,
+	type HubspotScopeSummary,
+	hubspotCanReadDeals,
+	hubspotScopeDrift,
+	summariseHubspotScopes,
+} from "./hubspot-scopes";
 export {
 	canChangeRole,
 	canManageConnections,
@@ -33,6 +48,7 @@ export {
 	CALENDAR_SCOPE,
 	GMAIL_SCOPE,
 	GOOGLE_PROVIDER_ID,
+	HUBSPOT_PROVIDER_ID,
 	hasSyncScopes,
 	IDENTITY_SCOPES,
 	isMailboxProvider,

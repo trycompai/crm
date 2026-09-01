@@ -1,7 +1,12 @@
 import "@crm/env/load";
 
 import { db } from "@crm/db";
+import { readHubspotConnection } from "@crm/db/hubspot";
 import { readContextDevKey } from "@crm/db/settings";
+import {
+	HUBSPOT_CAPABILITY,
+	HUBSPOT_CAPABILITY_SOURCE,
+} from "./hubspot-config";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
@@ -31,12 +36,33 @@ export async function contextDevKey(): Promise<string | null> {
 	}
 }
 
+export async function hubspotLive(): Promise<boolean> {
+	try {
+		const connection = await readHubspotConnection();
+		return connection !== null && connection.revokedAt === null;
+	} catch (error) {
+		console.error(
+			`[agent] could not read the HubSpot connection from the database: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+
+		return false;
+	}
+}
+
 export async function capabilities(): Promise<readonly Capability[]> {
-	return capabilitiesFrom(await contextDevKey());
+	const [contextDev, hubspot] = await Promise.all([
+		contextDevKey(),
+		hubspotLive(),
+	]);
+
+	return capabilitiesFrom(contextDev, hubspot);
 }
 
 export function capabilitiesFrom(
 	contextDev: string | null,
+	hubspot = false,
 ): readonly Capability[] {
 	const fromEnv = (id: string) => ({
 		id,
@@ -65,6 +91,14 @@ export function capabilitiesFrom(
 			gives:
 				"a person read back from a LinkedIn URL you already hold — their real name, bio, current title and employer, every earlier role with its dates, their education and their other public profiles, all self-reported and so authoritative on identity",
 			enabled: contextDev !== null,
+		},
+		{
+			id: HUBSPOT_CAPABILITY,
+			from: HUBSPOT_CAPABILITY_SOURCE,
+			label: "HubSpot deals",
+			gives:
+				"every deal in the connected HubSpot account with the outcome HubSpot itself records — closed won, closed lost, or still open — plus the stage label, the amount, the close date and the reason a rep typed when they closed it",
+			enabled: hubspot,
 		},
 		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),

@@ -40,7 +40,7 @@ Everything additive — joining a channel, creating one, refreshing people — s
 open to any workspace member, because the agent builder needs it and Slack can
 undo it.
 
-## Connecting Slack is refused at the OAuth endpoints, not in the UI
+## Connecting is refused at the OAuth endpoints, not in the UI
 
 Connecting is the same decision as disconnecting, because `replaceSlackConnection`
 deletes every other Slack account row: a second person connecting *replaces* the
@@ -48,14 +48,20 @@ workspace's Slack, and every deployed agent then reads from and posts to whichev
 Slack they installed. Hiding the button is not enough — `authClient.oauth2.link`
 is one POST.
 
-`slackConnectGuard` (`packages/auth/src/slack-connect.ts`) is Better Auth's
+`connectGuard` (`packages/auth/src/connect-guard.ts`) is Better Auth's
 `hooks.before`, and it asks the same `canManageConnections` the API does. It
-covers all three doors: `/oauth2/link`, `/sign-in/oauth2` (Slack is a connection,
-never a sign-in method, and that endpoint needs no session) and
-`/oauth2/callback/slack`. The callback is the one that matters — refusing there
-happens **before the code is exchanged**, so a refused attempt writes no
-`SlackWorkspaceGrant` user token and deletes no bot token. Google and Microsoft
-sign in on different paths and never reach the guard.
+covers all three doors: `/oauth2/link`, `/sign-in/oauth2` (a connection is never
+a sign-in method, and that endpoint needs no session) and
+`/oauth2/callback/<provider>`. The callback is the one that matters — refusing
+there happens **before the code is exchanged**, so a refused attempt writes no
+`SlackWorkspaceGrant` user token, no `HubspotConnection` refresh token, and
+deletes nothing. Google and Microsoft sign in on different paths and never reach
+the guard.
+
+**`GUARDED_CONNECTIONS` is the whole list**, provider id to the three refusal
+sentences. A new connection is one entry there, not a second middleware — one
+`hooks.before` is all Better Auth takes, and a second guard would replace the
+first rather than run beside it.
 
 A workspace with no owner and no admin lets any member connect. There is nobody
 left to ask, and a fresh install must not be locked out of its first connection.
@@ -67,7 +73,8 @@ two words. Not arrows, not "inbound/outbound", not scope tokens.
 
 `Sends` earns its place by being reassuring when it is empty. HubSpot reads
 "Nothing, so nothing here can change HubSpot" — that is the guarantee a migration
-needs, stated where someone will look for it.
+needs, stated where someone will look for it. Every scope it asks for is a read
+scope, so that line is enforced by the grant and not only by our code.
 
 ## Destinations: derived or chosen
 
@@ -130,6 +137,70 @@ count of how many reach the whole workspace. `SLACK_SCOPE_GROUPS` in
 The catalogue is the single source. `auth.ts` builds its scope request from it and
 the page renders from it, so the screen cannot promise something the app never
 asked for.
+
+## HubSpot is one account for the whole team, not one per rep
+
+HubSpot scopes an install to the **account** — the portal, `hub_id` — and not to
+the person who approves it. HubSpot states it plainly: an access token "does not
+reflect the permissions or limitations of what a user can do". So one admin
+connects once and every agent reads every deal. Nobody else is asked, and asking
+them would be wrong.
+
+Three things follow, and each is a rule:
+
+- **Only a HubSpot Super Admin, or a user with Marketplace Access, can install
+  an app.** Your reps cannot connect it however the CRM feels about them, so the
+  pre-connect page says so rather than letting them find out at HubSpot.
+- **One row, keyed by `portalId`.** `replaceHubspotConnection`
+  (`packages/auth/src/hubspot-grant.ts`) deletes every other `Account` row and,
+  when the portal actually changes, every cached pipeline with it. A second
+  admin connecting a *different* portal replaces the first, exactly as Slack
+  does, which is why `connectGuard` covers HubSpot too.
+- **Uninstalling in HubSpot revokes the refresh token, and that is the only
+  thing that does.** A refresh token does not expire otherwise. The next refresh
+  answers `BAD_REFRESH_TOKEN`, `markHubspotRevoked` stamps `revokedAt`, and the
+  connection page leads with it. Everything else is a transient error, recorded
+  in `lastError` and cleared by the next successful read.
+
+## The token is renewed under a lock, once
+
+An access token lasts 30 minutes. Two workers refreshing the same refresh token
+at the same time is a **documented cause of `BAD_REFRESH_TOKEN`** — the account
+breaks for everybody, not just for the losing worker.
+
+`hubspotAccessToken` (`apps/agent/agent/lib/hubspot-connection.ts`) takes the
+`hubspot-token` advisory lock, **re-reads the row inside it**, and returns the
+other worker's token when one landed while it waited. Only then does it call
+HubSpot. `withHubspotTokenLock` (`@crm/db/hubspot`) carries its own `maxWait` and
+`timeout`, because a network call inside a Prisma interactive transaction
+otherwise dies on the five-second default.
+
+## A stage name never decides won or lost
+
+`dealstage` holds a **stage id**, and the id is per pipeline. Only the default
+pipeline uses readable ids (`closedwon`, `closedlost`); every custom pipeline
+uses numbers like `701459927`. **String matching on the stage is wrong for any
+account that made its own pipeline**, which is most of them.
+
+Two sources say the outcome, and both are read:
+
+- The deal's own `hs_is_closed_won` and `hs_is_closed_lost`, which HubSpot sets.
+- The stage's `metadata.isClosed` and `metadata.probability` from
+  `GET /crm/v3/pipelines/deals` — `probability` 1 is won, 0 is lost.
+
+`outcomeOfStage` (`@crm/db/hubspot`) is the single rule, and `HubspotStage.outcome`
+stores its answer so a filter is a query rather than a scan.
+
+**Both metadata fields arrive as strings.** `"false"` is truthy, so a plain
+truthiness check marks every open deal closed. `packages/validation/src/hubspot.ts`
+coerces them at the read, which is the only place that may.
+
+## The search endpoint stops at 10,000
+
+`POST /crm/v3/objects/deals/search` refuses to page past 10,000 results with a
+400. `listHubspotDeals` reports `reachedCeiling` and stops handing out a cursor
+rather than walking into that error. Narrow with `modifiedSince` or `pipelineId`;
+do not raise the page size and hope.
 
 ## Identity matching is connection-level
 
@@ -219,10 +290,9 @@ flatten a list of separately-actionable objects.
 `packages/ui/src/components/brand-logos/` has claude, eve, github, google,
 microsoft, nextjs, slack, stripe, vercel. **Stripe is there** — use it.
 
-Missing from the repo and living only in Paper: **hubspot** (`hubspot icon`
-`L5E-0`), **docusign** (`docusign logo` `L5Z-0`), **ergo** (`ergo logo` `KJJ-0`).
-Extract their path data into `brand-logos/*.tsx` shaped like `stripe.tsx` when
-building these screens.
+Missing from the repo and living only in Paper: **ergo** (`ergo logo` `KJJ-0`).
+Extract its path data into `brand-logos/*.tsx` shaped like `stripe.tsx` when
+building these screens. **hubspot** and **docusign** now exist.
 
 Until a mark exists, `EntityLogo` falls back to an initials monogram on
 `bg-muted` — that is correct behaviour, not a placeholder to design around. Only

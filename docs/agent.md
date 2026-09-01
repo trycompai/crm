@@ -243,6 +243,13 @@ ask a rep who had a company open, contacts on screen, to paste an email.
 | `read_deal_history` | stage clock and history, **people with ids**, last reply |
 | `search_crm` | contacts, companies and deals matching typed text |
 
+`list_hubspot_deals` and `read_hubspot_deal` read the **connected HubSpot
+account**, not this CRM, so their ids are HubSpot ids and belong to nothing here.
+Both are free and both return `unavailable` when HubSpot is not connected. The
+rules that make them correct — one account for the whole team, the token lock,
+and why a stage name never decides won or lost — are in **`docs/connections.md`**.
+Read it before touching them.
+
 **A preamble or tool result naming a record without its id is a bug** — the only
 recovery is asking the human. Ambiguity is fine: four Marchettis is four rows with
 titles. **`search_crm` does no fuzzy matching** — "Marchetti" reaching "Marchetta" is a

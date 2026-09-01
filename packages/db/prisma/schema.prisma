@@ -108,6 +108,77 @@ model SlackWorkspaceGrant {
   @@map("slackWorkspaceGrant")
 }
 
+model HubspotInstall {
+  installerId    String   @id
+  portalId       String
+  portalDomain   String?
+  installerEmail String?
+  refreshToken   String
+  scopes         String
+  createdAt      DateTime @default(now())
+
+  @@map("hubspotInstall")
+}
+
+model HubspotConnection {
+  id           String  @id @default(cuid())
+  portalId     String  @unique
+  portalDomain String?
+
+  refreshToken         String
+  accessToken          String?
+  accessTokenExpiresAt DateTime?
+
+  scopes         String
+  installerEmail String?
+
+  lastReadAt  DateTime?
+  lastErrorAt DateTime?
+  lastError   String?
+  revokedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hubspotConnection")
+}
+
+model HubspotPipeline {
+  id       String         @id
+  label    String
+  archived Boolean        @default(false)
+  stages   HubspotStage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hubspotPipeline")
+}
+
+model HubspotStage {
+  id           String          @id
+  pipelineId   String
+  pipeline     HubspotPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  label        String
+  displayOrder Int             @default(0)
+  isClosed     Boolean         @default(false)
+  probability  Decimal         @db.Decimal(4, 3)
+  outcome      HubspotOutcome  @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pipelineId])
+  @@index([outcome])
+  @@map("hubspotStage")
+}
+
+enum HubspotOutcome {
+  OPEN
+  WON
+  LOST
+}
+
 model Session {
   id        String   @id
   expiresAt DateTime

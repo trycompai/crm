@@ -46,6 +46,13 @@ Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
 **Neither pair is required, but an install wants one of them or an SSO provider** —
 with none, the sign-in page says so by name rather than rendering nothing.
 
+**`SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET`** and **`HUBSPOT_CLIENT_ID` +
+`HUBSPOT_CLIENT_SECRET`** are connections, never sign-in methods. Same pair rule.
+Unset removes the connection from Settings → Connections and nothing else; the
+Connect button says the provider is not configured rather than failing at the
+provider. HubSpot is read-only and its redirect URL is
+`<API_URL>/api/auth/oauth2/callback/hubspot`.
+
 **`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
 list, read by the sign-in guard *and* the sync's "which side is external" decision** —

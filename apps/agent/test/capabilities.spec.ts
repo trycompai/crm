@@ -8,6 +8,10 @@ import {
 	markdownFor,
 	unavailable,
 } from "../agent/lib/capabilities";
+import {
+	HUBSPOT_CAPABILITY,
+	HUBSPOT_CAPABILITY_SOURCE,
+} from "../agent/lib/hubspot-config";
 
 const KEYS = ["PERPLEXITY_API_KEY", "BLOB_READ_WRITE_TOKEN"] as const;
 
@@ -148,8 +152,37 @@ describe("the capability briefing", () => {
 	it("does not warn about missing sources when everything is on", () => {
 		for (const key of KEYS) process.env[key] = "key";
 
-		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
+		expect(markdownFor(capabilitiesFrom("ctx", true))).not.toContain(
 			"Not configured here",
 		);
+	});
+});
+
+describe("HubSpot as a capability", () => {
+	const hubspot = (connected: boolean) =>
+		capabilitiesFrom(null, connected).find((c) => c.id === HUBSPOT_CAPABILITY);
+
+	it("is off until somebody connects HubSpot", () => {
+		expect(hubspot(false)?.enabled).toBe(false);
+	});
+
+	it("is on once the connection is live", () => {
+		expect(hubspot(true)?.enabled).toBe(true);
+	});
+
+	it("points at the connections page rather than a variable name", () => {
+		expect(hubspot(true)?.from).toBe(HUBSPOT_CAPABILITY_SOURCE);
+	});
+
+	it("names closed won and closed lost, so a session knows what it buys", () => {
+		expect(hubspot(true)?.gives).toContain("closed won");
+		expect(hubspot(true)?.gives).toContain("closed lost");
+	});
+
+	it("is listed as unavailable rather than absent when it is off", () => {
+		const markdown = markdownFor(capabilitiesFrom("ctx", false));
+
+		expect(markdown).toContain("Not configured here");
+		expect(markdown).toContain("HubSpot deals");
 	});
 });
