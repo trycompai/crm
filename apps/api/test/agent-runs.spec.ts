@@ -224,6 +224,43 @@ describe("manual agent runs", () => {
 		});
 	});
 
+	it("returns null for one unreadable action result and still lists the run", async () => {
+		const { id: runId } = await service.runNow(
+			{ id: agentId, clientRequestId: crypto.randomUUID() },
+			userId,
+		);
+		await db.agentAction.createMany({
+			data: [
+				{
+					agentId,
+					runId,
+					type: "run.summary",
+					provider: "crm",
+					summary: "Broken result",
+					status: "SUCCEEDED",
+					idempotencyKey: `bad-result-${crypto.randomUUID()}`,
+					result: { not: "a stored result" },
+				},
+				{
+					agentId,
+					runId,
+					type: "run.summary",
+					provider: "crm",
+					summary: "Good result",
+					status: "SUCCEEDED",
+					idempotencyKey: `good-result-${crypto.randomUUID()}`,
+					result: { type: "run.summary" },
+				},
+			],
+		});
+
+		const runs = await service.list(agentId, 1, userId);
+		expect(runs).toHaveLength(1);
+		const results = runs[0]?.actions.map((action) => action.result) ?? [];
+		expect(results).toContain(null);
+		expect(results).toContainEqual({ type: "run.summary" });
+	});
+
 	it("rejects a manual run while an agent is not live", async () => {
 		const beforePokeCount = pokeCount;
 		const draft = await db.agentDefinition.create({

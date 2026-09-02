@@ -5,7 +5,11 @@ export const AGENT_ACTION_TYPES = {
 	CRM_ACTIVITY_CREATE: "crm.activity.create",
 	RUN_SUMMARY: "run.summary",
 	SLACK_MESSAGE_POST: "slack.message.post",
+	SLACK_CHANNEL_OPEN: "slack.channel.open",
+	SLACK_CHANNEL_INVITE: "slack.channel.invite",
 } as const;
+
+export const SLACK_WORKSPACE_RESOURCE_ID = "slack:workspace";
 
 export type AgentActionType =
 	(typeof AGENT_ACTION_TYPES)[keyof typeof AGENT_ACTION_TYPES];
@@ -43,6 +47,16 @@ export const agentManifestAction = z.discriminatedUnion("type", [
 		provider: z.literal("slack"),
 		summary: z.string(),
 		destination: slackDestination,
+	}),
+	z.object({
+		type: z.literal(AGENT_ACTION_TYPES.SLACK_CHANNEL_OPEN),
+		provider: z.literal("slack"),
+		summary: z.string(),
+	}),
+	z.object({
+		type: z.literal(AGENT_ACTION_TYPES.SLACK_CHANNEL_INVITE),
+		provider: z.literal("slack"),
+		summary: z.string(),
 	}),
 ]);
 
@@ -104,6 +118,22 @@ export const agentManifest = z
 				});
 			}
 			actionTypes.add(action.type);
+		}
+
+		const slack = manifest.actions.findIndex(
+			(action) => action.provider === "slack",
+		);
+		const workspace = manifest.dataScope.resources.some(
+			(resource) =>
+				resource.kind === "integration" &&
+				resource.id === SLACK_WORKSPACE_RESOURCE_ID,
+		);
+		if (slack >= 0 && !workspace) {
+			context.addIssue({
+				code: "custom",
+				path: ["actions", slack, "provider"],
+				message: `A Slack action needs the ${SLACK_WORKSPACE_RESOURCE_ID} resource, or it fails on every run`,
+			});
 		}
 	});
 

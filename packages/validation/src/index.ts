@@ -1,5 +1,6 @@
 import type { ZodType, z } from "zod";
 import * as activityMeta from "./activity-meta";
+import * as agentAction from "./agent-action";
 import * as agentEvents from "./agent-events";
 import * as agentManifest from "./agent-manifest";
 import * as agents from "./agents";
@@ -7,9 +8,11 @@ import * as builderQuestion from "./builder-question";
 import * as eveStream from "./eve-stream";
 import * as eveTool from "./eve-tool";
 import * as slack from "./slack";
+import * as slackEvents from "./slack-events";
 
 export const schemas = {
 	activityMeta,
+	agentAction,
 	agentEvents,
 	agentManifest,
 	agents,
@@ -17,9 +20,11 @@ export const schemas = {
 	eveStream,
 	eveTool,
 	slack,
+	slackEvents,
 } as const;
 
 export type { ActivityMeta, ActivityMetaFields } from "./activity-meta";
+export type { AgentActionResult } from "./agent-action";
 export type { CrmEventTask } from "./agent-events";
 export type {
 	AgentActionType,
@@ -57,6 +62,11 @@ export type {
 	EveToolOutput,
 } from "./eve-tool";
 export type { AuthTest, JoinPayload, OauthAccess, Reply } from "./slack";
+export type {
+	EventCallback,
+	SlackEnvelope,
+	SlackEvent,
+} from "./slack-events";
 
 export class InvalidInput extends Error {
 	override readonly name = "InvalidInput";

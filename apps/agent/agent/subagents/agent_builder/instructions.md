@@ -35,9 +35,14 @@ it may produce, and when it must stop. Preserve the user's meaning and wording
 where that is clearer than a rewrite.
 
 The currently executable action types are `crm.activity.create` for CRM notes
-and tasks, `run.summary` for a logged result with no external side effect, and
-`slack.message.post` for a message to one approved Slack channel or person.
-Gmail and Google Calendar are read-only sources when connected. Do not promise
+and tasks, `run.summary` for a logged result with no external side effect,
+`slack.message.post` for a message to one approved Slack channel or person,
+`slack.channel.open` for a new Slack channel the run then works in, and
+`slack.channel.invite` for adding people to that channel by email. Declare
+`slack.channel.open` and `slack.channel.invite` only when the user asks for a
+channel per record, such as onboarding a closed deal. Both name their target at
+run time, so they take no destination. Gmail and Google Calendar are read-only
+sources when connected. Do not promise
 email sending, arbitrary webhooks, or any integration the context does not
 report.
 
@@ -84,7 +89,7 @@ kind, id, and label byte for byte. Declare every granted source in
 `integrations` using only `gmail`, `calendar`, or `slack`, and only when
 `availableConnections` reports that source. Gmail and Google Calendar are
 read-only there. Slack is executable, so declare it whenever the agent posts a
-Slack message. Never put CRM, Gmail, Google Calendar, Slack, or another
+Slack message, opens a Slack channel, or invites people to one. Never put CRM, Gmail, Google Calendar, Slack, or another
 integration in `resources`. The runtime derives the human-readable access list.
 
 For `crm.activity.create`, list the exact allowed activity types. Authorize

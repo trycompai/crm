@@ -122,7 +122,7 @@ a builder chat that is as slow as Slack is.
 
 ## Permissions are shown in groups, not one line each
 
-Sixteen scopes read as noise. Group them by what they touch — people, channels it
+Seventeen scopes read as noise. Group them by what they touch — people, channels it
 can read, messages it can send, channels it can change — and give each group a
 count of how many reach the whole workspace. `SLACK_SCOPE_GROUPS` in
 `packages/auth/src/slack-scopes.ts` owns both the grouping and the plain wording.

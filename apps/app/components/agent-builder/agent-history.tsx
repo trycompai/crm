@@ -17,6 +17,7 @@ import {
 } from "@crm/ui/components/alert-dialog";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import { Link } from "@crm/ui/components/link";
 import { cn } from "@crm/ui/lib/utils";
 import { useState } from "react";
 import { z } from "zod";
@@ -296,7 +297,7 @@ function ExpandedRun({ run }: { run: RunRow }) {
 								</span>
 							</span>
 							<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
-								{entry.action.externalId ?? entry.action.id.slice(0, 12)}
+								{actionReceipt(entry.action)}
 							</span>
 						</div>
 					),
@@ -405,6 +406,28 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 				) : null}
 			</div>
 		</div>
+	);
+}
+
+function actionReceipt(action: RunRow["actions"][number]) {
+	if (action.result?.type !== "slack.channel.invite") {
+		return action.externalId ?? action.id.slice(0, 12);
+	}
+
+	const inviteId = action.result.invite_id ?? action.externalId;
+	const url = action.result.url;
+	if (!inviteId && !url) return action.id.slice(0, 12);
+
+	return (
+		<>
+			{inviteId}
+			{inviteId && url ? " · " : null}
+			{url ? (
+				<Link href={url} target="_blank" rel="noreferrer">
+					Invite link
+				</Link>
+			) : null}
+		</>
 	);
 }
 

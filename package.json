@@ -21,7 +21,8 @@
 		"db:reset": "turbo run db:reset",
 		"db:seed": "turbo run db:seed",
 		"db:studio": "turbo run db:studio",
-		"db:test": "bun run --filter=@crm/db db:test"
+		"db:test": "bun run --filter=@crm/db db:test",
+		"tunnel:slack": "bash scripts/slack-tunnel.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",

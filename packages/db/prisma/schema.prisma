@@ -108,6 +108,29 @@ model SlackWorkspaceGrant {
   @@map("slackWorkspaceGrant")
 }
 
+model SlackEventInbox {
+  id String @id @default(cuid())
+
+  eventId   String  @unique
+  teamId    String?
+  channelId String?
+  messageTs String?
+  type      String
+  payload   Json
+
+  runId String?
+
+  receivedAt  DateTime  @default(now())
+  leasedUntil DateTime?
+  processedAt DateTime?
+  outcome     String?
+
+  @@unique([channelId, messageTs])
+  @@index([processedAt, receivedAt])
+  @@index([channelId])
+  @@map("slackEventInbox")
+}
+
 model Session {
   id        String   @id
   expiresAt DateTime
@@ -793,6 +816,7 @@ model AgentRun {
 
   triggerType    AgentTriggerType
   status         AgentRunStatus   @default(QUEUED)
+  slackChannelId String?
   principalId    String?
   sessionId      String?          @unique
   idempotencyKey String           @unique
@@ -827,6 +851,7 @@ model AgentRun {
   @@index([versionId, createdAt])
   @@index([status, createdAt])
   @@index([triggerId, createdAt])
+  @@index([slackChannelId, status])
   @@map("agentRun")
 }
 
@@ -862,6 +887,7 @@ model AgentAction {
   targetLabel String?
   summary     String
   metadata    Json?
+  result      Json?
 
   status         AgentActionStatus @default(PLANNED)
   idempotencyKey String            @unique

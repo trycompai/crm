@@ -33,6 +33,12 @@ export const SLACK_SCOPES: readonly SlackScope[] = [
 		sensitive: false,
 	},
 	{
+		scope: "app_mentions:read",
+		group: "read",
+		grant: "See messages that mention it, so somebody can ask it for help",
+		sensitive: false,
+	},
+	{
 		scope: "channels:history",
 		group: "read",
 		grant: "Read messages in public channels it has been added to",

@@ -244,8 +244,15 @@ describe("deployed Slack actions", () => {
 			approvedSlackDestination({
 				...manifest,
 				dataScope: { ...manifest.dataScope, resources: [] },
+				actions: [
+					{
+						type: "run.summary",
+						provider: "crm",
+						summary: "Summarize the Slack delivery",
+					},
+				],
 			}),
-		).toThrow("does not allow Slack");
+		).toThrow("Agent version does not allow Slack.");
 	});
 
 	it("posts with a stable Slack replay id", async () => {
@@ -309,7 +316,9 @@ describe("deployed Slack actions", () => {
 				"7d3e8854-79f9-48dd-a933-8cfb5994f99e",
 				{ fetcher },
 			),
-		).rejects.toThrow("Invite the app");
+		).rejects.toThrow(
+			"Comp AI isn't in that channel. Invite it there, then try again.",
+		);
 	});
 });
 

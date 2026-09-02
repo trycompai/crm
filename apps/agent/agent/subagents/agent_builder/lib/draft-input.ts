@@ -55,7 +55,19 @@ const action = z.discriminatedUnion("type", [
 			label: z.string().trim().min(1).max(120),
 		}),
 	}),
+	z.object({
+		type: z.literal(AGENT_ACTION_TYPES.SLACK_CHANNEL_OPEN),
+		provider: z.literal("slack"),
+		summary: z.string().trim().min(1).max(240),
+	}),
+	z.object({
+		type: z.literal(AGENT_ACTION_TYPES.SLACK_CHANNEL_INVITE),
+		provider: z.literal("slack"),
+		summary: z.string().trim().min(1).max(240),
+	}),
 ]);
+
+export type DraftAction = z.infer<typeof action>;
 
 export const builderDraftToolInput = z.object({
 	name: z.string().trim().min(1).max(100),
@@ -76,6 +88,19 @@ const ACTIVITY_ACCESS = {
 } as const;
 
 const ACTIVITY_ORDER = ["NOTE", "TASK"] as const;
+
+const SLACK_ACCESS = {
+	[AGENT_ACTION_TYPES.SLACK_MESSAGE_POST]:
+		"Post to approved Slack destinations",
+	[AGENT_ACTION_TYPES.SLACK_CHANNEL_OPEN]: "Open Slack channels",
+	[AGENT_ACTION_TYPES.SLACK_CHANNEL_INVITE]: "Invite people to Slack channels",
+} as const;
+
+const SLACK_ORDER = [
+	AGENT_ACTION_TYPES.SLACK_MESSAGE_POST,
+	AGENT_ACTION_TYPES.SLACK_CHANNEL_OPEN,
+	AGENT_ACTION_TYPES.SLACK_CHANNEL_INVITE,
+] as const;
 
 const INTEGRATIONS = {
 	gmail: { kind: "integration", id: "google:gmail", label: "Gmail" },
@@ -99,16 +124,20 @@ export function draftInputFromTool(
 				: [],
 		),
 	);
+	const slackTypes = new Set(input.actions.map((entry) => entry.type));
 	const access = [
 		input.recordScope === "WORKSPACE"
 			? "Read workspace CRM records"
 			: "Read selected CRM records",
-		...integrations.map((integration) => {
-			if (integration === "gmail") return "Read connected Gmail messages";
+		...integrations.flatMap((integration) => {
+			if (integration === "gmail") return ["Read connected Gmail messages"];
 			if (integration === "calendar") {
-				return "Read connected Google Calendar events";
+				return ["Read connected Google Calendar events"];
 			}
-			return "Post to approved Slack destinations";
+			const lines = SLACK_ORDER.filter((type) => slackTypes.has(type)).map(
+				(type) => SLACK_ACCESS[type],
+			);
+			return lines.length > 0 ? lines : ["Post to approved Slack destinations"];
 		}),
 		...ACTIVITY_ORDER.filter((type) => activityTypes.has(type)).map(
 			(type) => ACTIVITY_ACCESS[type],

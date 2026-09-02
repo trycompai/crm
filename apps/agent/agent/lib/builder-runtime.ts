@@ -9,6 +9,7 @@ import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { AGENT_ACTION_TYPES } from "@crm/validation/agent-manifest";
 import { z } from "zod";
+import type { DraftAction } from "../subagents/agent_builder/lib/draft-input";
 import { actionDependency } from "./agent-actions";
 import { requestStaleSlackInventorySync } from "./slack-people";
 
@@ -43,29 +44,7 @@ export type DraftTrigger = {
 	intervalMinutes?: number | null;
 };
 
-export type DraftAction =
-	| {
-			type: typeof AGENT_ACTION_TYPES.CRM_ACTIVITY_CREATE;
-			provider: "crm";
-			summary: string;
-			activityTypes: ("NOTE" | "TASK")[];
-	  }
-	| {
-			type: typeof AGENT_ACTION_TYPES.RUN_SUMMARY;
-			provider: "crm";
-			summary: string;
-	  }
-	| {
-			type: typeof AGENT_ACTION_TYPES.SLACK_MESSAGE_POST;
-			provider: "slack";
-			summary: string;
-			destination: {
-				kind: "channel" | "user";
-				resolution: "chosen";
-				id: string;
-				label: string;
-			};
-	  };
+export type { DraftAction };
 
 export type DraftAgentInput = {
 	name: string;

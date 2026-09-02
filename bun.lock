@@ -57,6 +57,7 @@
         "class-transformer": "^0.5.1",
         "class-validator": "^0.15.1",
         "context.dev": "^2.7.0",
+        "express": "^5.2.1",
         "helmet": "^8.3.0",
         "nestjs-trpc": "^2.13.0",
         "reflect-metadata": "^0.2.2",
