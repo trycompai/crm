@@ -1,0 +1,130 @@
+{
+	"search": {
+		"data": [
+			{
+				"id": "969500F7JLTX36OUI695",
+				"attributes": {
+					"entity": {
+						"legalName": {
+							"name": "RENAULT"
+						},
+						"legalAddress": {
+							"country": "FR",
+							"city": "BOULOGNE-BILLANCOURT"
+						},
+						"status": "ACTIVE",
+						"category": "GENERAL",
+						"jurisdiction": "FR"
+					},
+					"registration": {
+						"status": "ISSUED"
+					}
+				}
+			},
+			{
+				"id": "969500HC1NCZMYE1TU11",
+				"attributes": {
+					"entity": {
+						"legalName": {
+							"name": "RENAULT INVEST"
+						},
+						"legalAddress": {
+							"country": "FR",
+							"city": "SURESNES"
+						},
+						"status": "ACTIVE",
+						"category": "GENERAL",
+						"jurisdiction": "FR"
+					},
+					"registration": {
+						"status": "ISSUED"
+					}
+				}
+			}
+		],
+		"meta": {
+			"pagination": {
+				"currentPage": 1,
+				"perPage": 3,
+				"from": 1,
+				"to": 3,
+				"total": 22,
+				"lastPage": 8
+			}
+		}
+	},
+	"children": {
+		"data": [
+			{
+				"id": "549300WSRTFGXLOGXV17",
+				"attributes": {
+					"entity": {
+						"legalName": {
+							"name": "AUTOFIN"
+						},
+						"legalAddress": {
+							"country": "BE",
+							"city": "BRUSSELS"
+						},
+						"status": "ACTIVE",
+						"category": "GENERAL",
+						"jurisdiction": "BE"
+					},
+					"registration": {
+						"status": "LAPSED"
+					}
+				}
+			},
+			{
+				"id": "5493004RF65W82IYO343",
+				"attributes": {
+					"entity": {
+						"legalName": {
+							"name": "RCI FINANCIAL SERVICES"
+						},
+						"legalAddress": {
+							"country": "BE",
+							"city": "BRUSSELS"
+						},
+						"status": "ACTIVE",
+						"category": "GENERAL",
+						"jurisdiction": "BE"
+					},
+					"registration": {
+						"status": "LAPSED"
+					}
+				}
+			},
+			{
+				"id": "969500V06Q2Q3ELCWD59",
+				"attributes": {
+					"entity": {
+						"legalName": {
+							"name": "RENAULT SAS"
+						},
+						"legalAddress": {
+							"country": "FR",
+							"city": "BOULOGNE-BILLANCOURT"
+						},
+						"status": "ACTIVE",
+						"category": "GENERAL",
+						"jurisdiction": "FR"
+					},
+					"registration": {
+						"status": "ISSUED"
+					}
+				}
+			}
+		],
+		"meta": {
+			"pagination": {
+				"currentPage": 1,
+				"perPage": 5,
+				"from": 1,
+				"to": 3,
+				"total": 3,
+				"lastPage": 1
+			}
+		}
+	}
+}

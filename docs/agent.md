@@ -219,6 +219,19 @@ missing key removes a place to look. **Never an error, never throws.**
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
+### The GLEIF register needs no key
+
+`lib/gleif.ts` reads the public GLEIF API — legal entities by name, one entity by
+LEI, the direct subsidiaries an entity consolidates — and is always on. The three
+`gleif_*` tools are free: no budget is charged. Every response is parsed with Zod
+at the boundary into `GleifEntity`; a shape the register does not promise is a
+failed outcome with a reason, never a throw. Region names (`UE`, `ASIE`) and the
+page cap live in `lib/gleif-config.ts`. The `gleif-mna-sourcing` skill is the
+method: a parent place and a child place make a scenario, subsidiaries in the
+child place are the targets, and the people who run them come from web research
+under the same egress rules as everything else — never a LinkedIn fetch, never an
+invented URL, one source per line.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.
