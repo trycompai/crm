@@ -49,10 +49,15 @@ const slackCredentials = ():
 const apiUrl =
 	optional("API_URL") ?? optional("BETTER_AUTH_URL") ?? DEFAULT_API_URL;
 
-const appUrls = (optional("APP_URL") ?? DEFAULT_APP_URL)
-	.split(",")
-	.map((origin) => origin.trim())
-	.filter(Boolean);
+const splitList = (value: string | undefined): string[] =>
+	(value ?? "")
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+
+const appUrls = splitList(optional("APP_URL") ?? DEFAULT_APP_URL);
+
+const extraTrustedOrigins = splitList(optional("AUTH_TRUSTED_ORIGINS"));
 
 const appUrl = appUrls[0] ?? DEFAULT_APP_URL;
 
@@ -63,7 +68,7 @@ export const env = {
 	microsoft: microsoftCredentials(),
 	slack: slackCredentials(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
-	trustedOrigins: [...new Set([...appUrls, apiUrl])],
+	trustedOrigins: [...new Set([...appUrls, apiUrl, ...extraTrustedOrigins])],
 	isProduction: process.env.NODE_ENV === "production",
 } as const;
 

@@ -90,6 +90,10 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	AUTH_TRUSTED_ORIGINS?: string;
+
+	@IsOptional()
+	@IsString()
 	REDIS_URL?: string;
 
 	@IsOptional()
