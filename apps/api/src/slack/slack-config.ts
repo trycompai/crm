@@ -10,6 +10,9 @@ export const SLACK = {
 		pageSize: 50,
 		maxPageSize: 100,
 	},
+	inventory: {
+		refillAfterMs: 15 * MINUTE_MS,
+	},
 } as const;
 
 export const SLACK_SYNC_STATES = ["idle", "syncing", "stalled"] as const;

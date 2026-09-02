@@ -32,6 +32,11 @@ import { SLACK, type SlackSyncState } from "./slack-config";
 const SLACK_WORKSPACE_RESOURCE_ID =
 	schemas.agents.CAPABILITY_RESOURCE_IDS.slack;
 
+function refillDue(filledAt: Date | null, connectedAt: Date): boolean {
+	if (!filledAt || filledAt < connectedAt) return true;
+	return Date.now() - filledAt.getTime() >= SLACK.inventory.refillAfterMs;
+}
+
 @Injectable()
 export class SlackConnectionService {
 	constructor(
@@ -190,7 +195,7 @@ export class SlackConnectionService {
 		const where: Prisma.SlackChannelWhereInput = { available: true };
 		if (needle) where.name = { contains: needle, mode: "insensitive" };
 
-		const [rows, grant, sync] = await Promise.all([
+		const [rows, grant, sync, lastFill] = await Promise.all([
 			this.db.slackChannel.findMany({
 				where,
 				orderBy: [{ isMember: "desc" }, { name: "asc" }, { id: "asc" }],
@@ -209,13 +214,34 @@ export class SlackConnectionService {
 			}),
 			this.db.slackWorkspaceGrant.findFirst({ select: { id: true } }),
 			this.peopleSyncState(),
+			this.db.agentTask.findFirst({
+				where: { kind: "slack-people-match", finishedAt: { not: null } },
+				orderBy: { finishedAt: "desc" },
+				select: { finishedAt: true },
+			}),
 		]);
 
 		const page = rows.slice(0, take);
+		const empty = sync === "idle" && !needle && page.length === 0;
+		const account = empty
+			? await this.db.account.findFirst({
+					where: { providerId: "slack", accessToken: { not: null } },
+					orderBy: { updatedAt: "desc" },
+					select: { updatedAt: true },
+				})
+			: null;
+		const missing =
+			account !== null &&
+			refillDue(lastFill?.finishedAt ?? null, account.updatedAt);
+		if (missing) {
+			await this.agent.slackPeopleRequested(
+				"Fill the Slack channel inventory for the connections page",
+			);
+		}
 
 		return {
 			canInviteItself: Boolean(grant),
-			sync,
+			sync: missing ? "syncing" : sync,
 			nextCursor: rows.length > take ? (page.at(-1)?.id ?? null) : null,
 			rows: page.map(({ classifiedAt, ...row }) => ({
 				...row,

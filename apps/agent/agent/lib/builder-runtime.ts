@@ -566,6 +566,7 @@ async function validateDraft(
 	if (!actionTypes.has(AGENT_ACTION_TYPES.RUN_SUMMARY)) {
 		issues.push("An agent needs one run summary action.");
 	}
+	issues.push(...withheldActionIssues(input.instructions, input.actions));
 	issues.push(...actionIntegrationIssues(input.actions, input.resources));
 
 	const missingRecords = await missingResourceIds(input.resources);
@@ -712,6 +713,47 @@ export function actionIntegrationIssues(
 			`Posting to ${dependency.label} needs ${dependency.label} in this agent's integrations.`,
 		];
 	});
+}
+
+const WITHHELD_ACTION = {
+	failClosed:
+		/\b(?:if|when)\s+(?:you(?:'re|\s+are)?\s+)?(?:unsure|uncertain|in\s+doubt)\b/i,
+	deduplicates:
+		/\balready\s+(?:been\s+)?(?:notified|sent|posted|fired|delivered)\b|\bsecond\s+time\b|\bdouble[-\s]?post\b/i,
+	skips: /\bskip\b|\bsuppress(?:ed|es|ing)?\b/i,
+	reports: /noActionNeeded/,
+} as const;
+
+export function withheldActionIssues(
+	instructions: string,
+	actions: DraftAction[],
+): string[] {
+	if (
+		!actions.some((action) => action.type !== AGENT_ACTION_TYPES.RUN_SUMMARY)
+	) {
+		return [];
+	}
+
+	const issues: string[] = [];
+	if (WITHHELD_ACTION.failClosed.test(instructions)) {
+		issues.push(
+			"The instructions resolve doubt by not acting. An agent asked to act must not withhold an action because it is unsure, so state the condition exactly or drop it.",
+		);
+	}
+	if (WITHHELD_ACTION.deduplicates.test(instructions)) {
+		issues.push(
+			"The instructions decide for themselves whether the action already happened. The runtime claims every external action by an idempotency key and an event fires once per occurrence, so remove that check.",
+		);
+	}
+	if (
+		WITHHELD_ACTION.skips.test(instructions) &&
+		!WITHHELD_ACTION.reports.test(instructions)
+	) {
+		issues.push(
+			"The instructions can skip a declared action but never say to call finish_run with noActionNeeded, so a deliberate skip is recorded as a failed run.",
+		);
+	}
+	return issues;
 }
 
 export function slackDestinationIssues(

@@ -308,9 +308,15 @@ instructions, tools and deny-all sandboxes. They inherit nothing from the root. 
 root built-in `agent` copy tool is disabled; these two named specialists are the only
 delegation paths for custom agents.
 
-- **Creation requires the current `CREATE_AGENT` turn.** Every builder tool checks the
-  purpose and command type in session auth. A normal builder chat cannot create a
-  draft by prompt alone.
+- **Creation requires the current `CREATE_AGENT` turn; reading context does not.**
+  A builder *write* — `save_agent_draft` and `write_agent_file` —
+  checks the purpose and the command type through `requireBuilderAttribute`, so a
+  normal builder chat cannot create a draft by prompt alone. `inspect_context` is a
+  read and checks the purpose only, through `requireBuilderReadAttribute`.
+  Gating the read too starved the specialist of the CRM event catalog, and it
+  answered by inventing a polling schedule for an event the CRM already raises.
+  eve's own rule is that delegation is not an approval boundary and each tool
+  carries its own; the boundary that matters is the write.
 - **Builder clarification is durable HITL.** The specialist calls eve's built-in
   `ask_question` directly; descendant input requests are proxied to the root channel,
   and the same child turn resumes when the user answers. The authored

@@ -45,8 +45,14 @@ export const inputRequestAction = z.object({
 	input: z.record(z.string(), z.json()),
 });
 
+export const INPUT_REQUEST_KINDS = [
+	"question",
+	"session-limit",
+	"tool-approval",
+] as const;
+
 export const inputRequest = z.object({
-	kind: z.enum(["question", "session-limit", "tool-approval"]),
+	kind: z.enum(INPUT_REQUEST_KINDS),
 	requestId: z.string().min(1),
 	prompt: z.string().trim().min(1),
 	action: inputRequestAction,

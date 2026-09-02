@@ -120,6 +120,14 @@ the same background task rather than waiting on a round trip
 (`apps/agent/agent/lib/slack-people.ts`). A builder chat that blocks on Slack is
 a builder chat that is as slow as Slack is.
 
+The connections page queues that task too, when Slack is connected and the
+inventory holds no channel at all, so an inventory that was never filled fills
+itself instead of reading as an empty workspace forever. One fill answers the
+question: a workspace with no visible channel gets the same empty list back, so
+the page waits `SLACK.inventory.refillAfterMs` after the last fill finished
+before it asks again. A fill that finished before the current connection counts
+for nothing, because a reconnect can be a different workspace.
+
 ## Permissions are shown in groups, not one line each
 
 Sixteen scopes read as noise. Group them by what they touch — people, channels it

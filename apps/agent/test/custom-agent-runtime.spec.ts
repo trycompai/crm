@@ -6,6 +6,7 @@ import {
 	actionIntegrationIssues,
 	type DraftAction,
 	slackDestinationIssues,
+	withheldActionIssues,
 } from "../agent/lib/builder-runtime";
 import {
 	builderCommandType,
@@ -25,6 +26,7 @@ import {
 	attribute,
 	purposeOf,
 	requireBuilderAttribute,
+	requireBuilderReadAttribute,
 	requireTeamAgentAttribute,
 } from "../agent/lib/session-purpose";
 import {
@@ -179,6 +181,24 @@ describe("session purpose boundaries", () => {
 		).toThrow();
 		expect(() =>
 			requireTeamAgentAttribute(context("builder"), "runId"),
+		).toThrow();
+	});
+
+	it("lets the builder read its context on a chat turn, but not save a draft", () => {
+		expect(
+			requireBuilderReadAttribute(context("builder", "CHAT"), "conversationId"),
+		).toBe("chat-1");
+		expect(() =>
+			requireBuilderAttribute(context("builder", "CHAT"), "conversationId"),
+		).toThrow("Agent creation requires an explicit request");
+	});
+
+	it("keeps every builder tool out of a session that is not the builder", () => {
+		expect(() =>
+			requireBuilderReadAttribute(context("research"), "conversationId"),
+		).toThrow("unavailable for this session");
+		expect(() =>
+			requireBuilderAttribute(context("research"), "conversationId"),
 		).toThrow();
 	});
 });
@@ -935,5 +955,65 @@ describe("agent builder draft access", () => {
 			"Write notes on CRM records",
 			"Create tasks on CRM records",
 		]);
+	});
+});
+
+describe("withheld actions", () => {
+	const slackPost = {
+		type: "slack.message.post",
+		provider: "slack",
+		summary: "Tell the channel",
+		destination: {
+			resolution: "chosen",
+			kind: "channel",
+			id: "C123",
+			label: "#sales",
+		},
+	} satisfies DraftAction;
+
+	it("refuses the duplicate rule that silenced the closed-won notifier", () => {
+		const issues = withheldActionIssues(
+			"Before posting, verify that a notification has not already been sent for this deal id. If you are unsure whether a notification was already sent, skip — it is better to skip than to double-post.",
+			[slackPost],
+		);
+
+		expect(issues).toHaveLength(3);
+	});
+
+	it("accepts a stated condition that reports itself", () => {
+		expect(
+			withheldActionIssues(
+				"Post only when the deal amount is above 10000. Otherwise skip the post and call finish_run with noActionNeeded and the reason.",
+				[slackPost],
+			),
+		).toEqual([]);
+	});
+
+	it("refuses a withheld CRM note, an action that depends on no integration", () => {
+		expect(
+			withheldActionIssues(
+				"Log a note on the deal unless a note has already been posted for it.",
+				[
+					{
+						type: "crm.activity.create",
+						provider: "crm",
+						summary: "Log the update",
+						activityTypes: ["NOTE"],
+					},
+				],
+			),
+		).toHaveLength(1);
+	});
+
+	it("leaves instructions with no external action alone", () => {
+		expect(
+			withheldActionIssues("If you are unsure, skip and double-post nothing.", [
+				{
+					type: "run.summary",
+					provider: "crm",
+					summary: "Say what happened",
+				},
+			]),
+		).toEqual([]);
 	});
 });

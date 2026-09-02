@@ -38,19 +38,26 @@ export function requireAttribute(ctx: PurposeContext, key: string): string {
 	return value;
 }
 
+export function requireBuilderReadAttribute(
+	ctx: PurposeContext,
+	key: string,
+): string {
+	if (purposeOf(ctx) !== "builder") {
+		throw new Error("This builder tool is unavailable for this session.");
+	}
+	return requireAttribute(ctx, key);
+}
+
 export function requireBuilderAttribute(
 	ctx: PurposeContext,
 	key: string,
 ): string {
-	if (
-		purposeOf(ctx) !== "builder" ||
-		attribute(ctx, "commandType") !== "CREATE_AGENT"
-	) {
+	if (attribute(ctx, "commandType") !== "CREATE_AGENT") {
 		throw new Error(
 			"Agent creation requires an explicit request to create or build an agent.",
 		);
 	}
-	return requireAttribute(ctx, key);
+	return requireBuilderReadAttribute(ctx, key);
 }
 
 export function requireTeamAgentAttribute(

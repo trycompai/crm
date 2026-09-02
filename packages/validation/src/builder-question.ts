@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INPUT_REQUEST_KINDS } from "./agents";
 
 const optionalText = z.string().optional().catch(undefined);
 
@@ -13,7 +14,7 @@ export type BuilderQuestionOption = z.infer<typeof builderQuestionOption>;
 
 const askedQuestion = z
 	.object({
-		kind: z.literal("question"),
+		kind: z.enum(INPUT_REQUEST_KINDS),
 		requestId: z.string().min(1),
 		prompt: z.string().min(1),
 		display: z

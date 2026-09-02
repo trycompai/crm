@@ -165,6 +165,155 @@ describe("builder persistence", () => {
 		).toBe(0);
 	});
 
+	it("persists a session-limit prompt, so a builder that runs out of budget asks instead of stopping", async () => {
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				sessionId: `builder-session-limit-${suffix}`,
+			},
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+
+		const request = {
+			kind: "session-limit",
+			requestId: "child-session:limit:output:10238",
+			prompt: "This session has hit the output-token limit (10K) per session.",
+			action: {
+				kind: "tool-call",
+				callId: "child-session:limit:output:10238",
+				toolName: "session_limit_continuation",
+				input: { kind: "output", limit: 10000, usedTokens: 10238 },
+			},
+			display: "confirmation",
+			allowFreeform: false,
+			options: [
+				{ id: "continue", label: "Approve", style: "primary" },
+				{ id: "stop", label: "Stop", style: "danger" },
+			],
+		};
+
+		expect(
+			await persistBuilderInputRequest(
+				{ requests: [request], sequence: 0, stepIndex: 3, turnId: "turn_0" },
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversation.id },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: request });
+	});
+
+	it("replaces a recorded question with a later session-limit prompt from an earlier step", async () => {
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				sessionId: `builder-limit-supersedes-${suffix}`,
+			},
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+
+		const question = {
+			kind: "question",
+			requestId: "channel-choice",
+			prompt: "Which channel?",
+			action: {
+				kind: "tool-call",
+				callId: "call-channel-choice",
+				toolName: "ask_question",
+				input: { prompt: "Which channel?" },
+			},
+			display: "select",
+		};
+		expect(
+			await persistBuilderInputRequest(
+				{ requests: [question], sequence: 0, stepIndex: 4, turnId: "turn_0" },
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+
+		const limit = {
+			kind: "session-limit",
+			requestId: "child:limit:input:114375",
+			prompt: "This session has hit the input-token limit.",
+			action: {
+				kind: "tool-call",
+				callId: "child:limit:input:114375",
+				toolName: "session_limit_continuation",
+				input: { kind: "input", limit: 100000, usedTokens: 114375 },
+			},
+			display: "confirmation",
+			options: [
+				{ id: "continue", label: "Approve" },
+				{ id: "stop", label: "Stop" },
+			],
+		};
+		expect(
+			await persistBuilderInputRequest(
+				{ requests: [limit], sequence: 0, stepIndex: 3, turnId: "turn_0" },
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversation.id },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: limit });
+	});
+
+	it("persists a tool-approval prompt", async () => {
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				sessionId: `builder-tool-approval-${suffix}`,
+			},
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+
+		const request = {
+			kind: "tool-approval",
+			requestId: "approve-save-draft",
+			prompt: "Save this agent draft?",
+			action: {
+				kind: "tool-call",
+				callId: "call-save-draft",
+				toolName: "save_agent_draft",
+				input: { name: "Closed won to Slack" },
+			},
+			display: "confirmation",
+			options: [{ id: "approve", label: "Approve", style: "primary" }],
+		};
+
+		expect(
+			await persistBuilderInputRequest(
+				{ requests: [request], sequence: 2, stepIndex: 1, turnId: "turn_2" },
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversation.id },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: request });
+	});
+
 	it("ignores a delayed question from a turn the session has already left", async () => {
 		const conversation = await db.agentConversation.create({
 			data: {
