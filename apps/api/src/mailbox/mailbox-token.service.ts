@@ -32,20 +32,12 @@ export class MailboxTokenService {
 		userId: string,
 		providerId: MailboxProviderId,
 	): Promise<Set<string>> {
-		const account = await this.db.account.findFirst({
-			where: { userId, providerId },
+		const account = await this.db.account.findUnique({
+			where: { userId_providerId: { userId, providerId } },
 			select: { scope: true },
 		});
 
 		return parseScopes(account?.scope);
-	}
-
-	async isConnected(userId: string, source: SyncSource): Promise<boolean> {
-		const scopes = await this.grantedScopes(
-			userId,
-			PROVIDER_FOR_SOURCE[source],
-		);
-		return scopes.has(SCOPE_FOR_SOURCE[source]);
 	}
 
 	async signInAccounts(userId: string): Promise<SignInAccount[]> {
@@ -59,8 +51,8 @@ export class MailboxTokenService {
 		userId: string,
 		providerId: MailboxProviderId,
 	): Promise<boolean> {
-		const account = await this.db.account.findFirst({
-			where: { userId, providerId },
+		const account = await this.db.account.findUnique({
+			where: { userId_providerId: { userId, providerId } },
 			select: { refreshToken: true },
 		});
 
@@ -72,8 +64,17 @@ export class MailboxTokenService {
 		source: SyncSource,
 	): Promise<TokenResult> {
 		const providerId = PROVIDER_FOR_SOURCE[source];
-
-		if (!(await this.isConnected(userId, source))) {
+		const account = await this.db.account.findUnique({
+			where: { userId_providerId: { userId, providerId } },
+			select: { id: true, scope: true },
+		});
+		if (!account) {
+			return {
+				outcome: "needs-reconnect",
+				reason: `${label(providerId)} has no connected account.`,
+			};
+		}
+		if (!parseScopes(account.scope).has(SCOPE_FOR_SOURCE[source])) {
 			return {
 				outcome: "not-connected",
 				reason: `The ${source} scope has not been granted.`,
@@ -82,7 +83,7 @@ export class MailboxTokenService {
 
 		try {
 			const { accessToken } = await auth.api.getAccessToken({
-				body: { providerId, userId },
+				body: { accountId: account.id, userId },
 			});
 
 			if (!accessToken) {
@@ -138,8 +139,10 @@ export class MailboxTokenService {
 	}
 
 	private async revokeWithGoogle(userId: string): Promise<boolean> {
-		const account = await this.db.account.findFirst({
-			where: { userId, providerId: GOOGLE_PROVIDER_ID },
+		const account = await this.db.account.findUnique({
+			where: {
+				userId_providerId: { userId, providerId: GOOGLE_PROVIDER_ID },
+			},
 			select: { refreshToken: true, accessToken: true },
 		});
 

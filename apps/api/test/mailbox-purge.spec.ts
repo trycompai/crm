@@ -290,6 +290,7 @@ describe("disconnecting Microsoft", () => {
 		await db.account.create({
 			data: {
 				id: `ms-${suffix}`,
+				issuer: `https://login.microsoftonline.com/${suffix}/v2.0`,
 				accountId: `ms-account-${suffix}`,
 				providerId: MICROSOFT_PROVIDER_ID,
 				userId: outlookRep,
@@ -349,6 +350,7 @@ describe("disconnecting Google", () => {
 		await db.account.create({
 			data: {
 				id: `goog-${suffix}`,
+				issuer: "https://accounts.google.com",
 				accountId: `goog-account-${suffix}`,
 				providerId: GOOGLE_PROVIDER_ID,
 				userId: gmailRep,

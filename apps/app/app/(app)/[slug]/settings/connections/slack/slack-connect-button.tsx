@@ -30,8 +30,8 @@ const CONNECT_ERRORS = new Map([
 
 async function startSlackOAuth(slug: string) {
 	try {
-		const { error } = await authClient.oauth2.link({
-			providerId: "slack",
+		const { error } = await authClient.linkSocial({
+			provider: "slack",
 			callbackURL: `${window.location.origin}/${slug}/settings/connections/slack/people`,
 			errorCallbackURL: `${window.location.origin}/${slug}/settings/connections/slack?provider=slack`,
 		});

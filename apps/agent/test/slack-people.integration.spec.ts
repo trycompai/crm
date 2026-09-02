@@ -27,6 +27,7 @@ async function connect() {
 		where: { id: ACCOUNT_ID },
 		create: {
 			id: ACCOUNT_ID,
+			issuer: "local:oauth:slack",
 			accountId: "T-SPEC",
 			providerId: "slack",
 			userId: USER_ID,

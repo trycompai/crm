@@ -45,17 +45,22 @@ undo it.
 Connecting is the same decision as disconnecting, because `replaceSlackConnection`
 deletes every other Slack account row: a second person connecting *replaces* the
 workspace's Slack, and every deployed agent then reads from and posts to whichever
-Slack they installed. Hiding the button is not enough — `authClient.oauth2.link`
-is one POST.
+Slack they installed. Hiding the button is not enough. `authClient.linkSocial`
+sends one POST.
 
 `slackConnectGuard` (`packages/auth/src/slack-connect.ts`) is Better Auth's
 `hooks.before`, and it asks the same `canManageConnections` the API does. It
-covers all three doors: `/oauth2/link`, `/sign-in/oauth2` (Slack is a connection,
-never a sign-in method, and that endpoint needs no session) and
-`/oauth2/callback/slack`. The callback is the one that matters — refusing there
-happens **before the code is exchanged**, so a refused attempt writes no
+guards Slack account-linking starts through `/link-social`. Public Slack sign-in
+through `/sign-in/social` remains available to Better Auth. The guard also
+reads the server-generated OAuth state before `/callback/slack`. It guards the
+callback only when that state identifies an account-linking transaction. A
+normal Slack sign-in callback remains available to Better Auth. The callback
+check happens before Better Auth exchanges the code. A refused link writes no
 `SlackWorkspaceGrant` user token and deletes no bot token. Google and Microsoft
-sign in on different paths and never reach the guard.
+callbacks never reach the Slack guard.
+
+Existing Slack applications must replace `/api/auth/oauth2/callback/slack` with
+`/api/auth/callback/slack` before this upgrade reaches production.
 
 A workspace with no owner and no admin lets any member connect. There is nobody
 left to ask, and a fresh install must not be locked out of its first connection.

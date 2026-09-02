@@ -65,7 +65,7 @@ generated model map.
   needs no `transpilePackages` entry. Non-bundler consumers need a TypeScript
   runtime — the NestJS API runs on Bun for exactly this reason.
 - **Auth models are generated.** `User`, `Session`, `Account`, `Verification`
-  and `RateLimit` come from `@better-auth/cli`. Do not hand-edit them — change
+  and `RateLimit` come from `auth`. Do not hand-edit them — change
   the Better Auth config in `@crm/auth` and re-run `bun run auth:generate`.
   The generator is additive: it adds models and fields a plugin needs but never
   removes the ones a dropped plugin left behind, so removing a plugin means

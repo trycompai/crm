@@ -113,6 +113,18 @@ builds, and the pages that touch them fail. Test schema changes locally, where
 worse: every preview applied its own migrations to the production database, so on
 2026-08-07 the live schema ran six migrations ahead of the live code all day.
 
+### Better Auth 1.7 account identities
+
+Migration `20260830221000_better_auth_account_identity` adds issuer-scoped account identities.
+Back up the `account` and `user` tables before production deployment.
+The migration preserves provider-scoped identities and checks for collisions.
+Microsoft changes its account subject from `sub` to `oid` in Better Auth 1.7.
+The migration reads `oid` from each stored Microsoft ID token.
+The migration stops when a Microsoft row lacks that trusted mapping.
+Repair that row from a verified Entra export before retrying the deployment.
+Do not infer the mapping from email addresses.
+The migration removes account rows whose deleted SSO provider cannot supply an issuer.
+
 ### `migrate deploy` is not proof the schema is right
 
 The build follows the deploy with `prisma migrate diff --exit-code` against

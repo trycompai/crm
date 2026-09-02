@@ -8,9 +8,9 @@ import {
 } from "bun:test";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
-import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { applySetCookies } from "better-auth/cookies";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import * as z from "zod";
@@ -29,37 +29,33 @@ const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const BASE_URL = "http://localhost:3001";
 const JSON_HEADERS = { "content-type": "application/json" };
 
-const reached = { reached: true };
-
-const probe = {
-	id: "slack-connect-probe",
-	endpoints: {
-		link: createAuthEndpoint("/oauth2/link", { method: "POST" }, async (ctx) =>
-			ctx.json(reached),
-		),
-		signIn: createAuthEndpoint(
-			"/sign-in/oauth2",
-			{ method: "POST" },
-			async (ctx) => ctx.json(reached),
-		),
-		callback: createAuthEndpoint(
-			"/oauth2/callback/:providerId",
-			{ method: "GET" },
-			async (ctx) => ctx.json(reached),
-		),
+const provider = (providerId: string) => ({
+	providerId,
+	authorizationUrl: `https://${providerId}.example.test/authorize`,
+	tokenUrl: `https://${providerId}.example.test/token`,
+	userInfoUrl: `https://${providerId}.example.test/userinfo`,
+	clientId: `${providerId}-client`,
+	clientSecret: `${providerId}-secret`,
+	getToken: async () => {
+		throw new APIError("BAD_REQUEST", { message: "Token exchange reached." });
 	},
-} satisfies BetterAuthPlugin;
+});
 
 const guarded = betterAuth({
 	baseURL: BASE_URL,
 	secret: "slack-connect-spec-secret",
 	database: prismaAdapter(db, { provider: "postgresql" }),
 	emailAndPassword: { enabled: false },
+	account: { skipStateCookieCheck: true },
 	hooks: { before: slackConnectGuard },
-	plugins: [probe],
+	plugins: [
+		genericOAuth({
+			config: [provider(SLACK_PROVIDER_ID), provider(GOOGLE_PROVIDER_ID)],
+		}),
+	],
 });
 
-const arrival = z.object({ reached: z.literal(true) });
+const authorization = z.object({ url: z.string().url() });
 const refusal = z.object({ message: z.string() });
 
 type Snapshot = {
@@ -143,30 +139,65 @@ const startConnect = (
 		new Request(`${BASE_URL}/api/auth${path}`, {
 			method: "POST",
 			headers: cookie ? { ...JSON_HEADERS, cookie } : JSON_HEADERS,
-			body: JSON.stringify({ providerId, callbackURL: "/" }),
+			body: JSON.stringify({ provider: providerId, callbackURL: "/" }),
 		}),
 	);
 
-const linkSlack = (cookie?: string) => startConnect("/oauth2/link", cookie);
+const linkSlack = (cookie?: string) => startConnect("/link-social", cookie);
 
-const completeConnect = (
+const completeCallback = (
+	state: string,
 	cookie?: string,
 	providerId: string = SLACK_PROVIDER_ID,
 ) =>
 	guarded.handler(
 		new Request(
-			`${BASE_URL}/api/auth/oauth2/callback/${providerId}?code=test-code&state=test-state`,
+			`${BASE_URL}/api/auth/callback/${providerId}?code=test-code&state=${state}`,
 			{ headers: cookie ? { cookie } : undefined },
 		),
 	);
+
+const linkTransaction = async (
+	cookie: string,
+	providerId: string = SLACK_PROVIDER_ID,
+): Promise<{ state: string; cookie: string }> => {
+	const state = `slack-connect-state-${crypto.randomUUID()}`;
+	await db.verification.create({
+		data: {
+			id: state,
+			identifier: state,
+			value: JSON.stringify({
+				callbackURL: "/",
+				codeVerifier: "slack-connect-code-verifier",
+				expiresAt: Date.now() + 60_000,
+				link: { email: `${providerId}@example.test`, userId: providerId },
+			}),
+			expiresAt: new Date(Date.now() + 60_000),
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+	});
+	return { state, cookie };
+};
+
+const completeLink = async (startCookie: string, keepCallbackCookie = true) => {
+	const transaction = await linkTransaction(startCookie);
+	return completeCallback(
+		transaction.state,
+		keepCallbackCookie ? transaction.cookie : undefined,
+	);
+};
 
 const messageOf = async (response: Response): Promise<string> =>
 	refusal.parse(await response.json()).message;
 
 const arrived = async (response: Response): Promise<boolean> =>
-	arrival.safeParse(await response.json()).success;
+	authorization.safeParse(await response.json()).success;
 
 const clear = async () => {
+	await db.verification.deleteMany({
+		where: { identifier: { startsWith: "slack-connect-state-" } },
+	});
 	await db.member.deleteMany({ where: { organizationId: WORKSPACE_ID } });
 	await db.organization.deleteMany({ where: { id: WORKSPACE_ID } });
 	await db.user.deleteMany({ where: { email: { endsWith: EMAIL_SUFFIX } } });
@@ -221,56 +252,73 @@ afterAll(async () => {
 	}
 });
 
-describe("the Slack callback that writes the connection", () => {
-	it("turns away a browser with no session", async () => {
-		const response = await completeConnect();
+describe("Slack linking callback authorization", () => {
+	it("turns away a linking browser after its session ends", async () => {
+		const cookie = await seat("lead", "admin");
+		const response = await completeLink(cookie, false);
 
 		expect(response.status).toBe(401);
 		expect(await messageOf(response)).toContain("Sign in to the CRM");
 	});
 
-	it("turns away a member", async () => {
+	it("turns away an admin who became a member", async () => {
+		const cookie = await seat("lead", "admin");
+		const transaction = await linkTransaction(cookie);
+		await db.member.update({
+			where: { id: idOf("lead-member") },
+			data: { role: "member" },
+		});
 		await seat("owner", "owner");
-		const response = await completeConnect(await seat("rep", "member"));
+		const response = await completeCallback(
+			transaction.state,
+			transaction.cookie,
+		);
 
 		expect(response.status).toBe(403);
 		expect(await messageOf(response)).toContain("Only an owner or an admin");
 	});
 
-	it("turns away someone signed in who is not in this workspace", async () => {
-		await seat("owner", "owner");
-		const response = await completeConnect(await seat("stranger", null));
+	it("turns away an admin removed from the workspace", async () => {
+		const cookie = await seat("lead", "admin");
+		const transaction = await linkTransaction(cookie);
+		await db.member.delete({ where: { id: idOf("lead-member") } });
+		const response = await completeCallback(
+			transaction.state,
+			transaction.cookie,
+		);
 
 		expect(response.status).toBe(403);
 		expect(await messageOf(response)).toContain("member of this workspace");
 	});
 
-	it("lets an admin finish", async () => {
-		const response = await completeConnect(await seat("lead", "admin"));
+	it("lets an admin reach token exchange", async () => {
+		const cookie = await seat("lead", "admin");
+		const response = await completeLink(cookie);
 
-		expect(response.status).toBe(200);
-		expect(await arrived(response)).toBe(true);
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toContain("error=invalid_code");
 	});
 
-	it("lets an owner finish", async () => {
-		const response = await completeConnect(await seat("founder", "owner"));
+	it("lets an owner reach token exchange", async () => {
+		const cookie = await seat("founder", "owner");
+		const response = await completeLink(cookie);
 
-		expect(response.status).toBe(200);
-		expect(await arrived(response)).toBe(true);
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toContain("error=invalid_code");
 	});
 
-	it("lets a member finish when the workspace has no owner and no admin", async () => {
+	it("lets a member reach token exchange without a workspace manager", async () => {
 		const cookie = await seat("rep", "member");
 		await seat("other", "member");
 
-		const response = await completeConnect(cookie);
+		const response = await completeLink(cookie);
 
-		expect(response.status).toBe(200);
-		expect(await arrived(response)).toBe(true);
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toContain("error=invalid_code");
 	});
 });
 
-describe("the two paths that start a Slack connection", () => {
+describe("Slack connection starts", () => {
 	it("turns away a member who asks to link Slack", async () => {
 		await seat("owner", "owner");
 		const response = await linkSlack(await seat("rep", "member"));
@@ -278,14 +326,12 @@ describe("the two paths that start a Slack connection", () => {
 		expect(response.status).toBe(403);
 	});
 
-	it("turns away a member who asks to sign in with Slack", async () => {
+	it("lets a browser with no session ask to sign in with Slack", async () => {
 		await seat("owner", "owner");
-		const response = await startConnect(
-			"/sign-in/oauth2",
-			await seat("rep", "member"),
-		);
+		const response = await startConnect("/sign-in/social");
 
-		expect(response.status).toBe(403);
+		expect(response.status).toBe(200);
+		expect(await arrived(response)).toBe(true);
 	});
 
 	it("turns away a browser with no session", async () => {
@@ -307,7 +353,7 @@ describe("every provider that is not Slack", () => {
 	it("lets a member link Google", async () => {
 		await seat("owner", "owner");
 		const response = await startConnect(
-			"/oauth2/link",
+			"/link-social",
 			await seat("rep", "member"),
 			GOOGLE_PROVIDER_ID,
 		);
@@ -317,23 +363,34 @@ describe("every provider that is not Slack", () => {
 	});
 
 	it("lets the Google callback through with no session at all", async () => {
-		const response = await completeConnect(undefined, GOOGLE_PROVIDER_ID);
+		const response = await completeCallback(
+			"test-state",
+			undefined,
+			GOOGLE_PROVIDER_ID,
+		);
 
-		expect(response.status).toBe(200);
-		expect(await arrived(response)).toBe(true);
+		expect(response.status).toBe(302);
 	});
-});
 
-describe("the paths the guard has to know about", () => {
-	it("is every path the generic OAuth plugin mounts", () => {
-		const paths = Object.values(genericOAuth({ config: [] }).endpoints)
-			.map((endpoint) => endpoint.path)
-			.sort();
+	it("lets a Slack sign-in callback through with no session", async () => {
+		const state = `slack-connect-state-${crypto.randomUUID()}`;
+		await db.verification.create({
+			data: {
+				id: state,
+				identifier: state,
+				value: JSON.stringify({
+					callbackURL: "/",
+					codeVerifier: "slack-sign-in-code-verifier",
+					expiresAt: Date.now() + 60_000,
+				}),
+				expiresAt: new Date(Date.now() + 60_000),
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		});
+		const response = await completeCallback(state);
 
-		expect(paths).toEqual([
-			"/oauth2/callback/:providerId",
-			"/oauth2/link",
-			"/sign-in/oauth2",
-		]);
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toContain("error=invalid_code");
 	});
 });

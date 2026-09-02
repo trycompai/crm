@@ -18,16 +18,25 @@ const CONNECT_MANAGER_ROLES = WORKSPACE_ROLES.filter((role) =>
 	canManageConnections(role),
 );
 
-const SLACK_CONNECT_START_PATHS = ["/oauth2/link", "/sign-in/oauth2"];
-const OAUTH_CALLBACK_PATH = "/oauth2/callback";
+const SLACK_CONNECT_START_PATH = "/link-social";
+const OAUTH_CALLBACK_PATH = "/callback";
 
-const connectStartBody = z.object({ providerId: z.string() });
-const callbackParams = z.object({ providerId: z.string() });
+const connectStartBody = z.object({ provider: z.string() });
+const callbackParams = z.object({ id: z.string() });
+const callbackQuery = z.object({ state: z.string() });
+const oauthState = z.object({
+	link: z
+		.object({
+			email: z.string(),
+			userId: z.string(),
+		})
+		.optional(),
+});
 
 export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 	const guarded =
 		startsSlackConnect(ctx.path, ctx.body) ||
-		completesSlackConnect(ctx.path, ctx.params);
+		(await completesSlackConnect(ctx.path, ctx.params, ctx.query));
 	if (!guarded) return;
 
 	const session = await getSessionFromCtx(ctx, { disableCookieCache: true });
@@ -62,14 +71,36 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 	}
 });
 
-function startsSlackConnect(path: string, body: JsonValue): boolean {
-	if (!SLACK_CONNECT_START_PATHS.includes(path)) return false;
+function startsSlackConnect(
+	path: string,
+	body: JsonValue | undefined,
+): boolean {
+	if (path !== SLACK_CONNECT_START_PATH) return false;
 	const parsed = connectStartBody.safeParse(body);
-	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;
+	return parsed.success && parsed.data.provider === SLACK_PROVIDER_ID;
 }
 
-function completesSlackConnect(path: string, params: JsonValue): boolean {
+async function completesSlackConnect(
+	path: string,
+	params: JsonValue | undefined,
+	query: JsonValue | undefined,
+): Promise<boolean> {
 	if (!path.startsWith(OAUTH_CALLBACK_PATH)) return false;
-	const parsed = callbackParams.safeParse(params);
-	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;
+	const parsedParams = callbackParams.safeParse(params);
+	if (!parsedParams.success || parsedParams.data.id !== SLACK_PROVIDER_ID) {
+		return false;
+	}
+	const parsedQuery = callbackQuery.safeParse(query);
+	if (!parsedQuery.success) return false;
+	const verification = await db.verification.findFirst({
+		where: { identifier: parsedQuery.data.state },
+		select: { value: true },
+	});
+	if (!verification) return false;
+	try {
+		const parsedState = oauthState.safeParse(JSON.parse(verification.value));
+		return parsedState.success && parsedState.data.link !== undefined;
+	} catch {
+		return false;
+	}
 }
