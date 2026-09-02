@@ -76,6 +76,12 @@ list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
   point the redirect silently becomes that host. `ssoCallbackBase()` is the
   pattern; `slackRedirectUri` in `auth.ts` once was not.
 - **`AUTH_COOKIE_DOMAIN`** only for API and app on different subdomains of one parent.
+- **`AUTH_TRUSTED_ORIGINS`** — comma-separated extra origins for Better Auth. An IdP
+  registered on Settings → SSO has its discovery document fetched from its issuer, and
+  `@better-auth/sso` refuses any origin outside `trustedOrigins`, so an external issuer
+  (a Clerk instance, an Okta org) must be listed here first. `bun run --filter=api
+  sso:register` registers a provider before anyone can sign in — the way in for an
+  SSO-only install, which otherwise cannot reach Settings.
 - **`AGENT_URL`** is the agent's deployment, server-side only, and **must include the
   scheme** — validated at boot, or it throws when a task is queued instead.
 - **`AUTH_COOKIE_PREFIX` is `crm`** (`@crm/auth/cookies`), set on **both**
