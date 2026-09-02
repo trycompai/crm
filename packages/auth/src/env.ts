@@ -42,9 +42,28 @@ const microsoftCredentials = ():
 	};
 };
 
+const SLACK_TEAM_ID = /^T[A-Z0-9]{6,}$/;
+
+const slackTeamId = (): string | undefined => {
+	const teamId = optional("SLACK_TEAM_ID");
+	if (teamId === undefined) return undefined;
+
+	if (!SLACK_TEAM_ID.test(teamId)) {
+		throw new Error(
+			`SLACK_TEAM_ID must be the workspace's team id, like "T0BTMDN0QKC", not "${teamId}". Slack's auth.test returns it as team_id, and it is not the subdomain.`,
+		);
+	}
+	return teamId;
+};
+
 const slackCredentials = ():
-	| { clientId: string; clientSecret: string }
-	| undefined => pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
+	| { clientId: string; clientSecret: string; teamId: string | undefined }
+	| undefined => {
+	const credentials = pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
+	if (!credentials) return undefined;
+
+	return { ...credentials, teamId: slackTeamId() };
+};
 
 const apiUrl =
 	optional("API_URL") ?? optional("BETTER_AUTH_URL") ?? DEFAULT_API_URL;

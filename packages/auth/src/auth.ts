@@ -8,6 +8,7 @@ import { APIError } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
+import { connectGuard } from "./connect-guard";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
 import { ensureWorkspaceMembership } from "./organization";
@@ -19,7 +20,6 @@ import {
 	SYNC_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
-import { slackConnectGuard } from "./slack-connect";
 import { rememberSlackInstall, replaceSlackConnection } from "./slack-grant";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import { queueSlackInventorySync } from "./slack-sync";
@@ -68,6 +68,90 @@ if (env.microsoft) {
 		}),
 	};
 }
+
+type OAuthConnection = Parameters<typeof genericOAuth>[0]["config"][number];
+
+const slackConnection = (
+	oauth: NonNullable<typeof env.slack>,
+): OAuthConnection => ({
+	providerId: SLACK_PROVIDER_ID,
+	authorizationUrl: "https://slack.com/oauth/v2/authorize",
+	tokenUrl: "https://slack.com/api/oauth.v2.access",
+	clientId: oauth.clientId,
+	clientSecret: oauth.clientSecret,
+	disableSignUp: true,
+	redirectURI: slackRedirectUri,
+	scopes: [...SLACK_REQUESTED_SCOPES],
+	authorizationUrlParams: {
+		user_scope: SLACK_USER_SCOPES.join(","),
+		...(oauth.teamId && { team: oauth.teamId }),
+	},
+	getToken: async ({ code }) => {
+		const response = await fetch("https://slack.com/api/oauth.v2.access", {
+			method: "POST",
+			headers: {
+				"content-type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				client_id: oauth.clientId,
+				client_secret: oauth.clientSecret,
+				code,
+				redirect_uri: slackRedirectUri,
+			}),
+		});
+		const grant = schemas.slack.oauthAccess.parse(await response.json());
+		if (!response.ok || !grant.ok || !grant.access_token) {
+			throw new APIError("BAD_REQUEST", {
+				message: `Slack authorization failed (${grant.error ?? "rejected"}).`,
+			});
+		}
+		if (oauth.teamId && grant.team?.id !== oauth.teamId) {
+			throw new APIError("BAD_REQUEST", {
+				message: `Slack installed into workspace ${grant.team?.id ?? "unknown"}, and this CRM is pinned to ${oauth.teamId}.`,
+			});
+		}
+		await rememberSlackInstall(grant);
+
+		return {
+			accessToken: grant.access_token,
+			tokenType: grant.token_type,
+			scopes: (grant.scope ?? "")
+				.split(",")
+				.map((scope) => scope.trim())
+				.filter(Boolean),
+			raw: grant,
+		};
+	},
+	getUserInfo: async (tokens) => {
+		try {
+			const granted = schemas.slack.oauthAccess.parse(tokens.raw);
+			const userId = granted.authed_user?.id;
+			if (!tokens.accessToken || !userId) return null;
+			const userResponse = await fetch(
+				`https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`,
+				{
+					headers: {
+						Authorization: `Bearer ${tokens.accessToken}`,
+					},
+				},
+			);
+			const profile = schemas.slack.userInfo.parse(await userResponse.json());
+			if (!userResponse.ok || !profile.ok) return null;
+			const details = profile.user.profile;
+			const email = details.email;
+			if (!email) return null;
+			return {
+				id: userId,
+				name: details.real_name ?? profile.user.name ?? email,
+				email,
+				emailVerified: true,
+				image: details.image_512,
+			};
+		} catch {
+			return null;
+		}
+	},
+});
 
 export const auth = betterAuth({
 	appName: "CRM",
@@ -118,97 +202,12 @@ export const auth = betterAuth({
 
 	trustedOrigins: [...env.trustedOrigins],
 	hooks: {
-		before: slackConnectGuard,
+		before: connectGuard,
 	},
 
 	plugins: [
 		...(slackOAuth
-			? [
-					genericOAuth({
-						config: [
-							{
-								providerId: SLACK_PROVIDER_ID,
-								authorizationUrl: "https://slack.com/oauth/v2/authorize",
-								tokenUrl: "https://slack.com/api/oauth.v2.access",
-								clientId: slackOAuth.clientId,
-								clientSecret: slackOAuth.clientSecret,
-								disableSignUp: true,
-								redirectURI: slackRedirectUri,
-								scopes: [...SLACK_REQUESTED_SCOPES],
-								authorizationUrlParams: {
-									user_scope: SLACK_USER_SCOPES.join(","),
-								},
-								getToken: async ({ code }) => {
-									const response = await fetch(
-										"https://slack.com/api/oauth.v2.access",
-										{
-											method: "POST",
-											headers: {
-												"content-type": "application/x-www-form-urlencoded",
-											},
-											body: new URLSearchParams({
-												client_id: slackOAuth.clientId,
-												client_secret: slackOAuth.clientSecret,
-												code,
-												redirect_uri: slackRedirectUri,
-											}),
-										},
-									);
-									const grant = schemas.slack.oauthAccess.parse(
-										await response.json(),
-									);
-									if (!response.ok || !grant.ok || !grant.access_token) {
-										throw new APIError("BAD_REQUEST", {
-											message: `Slack authorization failed (${grant.error ?? "rejected"}).`,
-										});
-									}
-									await rememberSlackInstall(grant);
-
-									return {
-										accessToken: grant.access_token,
-										tokenType: grant.token_type,
-										scopes: (grant.scope ?? "")
-											.split(",")
-											.map((scope) => scope.trim())
-											.filter(Boolean),
-										raw: grant,
-									};
-								},
-								getUserInfo: async (tokens) => {
-									try {
-										const granted = schemas.slack.oauthAccess.parse(tokens.raw);
-										const userId = granted.authed_user?.id;
-										if (!tokens.accessToken || !userId) return null;
-										const userResponse = await fetch(
-											`https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`,
-											{
-												headers: {
-													Authorization: `Bearer ${tokens.accessToken}`,
-												},
-											},
-										);
-										const profile = schemas.slack.userInfo.parse(
-											await userResponse.json(),
-										);
-										if (!userResponse.ok || !profile.ok) return null;
-										const details = profile.user.profile;
-										const email = details.email;
-										if (!email) return null;
-										return {
-											id: userId,
-											name: details.real_name ?? profile.user.name ?? email,
-											email,
-											emailVerified: true,
-											image: details.image_512,
-										};
-									} catch {
-										return null;
-									}
-								},
-							},
-						],
-					}),
-				]
+			? [genericOAuth({ config: [slackConnection(slackOAuth)] })]
 			: []),
 		organization({
 			allowUserToCreateOrganization: false,

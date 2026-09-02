@@ -40,7 +40,7 @@ Everything additive — joining a channel, creating one, refreshing people — s
 open to any workspace member, because the agent builder needs it and Slack can
 undo it.
 
-## Connecting Slack is refused at the OAuth endpoints, not in the UI
+## Connecting is refused at the OAuth endpoints, not in the UI
 
 Connecting is the same decision as disconnecting, because `replaceSlackConnection`
 deletes every other Slack account row: a second person connecting *replaces* the
@@ -48,14 +48,19 @@ workspace's Slack, and every deployed agent then reads from and posts to whichev
 Slack they installed. Hiding the button is not enough — `authClient.oauth2.link`
 is one POST.
 
-`slackConnectGuard` (`packages/auth/src/slack-connect.ts`) is Better Auth's
+`connectGuard` (`packages/auth/src/connect-guard.ts`) is Better Auth's
 `hooks.before`, and it asks the same `canManageConnections` the API does. It
-covers all three doors: `/oauth2/link`, `/sign-in/oauth2` (Slack is a connection,
-never a sign-in method, and that endpoint needs no session) and
-`/oauth2/callback/slack`. The callback is the one that matters — refusing there
-happens **before the code is exchanged**, so a refused attempt writes no
+covers all three doors: `/oauth2/link`, `/sign-in/oauth2` (a connection is never
+a sign-in method, and that endpoint needs no session) and
+`/oauth2/callback/<provider>`. The callback is the one that matters — refusing
+there happens **before the code is exchanged**, so a refused attempt writes no
 `SlackWorkspaceGrant` user token and deletes no bot token. Google and Microsoft
 sign in on different paths and never reach the guard.
+
+**`GUARDED_CONNECTIONS` is the whole list**, provider id to the three refusal
+sentences. A new connection is one entry there, not a second middleware — one
+`hooks.before` is all Better Auth takes, and a second guard would replace the
+first rather than run beside it.
 
 A workspace with no owner and no admin lets any member connect. There is nobody
 left to ask, and a fresh install must not be locked out of its first connection.

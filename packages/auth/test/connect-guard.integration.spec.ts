@@ -14,13 +14,13 @@ import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
 import { applySetCookies } from "better-auth/cookies";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import * as z from "zod";
+import { connectGuard } from "../src/connect-guard";
 import {
 	DEFAULT_WORKSPACE_NAME,
 	WORKSPACE_ID,
 	type WorkspaceRole,
 } from "../src/organization";
 import { GOOGLE_PROVIDER_ID, SLACK_PROVIDER_ID } from "../src/scopes";
-import { slackConnectGuard } from "../src/slack-connect";
 
 const suffix = process.env.TEST_RUN_ID ?? "slack-connect-spec";
 
@@ -55,7 +55,7 @@ const guarded = betterAuth({
 	secret: "slack-connect-spec-secret",
 	database: prismaAdapter(db, { provider: "postgresql" }),
 	emailAndPassword: { enabled: false },
-	hooks: { before: slackConnectGuard },
+	hooks: { before: connectGuard },
 	plugins: [probe],
 });
 

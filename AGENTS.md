@@ -106,7 +106,7 @@ Node module that cannot exist in a browser.
 "use client";
 import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
 
-export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
+export function ScopeGroups({ scopes }: { scopes: string[] }) {
   const groups = SLACK_SCOPE_GROUPS.map(...)
 }
 ```
@@ -117,17 +117,43 @@ export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
 // page.tsx — server
 import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
 
-const groups = groupScopes(status.scopes);
-return <SlackScopeGroups groups={groups} />;
+return (
+  <ScopeGroups
+    caption={SCOPE_CAPTION}
+    groups={groupScopes(status.scopes)}
+    title="What this workspace granted"
+    withheld={missing.map(toLine)}
+    withheldNote={WITHHELD_NOTE}
+  />
+);
 ```
 
 ```tsx
-// slack-scope-groups.tsx — client
+// scope-groups.tsx — client
 "use client";
 
-export type ScopeGroup = { id: string; label: string; scopes: ScopeLine[] };
+export type ScopeLine = { scope: string; grant: string; sensitive: boolean };
 
-export function SlackScopeGroups({ groups }: { groups: ScopeGroup[] }) { … }
+export type ScopeGroup = {
+  id: string;
+  label: string;
+  summary: string;
+  scopes: ScopeLine[];
+};
+
+export function ScopeGroups({
+  title,
+  caption,
+  groups,
+  withheld,
+  withheldNote,
+}: {
+  title: string;
+  caption: string;
+  groups: ScopeGroup[];
+  withheld: ScopeLine[];
+  withheldNote: string;
+}) { … }
 ```
 
 Rules that follow:
