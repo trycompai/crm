@@ -175,3 +175,36 @@ A rebuild drops the database and re-runs every migration, and it says which of t
 two reasons fired. Force one with `bun run db:test --reset`. Nothing else in the
 repo may drop a database, and this may only because the `_test` suffix is checked
 first.
+
+## Agent Reach in Claude Code on the web
+
+`.claude/hooks/session-start.sh` runs on every remote session start and installs
+[Agent Reach](https://github.com/Panniantong/agent-reach) outside the repo: the
+CLI in `~/.agent-reach-venv`, the upstream tools in `~/.agent-reach/tools` and
+`~/.local/bin`, mcporter with Exa, LinkedIn and XiaoHongShu registered, gh and
+ffmpeg from apt. It does nothing on a local machine. Every step is best effort:
+a failed step logs and the session still starts.
+
+The proxy blocks GitHub archive and release downloads, so the hook clones over
+git and builds `xiaohongshu-mcp` with Go instead of downloading a binary. The
+hook adds both bin directories to `PATH` for the session, so `agent-reach
+doctor`, `twitter`, `rdt`, `bili`, `yt-dlp` and `mcporter` work from any shell.
+
+Channels that need a login (Twitter, Reddit, XiaoHongShu, Xueqiu, LinkedIn,
+Groq for podcasts) still need their cookies or keys pasted into
+`agent-reach configure` each session. Facebook and Instagram need a desktop
+Chrome and never work in the container.
+
+## The CRM itself in Claude Code on the web
+
+`.claude/hooks/crm-dev.sh` prepares the repo once it is listed as a second
+`SessionStart` command in `.claude/settings.json`, after the Agent Reach hook: Node 24 in `/opt/node24` (eve refuses Node 22), a `.env` from
+`.env.example` with generated secrets when none exists, `dockerd` when no daemon
+answers, `docker compose up -d`, `bun install`, `migrate deploy` and the seed.
+It does nothing on a local machine. The `.env` it writes sets `ALLOWED_SIGN_IN`
+to `localhost`, so sign-in stays closed; `bun run --filter=api dev:session`
+mints a session without a provider.
+
+The container has no terminal UI, so `bun run dev` refuses the interactive
+agent task. Run `turbo run dev --filter=app --filter=api` and
+`turbo run dev:headless --filter=agent` instead.
