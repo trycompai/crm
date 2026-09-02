@@ -194,3 +194,18 @@ Channels that need a login (Twitter, Reddit, XiaoHongShu, Xueqiu, LinkedIn,
 Groq for podcasts) still need their cookies or keys pasted into
 `agent-reach configure` each session. Facebook and Instagram need a desktop
 Chrome and never work in the container.
+
+## The CRM itself in Claude Code on the web
+
+`.claude/hooks/crm-dev.sh` is the second `SessionStart` command in
+`.claude/settings.json`. It runs after the Agent Reach hook and prepares the
+repo: Node 24 in `/opt/node24` (eve refuses Node 22), a `.env` from
+`.env.example` with generated secrets when none exists, `dockerd` when no daemon
+answers, `docker compose up -d`, `bun install`, `migrate deploy` and the seed.
+It does nothing on a local machine. The `.env` it writes sets `ALLOWED_SIGN_IN`
+to `localhost`, so sign-in stays closed; `bun run --filter=api dev:session`
+mints a session without a provider.
+
+The container has no terminal UI, so `bun run dev` refuses the interactive
+agent task. Run `turbo run dev --filter=app --filter=api` and
+`turbo run dev:headless --filter=agent` instead.
