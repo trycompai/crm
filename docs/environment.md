@@ -43,8 +43,15 @@ the three that is genuinely optional on its own — set it to your tenant's GUID
 refuse other tenants at Microsoft instead of at `ALLOWED_SIGN_IN`. There is **no
 Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
 
-**Neither pair is required, but an install wants one of them or an SSO provider** —
-with none, the sign-in page says so by name rather than rendering nothing.
+**`PASSWORD_SIGN_IN="true"`** adds an email + password form to the sign-in page
+(`emailAndPassword` in `auth.ts`). Sign-up goes through the same
+`user.create.before` hook as the social providers, so only an address that passes
+`ALLOWED_SIGN_IN` can create an account. Off by default; only the literal `true`
+turns it on.
+
+**Neither pair is required, but an install wants one of them, a password form, or
+an SSO provider** — with none, the sign-in page says so by name rather than
+rendering nothing.
 
 **`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
@@ -174,8 +181,12 @@ imports nothing, Calendar reads from `now`, and Outlook records `now` as its cur
 **`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
 `/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is
 kept as an alias of the first, so an existing deployment's cron does not break on
-deploy. **Crons live in `apps/api/vercel.json`** — mailboxes `*/5 * * * *`, rates
-daily. Minute-level schedules need a Pro plan; on Hobby it silently becomes daily.
+deploy. **Crons live in `apps/api/vercel.json`**, and `build-func.mjs` copies them
+into the Build Output config, so that file is the only place to edit. Every cron
+there, and the agent's `schedules/dispatch.ts`, runs **once a day**: Vercel's Hobby
+plan rejects the build for anything more frequent. On Pro, mailboxes can go back to
+`*/5 * * * *` and the dispatch to `* * * * *`; the API's poke covers new tasks
+between ticks either way.
 
 Deliberate absences: **no `GOOGLE_SYNC_ENABLED`** (a switch that can disable a mandatory
 feature is only ever wrong), **no `GOOGLE_WORKSPACE_DOMAIN`** (`ALLOWED_SIGN_IN` already

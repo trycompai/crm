@@ -35,6 +35,7 @@ const ssoPublicProviderOutput = z.object({
 export const ssoSignInOptionsOutput = z.object({
 	google: z.boolean(),
 	microsoft: z.boolean(),
+	password: z.boolean(),
 	providers: z.array(ssoPublicProviderOutput),
 });
 

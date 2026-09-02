@@ -11,6 +11,7 @@ export {
 	appUrl,
 	isGoogleConfigured,
 	isMicrosoftConfigured,
+	isPasswordSignInEnabled,
 	isSlackConfigured,
 } from "./env";
 export {
