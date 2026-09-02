@@ -62,6 +62,7 @@ export const env = {
 	google: googleCredentials(),
 	microsoft: microsoftCredentials(),
 	slack: slackCredentials(),
+	passwordSignIn: optional("PASSWORD_SIGN_IN") === "true",
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",
@@ -77,6 +78,10 @@ export function isMicrosoftConfigured(): boolean {
 
 export function isSlackConfigured(): boolean {
 	return env.slack !== undefined;
+}
+
+export function isPasswordSignInEnabled(): boolean {
+	return env.passwordSignIn;
 }
 
 export { apiUrl, appUrl };

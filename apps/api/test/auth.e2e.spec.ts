@@ -67,6 +67,7 @@ describe("Auth (e2e)", () => {
 		expect(response.body.result.data).toEqual({
 			google: true,
 			microsoft: microsoftConfigured,
+			password: process.env.PASSWORD_SIGN_IN === "true",
 			providers: [],
 		});
 	});
