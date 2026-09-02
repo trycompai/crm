@@ -197,8 +197,9 @@ Chrome and never work in the container.
 
 ## The CRM itself in Claude Code on the web
 
-`.claude/hooks/crm-dev.sh` prepares the repo once it is listed as a second
-`SessionStart` command in `.claude/settings.json`, after the Agent Reach hook: Node 24 in `/opt/node24` (eve refuses Node 22), a `.env` from
+`.claude/hooks/crm-dev.sh` is the second `SessionStart` command in
+`.claude/settings.json`. It runs after the Agent Reach hook and prepares the
+repo: Node 24 in `/opt/node24` (eve refuses Node 22), a `.env` from
 `.env.example` with generated secrets when none exists, `dockerd` when no daemon
 answers, `docker compose up -d`, `bun install`, `migrate deploy` and the seed.
 It does nothing on a local machine. The `.env` it writes sets `ALLOWED_SIGN_IN`
