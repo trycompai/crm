@@ -70,6 +70,10 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	PASSWORD_SIGN_IN?: string;
+
+	@IsOptional()
+	@IsString()
 	SLACK_CLIENT_ID?: string;
 
 	@IsOptional()
