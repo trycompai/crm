@@ -7,6 +7,7 @@
 		".": "./src/index.ts",
 		"./activity-meta": "./src/activity-meta.ts",
 		"./agent-events": "./src/agent-events.ts",
+		"./agent-action": "./src/agent-action.ts",
 		"./agent-manifest": "./src/agent-manifest.ts",
 		"./builder-question": "./src/builder-question.ts",
 		"./enrichment-queue": "./src/enrichment-queue.ts",
@@ -14,7 +15,8 @@
 		"./eve-tool": "./src/eve-tool.ts",
 		"./field-backfill": "./src/field-backfill.ts",
 		"./field-templates": "./src/field-templates.ts",
-		"./saved-view": "./src/saved-view.ts"
+		"./saved-view": "./src/saved-view.ts",
+		"./slack-events": "./src/slack-events.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

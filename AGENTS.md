@@ -205,17 +205,25 @@ the compiler cannot help. Rename a field and every one of these silently returns
 **Do** — one schema, parsed once, at the read:
 
 ```ts
+export const slackDestination = z.discriminatedUnion("resolution", [
+  z.object({
+    kind: z.enum(["channel", "user"]),
+    resolution: z.literal("chosen"),
+    id: z.string().trim().min(1).max(120),
+    label: z.string().trim().min(1).max(120),
+  }),
+  z.object({
+    kind: z.literal("channel"),
+    resolution: z.literal("run-channel"),
+  }),
+]);
+
 export const agentManifestAction = z.discriminatedUnion("type", [
   z.object({
     type: z.literal(AGENT_ACTION_TYPES.SLACK_MESSAGE_POST),
     provider: z.literal("slack"),
     summary: z.string(),
-    destination: z.object({
-      kind: z.enum(["channel", "user"]),
-      resolution: z.literal("chosen"),
-      id: z.string().trim().min(1).max(120),
-      label: z.string().trim().min(1).max(120),
-    }),
+    destination: slackDestination,
   }),
 ]);
 
@@ -229,7 +237,10 @@ const manifest = parseAgentManifest(version.manifest);
 const slack = manifest.actions.find(
   (action) => action.type === "slack.message.post",
 );
-const id = slack?.destination.id;
+const id =
+  slack?.destination.resolution === "chosen"
+    ? slack.destination.id
+    : undefined;
 ```
 
 `packages/validation/src/agent-manifest.ts` is the pattern. A shape that crosses

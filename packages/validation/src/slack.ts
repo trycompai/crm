@@ -20,12 +20,26 @@ export const createPayload = z.object({
 export const createReply = z.object({
 	ok: z.boolean(),
 	error: z.string().optional(),
-	channel: z.object({ id: z.string(), name: z.string() }).optional(),
+	channel: z
+		.object({
+			id: z.string().trim().min(1),
+			name: z.string().trim().min(1),
+		})
+		.optional(),
 });
 
 export const reply = z.object({
 	ok: z.boolean(),
 	error: z.string().optional(),
+});
+
+export const lookupByEmail = reply.extend({
+	user: z.object({ id: z.string().trim().min(1) }).nullish(),
+});
+
+export const inviteShared = reply.extend({
+	invite_id: z.string().trim().min(1).optional(),
+	url: z.string().trim().min(1).optional(),
 });
 
 export const authTest = reply.extend({

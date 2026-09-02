@@ -52,6 +52,13 @@ list, read by the sign-in guard *and* the sync's "which side is external" decisi
 if they drifted a colleague would be refused at the door or filed as a lead. **An empty
 list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
 
+**`SLACK_SIGNING_SECRET`** is required only for inbound Slack, and is separate
+from the OAuth pair. `/webhooks/slack/events` is a public POST, so the signature
+is the whole of its authentication: unset, the endpoint refuses everything rather
+than trusting anyone. It is the Signing Secret on the Slack app's Basic
+Information page, not a token. Point the app's Event Subscriptions request URL at
+`API_URL` + `/webhooks/slack/events`.
+
 ## Where things are
 
 - **`API_URL`** (`:3001`) mints session cookies and serves `/api/auth/*`;

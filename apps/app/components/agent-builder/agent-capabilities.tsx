@@ -54,8 +54,17 @@ export function AgentCapabilities({
 	const [off, setOff] = useState<string[]>([]);
 	const [resources, setResources] = useState<Resource[] | null>(null);
 
+	const standingChannel =
+		capabilities.readable &&
+		capabilities.channel !== null &&
+		capabilities.channel.resolution === "chosen"
+			? capabilities.channel
+			: null;
+	const runChannel =
+		capabilities.readable && capabilities.channel?.resolution === "run-channel";
+
 	const channels = useSlackChannels({
-		enabled: capabilities.channel !== null,
+		enabled: standingChannel !== null,
 	});
 	const rows = channels.channels;
 	const canInviteItself = channels.canInviteItself;
@@ -101,7 +110,7 @@ export function AgentCapabilities({
 		);
 	}
 
-	const current = capabilities.channel;
+	const current = standingChannel;
 	const from = current?.label.replace(/^#/, "") ?? null;
 	const to = picked?.name ?? null;
 	const shownResources = resources ?? capabilities.dataScope?.resources ?? [];
@@ -151,7 +160,12 @@ export function AgentCapabilities({
 
 	return (
 		<div className="flex flex-col gap-9">
-			{current ? (
+			{runChannel ? (
+				<Section
+					summary="The Slack channel this run opens. You don't pick one."
+					title="Lives in"
+				/>
+			) : current ? (
 				<Section
 					action={
 						canManage ? (
@@ -387,7 +401,7 @@ function Section({
 	title,
 }: {
 	action?: React.ReactNode;
-	children: React.ReactNode;
+	children?: React.ReactNode;
 	summary: string;
 	title: string;
 }) {

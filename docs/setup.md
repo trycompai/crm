@@ -49,6 +49,35 @@ AGENT_BRIDGE_SECRET="$(openssl rand -base64 32)"
 the bridge — send `-H 'Host: agent.example.com'`. `GET /eve/v1/info` is the whole
 inventory, including a `diagnostics` count that finds files eve silently ignored.
 
+## Inbound Slack needs one hostname, forever
+
+Slack posts events to a request URL it stores once. `cloudflared tunnel --url`
+invents a new hostname on every restart, so the stored URL goes stale and Slack
+stops delivering **without an error anywhere** — the endpoint is simply never
+called. A named tunnel keeps the hostname across restarts.
+
+```sh
+brew install cloudflared
+cloudflared tunnel login            # opens a browser, once
+SLACK_TUNNEL_HOSTNAME="crm-dev.example.com" bun run tunnel:slack
+```
+
+The hostname must be on a domain in your own Cloudflare account. `tunnel:slack`
+creates the tunnel if it is missing, points the DNS record at it, prints the
+request URL and then runs it. Re-running is safe. Put the hostname in `.env` and
+the variable can be dropped from the command.
+
+Paste the printed URL into the Slack app's Event Subscriptions page and
+subscribe to `message.channels`, `app_mention` and `member_joined_channel`.
+
+**Set `SLACK_SIGNING_SECRET` before you paste the URL.** It is the Signing Secret
+on the Slack app's Basic Information page. The API refuses every unsigned request,
+including Slack's first URL verification, so without it the page never verifies
+and delivery never starts.
+
+**Socket Mode swallows events.** With Socket Mode on, the Request URL still shows
+"Verified" and no HTTP delivery ever happens. Turn it off.
+
 ## Running the agent
 
 The agent package's default `dev` command is interactive `eve dev`. The root

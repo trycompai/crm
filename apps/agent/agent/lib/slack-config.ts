@@ -8,6 +8,10 @@ export const SLACK = {
 		retryUnitMs: SECOND_MS,
 	},
 
+	channel: {
+		maxNameChars: 80,
+	},
+
 	inventory: {
 		pageSize: 200,
 		channelTypes: "public_channel,private_channel",
