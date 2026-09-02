@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slackDestination } from "./agent-manifest";
 
 export const permissions = [
 	{ id: "post", label: "Post a message" },
@@ -66,17 +67,11 @@ export type InputOption = z.infer<typeof inputOption>;
 export type InputRequest = z.infer<typeof inputRequest>;
 export type InputRequested = z.infer<typeof inputRequested>;
 
-export const capabilityDestination = z.object({
-	kind: z.enum(["channel", "user"]),
-	id: z.string().trim().min(1).max(120),
-	label: z.string().trim().min(1).max(120),
-});
-
 export const capabilityAction = z.object({
 	type: z.string().trim().min(1).max(120),
 	provider: z.string().trim().min(1).max(60),
 	summary: z.string().trim().max(400).default(""),
-	destination: capabilityDestination.optional(),
+	destination: slackDestination.optional(),
 });
 
 export const CAPABILITY_RESOURCE_IDS = {

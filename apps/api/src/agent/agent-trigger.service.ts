@@ -555,6 +555,50 @@ export class AgentTriggerService {
 		void this.redeliverCancellations();
 	}
 
+	async slackEventReceived(input: {
+		eventId: string;
+		type: string;
+		teamId?: string;
+		channelId?: string;
+		messageTs?: string;
+		payload: Prisma.InputJsonValue;
+	}): Promise<{ stored: boolean }> {
+		const existing = await this.db.slackEventInbox.findUnique({
+			where: { eventId: input.eventId },
+			select: { id: true },
+		});
+
+		if (existing) return { stored: false };
+
+		try {
+			await this.db.slackEventInbox.create({
+				data: {
+					eventId: input.eventId,
+					type: input.type,
+					teamId: input.teamId ?? null,
+					channelId: input.channelId ?? null,
+					messageTs: input.messageTs ?? null,
+					payload: input.payload,
+				},
+			});
+		} catch (error) {
+			if (
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === "P2002"
+			) {
+				return { stored: false };
+			}
+			this.logger.error(
+				{ message: "Could not store Slack event", eventId: input.eventId },
+				error instanceof Error ? error.stack : String(error),
+			);
+			throw error;
+		}
+
+		this.poke();
+		return { stored: true };
+	}
+
 	private poke(): void {
 		this.pokeRoute("/internal/crm/dispatch");
 	}

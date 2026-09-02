@@ -30,6 +30,11 @@ import { DISPATCH } from "../lib/dispatch-config";
 import { settle } from "../lib/enrichment";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
+import {
+	dispatchSlackEvent,
+	drainSlackEvents,
+	SlackEventNotResumed,
+} from "../lib/slack-events";
 import { createSlackChannel } from "../lib/slack-membership";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
 import { completeTask, taskSubject } from "../lib/tasks";
@@ -55,9 +60,15 @@ const receiveTarget = z
 	.object({
 		builderSubmissionId: z.string().nullable().catch(null),
 		runId: z.string().nullable().catch(null),
+		slackEventId: z.string().nullable().catch(null),
 		taskId: z.string().nullable().catch(null),
 	})
-	.catch({ builderSubmissionId: null, runId: null, taskId: null });
+	.catch({
+		builderSubmissionId: null,
+		runId: null,
+		slackEventId: null,
+		taskId: null,
+	});
 
 function authorised(request: Request): boolean {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
@@ -146,6 +157,7 @@ export default defineChannel({
 						}),
 					);
 					await drainAgentRuns(send);
+					await drainSlackEvents(send);
 				})(),
 			);
 
@@ -408,6 +420,17 @@ export default defineChannel({
 		if (target.runId) {
 			assertInternalDispatchAuth(input.auth);
 			return dispatchAgentRun(target.runId, send);
+		}
+
+		if (target.slackEventId) {
+			assertInternalDispatchAuth(input.auth);
+			const outcome = await dispatchSlackEvent(target.slackEventId, send);
+			if (!outcome?.session) {
+				throw new SlackEventNotResumed(
+					outcome?.outcome ?? "Another drain already took this Slack event.",
+				);
+			}
+			return outcome.session;
 		}
 
 		return send(input.message, {

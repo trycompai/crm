@@ -10,6 +10,9 @@ export const SLACK = {
 		pageSize: 50,
 		maxPageSize: 100,
 	},
+	events: {
+		maxBodyBytes: 64 * 1024,
+	},
 } as const;
 
 export const SLACK_SYNC_STATES = ["idle", "syncing", "stalled"] as const;

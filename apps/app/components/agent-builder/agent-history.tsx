@@ -16,7 +16,14 @@ import {
 	AlertDialogTitle,
 } from "@crm/ui/components/alert-dialog";
 import { Button } from "@crm/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@crm/ui/components/collapsible";
 import { Icon } from "@crm/ui/components/icon";
+import { Link } from "@crm/ui/components/link";
+import { Markdown } from "@crm/ui/components/markdown";
 import { cn } from "@crm/ui/lib/utils";
 import { useState } from "react";
 import { z } from "zod";
@@ -259,6 +266,8 @@ function ExpandedRun({ run }: { run: RunRow }) {
 				<RunMeta label="Version" value={String(run.version.number)} last />
 			</div>
 
+			{run.summary ? <AgentNote summary={run.summary} /> : null}
+
 			<div>
 				{timeline.map((entry) =>
 					entry.kind === "event" ? (
@@ -296,7 +305,7 @@ function ExpandedRun({ run }: { run: RunRow }) {
 								</span>
 							</span>
 							<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
-								{entry.action.externalId ?? entry.action.id.slice(0, 12)}
+								{actionReceipt(entry.action)}
 							</span>
 						</div>
 					),
@@ -309,6 +318,35 @@ function ExpandedRun({ run }: { run: RunRow }) {
 				) : null}
 			</div>
 		</div>
+	);
+}
+
+function AgentNote({ summary }: { summary: string }) {
+	const [open, setOpen] = useState(false);
+	const firstLine = summary.trim().split(/\n+/)[0] ?? summary;
+
+	return (
+		<Collapsible onOpenChange={setOpen} open={open}>
+			<CollapsibleTrigger className="flex min-h-11 w-full items-center gap-3 border-b px-4 text-left outline-none hover:bg-muted/40 focus-visible:bg-muted/40 sm:px-5">
+				<span className="shrink-0 text-muted-foreground text-xs">
+					Agent note
+				</span>
+				<span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">
+					{open ? "" : firstLine}
+				</span>
+				<Icon
+					icon={open ? ChevronUp : ChevronDown}
+					className="size-3.5 shrink-0 text-muted-foreground"
+				/>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				<div className="border-b px-4 py-3 sm:px-5">
+					<Markdown className="min-w-0 wrap-break-word text-sm leading-5">
+						{summary}
+					</Markdown>
+				</div>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 }
 
@@ -405,6 +443,28 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 				) : null}
 			</div>
 		</div>
+	);
+}
+
+function actionReceipt(action: RunRow["actions"][number]) {
+	if (action.result?.type !== "slack.channel.invite") {
+		return action.externalId ?? action.id.slice(0, 12);
+	}
+
+	const inviteId = action.result.invite_id ?? action.externalId;
+	const url = action.result.url;
+	if (!inviteId && !url) return action.id.slice(0, 12);
+
+	return (
+		<>
+			{inviteId}
+			{inviteId && url ? " · " : null}
+			{url ? (
+				<Link href={url} target="_blank" rel="noreferrer">
+					Invite link
+				</Link>
+			) : null}
+		</>
 	);
 }
 
