@@ -67,6 +67,12 @@ export {
 	summariseSlackScopes,
 } from "./slack-scopes";
 export {
+	type SignatureVerdict,
+	SLACK_SIGNATURE,
+	signBody,
+	verifySlackSignature,
+} from "./slack-signature";
+export {
 	canConfigureSso,
 	ssoCallbackBase,
 	ssoCallbackURL,

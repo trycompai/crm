@@ -64,3 +64,41 @@ describe("the input request schema", () => {
 		).toBe(false);
 	});
 });
+
+describe("the capabilities destination", () => {
+	const chosen = {
+		type: "slack.message.post",
+		provider: "slack",
+		summary: "Tell sales",
+		destination: {
+			kind: "channel" as const,
+			resolution: "chosen" as const,
+			id: "C123",
+			label: "#sales",
+		},
+	};
+
+	it("parses a chosen destination", () => {
+		expect(schemas.agents.capabilityAction.safeParse(chosen).success).toBe(
+			true,
+		);
+	});
+
+	it("parses a run-channel destination", () => {
+		expect(
+			schemas.agents.capabilityAction.safeParse({
+				...chosen,
+				destination: { kind: "channel", resolution: "run-channel" },
+			}).success,
+		).toBe(true);
+	});
+
+	it("refuses a chosen destination without resolution", () => {
+		expect(
+			schemas.agents.capabilityAction.safeParse({
+				...chosen,
+				destination: { kind: "channel", id: "C123", label: "#sales" },
+			}).success,
+		).toBe(false);
+	});
+});

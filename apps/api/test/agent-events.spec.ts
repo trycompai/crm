@@ -43,6 +43,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+	await db.slackEventInbox.deleteMany({
+		where: { eventId: { startsWith: `Ev-${suffix}-` } },
+	});
 	await db.agentTask.deleteMany({
 		where: {
 			OR: [
@@ -253,5 +256,46 @@ describe("CRM agent events", () => {
 				where: { dealId: deal.id, type: "STAGE_CHANGE" },
 			}),
 		).toBe(2);
+	});
+});
+
+describe("Slack event inbox writes", () => {
+	it("stores a Slack event once and treats a duplicate as already seen", async () => {
+		const eventId = `Ev-${suffix}-dup`;
+		const payload = { type: "event_callback", event_id: eventId };
+
+		expect(
+			await service.slackEventReceived({
+				eventId,
+				type: "message",
+				payload,
+			}),
+		).toEqual({ stored: true });
+		expect(
+			await service.slackEventReceived({
+				eventId,
+				type: "message",
+				payload,
+			}),
+		).toEqual({ stored: false });
+	});
+
+	it("rethrows a Slack inbox write that is not a duplicate", async () => {
+		const original = db.slackEventInbox.create.bind(db.slackEventInbox);
+		db.slackEventInbox.create = (async () => {
+			throw new Error("the inbox is unreachable");
+		}) as typeof db.slackEventInbox.create;
+
+		try {
+			await expect(
+				service.slackEventReceived({
+					eventId: `Ev-${suffix}-fail`,
+					type: "message",
+					payload: { type: "event_callback" },
+				}),
+			).rejects.toThrow("the inbox is unreachable");
+		} finally {
+			db.slackEventInbox.create = original;
+		}
 	});
 });

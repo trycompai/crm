@@ -702,6 +702,7 @@ switch it on:
 | --- | --- |
 | `E2E_LIVE_MODEL=1` | `live-run.e2e.ts` calls the real model. It spends credits. |
 | `E2E_SLACK_JOIN=1` | `slack-join.e2e.ts` joins real Slack channels. It does not leave them. |
+| `E2E_SLACK_CREATE=1` | `slack-channel-create.e2e.ts` creates a real channel named `e2e-create-<ms>`. Slack cannot delete a channel, so archive it by hand. Add `E2E_SLACK_CREATE_PRIVATE=1` to make it private, which needs the workspace user token. |
 | `E2E_LOAD_COUNT` | How many tasks `load.e2e.ts` queues. The default is 300. |
 
 Stop the local agent before you run an e2e script against a dev database. A

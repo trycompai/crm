@@ -15,6 +15,8 @@ import {
 } from "trpc-to-openapi";
 import { AppModule } from "./app.module";
 import { ContextLogger } from "./logging/context-logger";
+import { SLACK_EVENTS_PATH } from "./slack/slack-events.controller";
+import { slackEventsBody } from "./slack/slack-events-body";
 import { REST_BRIDGE_PATH } from "./trpc/openapi";
 import { createBaseTrpcContext } from "./trpc/trpc.context";
 
@@ -26,6 +28,7 @@ export async function createApp(): Promise<NestExpressApplication> {
 	);
 
 	app.use(helmet());
+	app.use(SLACK_EVENTS_PATH, slackEventsBody);
 	app.useGlobalPipes(
 		new ValidationPipe({
 			whitelist: true,

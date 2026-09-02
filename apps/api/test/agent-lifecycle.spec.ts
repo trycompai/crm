@@ -145,7 +145,12 @@ const postAction = {
 	type: "slack.message.post",
 	provider: "slack",
 	summary: "Post the summary",
-	destination: { kind: "channel", id: "C0001", label: "#renewals" },
+	destination: {
+		kind: "channel",
+		resolution: "chosen",
+		id: "C0001",
+		label: "#renewals",
+	},
 };
 
 const noteAction = {
@@ -504,7 +509,12 @@ describe("agent lifecycle", () => {
 			actions: [
 				{
 					type: "slack.message.post",
-					destination: { id: "C0001", label: "#renewals" },
+					destination: {
+						kind: "channel",
+						resolution: "chosen",
+						id: "C0001",
+						label: "#renewals",
+					},
 				},
 			],
 			dataScope: {
@@ -635,7 +645,12 @@ describe("agent lifecycle", () => {
 			actions: [
 				{
 					type: "slack.message.post",
-					destination: { id: "C0009", label: `#${joinChannel}` },
+					destination: {
+						kind: "channel",
+						resolution: "chosen",
+						id: "C0009",
+						label: `#${joinChannel}`,
+					},
 				},
 				{ type: "crm.note.write" },
 			],

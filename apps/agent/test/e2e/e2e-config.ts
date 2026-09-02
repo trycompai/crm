@@ -34,6 +34,10 @@ export const E2E = {
 		bogusChannelName: "missing",
 	},
 
+	channelCreate: {
+		namePrefix: "e2e-create-",
+	},
+
 	liveRun: {
 		agentPrefix: "E2E Live Agent",
 		agentUrl: "http://localhost:3010",

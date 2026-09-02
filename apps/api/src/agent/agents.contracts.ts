@@ -1,4 +1,5 @@
 import { schemas } from "@crm/validation";
+import { agentActionResult } from "@crm/validation/agent-action";
 import { z } from "zod";
 
 export const agentManifest = schemas.agents.capabilities.loose();
@@ -194,7 +195,7 @@ const agentCapabilitiesResultOutput = z.discriminatedUnion("readable", [
 		problem: z.null(),
 		actions: z.array(schemas.agents.capabilityAction),
 		dataScope: schemas.agents.capabilities.shape.dataScope,
-		channel: schemas.agents.capabilityDestination.nullable(),
+		channel: schemas.agentManifest.slackDestination.nullable(),
 	}),
 ]);
 
@@ -269,6 +270,7 @@ const agentRunActionOutput = z.object({
 	attemptCount: z.number(),
 	errorCode: z.string().nullable(),
 	errorMessage: z.string().nullable(),
+	result: agentActionResult.nullable(),
 	plannedAt: z.string(),
 	startedAt: z.string().nullable(),
 	completedAt: z.string().nullable(),
