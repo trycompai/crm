@@ -6,6 +6,7 @@ context until you read them, and the rules in them are not optional.
 
 | Working on | Read first |
 | --- | --- |
+| **Writing or changing any code at all** | `CODING_STANDARDS.md` |
 | Anything in `apps/api` — tRPC, auth, logging, sync, deletes, caching | `docs/api.md` |
 | `apps/agent` — the eve research agent, tools, tasks, dispatch | `docs/agent.md` |
 | `.env`, configuration, which variables exist and why | `docs/environment.md` |
@@ -114,21 +115,35 @@ export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
 **Do** — the page does the work and hands over plain data:
 
 ```tsx
-// page.tsx — server
-import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
+// slack/page.tsx — server
+import { SLACK_REQUESTED_SCOPES } from "@crm/auth";
 
-const groups = groupScopes(status.scopes);
-return <SlackScopeGroups groups={groups} />;
+return (
+  <SlackScopeGroups
+    groups={groupScopes([...SLACK_REQUESTED_SCOPES])}
+    title="What you are handing over"
+    withheld={[]}
+  />
+);
 ```
 
 ```tsx
-// slack-scope-groups.tsx — client
+// slack/slack-scope-groups.tsx — client
 "use client";
 
-export type ScopeGroup = { id: string; label: string; scopes: ScopeLine[] };
+export type ScopeGroup = { id: string; label: string; summary: string; scopes: ScopeLine[] };
 
-export function SlackScopeGroups({ groups }: { groups: ScopeGroup[] }) { … }
+export function SlackScopeGroups({
+  title,
+  groups,
+  withheld,
+}: { title: string; groups: ScopeGroup[]; withheld: ScopeLine[] }) { … }
 ```
+
+`apps/app/app/(app)/[slug]/settings/connections/slack/slack-scope-groups.tsx` is
+the real one. It imports `@crm/ui` and icons and nothing else — never
+`describeSlackScopes`, never `SLACK_SCOPE_GROUPS`. The page groups the scopes and
+decides which ones were withheld. The component renders what it is handed.
 
 Rules that follow:
 
@@ -251,53 +266,32 @@ it:
 
 @docs/design.md
 
-## Median Tasks
-
-Median can use a project-local workspace binding. If this repository has
-`.median/config.json`, run `mdn` commands from inside this repository so the
-correct Median workspace profile is selected. The local config stores only a
-profile name; API keys stay in your user config.
-
-To bind this repository to a workspace:
-
-```
-mdn setup --local
-```
-
-Before starting work, check your assigned tasks:
-
-```
-mdn tasks --agent <your-agent-name>
-```
-
-When picking up a task:
-
-```
-mdn status <TASK-CODE> in_progress --agent <your-agent-name>
-```
-
-When completing a task:
-
-```
-mdn status <TASK-CODE> ready --agent <your-agent-name>
-```
-
-To create a new task:
-
-```
-mdn create --title "Description" --status todo --priority medium --agent <your-agent-name>
-```
-
 ## Commit Messages & Pull Requests
 
-Always include the Median task ID in commit messages and PR titles so tasks get marked automatically.
+**Branch from `main`, never from `release`.** `release` is the default branch so
+that a plain clone runs the last tagged release, and the only things that merge
+into it are release pull requests. A branch cut from `release` carries release
+merge commits that do not belong in a feature pull request.
 
-```
-git commit -m "MDN-42 fix: resolve auth token expiry"
-```
+**You do not write the pull request title.** `.github/scripts/pr-title.sh` reads
+the diff and writes one. Retitle it by hand and `pr-title.yml` writes over you:
+a title that is not a conventional commit, or that releases less than the branch
+does, is replaced on the next push. `CONTRIBUTING.md` is the whole account of how
+a change reaches `release`; read it before shipping.
 
-For pull requests, include the task ID in the title:
+## Agent skills
 
-```
-MDN-42 fix: resolve auth token expiry
-```
+### Issue tracker
+
+Issues live in Linear, team CRM, reached through the Linear MCP; pull requests
+live on GitHub and no issue is tracked there. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label named after itself, and none of them exist
+in Linear yet. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `CONTEXT.md` for shared vocabulary, `adrs/` for
+decisions, with the table above still the router. See `docs/agents/domain.md`.
