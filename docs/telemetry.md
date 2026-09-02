@@ -294,6 +294,7 @@ default and the page has no field to type in.
 - `EmailThread` and `EmailMessage` subjects or bodies, `CalendarEvent` titles, `CalendarAttendee` rows
 - `Deal` names and amounts. Stage distribution is fine; amounts are not.
 - `AgentEvent.data`, `AgentConversation` content, prompts, completions, reasoning traces
+  — **to PostHog. Tracing is a second destination and it does send them; see below.**
 - `ALLOWED_SIGN_IN`, `AppSetting.contextDevApiKey`, any key, secret, token or connection string
 - `SuppressedDomain` and `SuppressedContact` values — counts only
 - **IP address.** Set `$ip: null` and disable geoip. n8n collects IP and has to caveat their
@@ -302,6 +303,34 @@ default and the page has no field to type in.
 On that last line: the two properties alone do not achieve it, because PostHog fills `$ip` in from
 the connection during ingestion. `anonymize_ips` is enabled on the receiving project, which is what
 actually drops it. See `adrs/telemetry.md`.
+
+## Inference.net is a second destination, and it is not this
+
+Everything above is PostHog. **Agent tracing is a separate egress with a separate
+rule**, and it is the one place customer text leaves this install.
+
+Set `INFERENCE_API_KEY` and `agent/instrumentation.ts` exports OpenTelemetry spans
+to Inference.net. A span carries the system prompt, the whole message history and
+the model's reply, so on this CRM it carries email bodies, contact names,
+addresses and deal amounts. There is no redaction. `docs/agent.md` states it as
+the one deliberate exception to the egress rules, chosen so agents can be
+debugged while they are being built, and `apps/agent/agent/skills/data-boundaries.md`
+says the same thing to the agent.
+
+Three consequences worth stating plainly:
+
+- **`CRM_TELEMETRY_DISABLED` does not touch it.** That variable governs PostHog.
+  Tracing stops when `INFERENCE_API_KEY` is unset, and only then.
+- **Withhold the content without losing the traces** with
+  `INFERENCE_RECORD_CONTENT="0"`. Spans, timings and token spend still export;
+  prompts and replies do not. Only `0`, `false`, `no` and `off` withhold, so a
+  typo cannot silence a trace somebody thought they were capturing. The line the
+  agent prints at boot says which mode is live.
+- **It needs the treatment the CRM gets.** An install that sends content is
+  holding CRM data in a second system, so the tracing project needs the same
+  access control, and Inference.net belongs in that install's privacy materials
+  as a processor. Unset the key, or set `INFERENCE_RECORD_CONTENT="0"`, if that
+  is not true where you run this.
 
 ## Where it lives
 

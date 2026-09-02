@@ -286,11 +286,91 @@ It may read **everything**, including full email bodies — internal single-tena
 and a signature block is the best source of a job title there is. The boundary is
 egress:
 
-1. No customer text in a third-party query. Derived questions only.
+1. No customer text in a third-party query. Derived questions only. **Tracing is
+   the one exception, and it is stated below.**
 2. Nothing from a mailbox into `/workspace` — different lifetime.
 3. Nothing sensitive logged. Reading is not logging.
 
 `skills/data-boundaries.md` is the agent's copy. Keep them in step.
+
+### Traces leave with the customer text in them
+
+**This is a deliberate exception to rule 1 above, and the only one.**
+`agent/instrumentation.ts` passes `recordInputs` and `recordOutputs` as `true`
+by default, so every span carries the system prompt, the full message history and
+the model's reply. On this CRM that is customer email bodies, contact names,
+addresses and deal amounts, sent to Inference.net.
+
+The owner chose it, to debug agents while they are being built. **Redaction is
+not written.** Until it is, treat the tracing backend as holding the same data
+the CRM does: it needs the same access control, and it belongs in the privacy
+materials.
+
+**`INFERENCE_RECORD_CONTENT="0"` is the kill switch.** Spans, timings and token
+spend still export; prompts and replies do not.
+
+- **`recordsTraceContent` in `lib/tracing.ts` reads it**, and
+  `TRACING.content.recordByDefault` in `lib/tracing-config.ts` is the default it
+  falls back to. `recordVar` names the variable, so the code and the boot line
+  never spell it twice.
+- **Only `0`, `false`, `no` and `off` withhold**, so a typo cannot silence a
+  trace somebody thought they were capturing. Any other value records.
+- **`instrumentation.ts` passes the answer to both flags explicitly** rather
+  than leaving either to a default, so an upgrade of eve or of the tracing SDK
+  cannot quietly change what leaves.
+- **The boot line names the live mode** — `included` or `withheld`.
+- **`scripts/scan-trace-egress.ts` is how you check.** `bun run scan:egress`
+  over a Catalyst export counts the personal data that actually left.
+
+## Tracing goes through Inference's eve integration
+
+`@inference/tracing/eve` has a first-class eve integration, so
+`agent/instrumentation.ts` exports `defineCatalystEveInstrumentation()` rather
+than eve's own `defineInstrumentation`. It installs the OTel provider from eve's
+startup hook and enriches the exported spans with OpenInference attributes and
+the `$eve.*` workflow tags.
+
+A turn arrives as an `ai.eve.turn` CHAIN span, `invoke_agent` as an AGENT span,
+each AI SDK model call as an LLM span, and each tool as a TOOL span with its
+name, call id, arguments and result.
+
+- **It composes `events["step.started"]`, it does not replace it.** Our hook adds
+  `user.id` and `session.id`, so the dashboard attributes a turn to the rep who
+  started it and groups a conversation. `principalOf` parses `session.auth`,
+  which the integration types as `unknown` — parse it, never cast it.
+- **Set those two on the span, not only in `runtimeContext`.** The integration
+  copies **an allowlist** out of runtime context — the ten `$eve.*` keys and
+  nothing else — so anything of ours returned there arrives as
+  `ai.settings.context.user.id` and never becomes the attribute the dashboard's
+  `userId` column reads. `trace.getActiveSpan()?.setAttribute` is what lands it.
+  The `runtimeContext` copy is kept so child spans inherit it.
+- **Only a `principalType` of `user` is a user.** Background research runs as
+  `eve:app` with `principalType: "runtime"` (`lib/app-auth.ts`); a rep through
+  the bridge is `principalType: "user"` (`channels/eve.ts`). Attributing a
+  dispatch sweep to `eve:app` would fill the people facet with a robot, so
+  `principalOf` returns null for it and those traces carry no user at all.
+- **The session initiator wins over the current principal**, so a subagent turn
+  is still attributed to the person who started the root session.
+- **A blank key is unset.** `resolveTraceDestination` refuses an empty or
+  whitespace-only value, so an install without one runs untraced rather than
+  exporting with no token.
+- **The boot line never prints the token**, only the endpoint and service name.
+- **`instrumentation.ts` imports `@crm/env/load` itself.** eve runs it at server
+  startup *before any agent code*, so `agent.ts`'s own load has not happened yet
+  and the root `.env` would not be read.
+
+| Set | Where spans go |
+| --- | --- |
+| `INFERENCE_API_KEY` | Inference.net, at `INFERENCE_OTLP_ENDPOINT` or their default |
+| nothing | nowhere, and one line at boot says so |
+
+## Tracing replaces the local trace store
+
+`agent/instrumentation.ts` exists, so eve's zero-config writer is **not
+installed** — `eve traces ls` and the `/traces` TUI record nothing, whether or
+not a backend is configured. eve's local runtime is internal and throws if a
+second OTel runtime registers, so it cannot be kept as a fallback. Deleting the
+file is the only way back.
 
 ## Sandbox
 

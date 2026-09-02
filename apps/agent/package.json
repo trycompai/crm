@@ -7,22 +7,25 @@
 	"scripts": {
 		"backfill:facts": "bun scripts/backfill-empty-facts.ts",
 		"backfill:images": "bun scripts/backfill-brand-images.ts",
+		"build": "eve build",
+		"check-types": "tsc --noEmit",
+		"clean": "rm -rf .turbo .eve node_modules",
 		"dev": "eve dev",
 		"dev:headless": "eve dev --no-ui",
 		"dispatch": "curl -fsS -X POST \"${AGENT_URL:-http://127.0.0.1:2000}/eve/v1/dev/schedules/dispatch\"",
-		"build": "eve build",
-		"start": "bun scripts/start.ts",
-		"check-types": "tsc --noEmit",
-		"test": "CRM_TELEMETRY_DISABLED=1 bun test",
 		"eval": "CRM_TELEMETRY_DISABLED=1 eve eval",
 		"lint": "biome check .",
-		"clean": "rm -rf .turbo .eve node_modules"
+		"scan:egress": "bun scripts/scan-trace-egress.ts",
+		"start": "bun scripts/start.ts",
+		"test": "CRM_TELEMETRY_DISABLED=1 bun test"
 	},
 	"dependencies": {
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"@crm/telemetry": "workspace:*",
 		"@crm/validation": "workspace:*",
+		"@inference/tracing": "^0.1.11",
+		"@opentelemetry/api": "^1.9.1",
 		"context.dev": "2.10.0",
 		"eve": "^0.29.4",
 		"zod": "^4.4.3"
