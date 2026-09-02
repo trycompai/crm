@@ -174,8 +174,12 @@ imports nothing, Calendar reads from `now`, and Outlook records `now` as its cur
 **`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
 `/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is
 kept as an alias of the first, so an existing deployment's cron does not break on
-deploy. **Crons live in `apps/api/vercel.json`** — mailboxes `*/5 * * * *`, rates
-daily. Minute-level schedules need a Pro plan; on Hobby it silently becomes daily.
+deploy. **Crons live in `apps/api/vercel.json`**, and `build-func.mjs` copies them
+into the Build Output config, so that file is the only place to edit. Every cron
+there, and the agent's `schedules/dispatch.ts`, runs **once a day**: Vercel's Hobby
+plan rejects the build for anything more frequent. On Pro, mailboxes can go back to
+`*/5 * * * *` and the dispatch to `* * * * *`; the API's poke covers new tasks
+between ticks either way.
 
 Deliberate absences: **no `GOOGLE_SYNC_ENABLED`** (a switch that can disable a mandatory
 feature is only ever wrong), **no `GOOGLE_WORKSPACE_DOMAIN`** (`ALLOWED_SIGN_IN` already
