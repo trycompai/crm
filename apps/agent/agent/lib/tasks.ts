@@ -79,7 +79,7 @@ export async function retireExhausted(
 		UPDATE "agentTask" AS t
 		SET "finishedAt" = ${now},
 			"outcome" = ${RETIRED_OUTCOME}
-		WHERE t.id IN (
+		FROM (
 			SELECT c.id
 			FROM "agentTask" AS c
 			WHERE c."finishedAt" IS NULL
@@ -88,7 +88,8 @@ export async function retireExhausted(
 			ORDER BY c."dueAt" ASC
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
-		)
+		) AS exhausted
+		WHERE t.id = exhausted.id
 		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind;
 	`;
 }
