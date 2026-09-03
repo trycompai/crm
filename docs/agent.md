@@ -228,13 +228,23 @@ page, the LEI as a company field when there is one, then the same `brand` and
 `company-profile` tasks `companyCreated` queues on the API side. `add_company`
 requires a source; a company without one cannot be created by the agent.
 
-### Work email is a provider, never a guess
+### Contact details come from a provider, never a guess
 
-`lib/hunter.ts` (`HUNTER_API_KEY`) finds an address from a name and an employer
-domain and hands back the public pages it was seen on. `find_work_email` fills
-the email only when the record has none, and always writes the candidate, its
-score and its sources to the timeline. Below `HUNTER.minScore` nothing is
-written: a pattern guess is worse than a blank.
+`lib/contact-details.ts` is the registry: one `Provider` contract, one
+`fetchJson` that parses every response with Zod at the boundary, and
+`lookupContactDetails`, which asks the configured providers in
+`CONTACT_DETAILS.order` and stops at the first answer above
+`CONTACT_DETAILS.minConfidence`. The providers are one file each — `hunter.ts`,
+`apollo.ts`, `lusha.ts`, `dropcontact.ts`, `zoominfo.ts` — and every one is off
+without its key. Confidence is the provider's own signal mapped to one scale:
+Hunter's score, Apollo's verification status, Lusha's email type, Dropcontact's
+qualification, a ZoomInfo match.
+
+`find_contact_details` fills the email and the phone only where the record has
+none, and always writes the candidate, its confidence and its source to the
+timeline: the public pages when the provider has them (Hunter), the provider
+and its record id otherwise. A blank beats a pattern guess, so nothing is
+written below the threshold.
 
 ### The GLEIF register needs no key
 

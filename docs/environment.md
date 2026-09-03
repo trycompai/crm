@@ -119,7 +119,11 @@ single place that knows what is set.
 | Variable | What it adds |
 | --- | --- |
 | `PERPLEXITY_API_KEY` | Open-web research with citations; finds a LinkedIn slug |
-| `HUNTER_API_KEY` | A work email from name plus employer domain, with the pages it was seen on; a deliverability check |
+| `HUNTER_API_KEY` | Contact details: a work email with the pages it was seen on; a deliverability check |
+| `APOLLO_API_KEY` | Contact details: work email with verification status, title, work phone |
+| `LUSHA_API_KEY` | Contact details: work email, direct and mobile phones, title |
+| `DROPCONTACT_API_KEY` | Contact details: work email with qualification, phone, title; asynchronous |
+| `ZOOMINFO_USERNAME` + `ZOOMINFO_PASSWORD` | Contact details from ZoomInfo; a pair, both or neither |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |

@@ -1,7 +1,13 @@
 import { z } from "zod";
-import { HUNTER } from "./hunter-config";
-
-export type Outcome<T> = { ok: true; data: T } | { ok: false; reason: string };
+import {
+	type ContactDetails,
+	fetchJson,
+	keyed,
+	type Outcome,
+	type Person,
+	type Provider,
+} from "./contact-details";
+import { CONTACT_DETAILS } from "./contact-details-config";
 
 export const HUNTER_API_KEY = "HUNTER_API_KEY";
 
@@ -15,9 +21,8 @@ const finder = z.object({
 	data: z.object({
 		email: z.string().trim().email().nullable(),
 		score: z.number().nullable().optional(),
-		first_name: z.string().nullable().optional(),
-		last_name: z.string().nullable().optional(),
 		position: z.string().nullable().optional(),
+		linkedin_url: z.string().nullable().optional(),
 		sources: z.array(source).nullable().optional(),
 	}),
 });
@@ -29,81 +34,35 @@ const verifier = z.object({
 	}),
 });
 
-export type EmailSource = {
-	url: string;
-	domain: string | null;
-	seenOn: string | null;
-};
-
-export type WorkEmail = {
-	email: string | null;
-	score: number;
-	position: string | null;
-	sources: EmailSource[];
-};
-
 export type Verification = { status: string; score: number | null };
 
 export function hunterEnabled(): boolean {
-	return Boolean(process.env[HUNTER_API_KEY]?.trim());
+	return keyed(HUNTER_API_KEY)();
 }
 
-async function request<Shape extends z.ZodTypeAny>(
-	path: string,
-	query: Record<string, string | undefined>,
-	shape: Shape,
-): Promise<Outcome<z.infer<Shape>>> {
-	const apiKey = process.env[HUNTER_API_KEY]?.trim();
-	if (!apiKey) return { ok: false, reason: `No ${HUNTER_API_KEY}.` };
-
-	const url = new URL(`${HUNTER.api.baseUrl}${path}`);
+function endpoint(path: string, query: Record<string, string>): URL {
+	const url = new URL(`${CONTACT_DETAILS.hunter.baseUrl}${path}`);
 	for (const [key, value] of Object.entries(query)) {
-		if (value !== undefined) url.searchParams.set(key, value);
+		url.searchParams.set(key, value);
 	}
-	url.searchParams.set("api_key", apiKey);
-
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), HUNTER.api.timeoutMs);
-
-	try {
-		const response = await fetch(url, { signal: controller.signal });
-		if (!response.ok) return { ok: false, reason: `HTTP ${response.status}` };
-
-		const parsed = shape.safeParse(await response.json());
-		return parsed.success
-			? { ok: true, data: parsed.data }
-			: {
-					ok: false,
-					reason: `Unreadable Hunter response: ${parsed.error.message}`,
-				};
-	} catch (error) {
-		const aborted = error instanceof Error && error.name === "AbortError";
-		return {
-			ok: false,
-			reason: aborted
-				? `Hunter timed out after ${HUNTER.api.timeoutMs}ms.`
-				: error instanceof Error
-					? error.message
-					: String(error),
-		};
-	} finally {
-		clearTimeout(timer);
-	}
+	url.searchParams.set("api_key", process.env[HUNTER_API_KEY]?.trim() ?? "");
+	return url;
 }
 
-export async function findWorkEmail(input: {
-	firstName: string;
-	lastName: string;
-	domain: string;
-}): Promise<Outcome<WorkEmail>> {
-	const response = await request(
-		"/email-finder",
-		{
-			domain: input.domain.trim().toLowerCase(),
-			first_name: input.firstName.trim(),
-			last_name: input.lastName.trim(),
-		},
+export async function findWorkEmail(
+	person: Person,
+): Promise<Outcome<ContactDetails>> {
+	if (!hunterEnabled()) return { ok: false, reason: `No ${HUNTER_API_KEY}.` };
+
+	const response = await fetchJson(
+		endpoint("/email-finder", {
+			domain: person.domain.trim().toLowerCase(),
+			first_name: person.firstName.trim(),
+			last_name: person.lastName.trim(),
+		}),
+		{},
 		finder,
+		"Hunter",
 	);
 	if (!response.ok) return response;
 
@@ -111,14 +70,20 @@ export async function findWorkEmail(input: {
 	return {
 		ok: true,
 		data: {
+			provider: "hunter",
 			email: data.email,
-			score: data.score ?? 0,
-			position: data.position ?? null,
-			sources: (data.sources ?? []).slice(0, HUNTER.maxSources).map((s) => ({
-				url: s.uri,
-				domain: s.domain ?? null,
-				seenOn: s.extracted_on ?? null,
-			})),
+			confidence: data.score ?? 0,
+			phones: [],
+			title: data.position ?? null,
+			linkedinUrl: data.linkedin_url ?? null,
+			sources: (data.sources ?? [])
+				.slice(0, CONTACT_DETAILS.maxSources)
+				.map((s) => ({
+					url: s.uri,
+					domain: s.domain ?? null,
+					seenOn: s.extracted_on ?? null,
+				})),
+			reference: null,
 		},
 	};
 }
@@ -126,10 +91,13 @@ export async function findWorkEmail(input: {
 export async function verifyEmail(
 	email: string,
 ): Promise<Outcome<Verification>> {
-	const response = await request(
-		"/email-verifier",
-		{ email: email.trim().toLowerCase() },
+	if (!hunterEnabled()) return { ok: false, reason: `No ${HUNTER_API_KEY}.` };
+
+	const response = await fetchJson(
+		endpoint("/email-verifier", { email: email.trim().toLowerCase() }),
+		{},
 		verifier,
+		"Hunter",
 	);
 	if (!response.ok) return response;
 
@@ -141,3 +109,11 @@ export async function verifyEmail(
 		},
 	};
 }
+
+export const hunter: Provider = {
+	id: "hunter",
+	label: "Hunter",
+	keys: [HUNTER_API_KEY],
+	enabled: hunterEnabled,
+	find: findWorkEmail,
+};

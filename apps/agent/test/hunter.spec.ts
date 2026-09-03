@@ -10,6 +10,13 @@ const realFetch = globalThis.fetch;
 const savedKey = process.env[HUNTER_API_KEY];
 const requested: string[] = [];
 
+const ADA = {
+	firstName: "Ada",
+	lastName: "Lovelace",
+	domain: "Example.com",
+	companyName: "Example",
+};
+
 function replies(status: number, json: string) {
 	globalThis.fetch = (async (input: URL | RequestInfo) => {
 		requested.push(String(input instanceof Request ? input.url : input));
@@ -44,17 +51,13 @@ describe("findWorkEmail", () => {
 	it("refuses without a key, before any request", async () => {
 		delete process.env[HUNTER_API_KEY];
 
-		const result = await findWorkEmail({
-			firstName: "Ada",
-			lastName: "Lovelace",
-			domain: "example.com",
-		});
+		const result = await findWorkEmail(ADA);
 
 		expect(result.ok).toBe(false);
 		expect(requested).toHaveLength(0);
 	});
 
-	it("returns the address, its score and the pages it was seen on", async () => {
+	it("returns the address, its confidence and the pages it was seen on", async () => {
 		replies(
 			200,
 			JSON.stringify({
@@ -78,16 +81,14 @@ describe("findWorkEmail", () => {
 			}),
 		);
 
-		const result = await findWorkEmail({
-			firstName: "Ada",
-			lastName: "Lovelace",
-			domain: "Example.com",
-		});
+		const result = await findWorkEmail(ADA);
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
+		expect(result.data.provider).toBe("hunter");
 		expect(result.data.email).toBe("ada.lovelace@example.com");
-		expect(result.data.score).toBe(92);
+		expect(result.data.confidence).toBe(92);
+		expect(result.data.title).toBe("CTO");
 		expect(result.data.sources.map((s) => s.url)).toEqual([
 			"https://example.com/team",
 			"https://news.test/ada",
@@ -105,26 +106,27 @@ describe("findWorkEmail", () => {
 			JSON.stringify({ data: { email: null, score: null, sources: [] } }),
 		);
 
-		const result = await findWorkEmail({
-			firstName: "Ada",
-			lastName: "Lovelace",
-			domain: "example.com",
-		});
+		const result = await findWorkEmail(ADA);
 
 		expect(result).toEqual({
 			ok: true,
-			data: { email: null, score: 0, position: null, sources: [] },
+			data: {
+				provider: "hunter",
+				email: null,
+				confidence: 0,
+				phones: [],
+				title: null,
+				linkedinUrl: null,
+				sources: [],
+				reference: null,
+			},
 		});
 	});
 
 	it("reports an HTTP failure as a reason", async () => {
 		replies(429, JSON.stringify({ errors: [] }));
 
-		const result = await findWorkEmail({
-			firstName: "Ada",
-			lastName: "Lovelace",
-			domain: "example.com",
-		});
+		const result = await findWorkEmail(ADA);
 
 		expect(result).toEqual({ ok: false, reason: "HTTP 429" });
 	});
