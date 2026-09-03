@@ -240,11 +240,25 @@ without its key. Confidence is the provider's own signal mapped to one scale:
 Hunter's score, Apollo's verification status, Lusha's email type, Dropcontact's
 qualification, a ZoomInfo match.
 
+`website.ts` is the last provider and needs no key: it reads the employer's own
+site — the paths in `CONTACT_DETAILS.website.paths`, fetched together, after
+`robots.txt`, with a named user agent, a short timeout and a size cap — and
+looks for the person by name. An address on the domain whose local part is a
+form of the name (`ada.lovelace`, `alovelace`, `lovelacea`) is the answer at
+`confidence.named`; a surname-only address counts when the same page names the
+person; a `tel:` link on a site that names the person is the switchboard, typed
+`main`, at `confidence.phoneOnly`. A `linkedin.com/in/` link is reported only
+when the site itself labels it with the person's name — the site is read, never
+LinkedIn. Nothing is charged for it. The sources are the pages the address was
+seen on, with the day it was read, so the timeline entry reads the same as
+Hunter's.
+
 `find_contact_details` fills the email and the phone only where the record has
 none, and always writes the candidate, its confidence and its source to the
-timeline: the public pages when the provider has them (Hunter), the provider
-and its record id otherwise. A blank beats a pattern guess, so nothing is
-written below the threshold.
+timeline: the public pages when the provider has them (Hunter, the website),
+the provider and its record id otherwise. A blank beats a pattern guess, so
+nothing is written below the threshold. One unit is charged when a keyed
+provider is configured; a website-only lookup is free.
 
 ### The GLEIF register needs no key
 
