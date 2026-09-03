@@ -59,17 +59,24 @@ corners. The rules:
 - **Expect blanks.** Ten to twenty percent of group leaders and far more
   local ones have no public profile. Do not fill the gap.
 
-Contact details (email, phone) come only from a provider that carries the
-compliance of the source, never from a page you read. If none is configured,
-stop at name, title and public profile.
+Contact details come only from a provider that carries the compliance of the
+source, never from a page you read. `find_work_email` is that provider when
+`HUNTER_API_KEY` is set: it returns the address with the public pages it was
+seen on and writes them to the contact's timeline. Without it, stop at name,
+title and public profile.
 
 ## 5. Deliver
 
 Write the list as a table: parent, LEI, target legal name, country, city,
 leader, title, profile URL, source. Then the counts: parents scanned,
-targets found, leaders found, leaders without a public profile. A target
-already in the CRM (`search_crm` by name) is marked as such rather than
-duplicated.
+targets found, leaders found, leaders without a public profile.
+
+When the rep wants targets in the CRM, `add_company` each one with its LEI
+and the GLEIF record as the source (`https://search.gleif.org/#/record/<LEI>`).
+The tool returns the existing company when there is one, so a target already
+in the CRM is never duplicated. The company's brand and profile enrichment
+queue up on their own; the leaders you found go on as contacts through the
+usual `record_fact` path, with their sources.
 
 ## Quality checks before handing over
 

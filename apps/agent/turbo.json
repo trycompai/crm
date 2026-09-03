@@ -20,6 +20,7 @@
 				"BLOB_READ_WRITE_TOKEN",
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
+				"HUNTER_API_KEY",
 				"PERPLEXITY_API_KEY"
 			]
 		},
@@ -33,6 +34,7 @@
 				"BLOB_READ_WRITE_TOKEN",
 				"DATABASE_URL",
 				"GITHUB_TOKEN",
+				"HUNTER_API_KEY",
 				"PERPLEXITY_API_KEY"
 			]
 		},

@@ -63,6 +63,8 @@ const VERBS: ToolVerbs = {
 	search_crm: "Looked the record up in the CRM",
 	resolve_linkedin_profile: "Searched for their LinkedIn profile",
 	get_linkedin_profile: "Read a LinkedIn profile",
+	add_company: "Added a company to the CRM",
+	find_work_email: "Looked up a work email address",
 	gleif_search_entities: "Searched the GLEIF register for a company",
 	gleif_get_entity: "Read a company's GLEIF record",
 	gleif_list_subsidiaries: "Listed a group's subsidiaries from GLEIF",
