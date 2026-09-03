@@ -5,7 +5,7 @@ export const CONTACT_DETAILS = {
 	timeoutMs: 20 * SECOND_MS,
 	minConfidence: 50,
 	maxSources: 5,
-	order: ["hunter", "apollo", "lusha", "dropcontact", "zoominfo"],
+	order: ["hunter", "apollo", "lusha", "dropcontact", "zoominfo", "website"],
 
 	hunter: {
 		baseUrl: "https://api.hunter.io/v2",
@@ -32,5 +32,25 @@ export const CONTACT_DETAILS = {
 		baseUrl: "https://api.zoominfo.com",
 		tokenTtlMs: 55 * MINUTE_MS,
 		confidence: { matched: 80 },
+	},
+
+	website: {
+		paths: [
+			"/",
+			"/contact",
+			"/team",
+			"/about",
+			"/equipe",
+			"/notre-equipe",
+			"/a-propos",
+			"/mentions-legales",
+			"/legal",
+			"/impressum",
+		],
+		maxPages: 8,
+		maxBytes: 512 * 1024,
+		timeoutMs: 6 * SECOND_MS,
+		userAgent: "crm-contact-lookup/1 (+https://github.com/trycompai/crm)",
+		confidence: { named: 75, phoneOnly: 40 },
 	},
 } as const;

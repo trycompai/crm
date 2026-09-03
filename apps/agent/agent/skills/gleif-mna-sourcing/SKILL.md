@@ -59,11 +59,12 @@ corners. The rules:
 - **Expect blanks.** Ten to twenty percent of group leaders and far more
   local ones have no public profile. Do not fill the gap.
 
-Contact details come only from a provider that carries the compliance of the
-source, never from a page you read. `find_contact_details` asks the configured
-providers (Hunter, Apollo, Lusha, Dropcontact, ZoomInfo) in order and writes
-the answer, its confidence and its source to the contact's timeline. Without
-any of them, stop at name, title and public profile.
+Contact details come only from `find_contact_details`, never from a page you
+read yourself. It asks the configured providers (Hunter, Apollo, Lusha,
+Dropcontact, ZoomInfo) in order, then the target's own website — contact, team
+and legal pages, under its `robots.txt` — and writes the answer, its confidence
+and its source to the contact's timeline. When it returns nothing, stop at
+name, title and public profile.
 
 ## 5. Deliver
 

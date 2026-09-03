@@ -129,6 +129,10 @@ single place that knows what is set.
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
 
+The employer's own website is a contact-details source with no variable at all:
+`find_contact_details` reads it after the keyed providers, under its `robots.txt`,
+and charges nothing for it. `agent.md` has the rules.
+
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
 because the API and the seed write pictures too. The Next.js app is deliberately
 excluded — recognising our URL for the image optimizer needs no token.

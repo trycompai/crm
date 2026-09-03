@@ -21,20 +21,13 @@ function describeSources(details: ContactDetails): string {
 
 export default defineTool({
 	description:
-		"Find a contact's work email and phone from their name and their employer's domain, through the configured contact-data providers in order (Hunter, Apollo, Lusha, Dropcontact, ZoomInfo), stopping at the first confident answer. Fills the email and phone only where the record has none, and always writes the candidate, its confidence and its source to the contact's timeline. Without any provider key the tool says so and nothing is charged.",
+		"Find a contact's work email and phone from their name and their employer's domain: the configured contact-data providers first (Hunter, Apollo, Lusha, Dropcontact, ZoomInfo), then the employer's own website (contact, team and legal pages), stopping at the first confident answer. Fills the email and phone only where the record has none, and always writes the candidate, its confidence and its source to the contact's timeline. A website read costs nothing; a provider call costs one unit.",
 	inputSchema: z.object({
 		contactId: z.string(),
 	}),
 	async execute({ contactId }) {
 		const providers = configuredProviders(CONTACT_DETAILS_PROVIDERS);
-		if (providers.length === 0) {
-			return {
-				ok: false as const,
-				configured: false as const,
-				reason:
-					"No contact-data provider is configured on this install (HUNTER_API_KEY, APOLLO_API_KEY, LUSHA_API_KEY, DROPCONTACT_API_KEY or ZOOMINFO_USERNAME with ZOOMINFO_PASSWORD). This is not a failure and retrying will not help — say in your write-up that contact details could not be checked.",
-			};
-		}
+		const metered = providers.some((provider) => provider.keys.length > 0);
 
 		focusOn({ contactId });
 
@@ -71,8 +64,10 @@ export default defineTool({
 			};
 		}
 
-		const charge = spend(1);
-		if (!charge.ok) return { ok: false as const, reason: charge.reason };
+		if (metered) {
+			const charge = spend(1);
+			if (!charge.ok) return { ok: false as const, reason: charge.reason };
+		}
 
 		const lookup = await lookupContactDetails(
 			{
@@ -94,7 +89,7 @@ export default defineTool({
 				phones: [],
 				tried: lookup.tried,
 				reasons: lookup.reasons,
-				note: "No provider has an address it trusts for this person. Leave the email blank rather than guessing a pattern.",
+				note: "No provider has an address it trusts for this person, and the employer's website does not name them. Leave the email blank rather than guessing a pattern.",
 			};
 		}
 
