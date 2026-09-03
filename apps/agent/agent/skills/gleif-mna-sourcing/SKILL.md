@@ -60,10 +60,10 @@ corners. The rules:
   local ones have no public profile. Do not fill the gap.
 
 Contact details come only from a provider that carries the compliance of the
-source, never from a page you read. `find_work_email` is that provider when
-`HUNTER_API_KEY` is set: it returns the address with the public pages it was
-seen on and writes them to the contact's timeline. Without it, stop at name,
-title and public profile.
+source, never from a page you read. `find_contact_details` asks the configured
+providers (Hunter, Apollo, Lusha, Dropcontact, ZoomInfo) in order and writes
+the answer, its confidence and its source to the contact's timeline. Without
+any of them, stop at name, title and public profile.
 
 ## 5. Deliver
 
