@@ -139,7 +139,8 @@ up, every response is JSON that the CRM parses with Zod
 (`packages/validation/src/edgar.ts`) before use, and a missing URL turns the
 capability off without an error. Only the routes are SEC-specific. The same shape
 works for a service on another machine or in a Google Colab notebook behind a
-tunnel; `services/edgar/README.md` shows both. `EDGAR_IDENTITY` is read by the
+tunnel; `services/edgar/README.md` shows both. The Next.js app reads the same two
+variables for its Research → SEC page, so they are in `apps/app/turbo.json` too. `EDGAR_IDENTITY` is read by the
 service alone: the SEC requires every automated client to name a contact email.
 
 The employer's own website is a contact-details source with no variable at all:
