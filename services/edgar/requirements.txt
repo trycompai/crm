@@ -1,0 +1,4 @@
+edgartools==5.56.0
+fastapi==0.141.1
+uvicorn[standard]==0.41.0
+pydantic>=2.9

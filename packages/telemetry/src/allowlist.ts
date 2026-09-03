@@ -115,6 +115,7 @@ export function permitted(
 
 export const AGENT_TOOLS = [
 	"add_company",
+	"add_contact",
 	"agent",
 	"archive_field",
 	"enrich_company",
@@ -141,6 +142,14 @@ export const AGENT_TOOLS = [
 	"resolve_linkedin_profile",
 	"schedule_recheck",
 	"search_crm",
+	"sec_compare_compensation",
+	"sec_get_company",
+	"sec_get_proxy",
+	"sec_list_filings",
+	"sec_list_insiders",
+	"sec_list_owners",
+	"sec_search_companies",
+	"sec_search_filings",
 	"set_chat_title",
 	"set_contact_socials",
 	"set_field_value",

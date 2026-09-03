@@ -4,7 +4,7 @@ import { createCompany } from "../lib/companies";
 
 export default defineTool({
 	description:
-		"Add a company to the CRM with the source it came from. Use it for a sourcing target or any company a rep asks for that search_crm cannot find. A company that already exists, by domain or by name in the same country, is returned rather than duplicated. The source is written to the company's timeline, a company.created event fires, and the brand and profile enrichment queue up on their own. Free.",
+		"Add a company to the CRM with the source it came from. Use it for a sourcing target or any company a rep asks for that search_crm cannot find. A company that already exists, by domain or by name in the same country, is returned rather than duplicated. The source is written to the company's timeline, a company.created event fires, and the brand and profile enrichment queue up on their own. A LEI, a CIK, a ticker and a SIC code are kept as custom fields. Free.",
 	inputSchema: z.object({
 		name: z
 			.string()
@@ -35,6 +35,33 @@ export default defineTool({
 			.length(20)
 			.optional()
 			.describe("The Legal Entity Identifier, when it came from GLEIF."),
+		cik: z
+			.string()
+			.trim()
+			.regex(/^\d{1,10}$/)
+			.optional()
+			.describe(
+				"The SEC Central Index Key, when it came from EDGAR. '320193'.",
+			),
+		ticker: z
+			.string()
+			.trim()
+			.min(1)
+			.max(6)
+			.optional()
+			.describe("The stock ticker of a listed company. 'AAPL'."),
+		sic: z
+			.string()
+			.trim()
+			.regex(/^\d{4}$/)
+			.optional()
+			.describe("The four-digit SIC code from the SEC profile. '3571'."),
+		stateCode: z
+			.string()
+			.trim()
+			.length(2)
+			.optional()
+			.describe("US state of the business address. 'CA'."),
 		source: z
 			.object({
 				label: z

@@ -8,10 +8,17 @@ reads once.
 
 ```sh
 cp .env.example .env        # fill DATABASE_URL, BETTER_AUTH_SECRET, ALLOWED_SIGN_IN
-docker compose up -d        # Postgres, matching .env.example
+docker compose up -d        # Postgres and the SEC EDGAR service, matching .env.example
 bun run db:migrate && bun run db:seed
 bun run dev                 # app :3000, api :3001, agent :2000
 ```
+
+`docker compose up -d` also builds `services/edgar`, the Python service behind the
+agent's `sec_*` tools, on port 2100. It needs `EDGAR_IDENTITY` in `.env` (the SEC
+asks every automated client for a contact email) and the CRM needs
+`EDGAR_URL=http://127.0.0.1:2100`. Leave both unset and the agent simply reports
+the source as unavailable. `services/edgar/README.md` covers running it on another
+machine or in Google Colab.
 
 Prisma from the repo root: `db:generate`, `db:migrate`, `db:push`, `db:reset`,
 `db:seed`, `db:studio`, `db:deploy`.

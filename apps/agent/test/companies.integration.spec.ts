@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { createCompany, LEI_FIELD_LABEL } from "../agent/lib/companies";
+import {
+	CIK_FIELD_LABEL,
+	createCompany,
+	LEI_FIELD_LABEL,
+	SIC_FIELD_LABEL,
+	TICKER_FIELD_LABEL,
+} from "../agent/lib/companies";
 
 const SUFFIX = "companies-spec";
 const SOURCE = {
@@ -21,7 +27,12 @@ async function clear() {
 	await db.fieldValue.deleteMany({ where: { companyId: { in: ids } } });
 	await db.company.deleteMany({ where: { id: { in: ids } } });
 	await db.fieldDefinition.deleteMany({
-		where: { entity: "COMPANY", label: LEI_FIELD_LABEL },
+		where: {
+			entity: "COMPANY",
+			label: {
+				in: [LEI_FIELD_LABEL, CIK_FIELD_LABEL, "Ticker", SIC_FIELD_LABEL],
+			},
+		},
 	});
 }
 
@@ -133,5 +144,42 @@ describe("createCompany", () => {
 
 		expect(second.created).toBe(false);
 		expect(second.id).toBe(first.id);
+	});
+
+	it("keeps the SEC identifiers as fields and reads a CIK as a US company", async () => {
+		const result = await createCompany({
+			name: `Apple ${SUFFIX}`,
+			website: "https://www.apple.com",
+			city: "Cupertino",
+			stateCode: "ca",
+			cik: "0000320193",
+			ticker: "aapl",
+			sic: "3571",
+			source: {
+				label: "SEC EDGAR",
+				url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=320193",
+			},
+		});
+
+		expect(result.created).toBe(true);
+		const company = await db.company.findUnique({ where: { id: result.id } });
+		expect(company?.countryCode).toBe("US");
+		expect(company?.stateCode).toBe("CA");
+
+		const values = await db.fieldValue.findMany({
+			where: { companyId: result.id },
+			select: { text: true, field: { select: { label: true } } },
+		});
+		const byLabel = Object.fromEntries(
+			values.map((value) => [value.field.label.toUpperCase(), value.text]),
+		);
+		expect(byLabel[CIK_FIELD_LABEL]).toBe("320193");
+		expect(byLabel[TICKER_FIELD_LABEL]).toBe("AAPL");
+		expect(byLabel[SIC_FIELD_LABEL]).toBe("3571");
+
+		const activity = await db.activity.findFirst({
+			where: { companyId: result.id },
+		});
+		expect(activity?.body).toContain("CIK 320193.");
 	});
 });
