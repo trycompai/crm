@@ -114,13 +114,18 @@ export function permitted(
 }
 
 export const AGENT_TOOLS = [
+	"add_company",
 	"agent",
 	"archive_field",
 	"enrich_company",
 	"fetch_contact_photo",
 	"find_contact_socials",
+	"find_work_email",
 	"get_contact_work_history",
 	"get_linkedin_profile",
+	"gleif_get_entity",
+	"gleif_list_subsidiaries",
+	"gleif_search_entities",
 	"identify_contact",
 	"list_deals",
 	"list_fields",

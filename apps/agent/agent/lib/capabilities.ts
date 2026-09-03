@@ -67,6 +67,12 @@ export function capabilitiesFrom(
 			enabled: contextDev !== null,
 		},
 		{
+			...fromEnv("HUNTER_API_KEY"),
+			label: "Work email lookup",
+			gives:
+				"a person's work email address from their name and their employer's domain, with the public pages Hunter saw it on, and a deliverability check on an address you already hold",
+		},
+		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:
