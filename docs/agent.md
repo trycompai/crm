@@ -259,6 +259,33 @@ child place are the targets, and the people who run them come from web research
 under the same egress rules as everything else — never a LinkedIn fetch, never an
 invented URL, one source per line.
 
+### SEC EDGAR comes from an external service
+
+`lib/edgar.ts` talks to `services/edgar`, a Python service on
+[edgartools](https://edgartools.readthedocs.io) that the CRM does not host: Docker
+Compose locally, a Colab notebook or another machine behind a tunnel elsewhere.
+`EDGAR_URL` names it, `EDGAR_SECRET` goes in the bearer header, and without the URL
+the capability is off and every `sec_*` tool answers `unavailable`. Every response
+is parsed with Zod at the boundary — the shapes live in
+`packages/validation/src/edgar.ts` because the app reads the same service — a 404
+is an empty answer, anything else non-2xx is a reason, never a throw. Limits and the
+timeout live in `lib/edgar-config.ts`.
+
+The eight `sec_*` tools are free: search companies, one company's profile, its
+filings, a full-text search across every filing, its 5%+ holders from Schedule
+13D/13G, its insider transactions from Forms 3/4/5, its latest proxy statement
+(DEF 14A: named executives with their pay, CEO pay and pay actually paid, pay
+versus performance, the holders the proxy lists, the proposals, the CEO pay ratio)
+and a CEO-pay comparison across tickers. Every row carries the filing URL, and
+that URL is the source the agent cites.
+
+`add_company` keeps a CIK, a ticker and a SIC code as custom fields the way it keeps
+a LEI, and a CIK implies `countryCode` US. **`add_contact` is the one agent-side
+contact write path**: an executive or a director named in a public document goes on
+as a contact of an existing company, with the source on the timeline and a
+`contact.created` event so the people pipeline runs; the email or the name on the
+same company dedupes. The `sec-us-research` skill is the method.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.

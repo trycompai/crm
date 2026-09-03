@@ -18,5 +18,23 @@ services:
       timeout: 5s
       retries: 20
 
+  edgar:
+    build: services/edgar
+    container_name: crm-edgar
+    restart: unless-stopped
+    environment:
+      EDGAR_IDENTITY: ${EDGAR_IDENTITY:-}
+      EDGAR_SECRET: ${EDGAR_SECRET:-}
+    ports:
+      - "2100:2100"
+    volumes:
+      - crm-edgar-cache:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2100/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
   crm-postgres:
+  crm-edgar-cache:

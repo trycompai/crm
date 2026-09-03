@@ -101,6 +101,12 @@ export function capabilitiesFrom(
 			),
 		},
 		{
+			...fromEnv("EDGAR_URL"),
+			label: "SEC EDGAR research",
+			gives:
+				"US public companies from SEC filings: profile, filings, 5%+ shareholders, insider transactions, the proxy statement with its executives and their pay, all free and with a filing URL to cite",
+		},
+		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:

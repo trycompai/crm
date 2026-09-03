@@ -128,6 +128,19 @@ single place that knows what is set.
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
+| `EDGAR_URL` + `EDGAR_SECRET` | SEC EDGAR research through `services/edgar`: profile, filings, 5%+ holders, insiders, proxy statement and executive pay |
+
+### External services
+
+`services/edgar` is the first **external service**: a process the CRM does not host,
+reached over HTTP with a bearer secret. The contract is generic — `EDGAR_URL` is the
+base, `EDGAR_SECRET` goes in `authorization: Bearer`, `GET /health` says whether it is
+up, every response is JSON that the CRM parses with Zod
+(`packages/validation/src/edgar.ts`) before use, and a missing URL turns the
+capability off without an error. Only the routes are SEC-specific. The same shape
+works for a service on another machine or in a Google Colab notebook behind a
+tunnel; `services/edgar/README.md` shows both. `EDGAR_IDENTITY` is read by the
+service alone: the SEC requires every automated client to name a contact email.
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
 because the API and the seed write pictures too. The Next.js app is deliberately

@@ -26,7 +26,9 @@
 				"DROPCONTACT_API_KEY",
 				"ZOOMINFO_USERNAME",
 				"ZOOMINFO_PASSWORD",
-				"PERPLEXITY_API_KEY"
+				"PERPLEXITY_API_KEY",
+				"EDGAR_URL",
+				"EDGAR_SECRET"
 			]
 		},
 		"dev:headless": {
@@ -45,7 +47,9 @@
 				"DROPCONTACT_API_KEY",
 				"ZOOMINFO_USERNAME",
 				"ZOOMINFO_PASSWORD",
-				"PERPLEXITY_API_KEY"
+				"PERPLEXITY_API_KEY",
+				"EDGAR_URL",
+				"EDGAR_SECRET"
 			]
 		},
 		/**
