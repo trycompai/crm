@@ -67,6 +67,46 @@ export function capabilitiesFrom(
 			enabled: contextDev !== null,
 		},
 		{
+			...fromEnv("HUNTER_API_KEY"),
+			label: "Contact details via Hunter",
+			gives:
+				"a person's work email from their name and their employer's domain, with the public pages Hunter saw it on, and a deliverability check on an address you already hold",
+		},
+		{
+			...fromEnv("APOLLO_API_KEY"),
+			label: "Contact details via Apollo",
+			gives:
+				"a person's work email with Apollo's verification status, their title and a work phone",
+		},
+		{
+			...fromEnv("LUSHA_API_KEY"),
+			label: "Contact details via Lusha",
+			gives: "a person's work email, direct and mobile phones and their title",
+		},
+		{
+			...fromEnv("DROPCONTACT_API_KEY"),
+			label: "Contact details via Dropcontact",
+			gives:
+				"a person's work email with its qualification, a phone and their title, from a GDPR-compliant source",
+		},
+		{
+			id: "ZOOMINFO_USERNAME",
+			from: "ZOOMINFO_USERNAME + ZOOMINFO_PASSWORD",
+			label: "Contact details via ZoomInfo",
+			gives:
+				"a person's work email, direct and mobile phones and their title from ZoomInfo's database",
+			enabled: Boolean(
+				process.env.ZOOMINFO_USERNAME?.trim() &&
+					process.env.ZOOMINFO_PASSWORD?.trim(),
+			),
+		},
+		{
+			...fromEnv("EDGAR_URL"),
+			label: "SEC EDGAR research",
+			gives:
+				"US public companies from SEC filings: profile, filings, 5%+ shareholders, insider transactions, the proxy statement with its executives and their pay, all free and with a filing URL to cite",
+		},
+		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:

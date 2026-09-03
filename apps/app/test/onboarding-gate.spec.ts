@@ -292,6 +292,16 @@ describe("proxy", () => {
 		).toBeNull();
 	});
 
+	it("leaves the SEC EDGAR proxy alone", async () => {
+		setup({ onboarded: false });
+
+		expect(
+			redirectedTo(
+				await proxy(request("/edgar/companies/search", [SESSION_COOKIE])),
+			),
+		).toBeNull();
+	});
+
 	it("fails open when the API is unreachable", async () => {
 		stub(async () => {
 			throw new Error("connect ECONNREFUSED");

@@ -219,6 +219,87 @@ missing key removes a place to look. **Never an error, never throws.**
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
+### The agent can add a company, and every one it adds names its source
+
+`lib/companies.ts` is the one write path: dedupe by domain then by name and
+country, the row, the `company.created` event task the API would have written,
+an `ENRICHMENT` activity that says where the company came from and links the
+page, the LEI as a company field when there is one, then the same `brand` and
+`company-profile` tasks `companyCreated` queues on the API side. `add_company`
+requires a source; a company without one cannot be created by the agent.
+
+### Contact details come from a provider, never a guess
+
+`lib/contact-details.ts` is the registry: one `Provider` contract, one
+`fetchJson` that parses every response with Zod at the boundary, and
+`lookupContactDetails`, which asks the configured providers in
+`CONTACT_DETAILS.order` and stops at the first answer above
+`CONTACT_DETAILS.minConfidence`. The providers are one file each — `hunter.ts`,
+`apollo.ts`, `lusha.ts`, `dropcontact.ts`, `zoominfo.ts` — and every one is off
+without its key. Confidence is the provider's own signal mapped to one scale:
+Hunter's score, Apollo's verification status, Lusha's email type, Dropcontact's
+qualification, a ZoomInfo match.
+
+`website.ts` is the last provider and needs no key: it reads the employer's own
+site — the paths in `CONTACT_DETAILS.website.paths`, fetched together, after
+`robots.txt`, with a named user agent, a short timeout and a size cap — and
+looks for the person by name. An address on the domain whose local part is a
+form of the name (`ada.lovelace`, `alovelace`, `lovelacea`) is the answer at
+`confidence.named`; a surname-only address counts when the same page names the
+person; a `tel:` link on a site that names the person is the switchboard, typed
+`main`, at `confidence.phoneOnly`. A `linkedin.com/in/` link is reported only
+when the site itself labels it with the person's name — the site is read, never
+LinkedIn. Nothing is charged for it. The sources are the pages the address was
+seen on, with the day it was read, so the timeline entry reads the same as
+Hunter's.
+
+`find_contact_details` fills the email and the phone only where the record has
+none, and always writes the candidate, its confidence and its source to the
+timeline: the public pages when the provider has them (Hunter, the website),
+the provider and its record id otherwise. A blank beats a pattern guess, so
+nothing is written below the threshold. One unit is charged when a keyed
+provider is configured; a website-only lookup is free.
+
+### The GLEIF register needs no key
+
+`lib/gleif.ts` reads the public GLEIF API — legal entities by name, one entity by
+LEI, the direct subsidiaries an entity consolidates — and is always on. The three
+`gleif_*` tools are free: no budget is charged. Every response is parsed with Zod
+at the boundary into `GleifEntity`; a shape the register does not promise is a
+failed outcome with a reason, never a throw. Region names (`UE`, `ASIE`) and the
+page cap live in `lib/gleif-config.ts`. The `gleif-mna-sourcing` skill is the
+method: a parent place and a child place make a scenario, subsidiaries in the
+child place are the targets, and the people who run them come from web research
+under the same egress rules as everything else — never a LinkedIn fetch, never an
+invented URL, one source per line.
+
+### SEC EDGAR comes from an external service
+
+`lib/edgar.ts` talks to `services/edgar`, a Python service on
+[edgartools](https://edgartools.readthedocs.io) that the CRM does not host: Docker
+Compose locally, a Colab notebook or another machine behind a tunnel elsewhere.
+`EDGAR_URL` names it, `EDGAR_SECRET` goes in the bearer header, and without the URL
+the capability is off and every `sec_*` tool answers `unavailable`. Every response
+is parsed with Zod at the boundary — the shapes live in
+`packages/validation/src/edgar.ts` because the app reads the same service — a 404
+is an empty answer, anything else non-2xx is a reason, never a throw. Limits and the
+timeout live in `lib/edgar-config.ts`.
+
+The eight `sec_*` tools are free: search companies, one company's profile, its
+filings, a full-text search across every filing, its 5%+ holders from Schedule
+13D/13G, its insider transactions from Forms 3/4/5, its latest proxy statement
+(DEF 14A: named executives with their pay, CEO pay and pay actually paid, pay
+versus performance, the holders the proxy lists, the proposals, the CEO pay ratio)
+and a CEO-pay comparison across tickers. Every row carries the filing URL, and
+that URL is the source the agent cites.
+
+`add_company` keeps a CIK, a ticker and a SIC code as custom fields the way it keeps
+a LEI, and a CIK implies `countryCode` US. **`add_contact` is the one agent-side
+contact write path**: an executive or a director named in a public document goes on
+as a contact of an existing company, with the source on the timeline and a
+`contact.created` event so the people pipeline runs; the email or the name on the
+same company dedupes. The `sec-us-research` skill is the method.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.

@@ -42,11 +42,7 @@ export async function claimDue(
 	const onlyMode = "only" in kinds;
 
 	const claimed = await db.$queryRaw<LeasedTask[]>`
-		UPDATE "agentTask" AS t
-		SET "leasedUntil" = ${until},
-			"startedAt" = COALESCE(t."startedAt", ${now}),
-			"attempts" = t."attempts" + 1
-		FROM (
+		WITH due AS MATERIALIZED (
 			SELECT t2.id FROM "agentTask" AS t2
 			WHERE t2."finishedAt" IS NULL
 				AND t2."dueAt" <= ${now}
@@ -59,7 +55,12 @@ export async function claimDue(
 			ORDER BY t2."priority" DESC, t2."dueAt" ASC
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
-		) AS due
+		)
+		UPDATE "agentTask" AS t
+		SET "leasedUntil" = ${until},
+			"startedAt" = COALESCE(t."startedAt", ${now}),
+			"attempts" = t."attempts" + 1
+		FROM due
 		WHERE t.id = due.id
 		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind, t.reason, t.payload,
 			t.budget, t.attempts, t.priority, t."dueAt";
@@ -76,10 +77,7 @@ export async function retireExhausted(
 	const now = new Date();
 
 	return db.$queryRaw<TaskSubject[]>`
-		UPDATE "agentTask" AS t
-		SET "finishedAt" = ${now},
-			"outcome" = ${RETIRED_OUTCOME}
-		WHERE t.id IN (
+		WITH exhausted AS MATERIALIZED (
 			SELECT c.id
 			FROM "agentTask" AS c
 			WHERE c."finishedAt" IS NULL
@@ -89,6 +87,11 @@ export async function retireExhausted(
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
 		)
+		UPDATE "agentTask" AS t
+		SET "finishedAt" = ${now},
+			"outcome" = ${RETIRED_OUTCOME}
+		FROM exhausted
+		WHERE t.id = exhausted.id
 		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind;
 	`;
 }

@@ -190,7 +190,24 @@ describe("retireExhausted", () => {
 		}
 
 		for (let pass = 0; pass < 3; pass++) {
-			expect((await retireExhausted(2)).length).toBeLessThanOrEqual(2);
+			const retired = await retireExhausted(2);
+			if (retired.length > 2) {
+				const rows = await db.agentTask.findMany({
+					where: { id: { in: retired.map((task) => task.id) } },
+					select: {
+						id: true,
+						kind: true,
+						attempts: true,
+						leasedUntil: true,
+						finishedAt: true,
+						outcome: true,
+					},
+				});
+				throw new Error(
+					`retireExhausted(2) returned ${retired.length} rows on pass ${pass}: ${JSON.stringify({ retired, rows, mine })}`,
+				);
+			}
+			expect(retired.length).toBeLessThanOrEqual(2);
 		}
 
 		const open = await db.agentTask.count({

@@ -43,8 +43,15 @@ the three that is genuinely optional on its own — set it to your tenant's GUID
 refuse other tenants at Microsoft instead of at `ALLOWED_SIGN_IN`. There is **no
 Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
 
-**Neither pair is required, but an install wants one of them or an SSO provider** —
-with none, the sign-in page says so by name rather than rendering nothing.
+**`PASSWORD_SIGN_IN="true"`** adds an email + password form to the sign-in page
+(`emailAndPassword` in `auth.ts`). Sign-up goes through the same
+`user.create.before` hook as the social providers, so only an address that passes
+`ALLOWED_SIGN_IN` can create an account. Off by default; only the literal `true`
+turns it on.
+
+**Neither pair is required, but an install wants one of them, a password form, or
+an SSO provider** — with none, the sign-in page says so by name rather than
+rendering nothing.
 
 **`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
@@ -112,10 +119,33 @@ single place that knows what is set.
 | Variable | What it adds |
 | --- | --- |
 | `PERPLEXITY_API_KEY` | Open-web research with citations; finds a LinkedIn slug |
+| `HUNTER_API_KEY` | Contact details: a work email with the pages it was seen on; a deliverability check |
+| `APOLLO_API_KEY` | Contact details: work email with verification status, title, work phone |
+| `LUSHA_API_KEY` | Contact details: work email, direct and mobile phones, title |
+| `DROPCONTACT_API_KEY` | Contact details: work email with qualification, phone, title; asynchronous |
+| `ZOOMINFO_USERNAME` + `ZOOMINFO_PASSWORD` | Contact details from ZoomInfo; a pair, both or neither |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
+| `EDGAR_URL` + `EDGAR_SECRET` | SEC EDGAR research through `services/edgar`: profile, filings, 5%+ holders, insiders, proxy statement and executive pay |
+
+### External services
+
+`services/edgar` is the first **external service**: a process the CRM does not host,
+reached over HTTP with a bearer secret. The contract is generic — `EDGAR_URL` is the
+base, `EDGAR_SECRET` goes in `authorization: Bearer`, `GET /health` says whether it is
+up, every response is JSON that the CRM parses with Zod
+(`packages/validation/src/edgar.ts`) before use, and a missing URL turns the
+capability off without an error. Only the routes are SEC-specific. The same shape
+works for a service on another machine or in a Google Colab notebook behind a
+tunnel; `services/edgar/README.md` shows both. The Next.js app reads the same two
+variables for its Research → SEC page, so they are in `apps/app/turbo.json` too. `EDGAR_IDENTITY` is read by the
+service alone: the SEC requires every automated client to name a contact email.
+
+The employer's own website is a contact-details source with no variable at all:
+`find_contact_details` reads it after the keyed providers, under its `robots.txt`,
+and charges nothing for it. `agent.md` has the rules.
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
 because the API and the seed write pictures too. The Next.js app is deliberately
@@ -174,8 +204,12 @@ imports nothing, Calendar reads from `now`, and Outlook records `now` as its cur
 **`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
 `/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is
 kept as an alias of the first, so an existing deployment's cron does not break on
-deploy. **Crons live in `apps/api/vercel.json`** — mailboxes `*/5 * * * *`, rates
-daily. Minute-level schedules need a Pro plan; on Hobby it silently becomes daily.
+deploy. **Crons live in `apps/api/vercel.json`**, and `build-func.mjs` copies them
+into the Build Output config, so that file is the only place to edit. Every cron
+there, and the agent's `schedules/dispatch.ts`, runs **once a day**: Vercel's Hobby
+plan rejects the build for anything more frequent. On Pro, mailboxes can go back to
+`*/5 * * * *` and the dispatch to `* * * * *`; the API's poke covers new tasks
+between ticks either way.
 
 Deliberate absences: **no `GOOGLE_SYNC_ENABLED`** (a switch that can disable a mandatory
 feature is only ever wrong), **no `GOOGLE_WORKSPACE_DOMAIN`** (`ALLOWED_SIGN_IN` already
