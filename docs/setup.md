@@ -18,7 +18,8 @@ agent's `sec_*` tools, on port 2100. It needs `EDGAR_IDENTITY` in `.env` (the SE
 asks every automated client for a contact email) and the CRM needs
 `EDGAR_URL=http://127.0.0.1:2100`. Leave both unset and the agent simply reports
 the source as unavailable. `services/edgar/README.md` covers running it on another
-machine or in Google Colab.
+machine (`services/edgar/tunnel.sh` starts it behind a Cloudflare tunnel and prints
+the two variables to set) or in Google Colab.
 
 Prisma from the repo root: `db:generate`, `db:migrate`, `db:push`, `db:reset`,
 `db:seed`, `db:studio`, `db:deploy`.

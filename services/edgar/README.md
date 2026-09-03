@@ -53,6 +53,17 @@ edgartools itself.
 
 ## Run it on another machine
 
+One command does everything below — build or venv, secret, service, tunnel —
+and prints the two variables to paste into the CRM:
+
+```sh
+EDGAR_IDENTITY="Jane Doe jane@example.com" services/edgar/tunnel.sh
+```
+
+It needs Docker (or Python 3.11+) and
+[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+`EDGAR_RUNTIME=python` forces the venv path when Docker is present. By hand:
+
 ```sh
 cd services/edgar
 python -m venv .venv && . .venv/bin/activate
