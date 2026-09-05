@@ -189,7 +189,7 @@ Written up where the work happens, not in a style guide:
 
 ## Quick start
 
-You need [Bun](https://bun.com) and Docker.
+You need [Bun](https://bun.com), [Node.js](https://nodejs.org) 24 or newer, and Docker. Bun runs the API and the scripts; Next.js and the eve agent run on Node.
 
 ```sh
 git clone https://github.com/trycompai/crm.git && cd crm
