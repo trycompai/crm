@@ -9,7 +9,16 @@ import {
 	unavailable,
 } from "../agent/lib/capabilities";
 
-const KEYS = ["PERPLEXITY_API_KEY", "BLOB_READ_WRITE_TOKEN"] as const;
+const KEYS = [
+	"PERPLEXITY_API_KEY",
+	"BLOB_READ_WRITE_TOKEN",
+	"QUICKBOOKS_ENABLED",
+	"QUICKBOOKS_CLIENT_ID",
+	"QUICKBOOKS_CLIENT_SECRET",
+	"QUICKBOOKS_REALM_ID",
+	"QUICKBOOKS_ENVIRONMENT",
+	"QUICKBOOKS_ENCRYPTION_KEY",
+] as const;
 
 const saved: Record<string, string | undefined> = {};
 
@@ -147,6 +156,10 @@ describe("the capability briefing", () => {
 
 	it("does not warn about missing sources when everything is on", () => {
 		for (const key of KEYS) process.env[key] = "key";
+		process.env.QUICKBOOKS_ENABLED = "true";
+		process.env.QUICKBOOKS_REALM_ID = "123456";
+		process.env.QUICKBOOKS_ENVIRONMENT = "sandbox";
+		process.env.QUICKBOOKS_ENCRYPTION_KEY = "ab".repeat(32);
 
 		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
 			"Not configured here",
