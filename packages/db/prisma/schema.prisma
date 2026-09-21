@@ -96,6 +96,19 @@ model SlackInstallation {
   @@map("slackInstallation")
 }
 
+model QuickBooksConnection {
+  id              String    @id
+  realmId         String
+  environment     String
+  encryptedTokens String
+  enrolledBy      String
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("quickBooksConnection")
+}
+
 model SlackWorkspaceGrant {
   id         String   @id @default(cuid())
   teamId     String   @unique
