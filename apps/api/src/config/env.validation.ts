@@ -77,6 +77,18 @@ export class EnvironmentVariables {
 	SLACK_CLIENT_SECRET?: string;
 
 	@IsOptional()
+	@IsString()
+	RESEND_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	PASSWORD_RESET_FROM?: string;
+
+	@IsOptional()
+	@IsString()
+	PASSWORD_RESET_REPLY_TO?: string;
+
+	@IsOptional()
 	@IsUrl({ require_tld: false })
 	API_URL?: string;
 

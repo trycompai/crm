@@ -318,6 +318,9 @@ model Company {
 
   source RecordSource @default(MANUAL)
 
+  businessUnitId String?
+  businessUnit   BusinessUnit? @relation("CompCompanyBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+
   lastActivityAt DateTime?
   archivedAt     DateTime?
 
@@ -486,6 +489,9 @@ model AgentTask {
   outcome    String?
 
   subject String?
+
+  businessUnitId String?
+  businessUnit   BusinessUnit? @relation("CompAgentTaskBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
@@ -923,6 +929,9 @@ model Deal {
   ownerId       String
   owner         User                @relation("DealOwner", fields: [ownerId], references: [id])
 
+  businessUnitId String?
+  businessUnit   BusinessUnit? @relation("CompDealBusinessUnit", fields: [businessUnitId], references: [id], onDelete: SetNull)
+
   stage             DealStage @default(DEMO_BOOKED)
   stageChangedAt    DateTime  @default(now())
   amount            Decimal?  @db.Decimal(14, 2)
@@ -1150,6 +1159,12 @@ enum GoogleSyncStatus {
   FAILED
 }
 
+enum MailboxBackfillStatus {
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
 enum EmailDirection {
   INBOUND
   OUTBOUND
@@ -1167,6 +1182,16 @@ model MailboxSync {
   lastError    String?
   retryAfter   DateTime?
   autoCreate   Boolean          @default(false)
+
+  backfillStatus          MailboxBackfillStatus?
+  backfillFrom            DateTime?
+  backfillCursor          DateTime?
+  backfillUntil           DateTime?
+  backfillStartedAt       DateTime?
+  backfillCompletedAt     DateTime?
+  backfillMessagesSeen    Int                    @default(0)
+  backfillMessagesWritten Int                    @default(0)
+  backfillLastError       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1582,4 +1607,432 @@ model Apikey {
   @@index([configId])
   @@index([key])
   @@map("apikey")
+}
+
+// Sequence Now foundation. These models are isolated from Comp AI's core
+// records so canonical data and source provenance remain portable.
+model BusinessUnit {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  compCompanies  Company[]   @relation("CompCompanyBusinessUnit")
+  compDeals      Deal[]      @relation("CompDealBusinessUnit")
+  compAgentTasks AgentTask[] @relation("CompAgentTaskBusinessUnit")
+  procurementPolicies ProcurementPricingPolicy[] @relation("ProcurementPolicyBusinessUnit")
+  procurementProducts ProcurementProduct[] @relation("ProcurementProductBusinessUnit")
+  procurementSuppliers ProcurementSupplier[] @relation("ProcurementSupplierBusinessUnit")
+  procurementRequests ProcurementCustomerRequest[] @relation("ProcurementRequestBusinessUnit")
+  companies      CanonicalCompany[]
+  people         CanonicalPerson[]
+  opportunities  CanonicalOpportunity[]
+  pipelines      Pipeline[]
+  campaigns      Campaign[]
+  agentRuns      AgentRunContext[]
+  sourceRecords  SourceRecord[]
+
+  @@index([enabled, key])
+  @@map("business_unit")
+}
+
+model CanonicalCompany {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  name           String
+  normalizedName String
+  domain         String?
+  phone          String?
+  website        String?
+  fields         Json?
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  people        CompanyPerson[]
+  opportunities CanonicalOpportunity[]
+  sources       SourceRecord[]
+
+  @@unique([businessUnitId, normalizedName])
+  @@index([domain])
+  @@map("canonical_company")
+}
+
+model CanonicalPerson {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  firstName      String
+  lastName       String?
+  normalizedName String
+  email          String?
+  phone          String?
+  title          String?
+  fields         Json?
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  companies CompanyPerson[]
+  sources   SourceRecord[]
+
+  @@index([email])
+  @@index([phone])
+  @@map("person")
+}
+
+model CompanyPerson {
+  companyId String
+  personId  String
+  company   CanonicalCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  person    CanonicalPerson  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role      String?
+  isPrimary Boolean @default(false)
+
+  @@id([companyId, personId])
+  @@map("company_person")
+}
+
+model Pipeline {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  name           String
+  stages         Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  opportunities CanonicalOpportunity[]
+
+  @@unique([businessUnitId, name])
+  @@map("pipeline")
+}
+
+model CanonicalOpportunity {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  companyId      String?
+  company        CanonicalCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  pipelineId     String?
+  pipeline       Pipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  name           String
+  stage          String
+  amount         Decimal? @db.Decimal(14, 2)
+  fields         Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sources SourceRecord[]
+
+  @@index([businessUnitId, stage])
+  @@map("canonical_opportunity")
+}
+
+model SourceRecord {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  sourceSystem   String
+  sourceType     String
+  sourceId       String
+  sourceUrl      String?
+  observedAt     DateTime?
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  companyId      String?
+  company        CanonicalCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  personId       String?
+  person         CanonicalPerson? @relation(fields: [personId], references: [id], onDelete: SetNull)
+  opportunityId  String?
+  opportunity    CanonicalOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceSystem, sourceType, sourceId])
+  @@index([businessUnitId, sourceType])
+  @@map("source_record")
+}
+
+model RecordMapping {
+  id             String   @id @default(uuid())
+  sourceSystem   String
+  sourceType     String
+  sourceId       String
+  canonicalType  String
+  canonicalId    String
+  application    String?
+  applicationId  String?
+  matchMethod    String
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceSystem, sourceType, sourceId, canonicalType])
+  @@index([canonicalType, canonicalId])
+  @@map("record_mapping")
+}
+
+model Campaign {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  name           String
+  status         String   @default("draft")
+  segment        Json?
+  template       String?
+  sendingEnabled Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members   CampaignMember[]
+  approvals OutreachApproval[]
+
+  @@index([businessUnitId, status])
+  @@map("campaign")
+}
+
+model CampaignMember {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  companyId  String?
+  personId   String?
+  state      String   @default("queued")
+  draft      String?
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([campaignId, companyId, personId])
+  @@index([state])
+  @@map("campaign_member")
+}
+
+model OutreachApproval {
+  id          String   @id @default(uuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  memberId    String?
+  state       String   @default("pending")
+  approvedBy  String?
+  approvedAt  DateTime?
+  rejectionReason String?
+  immutableHash String
+  createdAt   DateTime @default(now())
+
+  @@index([campaignId, state])
+  @@map("outreach_approval")
+}
+
+model SuppressionEntry {
+  id          String   @id @default(uuid())
+  value       String
+  normalized  String
+  kind        String
+  reason      String?
+  source      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([normalized, kind])
+  @@map("suppression_entry")
+}
+
+model AgentRunContext {
+  id             String   @id @default(uuid())
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Restrict)
+  agentRunId     String
+  budget         Int      @default(0)
+  fitScores      Json?
+  reasons        Json?
+  evidenceCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+  finishedAt     DateTime?
+
+  @@unique([agentRunId])
+  @@index([businessUnitId, createdAt])
+  @@map("agent_run_context")
+}
+
+
+enum ProcurementRequestStatus {
+  NEW
+  SOURCING
+  QUOTED
+  WON
+  LOST
+  CLOSED
+}
+
+enum ProcurementQuoteStatus {
+  NOT_QUOTED
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+enum ProcurementAvailabilityStatus {
+  LIVE
+  RFQ
+  UNAVAILABLE
+}
+
+model ProcurementPricingPolicy {
+  id             String   @id @default(cuid())
+  businessUnitId String?
+  businessUnit   BusinessUnit? @relation("ProcurementPolicyBusinessUnit", fields: [businessUnitId], references: [id], onDelete: Cascade)
+  name           String
+  markupRate     Decimal  @default(0.30) @db.Decimal(8, 6)
+  freshnessHours Int      @default(48)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([businessUnitId, name])
+  @@index([businessUnitId, isDefault])
+  @@map("procurementPricingPolicy")
+}
+
+model ProcurementProduct {
+  id              String   @id @default(cuid())
+  businessUnitId  String?
+  businessUnit    BusinessUnit? @relation("ProcurementProductBusinessUnit", fields: [businessUnitId], references: [id], onDelete: Cascade)
+  category        String
+  manufacturer    String?
+  productName     String
+  model           String?
+  manufacturerSku String?
+  normalizedSpecs Json     @default("{}")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supplierQuotes  ProcurementSupplierQuote[]
+  requestItems    ProcurementCustomerRequestItem[]
+
+  @@index([businessUnitId, category])
+  @@index([businessUnitId, manufacturer, manufacturerSku])
+  @@map("procurementProduct")
+}
+
+model ProcurementSupplier {
+  id               String   @id @default(cuid())
+  businessUnitId   String?
+  businessUnit     BusinessUnit? @relation("ProcurementSupplierBusinessUnit", fields: [businessUnitId], references: [id], onDelete: Cascade)
+  supplierName     String
+  accountNumber    String?
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  paymentTerms     String?
+  reliabilityScore Decimal? @db.Decimal(5, 2)
+  notes            String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  quotes ProcurementSupplierQuote[]
+
+  @@unique([businessUnitId, supplierName])
+  @@index([businessUnitId, active])
+  @@map("procurementSupplier")
+}
+
+model ProcurementSupplierQuote {
+  id                     String                        @id @default(cuid())
+  supplierId             String
+  supplier               ProcurementSupplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  productId              String?
+  product                ProcurementProduct?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplierSku            String?
+  supplierDescription    String?
+  currency               String                         @default("USD")
+  unitCost               Decimal                        @db.Decimal(14, 2)
+  quoteQuantity          Decimal                        @default(1) @db.Decimal(14, 3)
+  shippingTotal          Decimal                        @default(0) @db.Decimal(14, 2)
+  feesPerUnit            Decimal                        @default(0) @db.Decimal(14, 2)
+  otherDirectCostPerUnit Decimal                        @default(0) @db.Decimal(14, 2)
+  markupRate             Decimal                        @default(0.30) @db.Decimal(8, 6)
+  availableQty           Decimal?                       @db.Decimal(14, 3)
+  moq                    Decimal?                       @db.Decimal(14, 3)
+  leadTimeDays           Int?
+  availabilityStatus     ProcurementAvailabilityStatus  @default(RFQ)
+  quotedAt               DateTime                       @default(now())
+  expiresAt              DateTime?
+  availabilityCheckedAt  DateTime?
+  warranty               String?
+  paymentTerms           String?
+  sourceRef              String?
+  notes                  String?
+  createdAt              DateTime                       @default(now())
+
+  @@index([productId, quotedAt])
+  @@index([supplierId, quotedAt])
+  @@index([availabilityStatus, availabilityCheckedAt])
+  @@map("procurementSupplierQuote")
+}
+
+model ProcurementCustomerRequest {
+  id                   String                   @id @default(cuid())
+  businessUnitId       String?
+  businessUnit         BusinessUnit? @relation("ProcurementRequestBusinessUnit", fields: [businessUnitId], references: [id], onDelete: Cascade)
+  crmAccountId         String?
+  crmContactId         String?
+  sourceQuoteReference String?
+  customerName         String?
+  contactName          String?
+  contactEmail         String?
+  contactPhone         String?
+  requestedAt          DateTime                 @default(now())
+  status               ProcurementRequestStatus @default(SOURCING)
+  quoteStatus          ProcurementQuoteStatus   @default(NOT_QUOTED)
+  targetBudget         Decimal?                 @db.Decimal(16, 2)
+  currency             String                   @default("USD")
+  requiredBy           DateTime?
+  destination          String?
+  originalRequest      String?
+  notes                String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  items ProcurementCustomerRequestItem[]
+
+  @@index([businessUnitId, status, requestedAt])
+  @@index([businessUnitId, crmAccountId])
+  @@map("procurementCustomerRequest")
+}
+
+model ProcurementCustomerRequestItem {
+  id                      String                     @id @default(cuid())
+  requestId               String
+  request                 ProcurementCustomerRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  productId               String?
+  product                 ProcurementProduct?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productType             String
+  manufacturer            String?
+  model                   String?
+  manufacturerSku         String?
+  quantity                Decimal                    @default(1) @db.Decimal(14, 3)
+  gpuModel                String?
+  gpuCount                Int?
+  cpu                     String?
+  ramGb                   Int?
+  storageTb               Decimal?                   @db.Decimal(12, 3)
+  network                 String?
+  formFactor              String?
+  preferredManufacturer   String?
+  normalizedSpecs         Json                       @default("{}")
+  customerTargetUnitPrice Decimal?                   @db.Decimal(14, 2)
+  notes                   String?
+  createdAt               DateTime                   @default(now())
+
+  @@index([requestId])
+  @@index([productId])
+  @@map("procurementCustomerRequestItem")
 }

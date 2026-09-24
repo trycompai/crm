@@ -7,6 +7,10 @@ export const setOutlookAutoCreateInput = z.object({
 	enabled: z.boolean(),
 });
 
+export const startOutlookBackfillInput = z.object({
+	from: z.iso.datetime({ offset: true }),
+});
+
 export type SetOutlookAutoCreateInput = z.infer<
 	typeof setOutlookAutoCreateInput
 >;

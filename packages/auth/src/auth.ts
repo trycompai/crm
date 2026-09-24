@@ -11,6 +11,7 @@ import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
 import { ensureWorkspaceMembership } from "./organization";
+import { sendPasswordResetEmail } from "./password-reset-email";
 import {
 	GOOGLE_PROVIDER_ID,
 	MICROSOFT_PROVIDER_ID,
@@ -78,7 +79,16 @@ export const auth = betterAuth({
 	}),
 
 	emailAndPassword: {
-		enabled: false,
+		enabled: true,
+		revokeSessionsOnPasswordReset: true,
+		sendResetPassword: async ({ user, url, token }) => {
+			await sendPasswordResetEmail({
+				to: user.email,
+				url,
+				token,
+				userId: user.id,
+			});
+		},
 	},
 
 	socialProviders,

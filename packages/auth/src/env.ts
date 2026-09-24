@@ -46,6 +46,24 @@ const slackCredentials = ():
 	| { clientId: string; clientSecret: string }
 	| undefined => pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
 
+const passwordReset = ():
+	| { apiKey: string; from: string; replyTo?: string }
+	| undefined => {
+	const apiKey = optional("RESEND_API_KEY");
+	const from = optional("PASSWORD_RESET_FROM");
+	const replyTo = optional("PASSWORD_RESET_REPLY_TO");
+
+	if (!apiKey && !from && !replyTo) return undefined;
+
+	if (!apiKey || !from) {
+		throw new Error(
+			"RESEND_API_KEY and PASSWORD_RESET_FROM must be set together for password reset email.",
+		);
+	}
+
+	return { apiKey, from, replyTo };
+};
+
 const apiUrl =
 	optional("API_URL") ?? optional("BETTER_AUTH_URL") ?? DEFAULT_API_URL;
 
@@ -62,6 +80,7 @@ export const env = {
 	google: googleCredentials(),
 	microsoft: microsoftCredentials(),
 	slack: slackCredentials(),
+	passwordReset: passwordReset(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",

@@ -198,6 +198,16 @@ export function MicrosoftConnection({
 		}),
 	);
 
+	const startBackfill = useMutation(
+		trpc.microsoft.startBackfill.mutationOptions({
+			onSuccess: async () => {
+				await cache.microsoft();
+				toast.success("Outlook history import started.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
 	if (!status.data) return null;
 
 	const { sources, hasRefreshToken, configured, linked, required } =
@@ -305,6 +315,43 @@ export function MicrosoftConnection({
 
 				<CardFooter>
 					<div className="-ml-2 flex flex-wrap items-center gap-1 text-muted-foreground">
+						<AlertDialog>
+							<AlertDialogTrigger asChild>
+								<Button
+									variant="ghost"
+									size="xs"
+									disabled={startBackfill.isPending}
+								>
+									Import mail history
+								</Button>
+							</AlertDialogTrigger>
+
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>
+										Import existing Outlook mail?
+									</AlertDialogTitle>
+									<AlertDialogDescription>
+										The CRM reads available Outlook history in small batches.
+										New mail keeps syncing. Existing messages are deduplicated.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction
+										onClick={() =>
+											startBackfill.mutate({
+												from: "2000-01-01T00:00:00.000Z",
+											})
+										}
+									>
+										Start import
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+
 						<AlertDialog>
 							<AlertDialogTrigger asChild>
 								<Button variant="ghost" size="xs" disabled={purge.isPending}>

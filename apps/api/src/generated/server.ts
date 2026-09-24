@@ -25,7 +25,8 @@ import { dealListInput, dealListOutput, dealIdInput, dealDetailOutput, dealCreat
 import { enrichmentQueueInput } from "@crm/validation/enrichment-queue";
 import { fieldListInput, fieldListOutput, fieldByKeyInput, serializedFieldOutput, fieldEntityInput, fieldFiltersOutput, fieldIdInput, fieldCoverageOutput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput, fieldReorderOutput, fieldDeleteOutput, fieldBackfillOutput } from "../fields/fields.contracts";
 import { googleConnectionStatusOutput, setAutoCreateInput, suppressDomainInput, suppressDomainOutput, threadInput, emailThreadOutput, calendarEventInput, calendarEventOutput } from "../google/google.contracts";
-import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOutput, setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
+import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOutput, setOutlookAutoCreateInput, startOutlookBackfillInput } from "../microsoft/microsoft.contracts";
+import { ingestSignalInput, ingestSignalOutput, signalInboxInput, signalInboxOutput, signalSourceRecordInput, signalCompanyCandidatesOutput, resolveSignalCompanyInput, resolveSignalCompanyOutput, qualifySignalInput, qualifySignalOutput, promoteSignalInput, promoteSignalOutput } from "../ingest/ingest.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
 import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOutput, setResearchKeyInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
@@ -558,6 +559,32 @@ const appRouter = t.router({
       .output(calendarEventOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
+  ingest: t.router({
+    signal: publicProcedure
+      .input(ingestSignalInput)
+      .output(ingestSignalOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    inbox: publicProcedure
+      .input(signalInboxInput)
+      .output(signalInboxOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    companyCandidates: publicProcedure
+      .input(signalSourceRecordInput)
+      .output(signalCompanyCandidatesOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    resolveCompany: publicProcedure
+      .input(resolveSignalCompanyInput)
+      .output(resolveSignalCompanyOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    qualify: publicProcedure
+      .input(qualifySignalInput)
+      .output(qualifySignalOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    promote: publicProcedure
+      .input(promoteSignalInput)
+      .output(promoteSignalOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
   microsoft: t.router({
     status: publicProcedure
       .output(microsoftConnectionStatusOutput)
@@ -569,6 +596,10 @@ const appRouter = t.router({
       .output(revokeAccessOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     syncNow: publicProcedure
+      .output(microsoftConnectionStatusOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    startBackfill: publicProcedure
+      .input(startOutlookBackfillInput)
       .output(microsoftConnectionStatusOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     setAutoCreate: publicProcedure
