@@ -162,6 +162,8 @@ export function RealtyDashboard() {
 		});
 	}, [leads, query, stage]);
 
+	const buyerCount = leads.filter((lead) => lead.type === "Buyer").length;
+	const sellerCount = leads.filter((lead) => lead.type === "Seller").length;
 	const openTasks = tasks.filter((task) => !task.done).length;
 
 	function addLead(event: React.FormEvent<HTMLFormElement>) {
@@ -194,11 +196,34 @@ export function RealtyDashboard() {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Pipeline summary">
-				<MetricCard label="Active leads" value={leads.length.toString()} detail="2 buyers · 2 sellers" icon={<UserMultiple />} />
-				<MetricCard label="Pipeline value" value="$4.1M" detail="Across 4 opportunities" icon={<Home />} />
-				<MetricCard label="Tours this week" value="6" detail="2 need confirmation" icon={<Calendar />} />
-				<MetricCard label="Open follow-ups" value={openTasks.toString()} detail="Keep your momentum" icon={<Checkmark />} />
+			<section
+				className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+				aria-label="Pipeline summary"
+			>
+				<MetricCard
+					label="Active leads"
+					value={leads.length.toString()}
+					detail={`${buyerCount} buyers · ${sellerCount} sellers`}
+					icon={<UserMultiple />}
+				/>
+				<MetricCard
+					label="Pipeline value"
+					value="$4.1M"
+					detail={`Across ${leads.length} opportunities`}
+					icon={<Home />}
+				/>
+				<MetricCard
+					label="Tours this week"
+					value="6"
+					detail="2 need confirmation"
+					icon={<Calendar />}
+				/>
+				<MetricCard
+					label="Open follow-ups"
+					value={openTasks.toString()}
+					detail="Keep your momentum"
+					icon={<Checkmark />}
+				/>
 			</section>
 
 			<div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -207,24 +232,58 @@ export function RealtyDashboard() {
 						<div className="flex min-w-0 flex-col gap-3">
 							<div>
 								<CardTitle>Lead pipeline</CardTitle>
-								<CardDescription>Move every relationship toward the next clear step.</CardDescription>
+								<CardDescription>
+									Move every relationship toward the next clear step.
+								</CardDescription>
 							</div>
 							<div className="flex flex-col gap-2 sm:flex-row">
 								<div className="relative min-w-0 flex-1">
-									<Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-									<label className="sr-only" htmlFor="lead-search">Search leads</label>
-									<Input id="lead-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people, properties, or areas" className="pl-8" />
+									<Search
+										className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground"
+										aria-hidden="true"
+									/>
+									<label className="sr-only" htmlFor="lead-search">
+										Search leads
+									</label>
+									<Input
+										id="lead-search"
+										value={query}
+										onChange={(event) => setQuery(event.target.value)}
+										placeholder="Search people, properties, or areas"
+										className="pl-8"
+									/>
 								</div>
 								<form className="flex gap-2" onSubmit={addLead}>
-									<label className="sr-only" htmlFor="new-lead">New lead name</label>
-									<Input id="new-lead" value={newLeadName} onChange={(event) => setNewLeadName(event.target.value)} placeholder="Add a lead" />
-									<Button type="submit" size="sm" aria-label="Add lead"><Add /></Button>
+									<label className="sr-only" htmlFor="new-lead">
+										New lead name
+									</label>
+									<Input
+										id="new-lead"
+										value={newLeadName}
+										onChange={(event) => setNewLeadName(event.target.value)}
+										placeholder="Add a lead"
+									/>
+									<Button type="submit" size="sm" aria-label="Add lead">
+										<Add />
+									</Button>
 								</form>
 							</div>
-							<Tabs value={stage} onValueChange={(value) => setStage(value as Stage | "All")}>
+							<Tabs
+								value={stage}
+								onValueChange={(value) => setStage(value as Stage | "All")}
+							>
 								<TabsList variant="line">
-									<TabsTrigger value="All">All <span className="text-muted-foreground">{leads.length}</span></TabsTrigger>
-									{STAGES.map((item) => <TabsTrigger key={item} value={item}>{item}</TabsTrigger>)}
+									<TabsTrigger value="All">
+										All{" "}
+										<span className="text-muted-foreground">
+											{leads.length}
+										</span>
+									</TabsTrigger>
+									{STAGES.map((item) => (
+										<TabsTrigger key={item} value={item}>
+											{item}
+										</TabsTrigger>
+									))}
 								</TabsList>
 							</Tabs>
 						</div>
@@ -234,10 +293,21 @@ export function RealtyDashboard() {
 							<div className="flex min-h-56 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
 								<Search className="size-5" aria-hidden="true" />
 								<p className="text-sm">No leads match this view.</p>
-								<Button variant="outline" size="sm" onClick={() => { setQuery(""); setStage("All"); }}>Clear filters</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => {
+										setQuery("");
+										setStage("All");
+									}}
+								>
+									Clear filters
+								</Button>
 							</div>
 						) : (
-							filteredLeads.map((lead) => <LeadCard key={lead.id} lead={lead} />)
+							filteredLeads.map((lead) => (
+								<LeadCard key={lead.id} lead={lead} />
+							))
 						)}
 					</CardPanel>
 				</Card>
@@ -245,11 +315,25 @@ export function RealtyDashboard() {
 				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>Today&apos;s focus</CardTitle>
-						<CardDescription>Small actions that keep deals moving.</CardDescription>
+						<CardDescription>
+							Small actions that keep deals moving.
+						</CardDescription>
 					</CardHeader>
 					<CardPanel className="h-auto gap-1 p-3">
 						{tasks.map((task) => (
-							<TaskRow key={task.id} task={task} onToggle={() => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: !item.done } : item))} />
+							<TaskRow
+								key={task.id}
+								task={task}
+								onToggle={() =>
+									setTasks((current) =>
+										current.map((item) =>
+											item.id === task.id
+												? { ...item, done: !item.done }
+												: item,
+										),
+									)
+								}
+							/>
 						))}
 					</CardPanel>
 				</Card>
@@ -258,26 +342,63 @@ export function RealtyDashboard() {
 			<Card>
 				<CardHeader>
 					<CardTitle>Upcoming showings</CardTitle>
-					<CardDescription>Confirmed appointments and the details you need at a glance.</CardDescription>
+					<CardDescription>
+						Confirmed appointments and the details you need at a glance.
+					</CardDescription>
 				</CardHeader>
 				<div className="grid gap-2 px-4 pb-4 md:grid-cols-3 md:px-6 md:pb-6">
-					<Showing time="10:30 AM" person="Maya Chen" place="1428 Upas St" detail="Buyer tour · 3 bed" />
-					<Showing time="1:00 PM" person="Theo Williams" place="811 W G St" detail="Offer strategy" />
-					<Showing time="4:30 PM" person="Ava Patel" place="La Jolla" detail="Final walkthrough" />
+					<Showing
+						time="10:30 AM"
+						person="Maya Chen"
+						place="1428 Upas St"
+						detail="Buyer tour · 3 bed"
+						email="maya.chen@example.com"
+						phone="+16195550142"
+					/>
+					<Showing
+						time="1:00 PM"
+						person="Theo Williams"
+						place="811 W G St"
+						detail="Offer strategy"
+						email="theo.williams@example.com"
+						phone="+16195550187"
+					/>
+					<Showing
+						time="4:30 PM"
+						person="Ava Patel"
+						place="La Jolla"
+						detail="Final walkthrough"
+						email="ava.patel@example.com"
+						phone="+16195550133"
+					/>
 				</div>
 			</Card>
 		</div>
 	);
 }
 
-function MetricCard({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+function MetricCard({
+	label,
+	value,
+	detail,
+	icon,
+}: {
+	label: string;
+	value: string;
+	detail: string;
+	icon: React.ReactNode;
+}) {
 	return (
 		<Card className="gap-2 rounded-lg border bg-card p-4">
 			<div className="flex items-center justify-between text-muted-foreground">
 				<span className="text-xs font-medium">{label}</span>
-				<span aria-hidden="true" className="text-primary">{icon}</span>
+				<span aria-hidden="true" className="text-primary">
+					{icon}
+				</span>
 			</div>
-			<div className="text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+			<div className="text-2xl font-semibold tracking-tight tabular-nums">
+				{value}
+			</div>
 			<p className="text-xs text-muted-foreground">{detail}</p>
 		</Card>
 	);
@@ -286,7 +407,9 @@ function MetricCard({ label, value, detail, icon }: { label: string; value: stri
 function LeadCard({ lead }: { lead: Lead }) {
 	return (
 		<article className="grid gap-3 rounded-lg border bg-background p-4 transition-colors hover:border-ring/50 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-			<Avatar size="lg"><AvatarFallback className={lead.color}>{lead.initials}</AvatarFallback></Avatar>
+			<Avatar size="lg">
+				<AvatarFallback className={lead.color}>{lead.initials}</AvatarFallback>
+			</Avatar>
 			<div className="min-w-0">
 				<div className="flex flex-wrap items-center gap-2">
 					<h3 className="truncate text-sm font-medium">{lead.name}</h3>
@@ -294,13 +417,21 @@ function LeadCard({ lead }: { lead: Lead }) {
 					<Badge className={stageTone[lead.stage]}>{lead.stage}</Badge>
 				</div>
 				<div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-					<span className="inline-flex items-center gap-1"><Home className="size-3" aria-hidden="true" />{lead.property}</span>
-					<span className="inline-flex items-center gap-1"><Location className="size-3" aria-hidden="true" />{lead.location}</span>
+					<span className="inline-flex items-center gap-1">
+						<Home className="size-3" aria-hidden="true" />
+						{lead.property}
+					</span>
+					<span className="inline-flex items-center gap-1">
+						<Location className="size-3" aria-hidden="true" />
+						{lead.location}
+					</span>
 				</div>
 			</div>
 			<div className="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
 				<span className="text-sm font-medium tabular-nums">{lead.budget}</span>
-				<span className="text-xs text-muted-foreground">{lead.lastContact}</span>
+				<span className="text-xs text-muted-foreground">
+					{lead.lastContact}
+				</span>
 			</div>
 		</article>
 	);
@@ -308,18 +439,46 @@ function LeadCard({ lead }: { lead: Lead }) {
 
 function TaskRow({ task, onToggle }: { task: Task; onToggle: () => void }) {
 	return (
-		<label className="flex cursor-pointer items-start gap-3 rounded-md p-2 transition-colors hover:bg-muted/60">
-			<Checkbox checked={task.done} onCheckedChange={onToggle} aria-label={`Complete ${task.title}`} />
+		<div className="flex items-start gap-3 rounded-md p-2">
+			<Checkbox
+				checked={task.done}
+				onCheckedChange={onToggle}
+				aria-label={`Complete ${task.title}`}
+			/>
 			<span className="min-w-0 flex-1">
-				<span className={`block text-sm ${task.done ? "text-muted-foreground line-through" : ""}`}>{task.title}</span>
-				<span className="mt-0.5 block truncate text-xs text-muted-foreground">{task.contact}</span>
+				<span
+					className={`block text-sm ${task.done ? "text-muted-foreground line-through" : ""}`}
+				>
+					{task.title}
+				</span>
+				<span className="mt-0.5 block truncate text-xs text-muted-foreground">
+					{task.contact}
+				</span>
 			</span>
-			<span className={`shrink-0 text-xs ${task.priority === "High" && !task.done ? "font-medium text-destructive" : "text-muted-foreground"}`}>{task.due}</span>
-		</label>
+			<span
+				className={`shrink-0 text-xs ${task.priority === "High" && !task.done ? "font-medium text-destructive" : "text-muted-foreground"}`}
+			>
+				{task.due}
+			</span>
+		</div>
 	);
 }
 
-function Showing({ time, person, place, detail }: { time: string; person: string; place: string; detail: string }) {
+function Showing({
+	time,
+	person,
+	place,
+	detail,
+	email,
+	phone,
+}: {
+	time: string;
+	person: string;
+	place: string;
+	detail: string;
+	email: string;
+	phone: string;
+}) {
 	return (
 		<div className="flex items-center gap-3 rounded-lg border p-3">
 			<div className="flex size-10 shrink-0 flex-col items-center justify-center rounded-md bg-muted text-center">
@@ -328,11 +487,21 @@ function Showing({ time, person, place, detail }: { time: string; person: string
 			</div>
 			<div className="min-w-0">
 				<p className="truncate text-sm font-medium">{person}</p>
-				<p className="truncate text-xs text-muted-foreground">{place} · {detail}</p>
+				<p className="truncate text-xs text-muted-foreground">
+					{place} · {detail}
+				</p>
 			</div>
-			<div className="ml-auto flex shrink-0 gap-1 text-muted-foreground" aria-label="Contact actions">
-				<Button variant="ghost" size="icon-xs" aria-label={`Email ${person}`}><Email /></Button>
-				<Button variant="ghost" size="icon-xs" aria-label={`Call ${person}`}><Phone /></Button>
+			<div className="ml-auto flex shrink-0 gap-1 text-muted-foreground">
+				<Button asChild variant="ghost" size="icon-xs">
+					<a href={`mailto:${email}`} aria-label={`Email ${person}`}>
+						<Email />
+					</a>
+				</Button>
+				<Button asChild variant="ghost" size="icon-xs">
+					<a href={`tel:${phone}`} aria-label={`Call ${person}`}>
+						<Phone />
+					</a>
+				</Button>
 			</div>
 		</div>
 	);
