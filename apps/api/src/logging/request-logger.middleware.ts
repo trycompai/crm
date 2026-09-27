@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { API_KEY_HEADER } from "@crm/auth";
 import { Injectable, Logger, type NestMiddleware } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 import { type RequestContext, runInRequestContext } from "./request-context";
@@ -18,7 +19,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 		const context: RequestContext = {
 			requestId,
 			method: request.method,
-			path: request.originalUrl,
+			path: request.path,
 		};
 		const startedAt = process.hrtime.bigint();
 
@@ -56,6 +57,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 			durationMs: Number(durationMs.toFixed(1)),
 			ip: request.ip,
 			userAgent: request.get("user-agent"),
+			apiKeyPresented: Boolean(request.get(API_KEY_HEADER)),
 		};
 
 		if (statusCode >= 500) {

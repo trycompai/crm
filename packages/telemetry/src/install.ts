@@ -119,6 +119,7 @@ export async function reachedMilestones(): Promise<Milestone[]> {
 
 export const COUNTERS = {
 	budgetExhausted: "budget_exhausted",
+	apiKeyRateLimited: "api_key_rate_limited",
 } as const;
 
 export async function bumpCounter(name: string, by = 1): Promise<void> {

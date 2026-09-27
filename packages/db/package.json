@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./agent-tasks": "./src/agent-tasks.ts",
+		"./api-key-rate-limit": "./src/api-key-rate-limit.ts",
 		"./attribution": "./src/attribution.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",

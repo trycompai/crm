@@ -42,7 +42,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 		const payload = {
 			message: describe(exception),
 			method: request.method,
-			path: request.originalUrl,
+			path: request.path,
 			statusCode: status,
 			exception: exception?.constructor?.name,
 		};

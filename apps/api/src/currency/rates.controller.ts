@@ -18,6 +18,7 @@ import {
 	ApiTags,
 } from "@nestjs/swagger";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
+import { timingSafeEquals } from "../common/timing-safe-equal";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { ConversionService } from "./conversion.service";
 import { RatesService } from "./rates.service";
@@ -80,15 +81,4 @@ export class RatesController {
 
 		return { ...refresh, converted: filled.converted, missing: filled.missing };
 	}
-}
-
-function timingSafeEquals(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-
-	let mismatch = 0;
-	for (let index = 0; index < a.length; index += 1) {
-		mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
-	}
-
-	return mismatch === 0;
 }

@@ -174,6 +174,12 @@ sent.
 | `tracking_capped` | Submissions the hourly contact cap refused. Matched against `CONTACT_CAP_REASON` (`@crm/db/tracking`) exactly, so the wording is a constant two files share rather than prose one of them may reword |
 | `tracking_paused` | Whether collection is paused |
 
+#### API keys
+
+| Property | What it is |
+| --- | --- |
+| `api_key_rate_limited` | `429` responses from an API key's own rate limit, in the window. A count, never which key |
+
 ### The setup funnel
 
 Eight events, each sent once per install, ever. Each carries the timestamp of the thing it

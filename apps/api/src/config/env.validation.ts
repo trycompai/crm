@@ -8,6 +8,7 @@ import {
 	Max,
 	Min,
 	MinLength,
+	ValidateIf,
 	validateSync,
 } from "class-validator";
 
@@ -120,7 +121,12 @@ export class EnvironmentVariables {
 	AGENT_URL?: string;
 
 	@IsOptional()
+	@ValidateIf((_environment, value) => value !== "")
 	@IsString()
+	@MinLength(32, {
+		message:
+			"AGENT_BRIDGE_SECRET must be at least 32 characters. Generate one with: openssl rand -base64 32",
+	})
 	AGENT_BRIDGE_SECRET?: string;
 
 	@IsOptional()

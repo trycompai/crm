@@ -1,7 +1,30 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+	spyOn,
+} from "bun:test";
 import type { INestApplication } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
 import request from "supertest";
+
+function betterAuthError(
+	status: string,
+	message?: string,
+	tryAgainInMs?: number,
+): Error {
+	const error = new Error(message ?? status);
+	error.name = "APIError";
+	return Object.assign(error, {
+		status,
+		...(tryAgainInMs !== undefined && {
+			body: { details: { tryAgainIn: tryAgainInMs } },
+		}),
+	});
+}
 
 const fallback = (key: string, value: string) => {
 	if (!process.env[key]) {
@@ -21,9 +44,12 @@ fallback("GOOGLE_CLIENT_SECRET", "test-google-client-secret");
 
 describe("Auth (e2e)", () => {
 	let app: INestApplication;
+	let auth: typeof import("@crm/auth").auth;
+	let getSessionSpy: ReturnType<typeof spyOn> | undefined;
 
 	beforeAll(async () => {
 		const { AppModule } = await import("../src/app.module");
+		({ auth } = await import("@crm/auth"));
 
 		const moduleFixture: TestingModule = await Test.createTestingModule({
 			imports: [AppModule],
@@ -35,6 +61,11 @@ describe("Auth (e2e)", () => {
 
 	afterAll(async () => {
 		await app.close();
+	});
+
+	afterEach(() => {
+		getSessionSpy?.mockRestore();
+		getSessionSpy = undefined;
 	});
 
 	it("rejects an unauthenticated request to a guarded route", async () => {
@@ -77,5 +108,30 @@ describe("Auth (e2e)", () => {
 		);
 
 		expect(response.status).toBe(401);
+	});
+
+	it("answers 429, not 401 or 500, when the session lookup is rate limited", async () => {
+		getSessionSpy = spyOn(auth.api, "getSession").mockRejectedValue(
+			betterAuthError("TOO_MANY_REQUESTS", "Rate limit exceeded."),
+		);
+
+		const response = await request(app.getHttpServer()).get(
+			"/api/trpc/sso.settings",
+		);
+
+		expect(response.status).toBe(429);
+		expect(response.headers["retry-after"]).toBeUndefined();
+	});
+
+	it("carries Retry-After, in seconds, on a rate-limited response", async () => {
+		getSessionSpy = spyOn(auth.api, "getSession").mockRejectedValue(
+			betterAuthError("TOO_MANY_REQUESTS", "Rate limit exceeded.", 4_500),
+		);
+
+		const response = await request(app.getHttpServer())
+			.get("/api/trpc/sso.settings")
+			.expect(429);
+
+		expect(response.headers["retry-after"]).toBe("5");
 	});
 });

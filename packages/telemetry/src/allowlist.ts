@@ -43,6 +43,8 @@ export const ALLOWED_PROPERTIES = [
 	"sandbox_used",
 	"agent_conversations",
 
+	"api_key_rate_limited",
+
 	"facts_by_status",
 	"facts_by_band",
 	"facts_by_method",

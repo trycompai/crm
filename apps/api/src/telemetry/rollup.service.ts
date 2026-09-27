@@ -128,7 +128,13 @@ export class RollupService {
 		]);
 
 		return {
-			properties: { ...shape, ...agent, ...ledger, ...crm },
+			properties: {
+				...shape,
+				...agent,
+				...ledger,
+				...crm,
+				api_key_rate_limited: counters.api_key_rate_limited ?? 0,
+			},
 			counters,
 		};
 	}

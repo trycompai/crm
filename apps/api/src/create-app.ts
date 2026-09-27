@@ -109,7 +109,7 @@ export async function createApp(): Promise<NestExpressApplication> {
 
 	restBridge = createOpenApiExpressMiddleware({
 		router: appRouter,
-		createContext: ({ req }) => createBaseTrpcContext(req),
+		createContext: ({ req, res }) => createBaseTrpcContext(req, res),
 	});
 
 	return app;

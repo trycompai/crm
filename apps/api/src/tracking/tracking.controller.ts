@@ -33,6 +33,7 @@ import {
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { Response } from "express";
 import { z } from "zod";
+import { timingSafeEquals } from "../common/timing-safe-equal";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
 import { TrackingConfigService } from "./tracking-config.service";
@@ -296,15 +297,4 @@ function startOfDay(at: Date): Date {
 	day.setUTCHours(0, 0, 0, 0);
 
 	return day;
-}
-
-function timingSafeEquals(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-
-	let mismatch = 0;
-	for (let index = 0; index < a.length; index += 1) {
-		mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
-	}
-
-	return mismatch === 0;
 }
