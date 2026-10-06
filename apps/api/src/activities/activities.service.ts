@@ -38,7 +38,9 @@ const ENTRY_SELECT = {
 	createdAt: true,
 	createdBy: { select: AUTHOR_SELECT },
 	company: { select: { id: true, name: true } },
-	contact: { select: { id: true, firstName: true, lastName: true } },
+	contact: {
+		select: { id: true, firstName: true, lastName: true, phone: true },
+	},
 	deal: { select: { id: true, name: true } },
 
 	emailThread: {

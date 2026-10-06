@@ -10,6 +10,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { CommercialCockpit } from "./cockpit/commercial-cockpit";
 import { DashboardSummary } from "./dashboard-summary";
 import {
 	OverviewGreeting,
@@ -55,12 +56,21 @@ async function Summary({
 	]);
 
 	const queryClient = getServerQueryClient();
-	await queryClient.prefetchQuery(
-		getServerTrpc().dashboard.summary.queryOptions({ scope }),
-	);
+	await Promise.all([
+		queryClient.prefetchQuery(
+			getServerTrpc().dashboard.summary.queryOptions({ scope }),
+		),
+		queryClient.prefetchQuery(
+			getServerTrpc().activities.myTasks.queryOptions({
+				window: "all",
+				limit: 100,
+			}),
+		),
+	]);
 
 	return (
 		<HydrateClient>
+			<CommercialCockpit />
 			<DashboardSummary />
 		</HydrateClient>
 	);

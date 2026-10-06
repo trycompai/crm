@@ -108,6 +108,7 @@ const activityContactRefOutput = z
 		id: z.string(),
 		firstName: z.string(),
 		lastName: z.string().nullable(),
+		phone: z.string().nullable(),
 	})
 	.nullable();
 

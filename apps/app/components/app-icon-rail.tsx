@@ -40,7 +40,7 @@ type RailItem = {
 };
 
 const ITEMS: RailItem[] = [
-	{ title: "Overview", href: "/", icon: Dashboard, match: "exact" },
+	{ title: "Cockpit", href: "/", icon: Dashboard, match: "exact" },
 	{
 		title: "Chat",
 		href: "/chat",
