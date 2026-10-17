@@ -50,3 +50,5 @@ yarn-error.log*
 
 # Agent scratch files
 .scratch/
+
+**/.claude/autoharness/
