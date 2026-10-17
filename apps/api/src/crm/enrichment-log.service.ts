@@ -67,7 +67,7 @@ export class EnrichmentLogService {
 	}
 }
 
-export function describeFilled(fields: readonly string[]): string | null {
+function describeFilled(fields: readonly string[]): string | null {
 	if (fields.length === 0) return null;
 	if (fields.length === 1) return `Filled in ${fields[0]}.`;
 

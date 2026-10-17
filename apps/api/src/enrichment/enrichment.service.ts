@@ -9,7 +9,7 @@ import {
 	enrichmentQueueState,
 } from "./enrichment-copy";
 
-export type EnrichmentQueueSubject =
+type EnrichmentQueueSubject =
 	| {
 			kind: "contact";
 			id: string;
@@ -26,7 +26,7 @@ export type EnrichmentQueueSubject =
 			logoTone: string | null;
 	  };
 
-export type EnrichmentQueueRow = {
+type EnrichmentQueueRow = {
 	id: string;
 	state: EnrichmentQueueState;
 	line: string;
@@ -34,7 +34,7 @@ export type EnrichmentQueueRow = {
 	subject: EnrichmentQueueSubject;
 };
 
-export type EnrichmentScheduledRow = {
+type EnrichmentScheduledRow = {
 	id: string;
 	due: string;
 	subject: EnrichmentQueueSubject;

@@ -130,7 +130,7 @@ const contactOwnerOutput = z.object({
 	image: z.string().nullable(),
 });
 
-export const contactRowOutput = z.object({
+const contactRowOutput = z.object({
 	id: z.string(),
 	firstName: z.string(),
 	lastName: z.string().nullable(),

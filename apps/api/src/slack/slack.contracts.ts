@@ -37,7 +37,7 @@ export const slackCreateChannelReply = z.union([
 	z.object({ error: z.string().trim().min(1).max(500) }),
 ]);
 
-export type SlackCreateChannelReply = z.infer<typeof slackCreateChannelReply>;
+type SlackCreateChannelReply = z.infer<typeof slackCreateChannelReply>;
 
 const slackSyncStateOutput = z.enum(SLACK_SYNC_STATES);
 

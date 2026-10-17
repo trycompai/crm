@@ -177,7 +177,3 @@ export const timelineCountsOutput = z.object({
 export type TimelineCounts = z.infer<typeof timelineCountsOutput>;
 
 export const myTasksOutput = z.array(activityEntryOutput);
-
-export const activityCreateOutput = activityEntryOutput;
-
-export const completeOutput = activityEntryOutput;

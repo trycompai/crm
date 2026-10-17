@@ -2,11 +2,20 @@
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"workspaces": {
 		".": {
-			"project": ["tools/**/*.ts"]
+			"project": [
+				"tools/**/*.ts"
+			]
 		},
 		"apps/api": {
-			"entry": ["api/index.ts", "scripts/*.ts", "test/**/*.spec.ts"],
-			"project": ["src/**/*.ts", "scripts/**/*.ts"]
+			"entry": [
+				"api/index.ts",
+				"scripts/*.ts",
+				"test/**/*.spec.ts"
+			],
+			"project": [
+				"src/**/*.ts",
+				"scripts/**/*.ts"
+			]
 		},
 		"apps/agent": {
 			"entry": [
@@ -15,27 +24,59 @@
 				"evals/**/*.eval.ts",
 				"test/**/*.spec.ts"
 			],
-			"project": ["agent/**/*.ts", "scripts/**/*.ts"]
+			"project": [
+				"agent/**/*.ts",
+				"scripts/**/*.ts"
+			]
 		},
 		"apps/app": {
 			"entry": [
 				"app/**/{page,layout,route,error,not-found,loading,template,default}.{ts,tsx}",
 				"test/**/*.spec.{ts,tsx}"
 			],
-			"project": ["**/*.{ts,tsx}"]
+			"project": [
+				"**/*.{ts,tsx}"
+			],
+			"ignoreDependencies": [
+				"tailwindcss",
+				"@tailwindcss/postcss"
+			]
 		},
 		"packages/*": {
-			"entry": ["src/*.ts"],
-			"project": ["src/**/*.{ts,tsx}"]
+			"entry": [
+				"src/*.ts"
+			],
+			"project": [
+				"src/**/*.{ts,tsx}"
+			]
 		},
 		"packages/db": {
-			"entry": ["src/*.ts"],
-			"project": ["src/**/*.ts"]
+			"entry": [
+				"src/*.ts"
+			],
+			"project": [
+				"src/**/*.ts"
+			],
+			"ignoreDependencies": [
+				"@prisma/client"
+			]
 		},
 		"packages/ui": {
-			"entry": ["src/components/**/*.tsx", "src/lib/*.ts", "src/hooks/*.ts"],
-			"project": ["src/**/*.{ts,tsx}"]
+			"entry": [
+				"src/components/**/*.tsx",
+				"src/lib/*.ts",
+				"src/hooks/*.ts"
+			],
+			"project": [
+				"src/**/*.{ts,tsx}"
+			]
+		},
+		"packages/typescript-config": {
+			"entry": [],
+			"project": [],
+			"ignoreUnresolved": [
+				"next"
+			]
 		}
-	},
-	"ignore": ["**/.eve/**", "**/.scratch/**", "**/generated/**"]
+	}
 }

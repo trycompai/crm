@@ -12,9 +12,7 @@ export const setReportingCurrencyInput = z.object({
 	currency: currencyCode,
 });
 
-export type SetReportingCurrencyInput = z.infer<
-	typeof setReportingCurrencyInput
->;
+type SetReportingCurrencyInput = z.infer<typeof setReportingCurrencyInput>;
 
 export const setManualRateInput = z.object({
 	currency: currencyCode,
@@ -24,17 +22,17 @@ export const setManualRateInput = z.object({
 		.finite("That is not a rate."),
 });
 
-export type SetManualRateInput = z.infer<typeof setManualRateInput>;
+type SetManualRateInput = z.infer<typeof setManualRateInput>;
 
 export const removeManualRateInput = z.object({
 	currency: currencyCode,
 });
 
-export type RemoveManualRateInput = z.infer<typeof removeManualRateInput>;
+type RemoveManualRateInput = z.infer<typeof removeManualRateInput>;
 
 const rateSourceOutput = z.enum([RateSource.FETCHED, RateSource.MANUAL]);
 
-export const currencyRateOutput = z.object({
+const currencyRateOutput = z.object({
 	currency: z.string(),
 	name: z.string().nullable(),
 	rate: z.number(),
@@ -44,19 +42,19 @@ export const currencyRateOutput = z.object({
 	overriding: z.boolean(),
 });
 
-export const currencyInUseOutput = z.object({
+const currencyInUseOutput = z.object({
 	currency: z.string(),
 	name: z.string().nullable(),
 	deals: z.number(),
 	convertible: z.boolean(),
 });
 
-export const unconvertedOutput = z.object({
+const unconvertedOutput = z.object({
 	count: z.number(),
 	currencies: z.array(z.string()),
 });
 
-export const currencyMetaOutput = z.object({
+const currencyMetaOutput = z.object({
 	code: z.string(),
 	name: z.string(),
 	minorUnits: z.number(),
@@ -73,5 +71,5 @@ export const currencySettingsOutput = z.object({
 });
 
 export type CurrencyRate = z.infer<typeof currencyRateOutput>;
-export type CurrencyInUse = z.infer<typeof currencyInUseOutput>;
+type CurrencyInUse = z.infer<typeof currencyInUseOutput>;
 export type CurrencySettings = z.infer<typeof currencySettingsOutput>;

@@ -8,7 +8,7 @@ export const fieldListInput = z.object({
 	includeArchived: z.boolean().default(false),
 });
 
-export type FieldListInput = z.infer<typeof fieldListInput>;
+type FieldListInput = z.infer<typeof fieldListInput>;
 
 export const fieldByKeyInput = z.object({
 	entity: fieldEntity,

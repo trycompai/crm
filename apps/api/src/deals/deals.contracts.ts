@@ -6,7 +6,7 @@ import { currencyCode } from "../currency/currency.contracts";
 import { recordFieldValues } from "../fields/fields.contracts";
 import { listInput } from "../trpc/list-input";
 
-export const MAX_AMOUNT_CENTS = 99_999_999_999_999;
+const MAX_AMOUNT_CENTS = 99_999_999_999_999;
 
 const amountCents = z
 	.number()
@@ -222,7 +222,7 @@ export const dealListOutput = z.object({
 	}),
 });
 
-export type DealListResult = z.infer<typeof dealListOutput>;
+type DealListResult = z.infer<typeof dealListOutput>;
 
 export const dealDetailOutput = z.object({
 	id: z.string(),
@@ -247,7 +247,7 @@ export const dealDetailOutput = z.object({
 	contacts: z.array(dealContactOutput),
 });
 
-export type DealDetail = z.infer<typeof dealDetailOutput>;
+type DealDetail = z.infer<typeof dealDetailOutput>;
 
 export const dealCreateOutput = z.object({
 	id: z.string(),
@@ -255,14 +255,14 @@ export const dealCreateOutput = z.object({
 	companyId: z.string(),
 });
 
-export type DealCreated = z.infer<typeof dealCreateOutput>;
+type DealCreated = z.infer<typeof dealCreateOutput>;
 
 export const dealMutateOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 });
 
-export type DealMutated = z.infer<typeof dealMutateOutput>;
+type DealMutated = z.infer<typeof dealMutateOutput>;
 
 export const dealSetStageOutput = z.object({
 	id: z.string(),
@@ -270,18 +270,18 @@ export const dealSetStageOutput = z.object({
 	changed: z.boolean(),
 });
 
-export type DealSetStageResult = z.infer<typeof dealSetStageOutput>;
+type DealSetStageResult = z.infer<typeof dealSetStageOutput>;
 
 export const dealContactOptionsOutput = z.array(dealContactSummaryOutput);
 
-export type DealContactOption = z.infer<typeof dealContactSummaryOutput>;
+type DealContactOption = z.infer<typeof dealContactSummaryOutput>;
 
 export const dealContactLinkOutput = z.object({
 	dealId: z.string(),
 	contactId: z.string(),
 });
 
-export type DealContactLink = z.infer<typeof dealContactLinkOutput>;
+type DealContactLink = z.infer<typeof dealContactLinkOutput>;
 
 export const dealContactRoleOutput = z.object({
 	dealId: z.string(),
@@ -289,7 +289,7 @@ export const dealContactRoleOutput = z.object({
 	role: z.string().nullable(),
 });
 
-export type DealContactRoleResult = z.infer<typeof dealContactRoleOutput>;
+type DealContactRoleResult = z.infer<typeof dealContactRoleOutput>;
 
 export const dealBulkResultOutput = z.object({
 	requested: z.number(),
@@ -298,4 +298,4 @@ export const dealBulkResultOutput = z.object({
 	message: z.string().nullable(),
 });
 
-export type DealBulkResult = z.infer<typeof dealBulkResultOutput>;
+type DealBulkResult = z.infer<typeof dealBulkResultOutput>;

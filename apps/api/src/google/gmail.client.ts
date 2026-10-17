@@ -37,7 +37,7 @@ export type Profile = {
 	historyId?: string;
 };
 
-export const WORK_MAIL_QUERY =
+const WORK_MAIL_QUERY =
 	"-in:chats -category:promotions -category:social -category:forums";
 
 @Injectable()

@@ -81,7 +81,7 @@ export const conversationEventsInput = z.object({
 
 export type ConversationEventsInput = z.infer<typeof conversationEventsInput>;
 
-export const builderResource = z.object({
+const builderResource = z.object({
 	kind: z.enum(["integration", "company", "contact", "deal"]),
 	id: z.string().trim().min(1).max(160),
 	label: z.string().trim().min(1).max(120),
@@ -89,7 +89,7 @@ export const builderResource = z.object({
 	imageUrl: z.url().nullable().optional(),
 });
 
-export const builderAttachment = z
+const builderAttachment = z
 	.object({
 		name: z.string().trim().min(1).max(180),
 		type: z.string().trim().min(1).max(120),
@@ -229,7 +229,7 @@ const agentResponseRatingOutput = z.enum(
 
 export const conversationIdOutput = z.object({ id: z.string() });
 
-export const conversationSummaryOutput = z.object({
+const conversationSummaryOutput = z.object({
 	id: z.string(),
 	sessionId: z.string(),
 	continuationToken: z.string().nullable(),
@@ -249,7 +249,7 @@ const builderConversationAgentSummaryOutput = z.object({
 	status: agentDefinitionStatusOutput,
 });
 
-export const builderConversationSummaryOutput = z.object({
+const builderConversationSummaryOutput = z.object({
 	id: z.string(),
 	sessionId: z.string().nullable(),
 	continuationToken: z.string().nullable(),
@@ -269,7 +269,7 @@ export type BuilderConversationSummary = z.infer<
 	typeof builderConversationSummaryOutput
 >;
 
-export const builderResourceOutput = z.object({
+const builderResourceOutput = z.object({
 	kind: z.enum(["integration", "company", "contact", "deal"]),
 	id: z.string(),
 	label: z.string(),
@@ -279,7 +279,7 @@ export const builderResourceOutput = z.object({
 
 export const builderResourcesOutput = z.array(builderResourceOutput);
 
-export const agentBuilderArtifactOutput = z.object({
+const agentBuilderArtifactOutput = z.object({
 	id: z.string(),
 	versionId: z.string().nullable(),
 	path: z.string(),
@@ -368,7 +368,7 @@ export const builderConversationDetailOutput = z.object({
 	submissions: z.array(builderSubmissionOutput),
 });
 
-export const conversationEventOutput = z.object({
+const conversationEventOutput = z.object({
 	type: z.string(),
 	data: z.unknown(),
 	meta: z.object({ id: z.string(), at: z.string() }),

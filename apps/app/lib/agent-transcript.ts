@@ -284,7 +284,7 @@ function partId(
 	return callId ? `${messageId}:${callId}` : `${messageId}:${index}`;
 }
 
-export function toolName(part: EveMessagePart): string {
+function toolName(part: EveMessagePart): string {
 	if (part.type === "dynamic-tool") return part.toolName;
 	return part.type.replace(/^tool-/, "");
 }

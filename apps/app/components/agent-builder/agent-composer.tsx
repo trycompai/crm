@@ -51,21 +51,19 @@ import {
 	ChatReferenceIdentity,
 } from "./chat-chips";
 
-export type BuilderResource = ChatChipResource;
+type BuilderResource = ChatChipResource;
 
-export type BuilderUploadAttachment = ChatChipAttachment & {
+type BuilderUploadAttachment = ChatChipAttachment & {
 	id?: never;
 	contentBase64: string;
 };
 
-export type BuilderStoredAttachment = ChatChipAttachment & {
+type BuilderStoredAttachment = ChatChipAttachment & {
 	id: string;
 	contentBase64?: never;
 };
 
-export type BuilderAttachment =
-	| BuilderUploadAttachment
-	| BuilderStoredAttachment;
+type BuilderAttachment = BuilderUploadAttachment | BuilderStoredAttachment;
 
 export type BuilderPrompt<
 	TAttachment extends BuilderAttachment = BuilderAttachment,

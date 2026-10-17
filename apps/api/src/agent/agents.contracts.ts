@@ -159,7 +159,7 @@ const agentListItemOutput = z.object({
 
 export const agentListOutput = z.array(agentListItemOutput);
 
-export type AgentListItem = z.infer<typeof agentListItemOutput>;
+type AgentListItem = z.infer<typeof agentListItemOutput>;
 
 export const agentReviseOutput = z.object({ versionId: z.string() });
 
@@ -246,7 +246,7 @@ export const agentByIdOutput = z.object({
 	capabilities: agentCapabilitiesResultOutput,
 });
 
-export type AgentDetail = z.infer<typeof agentByIdOutput>;
+type AgentDetail = z.infer<typeof agentByIdOutput>;
 
 const agentRunEventOutput = z.object({
 	id: z.string(),
@@ -299,7 +299,7 @@ const agentRunSummaryOutput = z.object({
 
 export const agentHistoryOutput = z.array(agentRunSummaryOutput);
 
-export type AgentRunSummary = z.infer<typeof agentRunSummaryOutput>;
+type AgentRunSummary = z.infer<typeof agentRunSummaryOutput>;
 
 const agentAuditEventOutput = z.object({
 	id: z.string(),
@@ -317,7 +317,7 @@ const agentAuditEventOutput = z.object({
 
 export const agentActivityOutput = z.array(agentAuditEventOutput);
 
-export type AgentAuditEventSummary = z.infer<typeof agentAuditEventOutput>;
+type AgentAuditEventSummary = z.infer<typeof agentAuditEventOutput>;
 
 export const agentUpdateOutput = z.object({
 	id: z.string(),

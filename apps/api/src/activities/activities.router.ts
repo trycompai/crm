@@ -13,9 +13,8 @@ import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
 	activityCreateInput,
-	activityCreateOutput,
+	activityEntryOutput,
 	completeInput,
-	completeOutput,
 	myTasksInput,
 	myTasksOutput,
 	timelineCountsInput,
@@ -64,7 +63,7 @@ export class ActivitiesRouter {
 
 	@Mutation({
 		input: activityCreateInput,
-		output: activityCreateOutput,
+		output: activityEntryOutput,
 		meta: restMeta("POST", "/activities", ["Activities"]),
 	})
 	async create(
@@ -76,7 +75,7 @@ export class ActivitiesRouter {
 
 	@Mutation({
 		input: completeInput,
-		output: completeOutput,
+		output: activityEntryOutput,
 		meta: restMeta("PATCH", "/activities/{id}/complete", ["Activities"]),
 	})
 	async complete(@Input() input: z.infer<typeof completeInput>) {

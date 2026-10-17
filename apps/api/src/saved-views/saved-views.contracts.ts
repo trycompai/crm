@@ -2,13 +2,13 @@ import { FIELD_ENTITIES } from "@crm/db/fields";
 import { savedViewFilters } from "@crm/validation/saved-view";
 import { z } from "zod";
 
-export const savedViewEntity = z.enum(FIELD_ENTITIES);
+const savedViewEntity = z.enum(FIELD_ENTITIES);
 
 export const savedViewListInput = z.object({
 	entity: savedViewEntity,
 });
 
-export type SavedViewListInput = z.infer<typeof savedViewListInput>;
+type SavedViewListInput = z.infer<typeof savedViewListInput>;
 
 export const savedViewCreateInput = z.object({
 	entity: savedViewEntity,

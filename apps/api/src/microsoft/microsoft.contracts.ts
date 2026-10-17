@@ -7,15 +7,13 @@ export const setOutlookAutoCreateInput = z.object({
 	enabled: z.boolean(),
 });
 
-export type SetOutlookAutoCreateInput = z.infer<
-	typeof setOutlookAutoCreateInput
->;
+type SetOutlookAutoCreateInput = z.infer<typeof setOutlookAutoCreateInput>;
 
 const microsoftSyncStatusOutput = z.enum(
 	Object.values(GoogleSyncStatus) as [GoogleSyncStatus, ...GoogleSyncStatus[]],
 );
 
-export const microsoftSourceStatusOutput = z.object({
+const microsoftSourceStatusOutput = z.object({
 	source: z.enum(MICROSOFT_SYNC_SOURCES),
 	connected: z.boolean(),
 	status: microsoftSyncStatusOutput.nullable(),

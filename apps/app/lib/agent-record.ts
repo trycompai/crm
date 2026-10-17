@@ -76,5 +76,3 @@ export function recordHeader(record: AgentRecord): AgentRecordHeader {
 export function recordFilter(record: AgentRecord): AgentRecordFilter {
 	return { [COPY[record.kind].field]: record.id };
 }
-
-export type { CarbonIcon };

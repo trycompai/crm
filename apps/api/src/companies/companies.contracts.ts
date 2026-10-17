@@ -113,7 +113,7 @@ const companyRecordFieldOutput = z.object({
 	value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
 });
 
-export const companyRowOutput = z.object({
+const companyRowOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	domain: z.string().nullable(),

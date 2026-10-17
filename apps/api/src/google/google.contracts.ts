@@ -21,14 +21,14 @@ export const calendarEventInput = z.object({
 	eventId: z.string(),
 });
 
-export type SetAutoCreateInput = z.infer<typeof setAutoCreateInput>;
-export type SuppressDomainInput = z.infer<typeof suppressDomainInput>;
+type SetAutoCreateInput = z.infer<typeof setAutoCreateInput>;
+type SuppressDomainInput = z.infer<typeof suppressDomainInput>;
 
 const googleSyncStatusOutput = z.enum(
 	Object.values(GoogleSyncStatus) as [GoogleSyncStatus, ...GoogleSyncStatus[]],
 );
 
-export const googleSourceStatusOutput = z.object({
+const googleSourceStatusOutput = z.object({
 	source: z.enum(GOOGLE_SYNC_SOURCES),
 	connected: z.boolean(),
 	status: googleSyncStatusOutput.nullable(),
@@ -151,5 +151,5 @@ export type GoogleConnectionStatus = z.infer<
 export type PurgeSyncedDataOutput = z.infer<typeof purgeSyncedDataOutput>;
 export type RevokeAccessOutput = z.infer<typeof revokeAccessOutput>;
 export type SuppressDomainOutput = z.infer<typeof suppressDomainOutput>;
-export type EmailThreadOutput = z.infer<typeof emailThreadOutput>;
-export type CalendarEventOutput = z.infer<typeof calendarEventOutput>;
+type EmailThreadOutput = z.infer<typeof emailThreadOutput>;
+type CalendarEventOutput = z.infer<typeof calendarEventOutput>;

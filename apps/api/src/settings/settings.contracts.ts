@@ -4,7 +4,7 @@ import {
 } from "@crm/db/settings";
 import { z } from "zod";
 
-export const catalogModelOutput = z.object({
+const catalogModelOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	provider: z.string(),
@@ -12,7 +12,7 @@ export const catalogModelOutput = z.object({
 	pricing: z.object({ input: z.number(), output: z.number() }).nullable(),
 });
 
-export type CatalogModel = z.infer<typeof catalogModelOutput>;
+type CatalogModel = z.infer<typeof catalogModelOutput>;
 
 export const agentModelOutput = z.object({
 	selectedId: z.string().nullable(),
@@ -48,7 +48,7 @@ export const setAgentModelInput = z.object({
 	modelId: z.string().trim().min(1).max(200).nullable(),
 });
 
-export type SetAgentModelInput = z.infer<typeof setAgentModelInput>;
+type SetAgentModelInput = z.infer<typeof setAgentModelInput>;
 
 export const setResearchKeyInput = z.object({
 	apiKey: z
@@ -62,7 +62,7 @@ export const setResearchKeyInput = z.object({
 		),
 });
 
-export type SetResearchKeyInput = z.infer<typeof setResearchKeyInput>;
+type SetResearchKeyInput = z.infer<typeof setResearchKeyInput>;
 
 export const setArchiveRetentionDaysInput = z.object({
 	days: z
@@ -78,6 +78,6 @@ export const setArchiveRetentionDaysInput = z.object({
 		),
 });
 
-export type SetArchiveRetentionDaysInput = z.infer<
+type SetArchiveRetentionDaysInput = z.infer<
 	typeof setArchiveRetentionDaysInput
 >;

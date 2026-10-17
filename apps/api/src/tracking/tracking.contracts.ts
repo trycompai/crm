@@ -99,7 +99,7 @@ export const verifyOutput = z.discriminatedUnion("status", [
 	}),
 ]);
 
-export const sourceRowOutput = z.object({
+const sourceRowOutput = z.object({
 	source: z.string(),
 	medium: z.string().nullable(),
 	views: z.number(),
@@ -141,5 +141,5 @@ export type FoundInContainer = z.infer<typeof foundInContainerOutput>;
 export type VerifyResult = z.infer<typeof verifyOutput>;
 export type SourceRow = z.infer<typeof sourceRowOutput>;
 export type TouchSummary = z.infer<typeof touchSummaryOutput>;
-export type VisitedPage = z.infer<typeof visitedPageOutput>;
+type VisitedPage = z.infer<typeof visitedPageOutput>;
 export type WebsiteActivity = z.infer<typeof websiteActivityOutput>;

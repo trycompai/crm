@@ -14,7 +14,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
 
-export const RATES_PROVIDER = "open.er-api.com";
+const RATES_PROVIDER = "open.er-api.com";
 
 const RATES_URL = "https://open.er-api.com/v6/latest";
 

@@ -18,7 +18,7 @@ export const revokeApiKeyInput = z.object({
 	id: z.string().trim().min(1),
 });
 
-export const apiKeySummaryOutput = z.object({
+const apiKeySummaryOutput = z.object({
 	id: z.string(),
 	name: z.string().nullable(),
 	start: z.string().nullable(),
