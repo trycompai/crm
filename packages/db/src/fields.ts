@@ -1,6 +1,5 @@
 import {
 	columnFor,
-	type FieldValueColumn,
 	FieldValueError,
 	type FieldValueJson,
 	type FieldValueWrite,
