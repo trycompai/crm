@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseEnv } from "@crm/env";
 
@@ -80,12 +80,7 @@ function workspaceRoot(): string | null {
 	let directory = process.cwd();
 
 	while (true) {
-		try {
-			const manifest = JSON.parse(
-				readFileSync(join(directory, "package.json"), "utf8"),
-			) as { workspaces?: unknown };
-			if (manifest.workspaces) return directory;
-		} catch {}
+		if (existsSync(join(directory, "pnpm-workspace.yaml"))) return directory;
 
 		const parent = dirname(directory);
 		if (parent === directory) return null;

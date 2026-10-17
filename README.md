@@ -142,7 +142,7 @@ configured, and the agent carries on running its own schedule.
 
 ## The stack
 
-A [Turborepo](https://turborepo.dev) monorepo on [Bun](https://bun.com), deployed on
+A [Turborepo](https://turborepo.dev) monorepo on [Bun](https://bun.com) and [pnpm](https://pnpm.io), deployed on
 [Vercel](https://vercel.com).
 
 | | |
@@ -189,18 +189,18 @@ Written up where the work happens, not in a style guide:
 
 ## Quick start
 
-You need [Bun](https://bun.com) and Docker.
+You need [Bun](https://bun.com), [pnpm](https://pnpm.io) and Docker.
 
 ```sh
 git clone https://github.com/trycompai/crm.git && cd crm
 cp .env.example .env          # then fill in the values below
-bun install
+pnpm install
 
 docker compose up -d          # Postgres on :5432
 
-bun run db:deploy             # apply migrations
-bun run db:seed               # optional: a believable pipeline to look at
-bun run dev
+pnpm run db:deploy             # apply migrations
+pnpm run db:seed               # optional: a believable pipeline to look at
+pnpm run dev
 ```
 
 The app is on [localhost:3000](http://localhost:3000), the API on
@@ -320,18 +320,18 @@ short version:
 
 | Command | |
 | --- | --- |
-| `bun run dev` | Prepare the local database, then run everything in dependency-aware watch mode |
-| `bun run build` | Build all apps and packages |
-| `bun run test` | Run the test suite |
-| `bun run check-types` | `tsc --noEmit` everywhere |
-| `bun run lint` / `format` | [Biome](https://biomejs.dev) |
-| `bun run db:migrate` | Create and apply a migration |
-| `bun run db:seed` | Top up the demo pipeline (idempotent) |
-| `bun run db:studio` | Prisma Studio |
-| `bun run --filter=api trpc:generate` | Regenerate the `AppRouter` type |
-| `bun run --filter=api dev:session` | Print a session cookie for a local user |
+| `pnpm run dev` | Prepare the local database, then run everything in dependency-aware watch mode |
+| `pnpm run build` | Build all apps and packages |
+| `pnpm run test` | Run the test suite |
+| `pnpm run check-types` | `tsc --noEmit` everywhere |
+| `pnpm run lint` / `format` | [Biome](https://biomejs.dev) |
+| `pnpm run db:migrate` | Create and apply a migration |
+| `pnpm run db:seed` | Top up the demo pipeline (idempotent) |
+| `pnpm run db:studio` | Prisma Studio |
+| `pnpm --filter=api trpc:generate` | Regenerate the `AppRouter` type |
+| `pnpm --filter=api dev:session` | Print a session cookie for a local user |
 
-Scope any of them with a Turborepo filter: `bun run dev --filter=api`.
+Scope any of them with a Turborepo filter: `pnpm run dev --filter=api`.
 
 Because sign-in goes through an identity provider, there is no way to get a session from a terminal —
 `dev:session` writes the rows Better Auth would have written and prints the cookie it

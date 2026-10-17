@@ -25,22 +25,22 @@ Everything you need is in the [README](./README.md#quick-start). Short version:
 
 ```sh
 cp .env.example .env      # fill in ALLOWED_SIGN_IN and the two Google values
-bun install
+pnpm install
 docker compose up -d
-bun run db:deploy && bun run db:seed
-bun run dev
+pnpm run db:deploy && pnpm run db:seed
+pnpm run dev
 ```
 
 ## Before you push
 
 ```sh
-bun run check-types
-bun run lint
-bun run lint:slop
-bun run test
+pnpm run check-types
+pnpm run lint
+pnpm run lint:slop
+pnpm run test
 ```
 
-All four run on CI, and `bun run format` fixes most of what `lint` complains about.
+All four run on CI, and `pnpm run format` fixes most of what `lint` complains about.
 
 `lint:slop` is [anti-slop](https://github.com/dmmulroy/anti-slop) over Oxlint, and it holds one
 line: **data crossing an I/O boundary is parsed into a domain type at the point it arrives.** No
@@ -52,7 +52,7 @@ bag, a log field, a user-defined custom field value — is scoped off in `.oxlin
 reason, and that is the only sanctioned way past it.
 
 **A `pre-push` hook runs them for you**, so a push that would fail CI fails on your machine
-instead, where the feedback is in seconds rather than minutes. `bun install` wires it up — the
+instead, where the feedback is in seconds rather than minutes. `pnpm install` wires it up — the
 hooks live in `.githooks/` and `prepare` points `core.hooksPath` at them, so there is nothing to
 install and no hook manager in the dependency tree. Turbo caches, so a second push that changed
 nothing relevant is nearly free.
@@ -63,7 +63,7 @@ you are deliberately pushing to ask about — `git push --no-verify` skips it, a
 skips it for a whole shell.
 
 **The suite runs against `TEST_DATABASE_URL`, never `DATABASE_URL`, and refuses to start without
-it.** `bun run db:test` creates the database and migrates it; the name has to end in `_test`.
+it.** `pnpm run db:test` creates the database and migrates it; the name has to end in `_test`.
 These tests write and delete real rows, and the hook above runs them on every push — so without
 that split, one `git push` reaches whatever database your `.env` happens to name, which for a
 self-hoster is production. That is not hypothetical: a run that was interrupted between deleting
@@ -88,9 +88,9 @@ database.**
 A few things that trip people up:
 
 - **The tRPC router type is generated, and committed.** If the app can't see a procedure you just
-  added, run `bun run --filter=api trpc:generate` and commit `apps/api/src/generated/server.ts`
-  alongside the router change. `bun run dev` keeps it in watch mode.
-- **Schema changes need a migration**, not `db:push`. `bun run db:migrate` creates one.
+  added, run `pnpm --filter=api trpc:generate` and commit `apps/api/src/generated/server.ts`
+  alongside the router change. `pnpm run dev` keeps it in watch mode.
+- **Schema changes need a migration**, not `db:push`. `pnpm run db:migrate` creates one.
 - **New environment variables need a home.** Add them to `.env.example` and, if the API reads them,
   to `apps/api/src/config/env.validation.ts`. A variable that only exists in someone's shell is a
   variable that breaks the next person's clone.

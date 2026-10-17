@@ -6,19 +6,7 @@ function findRoot(start: string): string | null {
 	let directory = resolve(start);
 
 	for (;;) {
-		const manifest = join(directory, "package.json");
-		if (existsSync(manifest)) {
-			try {
-				const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
-				if (
-					parsed instanceof Object &&
-					"workspaces" in parsed &&
-					parsed.workspaces !== undefined
-				) {
-					return directory;
-				}
-			} catch {}
-		}
+		if (existsSync(join(directory, "pnpm-workspace.yaml"))) return directory;
 
 		const parent = dirname(directory);
 		if (parent === directory) return null;
@@ -47,11 +35,10 @@ describe("finding the workspace root", () => {
 		expect(findRoot("/")).toBeNull();
 	});
 
-	it("only matches a manifest that declares workspaces", () => {
-		const manifest: unknown = JSON.parse(
-			readFileSync(join(repoRoot, "apps", "api", "package.json"), "utf8"),
-		);
-		expect(manifest instanceof Object && "workspaces" in manifest).toBe(false);
+	it("only matches a directory that declares the workspace", () => {
+		expect(
+			existsSync(join(repoRoot, "apps", "api", "pnpm-workspace.yaml")),
+		).toBe(false);
 	});
 });
 

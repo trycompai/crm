@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const FILES = [".env", ".env.local"] as const;
@@ -18,19 +18,7 @@ export function findWorkspaceRoot(start: string): string | null {
 }
 
 function isWorkspaceRoot(directory: string): boolean {
-	const manifest = join(directory, "package.json");
-	if (!existsSync(manifest)) return false;
-
-	try {
-		const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
-		return (
-			parsed instanceof Object &&
-			"workspaces" in parsed &&
-			parsed.workspaces !== undefined
-		);
-	} catch {
-		return false;
-	}
+	return existsSync(join(directory, "pnpm-workspace.yaml"));
 }
 
 type EnvValues = Record<string, string>;

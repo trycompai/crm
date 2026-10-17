@@ -15,13 +15,13 @@ done
 
 fail() {
 	echo ""
-	echo "  \`bun run $1\` failed, so this push would have failed CI."
+	echo "  \`pnpm run $1\` failed, so this push would have failed CI."
 	echo "  Fix it, or push anyway with --no-verify."
 	echo ""
 	exit 1
 }
 
 for task in check-types lint lint:slop test; do
-	echo "pre-push: bun run $task"
-	bun run "$task" || fail "$task"
+	echo "pre-push: pnpm run $task"
+	pnpm run "$task" || fail "$task"
 done

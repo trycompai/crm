@@ -9,8 +9,8 @@ reads once.
 ```sh
 cp .env.example .env        # fill DATABASE_URL, BETTER_AUTH_SECRET, ALLOWED_SIGN_IN
 docker compose up -d        # Postgres, matching .env.example
-bun run db:migrate && bun run db:seed
-bun run dev                 # app :3000, api :3001, agent :2000
+pnpm run db:migrate && pnpm run db:seed
+pnpm run dev                 # app :3000, api :3001, agent :2000
 ```
 
 Prisma from the repo root: `db:generate`, `db:migrate`, `db:push`, `db:reset`,
@@ -56,7 +56,7 @@ Turbo task marks it interactive, so select the agent pane and press Enter before
 using the eve TUI. Run `turbo run dev:headless --filter=agent` when a terminal
 cannot render the TUI; that uses `eve dev --no-ui`, and the Turbo pane is the
 record because only interactive development writes `.eve/logs/` for `eve logs`.
-Reach for the Turbo task rather than `bun run --filter=agent dev:headless`: the
+Reach for the Turbo task rather than `pnpm --filter=agent dev:headless`: the
 package script alone skips `dev:prepare`, so the agent would start against
 unmigrated tables.
 
@@ -64,7 +64,7 @@ unmigrated tables.
 stdout), printing shape everywhere and argument contents outside production only. It
 is **not the audit trail** — `hooks/audit.ts` writes `AgentEvent` regardless.
 
-- A second `bun run dev` fails the whole turbo run.
+- A second `pnpm run dev` fails the whole turbo run.
 - An orphaned agent holds the port: `lsof -nP -iTCP:2000 -sTCP:LISTEN`.
 
 ### Nothing is researching, and the queue only grows
@@ -78,7 +78,7 @@ Tasks the API did not write (`schedule_recheck`) and anything queued while the a
 was down still need a manual run:
 
 ```sh
-bun run --filter=agent dispatch    # exact production path, both lanes, real credits
+pnpm --filter=agent dispatch    # exact production path, both lanes, real credits
 ```
 
 Its printed `sessionIds` are research rows only, so a run that resolved forty logos
@@ -88,7 +88,7 @@ prints an empty list and was not idle. `eve start` and Vercel do run the schedul
 
 `.env.local` is the override the loader reads *last*, and `vercel env pull` writes
 **production** credentials there by default. Pull once and every process silently
-points at production — not as an error, but as `bun run dev` working perfectly against
+points at production — not as an error, but as `pnpm run dev` working perfectly against
 the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
 
 1. **Pull somewhere inert**: `vercel env pull .env.vercel`.
@@ -109,7 +109,7 @@ Preview deploys share the production database: `DATABASE_URL` is a single value
 across production, preview and development. Until that changes, **a preview of a
 branch that adds a migration runs against a database without those tables** — it
 builds, and the pages that touch them fail. Test schema changes locally, where
-`bun run dev` migrates for you. Before the gate existed the reverse was true and
+`pnpm run dev` migrates for you. Before the gate existed the reverse was true and
 worse: every preview applied its own migrations to the production database, so on
 2026-08-07 the live schema ran six migrations ahead of the live code all day.
 
@@ -131,7 +131,7 @@ migration file, only in a `db push` of an older schema.
 Reconciling is one command, and it is worth reading before running:
 
 ```sh
-DATABASE_URL="…" bunx prisma migrate diff \
+DATABASE_URL="…" pnpm exec prisma migrate diff \
   --from-config-datasource --to-schema prisma/schema.prisma --script
 ```
 
@@ -145,13 +145,13 @@ never reuse one from an example, a tutorial, or another environment.
 ## Tests
 
 ```sh
-bun run --filter=api test
-bun run --filter=agent test    # integration specs need DATABASE_URL + real Postgres
+pnpm --filter=api test
+pnpm --filter=agent test    # integration specs need DATABASE_URL + real Postgres
 ```
 
 ### The test database rebuilds itself when it drifts
 
-`bun run db:test` creates `crm_test` and runs `migrate deploy` on it. The database
+`pnpm run db:test` creates `crm_test` and runs `migrate deploy` on it. The database
 name must end in `_test`; the suite deletes rows it expects to put back, so it
 refuses anything else.
 
@@ -172,6 +172,6 @@ So `db:test` now checks the database it found and rebuilds it when either is tru
   was pushed or altered by hand.
 
 A rebuild drops the database and re-runs every migration, and it says which of the
-two reasons fired. Force one with `bun run db:test --reset`. Nothing else in the
+two reasons fired. Force one with `pnpm run db:test --reset`. Nothing else in the
 repo may drop a database, and this may only because the `_test` suffix is checked
 first.
