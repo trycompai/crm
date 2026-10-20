@@ -116,6 +116,7 @@ export function permitted(
 export const AGENT_TOOLS = [
 	"agent",
 	"archive_field",
+	"create_quickbooks_estimate",
 	"enrich_company",
 	"fetch_contact_photo",
 	"find_contact_socials",
@@ -131,6 +132,7 @@ export const AGENT_TOOLS = [
 	"read_deal_history",
 	"record_fact",
 	"record_job_change",
+	"read_quickbooks",
 	"research_company",
 	"research_person",
 	"resolve_linkedin_profile",

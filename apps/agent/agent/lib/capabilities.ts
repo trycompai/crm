@@ -2,6 +2,7 @@ import "@crm/env/load";
 
 import { db } from "@crm/db";
 import { readContextDevKey } from "@crm/db/settings";
+import { quickBooksEnabled } from "./quickbooks-config";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
@@ -45,6 +46,14 @@ export function capabilitiesFrom(
 	});
 
 	return [
+		{
+			id: "QUICKBOOKS",
+			label: "QuickBooks",
+			gives:
+				"reads from the enrolled company and estimate drafts with human approval on every creation",
+			enabled: quickBooksEnabled(),
+			from: "Owner OAuth enrollment and QUICKBOOKS_ENABLED",
+		},
 		{
 			...fromEnv("PERPLEXITY_API_KEY"),
 			label: "Web research",
