@@ -4,7 +4,7 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
-			"outputs": [".eve/**", ".output/**", ".vercel/output/**"]
+			"outputs": [".output/**", ".vercel/output/**"]
 		},
 		"check-types": {
 			"dependsOn": ["topo", "^build"]
