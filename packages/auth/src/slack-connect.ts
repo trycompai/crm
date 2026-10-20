@@ -62,13 +62,19 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 	}
 });
 
-function startsSlackConnect(path: string, body: JsonValue): boolean {
+function startsSlackConnect(
+	path: string,
+	body: JsonValue | undefined,
+): boolean {
 	if (!SLACK_CONNECT_START_PATHS.includes(path)) return false;
 	const parsed = connectStartBody.safeParse(body);
 	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;
 }
 
-function completesSlackConnect(path: string, params: JsonValue): boolean {
+function completesSlackConnect(
+	path: string,
+	params: JsonValue | undefined,
+): boolean {
 	if (!path.startsWith(OAUTH_CALLBACK_PATH)) return false;
 	const parsed = callbackParams.safeParse(params);
 	return parsed.success && parsed.data.providerId === SLACK_PROVIDER_ID;

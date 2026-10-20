@@ -57,6 +57,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - run: bun run audit
+
       - name: Apply migrations
         run: bun run db:deploy
 

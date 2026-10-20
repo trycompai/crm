@@ -45,15 +45,15 @@
 	},
 	"dependencies": {
 		"@crm/env": "workspace:*",
-		"@prisma/adapter-pg": "^7.9.1",
-		"@prisma/client": "^7.9.1",
+		"@prisma/adapter-pg": "^7.10.1",
+		"@prisma/client": "^7.10.1",
 		"@vercel/blob": "^2.6.1"
 	},
 	"devDependencies": {
 		"@crm/typescript-config": "workspace:*",
 		"@types/node": "^24.10.1",
 		"pg": "^8.22.0",
-		"prisma": "^7.9.1",
+		"prisma": "^7.10.1",
 		"typescript": "5.9.2"
 	}
 }

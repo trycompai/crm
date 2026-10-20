@@ -15,13 +15,21 @@ done
 
 fail() {
 	echo ""
-	echo "  \`bun run $1\` failed, so this push would have failed CI."
+	echo "  \`$runner $1\` failed, so this push would have failed CI."
 	echo "  Fix it, or push anyway with --no-verify."
 	echo ""
 	exit 1
 }
 
-for task in check-types lint lint:slop test; do
-	echo "pre-push: bun run $task"
-	bun run "$task" || fail "$task"
+if command -v vp >/dev/null 2>&1; then
+	runner="vp run -w"
+	run_task() { vp run -w "$1"; }
+else
+	runner="bun run"
+	run_task() { bun run "$1"; }
+fi
+
+for task in audit check-types lint lint:slop test; do
+	echo "pre-push: $runner $task"
+	run_task "$task" || fail "$task"
 done
