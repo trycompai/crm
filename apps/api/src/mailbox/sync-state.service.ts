@@ -1,6 +1,7 @@
 import {
 	type Db,
 	GoogleSyncStatus,
+	MailboxBackfillStatus,
 	type MailboxSyncModel as MailboxSync,
 	type Prisma,
 } from "@crm/db";
@@ -162,6 +163,57 @@ export class SyncStateService {
 		await this.db.mailboxSync.updateMany({
 			where: { userId, source },
 			data: { autoCreate: enabled },
+		});
+	}
+
+	async startBackfill(id: string, from: Date, until: Date): Promise<void> {
+		await this.db.mailboxSync.update({
+			where: { id },
+			data: {
+				backfillStatus: MailboxBackfillStatus.RUNNING,
+				backfillFrom: from,
+				backfillCursor: from,
+				backfillUntil: until,
+				backfillStartedAt: new Date(),
+				backfillCompletedAt: null,
+				backfillMessagesSeen: 0,
+				backfillMessagesWritten: 0,
+				backfillLastError: null,
+			},
+		});
+	}
+
+	async advanceBackfill(
+		id: string,
+		update: {
+			cursor: Date;
+			messagesSeen: number;
+			messagesWritten: number;
+			complete: boolean;
+		},
+	): Promise<void> {
+		await this.db.mailboxSync.update({
+			where: { id },
+			data: {
+				backfillStatus: update.complete
+					? MailboxBackfillStatus.COMPLETE
+					: MailboxBackfillStatus.RUNNING,
+				backfillCursor: update.cursor,
+				backfillCompletedAt: update.complete ? new Date() : null,
+				backfillMessagesSeen: { increment: update.messagesSeen },
+				backfillMessagesWritten: { increment: update.messagesWritten },
+				backfillLastError: null,
+			},
+		});
+	}
+
+	async failBackfill(id: string, reason: string): Promise<void> {
+		await this.db.mailboxSync.update({
+			where: { id },
+			data: {
+				backfillStatus: MailboxBackfillStatus.FAILED,
+				backfillLastError: reason,
+			},
 		});
 	}
 

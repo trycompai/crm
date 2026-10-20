@@ -16,6 +16,7 @@ import {
 	purgeSyncedDataOutput,
 	revokeAccessOutput,
 	setOutlookAutoCreateInput,
+	startOutlookBackfillInput,
 } from "./microsoft.contracts";
 import { MicrosoftConnectionService } from "./microsoft-connection.service";
 import { MicrosoftSyncService } from "./microsoft-sync.service";
@@ -60,6 +61,19 @@ export class MicrosoftRouter {
 	})
 	async syncNow(@Ctx() ctx: AuthedTrpcContext) {
 		await this.sync.runForUser(ctx.user.id);
+		return this.connection.status(ctx.user.id);
+	}
+
+	@Mutation({
+		input: startOutlookBackfillInput,
+		output: microsoftConnectionStatusOutput,
+		meta: restMeta("POST", "/microsoft/backfill", ["Microsoft"]),
+	})
+	async startBackfill(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof startOutlookBackfillInput>,
+	) {
+		await this.sync.startBackfill(ctx.user.id, new Date(input.from));
 		return this.connection.status(ctx.user.id);
 	}
 

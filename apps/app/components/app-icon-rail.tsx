@@ -4,6 +4,7 @@ import Building from "@carbon/icons-react/es/Building";
 import Close from "@carbon/icons-react/es/Close";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Search from "@carbon/icons-react/es/Search";
 import Settings from "@carbon/icons-react/es/Settings";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
@@ -49,6 +50,12 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 		related: ["/agents"],
 	},
+	{
+		title: "Intelligence",
+		href: "/intelligence",
+		icon: Search,
+		match: "prefix",
+	},
 	{ title: "Companies", href: "/companies", icon: Building, match: "prefix" },
 	{
 		title: "Contacts",
@@ -57,6 +64,12 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{
+		title: "Procurement",
+		href: "/procurement",
+		icon: Partnership,
+		match: "prefix",
+	},
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 

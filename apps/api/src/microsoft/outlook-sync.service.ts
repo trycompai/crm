@@ -1,5 +1,6 @@
 import {
 	GoogleSyncStatus,
+	MailboxBackfillStatus,
 	type MailboxSyncModel as MailboxSync,
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
@@ -44,6 +45,21 @@ export type OutlookSyncOutcome = {
 	source: "outlook";
 	userId: string;
 	status: "synced" | "skipped" | "reconnect" | "rate-limited" | "failed";
+	messagesWritten?: number;
+	reason?: string;
+};
+
+export type OutlookBackfillOutcome = {
+	source: "outlook";
+	userId: string;
+	status:
+		| "synced"
+		| "skipped"
+		| "complete"
+		| "reconnect"
+		| "rate-limited"
+		| "failed";
+	messagesSeen?: number;
 	messagesWritten?: number;
 	reason?: string;
 };
@@ -114,6 +130,144 @@ export class OutlookSyncService {
 		}
 
 		return this.incremental(row, token.accessToken, mailbox, row.cursor);
+	}
+
+	async backfill(row: MailboxSync): Promise<OutlookBackfillOutcome> {
+		if (
+			row.backfillStatus !== MailboxBackfillStatus.RUNNING ||
+			!row.backfillCursor ||
+			!row.backfillUntil
+		) {
+			return { source: "outlook", userId: row.userId, status: "skipped" };
+		}
+
+		const token = await this.tokens.accessTokenFor(row.userId, "outlook");
+
+		if (token.outcome === "not-connected") {
+			await this.state.failBackfill(row.id, token.reason);
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "failed",
+				reason: token.reason,
+			};
+		}
+
+		if (token.outcome === "needs-reconnect") {
+			await this.state.markNeedsReconnect(row.id, token.reason);
+			await this.state.failBackfill(row.id, token.reason);
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "reconnect",
+				reason: token.reason,
+			};
+		}
+
+		const me = await this.graph.me(token.accessToken);
+		if (me.outcome !== "ok") return this.handleBackfillFailure(row, me);
+
+		const mailbox = (
+			me.data.mail ??
+			me.data.userPrincipalName ??
+			""
+		).toLowerCase();
+
+		if (!mailbox) {
+			const reason = "Microsoft returned no mailbox address.";
+			await this.state.failBackfill(row.id, reason);
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "failed",
+				reason,
+			};
+		}
+
+		const folders = await this.excludedFolderIds(token.accessToken);
+		if (folders.outcome !== "ok") {
+			return this.handleBackfillFailure(row, folders.failure);
+		}
+
+		let page = await this.graph.listMessages(token.accessToken, {
+			after: new Date(row.backfillCursor.getTime() - OVERLAP_MS),
+			before: row.backfillUntil,
+			top: PAGE_SIZE,
+		});
+
+		let context: MatchContext | null = null;
+		let written = 0;
+		let seen = 0;
+		let furthest = row.backfillCursor;
+		let exhausted = false;
+
+		while (page.outcome === "ok") {
+			const remaining = MAX_MESSAGES_PER_TICK - seen;
+			const messages = (page.data.value ?? []).slice(0, Math.max(remaining, 0));
+
+			for (const message of messages) {
+				seen += 1;
+
+				const receivedAt = message.receivedDateTime
+					? new Date(message.receivedDateTime)
+					: null;
+				if (receivedAt && !Number.isNaN(receivedAt.getTime())) {
+					if (receivedAt > furthest) furthest = receivedAt;
+				}
+
+				if (message.parentFolderId && folders.ids.has(message.parentFolderId)) {
+					continue;
+				}
+
+				const parsed = this.parse(message);
+				if (!parsed) continue;
+
+				context ??= await this.threads.context();
+
+				const stored = await this.threads.store(
+					row,
+					{ mailbox, origin: "outlook" },
+					parsed,
+					context,
+				);
+				if (stored) written += 1;
+			}
+
+			const nextLink = page.data["@odata.nextLink"];
+			if (!nextLink) {
+				exhausted = true;
+				break;
+			}
+			if (seen >= MAX_MESSAGES_PER_TICK) break;
+
+			page = await this.graph.nextPage(token.accessToken, nextLink);
+		}
+
+		if (page.outcome !== "ok") return this.handleBackfillFailure(row, page);
+
+		await this.state.advanceBackfill(row.id, {
+			cursor: furthest,
+			messagesSeen: seen,
+			messagesWritten: written,
+			complete: exhausted,
+		});
+
+		this.logger.log({
+			message: exhausted
+				? "Outlook history backfill complete"
+				: "Outlook history backfill",
+			userId: row.userId,
+			messagesSeen: seen,
+			messagesWritten: written,
+		});
+
+		return {
+			source: "outlook",
+			userId: row.userId,
+			status: exhausted ? "complete" : "synced",
+			messagesSeen: seen,
+			messagesWritten: written,
+		};
 	}
 
 	private async start(
@@ -325,6 +479,40 @@ export class OutlookSyncService {
 		}
 
 		return null;
+	}
+
+	private async handleBackfillFailure(
+		row: MailboxSync,
+		result: { outcome: string; reason: string; retryAfterMs?: number },
+	): Promise<OutlookBackfillOutcome> {
+		if (result.outcome === "unauthorized") {
+			await this.state.markNeedsReconnect(row.id, result.reason);
+			await this.state.failBackfill(row.id, result.reason);
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "reconnect",
+				reason: result.reason,
+			};
+		}
+
+		if (result.outcome === "rate-limited") {
+			await this.state.markRateLimited(row.id, result.retryAfterMs ?? 60_000);
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "rate-limited",
+				reason: result.reason,
+			};
+		}
+
+		await this.state.failBackfill(row.id, result.reason);
+		return {
+			source: "outlook",
+			userId: row.userId,
+			status: "failed",
+			reason: result.reason,
+		};
 	}
 
 	private async handleFailure(

@@ -83,11 +83,15 @@ export class GraphClient {
 
 	async listMessages(
 		accessToken: string,
-		options: { after: Date; top: number },
+		options: { after: Date; before?: Date; top: number },
 	): Promise<MailboxResult<MessagePage>> {
+		const before = options.before
+			? ` and receivedDateTime le ${options.before.toISOString()}`
+			: "";
+
 		return this.api.get<MessagePage>(`${BASE}/messages`, accessToken, {
 			$select: MESSAGE_FIELDS,
-			$filter: `receivedDateTime gt ${options.after.toISOString()} and isDraft eq false`,
+			$filter: `receivedDateTime gt ${options.after.toISOString()}${before} and isDraft eq false`,
 			$orderby: "receivedDateTime asc",
 			$top: options.top,
 		});
