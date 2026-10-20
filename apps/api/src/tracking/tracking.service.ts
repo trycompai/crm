@@ -37,7 +37,6 @@ import type {
 	TrackedDomainRow,
 	TrackingSettings,
 	VerifyResult,
-	VisitedPage,
 	WebsiteActivity,
 } from "./tracking.contracts";
 import { TrackingConfigService } from "./tracking-config.service";

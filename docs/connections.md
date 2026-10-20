@@ -230,3 +230,27 @@ icon marks are used at these sizes; the wordmarks stay unused.
 
 Docusign is spelled with a lowercase s since its 2024 rebrand. The note-taker is
 **Ergo**.
+
+## MCP connections
+
+Linear and Supabase use the shared MCP connection flow.
+An owner or admin chooses read-only or read-and-write access.
+The API stores OAuth tokens in encrypted form.
+The API never returns tokens to the browser.
+
+The agent builder lists only connected platforms.
+Each deployed version stores exact tool names and fingerprints.
+The deployment review shows each tool and its call kind.
+Changed tools stop until a new version receives review.
+Disconnecting a platform blocks the next tool call.
+The agent resolves MCP tools from the deployed version at session start.
+The model never receives disconnected, changed, unreviewed, or undeployed tools.
+Model-facing results stop at 16 KiB.
+Archived results stop below 32 KiB.
+
+Supabase read-only access also uses the hosted server's `read_only=true` mode.
+Treat SQL execution, logs, keys, deployments, secrets, billing, and branch changes as risky.
+
+Vercel MCP is not in the catalog.
+Vercel accepts only reviewed MCP clients.
+Comp AI CRM needs Vercel approval before this connection can ship.

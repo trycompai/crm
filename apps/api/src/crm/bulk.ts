@@ -2,7 +2,7 @@ import type { Db } from "@crm/db";
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
 
-export const MAX_BULK_IDS = 100;
+const MAX_BULK_IDS = 100;
 
 export const bulkIdsInput = z.object({
 	ids: z

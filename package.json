@@ -6,7 +6,7 @@
 	"scripts": {
 		"prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
 		"build": "turbo run build",
-		"audit": "bun audit --ignore GHSA-vfj7-8cjw-p6xm --ignore GHSA-hp3w-g68c-fv3c",
+		"audit": "bun audit",
 		"dev": "turbo run dev",
 		"lint": "turbo run lint",
 		"lint:slop": "oxlint",

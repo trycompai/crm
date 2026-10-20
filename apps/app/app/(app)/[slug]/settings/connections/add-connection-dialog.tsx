@@ -3,9 +3,11 @@
 import Plug from "@carbon/icons-react/es/Plug";
 import DocusignLogo from "@crm/ui/components/brand-logos/docusign";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import LinearLogo from "@crm/ui/components/brand-logos/linear";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import StripeLogo from "@crm/ui/components/brand-logos/stripe";
+import SupabaseLogo from "@crm/ui/components/brand-logos/supabase";
 import {
 	Dialog,
 	DialogContent,
@@ -20,10 +22,14 @@ export function AddConnectionDialog({
 	slug,
 	open,
 	connected,
+	mcpConfigured,
+	canManageMcp,
 }: {
 	slug: string;
 	open: boolean;
 	connected: string[];
+	mcpConfigured: boolean;
+	canManageMcp: boolean;
 }) {
 	const router = useRouter();
 	return (
@@ -63,6 +69,42 @@ export function AddConnectionDialog({
 							name="Microsoft 365"
 							description="Bring in Outlook email and the people on it"
 							href={`/${slug}/settings/connections/microsoft`}
+						/>
+					) : null}
+					{!connected.includes("Linear") ? (
+						<CatalogRow
+							logo={LinearLogo}
+							name="Linear"
+							description={
+								!mcpConfigured
+									? "Set MCP_ENCRYPTION_KEY to enable"
+									: canManageMcp
+										? "Let deployed agents read and update Linear"
+										: "An owner or admin can connect Linear"
+							}
+							href={
+								mcpConfigured && canManageMcp
+									? `/${slug}/settings/connections/linear`
+									: undefined
+							}
+						/>
+					) : null}
+					{!connected.includes("Supabase") ? (
+						<CatalogRow
+							logo={SupabaseLogo}
+							name="Supabase"
+							description={
+								!mcpConfigured
+									? "Set MCP_ENCRYPTION_KEY to enable"
+									: canManageMcp
+										? "Let deployed agents inspect and manage Supabase"
+										: "An owner or admin can connect Supabase"
+							}
+							href={
+								mcpConfigured && canManageMcp
+									? `/${slug}/settings/connections/supabase`
+									: undefined
+							}
 						/>
 					) : null}
 					<CatalogRow

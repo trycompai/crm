@@ -1,8 +1,10 @@
 import { db, Prisma } from "@crm/db";
+import { WORKSPACE_ID } from "@crm/db/workspace";
 import { defineHook } from "eve/hooks";
 import { z } from "zod";
 import { isTransportOnlyEvent } from "../lib/event-persistence";
 import { currentFocus } from "../lib/focus";
+import { capMcpArchivedResult, mcpActionResultEvent } from "../lib/mcp-runtime";
 import { lockAgentRun } from "../lib/run-state";
 import { attribute, purposeOf } from "../lib/session-purpose";
 
@@ -32,9 +34,10 @@ export default defineHook({
 			if (!id || isTransportOnlyEvent(event.type)) return;
 
 			try {
-				const data = (
-					"data" in event ? (event.data ?? {}) : {}
-				) as Prisma.InputJsonObject;
+				const data = capMcpArchivedResult(
+					event.type,
+					("data" in event ? (event.data ?? {}) : {}) as Prisma.InputJsonObject,
+				);
 				const emittedAt = event.meta?.at ? new Date(event.meta.at) : new Date();
 				const purpose = purposeOf(ctx);
 				const conversationId =
@@ -153,6 +156,9 @@ async function persistRunEvent(
 			emittedAt,
 		},
 	});
+	if (type === "action.result") {
+		await persistMcpActionResult(tx, runId, data, emittedAt);
+	}
 
 	if (type === "step.completed") {
 		const { inputTokens, outputTokens, costUsd } = stepUsage.parse(data).usage;
@@ -185,6 +191,43 @@ async function persistRunEvent(
 				data: { summary: message.slice(0, 1000) },
 			});
 		}
+	}
+}
+
+async function persistMcpActionResult(
+	tx: Prisma.TransactionClient,
+	runId: string,
+	data: Prisma.InputJsonObject,
+	emittedAt: Date,
+): Promise<void> {
+	const parsed = mcpActionResultEvent.safeParse(data);
+	if (!parsed.success) return;
+	const separator = parsed.data.result.toolName.indexOf("__");
+	if (separator <= 0) return;
+	const platformSlug = parsed.data.result.toolName.slice(0, separator);
+	const success = parsed.data.status === "completed";
+	const updated = await tx.agentAction.updateMany({
+		where: {
+			runId,
+			idempotencyKey: `${runId}:${parsed.data.result.callId}`,
+			provider: platformSlug,
+			type: "mcp.tool.call",
+			status: "RUNNING",
+		},
+		data: {
+			status: success ? "SUCCEEDED" : "FAILED",
+			errorCode: success ? null : "MCP_CALL_FAILED",
+			errorMessage: success
+				? null
+				: (parsed.data.error?.message ?? "The MCP tool call failed."),
+			completedAt: emittedAt,
+		},
+	});
+	if (success && updated.count === 1) {
+		await tx.mcpConnection.updateMany({
+			where: { organizationId: WORKSPACE_ID, platformSlug },
+			data: { lastSuccessfulCallAt: emittedAt, lastErrorCode: null },
+		});
 	}
 }
 

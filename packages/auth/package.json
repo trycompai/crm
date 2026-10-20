@@ -7,6 +7,9 @@
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
 		"./cookies": "./src/cookies.ts",
+		"./mcp-crypto": "./src/mcp-crypto.ts",
+		"./mcp-config": "./src/mcp-config.ts",
+		"./mcp-oauth": "./src/mcp-oauth.ts",
 		"./scopes": "./src/scopes.ts",
 		"./workspace": "./src/workspace.ts"
 	},
@@ -22,6 +25,7 @@
 		"@better-auth/sso": "1.6.33",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
+		"@crm/mcp-integrations": "workspace:*",
 		"@crm/validation": "workspace:*",
 		"better-auth": "1.6.33",
 		"zod": "^4.4.3"

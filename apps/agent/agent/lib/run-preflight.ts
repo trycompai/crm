@@ -1,4 +1,5 @@
 import { db } from "@crm/db";
+import { WORKSPACE_ID } from "@crm/db/workspace";
 import {
 	type AgentManifest,
 	InvalidAgentManifest,
@@ -29,6 +30,47 @@ export async function missingRunDependencies(
 	const missing: string[] = [];
 	for (const [id, fix] of required) {
 		if (!(await CHECKS[id]())) missing.push(fix);
+	}
+	for (const grant of manifest.mcp) {
+		const connection = await db.mcpConnection.findUnique({
+			where: {
+				organizationId_platformSlug: {
+					organizationId: WORKSPACE_ID,
+					platformSlug: grant.platformSlug,
+				},
+			},
+			select: {
+				status: true,
+				accessMode: true,
+				toolSnapshots: {
+					where: {
+						OR: grant.tools.map((tool) => ({
+							name: tool.name,
+							fingerprint: tool.fingerprint,
+							reviewState: "REVIEWED" as const,
+						})),
+					},
+					select: { name: true, fingerprint: true },
+				},
+			},
+		});
+		const current = new Set(
+			connection?.toolSnapshots.map(
+				(tool) => `${tool.name}:${tool.fingerprint}`,
+			) ?? [],
+		);
+		const unavailable =
+			connection?.status !== "CONNECTED" ||
+			grant.tools.some(
+				(tool) =>
+					!current.has(`${tool.name}:${tool.fingerprint}`) ||
+					(connection.accessMode === "READ_ONLY" && tool.callKind !== "read"),
+			);
+		if (unavailable) {
+			missing.push(
+				`Reconnect ${grant.platformSlug} and review its tools in Settings → Connections.`,
+			);
+		}
 	}
 
 	return missing;

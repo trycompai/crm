@@ -38,7 +38,7 @@ const ADDRESS = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
 
 const fieldText = z.string().nullable().catch(null);
 
-export type FormFields = Record<string, string>;
+type FormFields = Record<string, string>;
 
 type StoredTouch = {
 	source: string;

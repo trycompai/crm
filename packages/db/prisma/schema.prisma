@@ -42,6 +42,8 @@ model User {
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
   slackMemberMatch        SlackMemberMatch?
+  connectedMcpConnections McpConnection[]               @relation("McpConnectionUser")
+  mcpOauthStates          McpOauthState[]               @relation("McpOauthStateUser")
 
   members     Member[]
   invitations Invitation[]
@@ -144,6 +146,126 @@ model Account {
 
   @@index([userId])
   @@map("account")
+}
+
+enum McpConnectionStatus {
+  CONNECTING
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+enum McpAccessMode {
+  READ_ONLY
+  READ_WRITE
+}
+
+enum McpToolReviewState {
+  PENDING
+  REVIEWED
+  CHANGED
+  REMOVED
+}
+
+model McpConnection {
+  id String @id @default(cuid())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  platformSlug  String
+  status        McpConnectionStatus @default(CONNECTING)
+  accessMode    McpAccessMode
+  grantedScopes String[]
+
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+
+  registrationId String
+  registration   McpClientRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  connectedById String
+  connectedBy   User   @relation("McpConnectionUser", fields: [connectedById], references: [id], onDelete: Restrict)
+
+  connectedAt          DateTime?
+  lastSuccessfulCallAt DateTime?
+  lastErrorCode        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  toolSnapshots McpToolSnapshot[]
+
+  @@unique([organizationId, platformSlug])
+  @@index([status, updatedAt])
+  @@map("mcpConnection")
+}
+
+model McpClientRegistration {
+  id String @id @default(cuid())
+
+  platformSlug                     String
+  metadataFingerprint              String
+  issuer                           String
+  clientId                         String
+  encryptedClientSecret            String?
+  encryptedRegistrationAccessToken String?
+  clientIdIssuedAt                 DateTime?
+  clientSecretExpiresAt            DateTime?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime  @updatedAt
+
+  connections McpConnection[]
+  oauthStates McpOauthState[]
+
+  @@unique([platformSlug, metadataFingerprint])
+  @@index([clientSecretExpiresAt])
+  @@map("mcpClientRegistration")
+}
+
+model McpToolSnapshot {
+  id String @id @default(cuid())
+
+  connectionId String
+  connection   McpConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  inputSchema Json
+  annotations Json?
+  fingerprint String
+  callKind    String
+  reviewState McpToolReviewState @default(PENDING)
+  lastSeenAt  DateTime           @default(now())
+  createdAt   DateTime           @default(now())
+
+  @@unique([connectionId, name, fingerprint])
+  @@index([connectionId, name, lastSeenAt])
+  @@index([reviewState, lastSeenAt])
+  @@map("mcpToolSnapshot")
+}
+
+model McpOauthState {
+  id String @id @default(cuid())
+
+  stateHash      String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("McpOauthStateUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  platformSlug          String
+  accessMode            McpAccessMode
+  returnPath            String
+  encryptedCodeVerifier String
+  registrationId        String
+  registration          McpClientRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime              @default(now())
+
+  @@index([expiresAt, consumedAt])
+  @@map("mcpOauthState")
 }
 
 model Verification {
@@ -1477,15 +1599,17 @@ model TelemetryCounter {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  website     String?
-  members     Member[]
-  invitations Invitation[]
+  id             String          @id
+  name           String
+  slug           String
+  logo           String?
+  createdAt      DateTime
+  metadata       String?
+  website        String?
+  members        Member[]
+  invitations    Invitation[]
+  mcpConnections McpConnection[]
+  mcpOauthStates McpOauthState[]
 
   @@unique([slug])
   @@map("organization")

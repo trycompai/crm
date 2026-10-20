@@ -82,6 +82,7 @@ const VERBS: ToolVerbs = {
 	list_fields: "Read what this workspace tracks",
 	set_field_value: "Filled in a custom field",
 	manage_fields: "Changed what the CRM tracks",
+	mcp: "Used an approved connected tool",
 	archive_field: "Asked to retire a field",
 
 	load_skill: "Read its instructions for this",
@@ -99,7 +100,11 @@ const VERBS: ToolVerbs = {
 };
 
 function humanise(tool: string): string {
-	const words = tool.replace(/_/g, " ");
+	const separator = tool.indexOf("__");
+	if (separator > 0) {
+		return `${humanise(tool.slice(0, separator))}: ${humanise(tool.slice(separator + 2))}`;
+	}
+	const words = tool.replace(/_+/g, " ");
 	return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
@@ -284,7 +289,7 @@ function partId(
 	return callId ? `${messageId}:${callId}` : `${messageId}:${index}`;
 }
 
-export function toolName(part: EveMessagePart): string {
+function toolName(part: EveMessagePart): string {
 	if (part.type === "dynamic-tool") return part.toolName;
 	return part.type.replace(/^tool-/, "");
 }

@@ -14,7 +14,7 @@ import {
 	type SyncSource,
 } from "./mailbox.constants";
 
-export type TokenFailure =
+type TokenFailure =
 	| { outcome: "needs-reconnect"; reason: string }
 	| { outcome: "not-connected"; reason: string };
 

@@ -221,6 +221,34 @@ export function AgentCapabilities({
 				</div>
 			</Section>
 
+			{capabilities.mcp.length > 0 ? (
+				<Section
+					summary="Every tool is fixed in this version. Changed tools stop until review."
+					title="Connected tools"
+				>
+					<div className="flex flex-col">
+						{capabilities.mcp.flatMap((grant) =>
+							grant.tools.map((tool) => (
+								<div
+									className="flex min-h-13 items-center gap-3 border-b py-2 last:border-b-0"
+									key={`${grant.platformSlug}:${tool.name}`}
+								>
+									<div className="min-w-0 flex-1">
+										<p className="text-sm">{tool.summary}</p>
+										<p className="font-mono text-muted-foreground text-xs">
+											{grant.platformSlug} · {tool.name}
+										</p>
+									</div>
+									<span className="rounded-md border px-2 py-1 text-xs">
+										{tool.callKind}
+									</span>
+								</div>
+							)),
+						)}
+					</div>
+				</Section>
+			) : null}
+
 			<Section
 				summary={
 					capabilities.dataScope?.summary || "What it reads to do its job."

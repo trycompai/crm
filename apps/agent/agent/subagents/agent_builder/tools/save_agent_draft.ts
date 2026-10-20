@@ -9,7 +9,7 @@ import {
 
 export default defineTool({
 	description:
-		"Validate and save one immutable agent version for human review. Copy selected CRM records exactly into resources. Put connected read sources only in integrations. This never deploys the agent.",
+		"Validate and save one immutable agent version for human review. Copy selected CRM records exactly. Grant only inspected integrations and MCP tools. This never deploys the agent.",
 	inputSchema: builderDraftToolInput,
 	async execute(input, ctx) {
 		assertBuilderDraftOpen();

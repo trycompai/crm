@@ -126,6 +126,7 @@ export const AGENT_TOOLS = [
 	"list_fields",
 	"list_outstanding_work",
 	"manage_fields",
+	"mcp",
 	"read_company_history",
 	"read_crm_history",
 	"read_deal_history",

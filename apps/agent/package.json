@@ -19,18 +19,19 @@
 		"clean": "rm -rf .turbo .eve node_modules"
 	},
 	"dependencies": {
+		"@crm/mcp-integrations": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"@crm/telemetry": "workspace:*",
 		"@crm/validation": "workspace:*",
+		"@modelcontextprotocol/sdk": "^1.32.1",
 		"context.dev": "2.10.0",
-		"eve": "^0.29.4",
+		"eve": "^0.30.8",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@crm/typescript-config": "workspace:*",
 		"@types/node": "^24.0.0",
-		"just-bash": "^3.2.0",
 		"microsandbox": "^0.6.8",
 		"typescript": "^5.9.2"
 	}

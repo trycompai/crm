@@ -7,7 +7,10 @@ import {
 } from "@crm/db/crm-events";
 import { readAgentModel } from "@crm/db/settings";
 import { WORKSPACE_ID } from "@crm/db/workspace";
-import { AGENT_ACTION_TYPES } from "@crm/validation/agent-manifest";
+import {
+	AGENT_ACTION_TYPES,
+	type AgentManifestMcpGrant,
+} from "@crm/validation/agent-manifest";
 import { z } from "zod";
 import { actionDependency } from "./agent-actions";
 import { requestStaleSlackInventorySync } from "./slack-people";
@@ -75,6 +78,7 @@ export type DraftAgentInput = {
 	recordScope: "SELECTED" | "WORKSPACE";
 	resources: BuilderResource[];
 	actions: DraftAction[];
+	mcp: AgentManifestMcpGrant[];
 	access: string[];
 };
 
@@ -254,6 +258,7 @@ export async function saveBuilderDraft(
 			resources: input.resources,
 		},
 		actions: input.actions,
+		mcp: input.mcp ?? [],
 		access: input.access,
 	};
 	const sandboxPolicy = {
@@ -528,24 +533,17 @@ async function validateDraft(
 		resourceKeys.add(key);
 
 		if (resource.kind !== "integration") continue;
-		if (resource.id === "google:gmail" && !connections.gmail) {
-			issues.push("Gmail is not connected for the chat owner.");
-		}
-		if (resource.id === "google:calendar" && !connections.calendar) {
-			issues.push("Google Calendar is not connected for the chat owner.");
-		}
-		if (resource.id === "slack:workspace" && !connections.slack) {
-			issues.push("Slack is not connected for this workspace.");
-		}
-		if (
-			!["google:gmail", "google:calendar", "slack:workspace"].includes(
-				resource.id,
-			)
-		) {
-			issues.push(`${resource.label} is not an available integration.`);
-			continue;
-		}
+		const integration = integrationResourceStatus(resource, connections);
+		if (integration.issue) issues.push(integration.issue);
+		if (!integration.available) continue;
 		capabilities.add(`${resource.id}.read`);
+	}
+	const mcpGrants = input.mcp ?? [];
+	issues.push(...mcpGrantIssues(mcpGrants, input.resources, connections.mcp));
+	for (const grant of mcpGrants) {
+		for (const tool of grant.tools) {
+			capabilities.add(`mcp:${grant.platformSlug}:${tool.name}`);
+		}
 	}
 
 	const actionTypes = new Set<string>();
@@ -622,37 +620,102 @@ async function validateDraft(
 	};
 }
 
+type IntegrationResourceStatus = {
+	available: boolean;
+	issue: string | null;
+};
+
+function integrationResourceStatus(
+	resource: BuilderResource,
+	connections: Awaited<ReturnType<typeof connectionStatus>>,
+): IntegrationResourceStatus {
+	if (resource.id === "google:gmail") {
+		return {
+			available: true,
+			issue: connections.gmail
+				? null
+				: "Gmail is not connected for the chat owner.",
+		};
+	}
+	if (resource.id === "google:calendar") {
+		return {
+			available: true,
+			issue: connections.calendar
+				? null
+				: "Google Calendar is not connected for the chat owner.",
+		};
+	}
+	if (resource.id === "slack:workspace") {
+		return {
+			available: true,
+			issue: connections.slack
+				? null
+				: "Slack is not connected for this workspace.",
+		};
+	}
+	const mcpSlug = resource.id.startsWith("mcp:")
+		? resource.id.slice("mcp:".length)
+		: null;
+	const available = connections.mcp.some(
+		(entry) => entry.platformSlug === mcpSlug,
+	);
+	return {
+		available,
+		issue: available
+			? null
+			: `${resource.label} is not an available integration.`,
+	};
+}
+
 async function connectionStatus(userId: string) {
-	const [googleAccounts, slackAccount, workspaceMembers] = await Promise.all([
-		db.account.findMany({
-			where: { userId, providerId: "google" },
-			select: { providerId: true, scope: true },
-		}),
-		db.account.findFirst({
-			where: { providerId: "slack", accessToken: { not: null } },
-			orderBy: { updatedAt: "desc" },
-			select: { id: true },
-		}),
-		db.member.findMany({
-			where: { organizationId: WORKSPACE_ID },
-			orderBy: { user: { name: "asc" } },
-			select: {
-				user: {
-					select: {
-						name: true,
-						email: true,
-						slackMemberMatch: {
-							select: {
-								slackUserId: true,
-								slackHandle: true,
-								slackEmail: true,
+	const [googleAccounts, slackAccount, workspaceMembers, mcpConnections] =
+		await Promise.all([
+			db.account.findMany({
+				where: { userId, providerId: "google" },
+				select: { providerId: true, scope: true },
+			}),
+			db.account.findFirst({
+				where: { providerId: "slack", accessToken: { not: null } },
+				orderBy: { updatedAt: "desc" },
+				select: { id: true },
+			}),
+			db.member.findMany({
+				where: { organizationId: WORKSPACE_ID },
+				orderBy: { user: { name: "asc" } },
+				select: {
+					user: {
+						select: {
+							name: true,
+							email: true,
+							slackMemberMatch: {
+								select: {
+									slackUserId: true,
+									slackHandle: true,
+									slackEmail: true,
+								},
 							},
 						},
 					},
 				},
-			},
-		}),
-	]);
+			}),
+			db.mcpConnection.findMany({
+				where: { organizationId: WORKSPACE_ID, status: "CONNECTED" },
+				select: {
+					platformSlug: true,
+					accessMode: true,
+					toolSnapshots: {
+						orderBy: { createdAt: "desc" },
+						select: {
+							name: true,
+							description: true,
+							fingerprint: true,
+							callKind: true,
+							reviewState: true,
+						},
+					},
+				},
+			}),
+		]);
 	if (slackAccount) void requestStaleSlackInventorySync();
 
 	const slackChannels = await db.slackChannel.findMany({
@@ -689,8 +752,96 @@ async function connectionStatus(userId: string) {
 			memberCount: channel.memberCount,
 		})),
 		slackPeople,
+		mcp: mcpConnections.map((connection) => {
+			const latest = new Map<
+				string,
+				(typeof connection.toolSnapshots)[number]
+			>();
+			for (const tool of connection.toolSnapshots) {
+				if (!latest.has(tool.name)) latest.set(tool.name, tool);
+			}
+			return {
+				platformSlug: connection.platformSlug,
+				label: connection.platformSlug,
+				accessMode:
+					connection.accessMode === "READ_ONLY" ? "read_only" : "read_write",
+				tools: [...latest.values()].flatMap((tool) =>
+					tool.reviewState === "REVIEWED" &&
+					(tool.callKind === "read" ||
+						tool.callKind === "change" ||
+						tool.callKind === "risky")
+						? [
+								{
+									name: tool.name,
+									description: tool.description,
+									fingerprint: tool.fingerprint,
+									callKind: tool.callKind,
+								},
+							]
+						: [],
+				),
+			};
+		}),
 		crm: true,
 	};
+}
+
+function mcpGrantIssues(
+	grants: AgentManifestMcpGrant[],
+	resources: BuilderResource[],
+	connections: Awaited<ReturnType<typeof connectionStatus>>["mcp"],
+): string[] {
+	const issues: string[] = [];
+	const resourceIds = new Set(resources.map((resource) => resource.id));
+	const seenPlatforms = new Set<string>();
+
+	for (const grant of grants) {
+		if (seenPlatforms.has(grant.platformSlug)) {
+			issues.push(`${grant.platformSlug} is granted more than once.`);
+			continue;
+		}
+		seenPlatforms.add(grant.platformSlug);
+		if (!resourceIds.has(`mcp:${grant.platformSlug}`)) {
+			issues.push(
+				`${grant.platformSlug} tools need that platform in this agent's integrations.`,
+			);
+		}
+		const connection = connections.find(
+			(entry) => entry.platformSlug === grant.platformSlug,
+		);
+		if (!connection) {
+			issues.push(`${grant.platformSlug} is not connected.`);
+			continue;
+		}
+		const available = new Map(
+			connection.tools.map((tool) => [tool.name, tool]),
+		);
+		const seenTools = new Set<string>();
+		for (const tool of grant.tools) {
+			if (seenTools.has(tool.name)) {
+				issues.push(`${grant.platformSlug} tool ${tool.name} repeats.`);
+				continue;
+			}
+			seenTools.add(tool.name);
+			const current = available.get(tool.name);
+			if (
+				!current ||
+				current.fingerprint !== tool.fingerprint ||
+				current.callKind !== tool.callKind
+			) {
+				issues.push(
+					`${grant.platformSlug} tool ${tool.name} changed or is unavailable.`,
+				);
+			}
+			if (connection.accessMode === "read_only" && tool.callKind !== "read") {
+				issues.push(
+					`${grant.platformSlug} has read-only access to ${tool.name}.`,
+				);
+			}
+		}
+	}
+
+	return issues;
 }
 
 type SlackConnections = Awaited<ReturnType<typeof connectionStatus>>;

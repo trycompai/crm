@@ -1,5 +1,3 @@
-import type { CarbonIcon } from "@crm/ui/components/icon";
-
 export type AgentRecordKind = "contact" | "company" | "deal";
 
 export type AgentRecord = { kind: AgentRecordKind; id: string };
@@ -76,5 +74,3 @@ export function recordHeader(record: AgentRecord): AgentRecordHeader {
 export function recordFilter(record: AgentRecord): AgentRecordFilter {
 	return { [COPY[record.kind].field]: record.id };
 }
-
-export type { CarbonIcon };

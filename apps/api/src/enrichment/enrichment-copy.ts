@@ -15,6 +15,7 @@ const STEPS = {
 	"slack-people-match": "Matching people in Slack",
 	"slack-channel-join": "Joining a Slack channel",
 	"agent-event": "Reacting to a change",
+	"mcp-tool-discovery": "Reading integration tools",
 } satisfies Record<TaskKind, string>;
 
 const STEP_BY_KIND = new Map<string, string>(Object.entries(STEPS));

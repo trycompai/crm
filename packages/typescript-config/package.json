@@ -9,5 +9,8 @@
 		"./nestjs.json": "./nestjs.json",
 		"./nextjs.json": "./nextjs.json",
 		"./react-library.json": "./react-library.json"
+	},
+	"peerDependencies": {
+		"next": "^16.0.0"
 	}
 }

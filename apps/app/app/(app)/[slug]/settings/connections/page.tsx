@@ -1,6 +1,8 @@
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import LinearLogo from "@crm/ui/components/brand-logos/linear";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
+import SupabaseLogo from "@crm/ui/components/brand-logos/supabase";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import type { Metadata } from "next";
@@ -30,11 +32,14 @@ async function ConnectionsSettingsPageContent({
 	const [{ slug }, query] = await Promise.all([params, searchParams]);
 	const queryClient = getServerQueryClient();
 	const trpc = getServerTrpc();
-	const [google, microsoft, slack] = await Promise.all([
+	const [google, microsoft, slack, mcp] = await Promise.all([
 		queryClient.fetchQuery(trpc.google.status.queryOptions()),
 		queryClient.fetchQuery(trpc.microsoft.status.queryOptions()),
 		queryClient.fetchQuery(trpc.slack.status.queryOptions()),
+		queryClient.fetchQuery(trpc.mcp.list.queryOptions()),
 	]);
+	const linear = mcp.entries.find((entry) => entry.slug === "linear");
+	const supabase = mcp.entries.find((entry) => entry.slug === "supabase");
 	const rows = [
 		...(google.linked
 			? [
@@ -71,6 +76,36 @@ async function ConnectionsSettingsPageContent({
 						sends: "Nothing yet",
 						href: `/${slug}/settings/connections/microsoft`,
 						logo: MicrosoftLogo,
+					},
+				]
+			: []),
+		...(linear?.connection?.status === "connected"
+			? [
+					{
+						name: "Linear",
+						status: "Connected",
+						bringsIn: "Issues, projects and teams selected by deployed agents",
+						sends:
+							linear.connection.accessMode === "read_write"
+								? "Approved issue and project changes"
+								: "Nothing",
+						href: `/${slug}/settings/connections/linear`,
+						logo: LinearLogo,
+					},
+				]
+			: []),
+		...(supabase?.connection?.status === "connected"
+			? [
+					{
+						name: "Supabase",
+						status: "Connected",
+						bringsIn: "Projects, database structure and diagnostics",
+						sends:
+							supabase.connection.accessMode === "read_write"
+								? "Approved database and project changes"
+								: "Nothing",
+						href: `/${slug}/settings/connections/supabase`,
+						logo: SupabaseLogo,
 					},
 				]
 			: []),
@@ -149,6 +184,8 @@ async function ConnectionsSettingsPageContent({
 				slug={slug}
 				open={first(query.add) === "1"}
 				connected={rows.map((row) => row.name)}
+				mcpConfigured={mcp.configured}
+				canManageMcp={mcp.canManage}
 			/>
 		</main>
 	);

@@ -82,6 +82,19 @@ export const agentManifestResource = z.object({
 	label: z.string(),
 });
 
+export const agentManifestMcpTool = z.object({
+	name: z.string().trim().min(1).max(256),
+	fingerprint: z.string().length(64),
+	callKind: z.enum(["read", "change", "risky"]),
+	summary: z.string().trim().min(1).max(240),
+});
+
+export const agentManifestMcpGrant = z.object({
+	platformSlug: z.string().regex(/^[a-z][a-z0-9-]*$/),
+	summary: z.string().trim().min(1).max(240),
+	tools: z.array(agentManifestMcpTool).min(1).max(1_000),
+});
+
 export const agentManifest = z
 	.object({
 		description: z.string().optional(),
@@ -92,6 +105,7 @@ export const agentManifest = z
 			summary: z.string(),
 			resources: z.array(agentManifestResource).default([]),
 		}),
+		mcp: z.array(agentManifestMcpGrant).max(50).default([]),
 	})
 	.superRefine((manifest, context) => {
 		const actionTypes = new Set<string>();
@@ -105,12 +119,37 @@ export const agentManifest = z
 			}
 			actionTypes.add(action.type);
 		}
+
+		const platforms = new Set<string>();
+		for (const [grantIndex, grant] of manifest.mcp.entries()) {
+			if (platforms.has(grant.platformSlug)) {
+				context.addIssue({
+					code: "custom",
+					path: ["mcp", grantIndex, "platformSlug"],
+					message: `Duplicate ${grant.platformSlug} MCP grant`,
+				});
+			}
+			platforms.add(grant.platformSlug);
+
+			const tools = new Set<string>();
+			for (const [toolIndex, tool] of grant.tools.entries()) {
+				if (tools.has(tool.name)) {
+					context.addIssue({
+						code: "custom",
+						path: ["mcp", grantIndex, "tools", toolIndex, "name"],
+						message: `Duplicate ${tool.name} MCP tool grant`,
+					});
+				}
+				tools.add(tool.name);
+			}
+		}
 	});
 
 export type SlackDestination = z.infer<typeof slackDestination>;
 export type AgentManifestAction = z.infer<typeof agentManifestAction>;
 export type AgentManifestTrigger = z.infer<typeof agentManifestTrigger>;
 export type AgentManifestResource = z.infer<typeof agentManifestResource>;
+export type AgentManifestMcpGrant = z.infer<typeof agentManifestMcpGrant>;
 export type AgentManifest = z.infer<typeof agentManifest>;
 
 export class InvalidAgentManifest extends Error {

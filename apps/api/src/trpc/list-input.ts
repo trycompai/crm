@@ -32,7 +32,7 @@ export function paginate(input: Pick<ListInput, "page" | "pageSize">): Page {
 	};
 }
 
-export type SortDirection = ListInput["dir"];
+type SortDirection = ListInput["dir"];
 
 export interface OrderByColumns<TOrderBy> {
 	[column: string]: (dir: SortDirection) => TOrderBy;
@@ -64,8 +64,6 @@ export function countsByKey<
 	return counts;
 }
 
-export const FACET_ALL = "all";
-
 export const FACET_UNASSIGNED = "unassigned";
 
 export function splitSentinel(values: string[], sentinel: string) {
@@ -91,9 +89,7 @@ export function archivedFilter(archived: boolean) {
 	return { archivedAt: archived ? { not: null } : null };
 }
 
-export const ACTIVITY_WINDOWS = ["7", "30", "90"] as const;
-
-export type ActivityWindow = (typeof ACTIVITY_WINDOWS)[number];
+const ACTIVITY_WINDOWS = ["7", "30", "90"] as const;
 
 const activityWindowSet: ReadonlySet<string> = new Set(ACTIVITY_WINDOWS);
 

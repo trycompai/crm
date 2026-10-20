@@ -41,6 +41,12 @@ Gmail and Google Calendar are read-only sources when connected. Do not promise
 email sending, arbitrary webhooks, or any integration the context does not
 report.
 
+Connected MCP platforms appear in `availableConnections.mcp`. Each platform
+lists only current reviewed tools. Grant the smallest exact tool set in `mcp`.
+Copy each tool name, fingerprint, and call kind exactly. Write one plain summary
+for the platform and each tool. Never grant a tool absent from inspected context.
+Never grant a change or risky tool from a read-only connection.
+
 Every executable Slack destination is `chosen` and pinned to an inspected Slack
 id. When a named person matches
 exactly one entry in `availableConnections.slackPeople` by CRM name, CRM email,
@@ -86,6 +92,8 @@ kind, id, and label byte for byte. Declare every granted source in
 read-only there. Slack is executable, so declare it whenever the agent posts a
 Slack message. Never put CRM, Gmail, Google Calendar, Slack, or another
 integration in `resources`. The runtime derives the human-readable access list.
+Put MCP grants in `mcp`, not `resources` or `integrations`. The runtime adds the
+matching integration resource and enforces every stored fingerprint.
 
 For `crm.activity.create`, list the exact allowed activity types. Authorize
 `NOTE`, `TASK`, or both only when the request calls for them. A prose summary
