@@ -9,6 +9,15 @@ export type MailboxResult<T> =
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+// Google and Microsoft both take `Authorization: Bearer <token>`. Zoho does
+// not — it wants its own `Zoho-oauthtoken` scheme and answers 401 to a Bearer.
+const DEFAULT_AUTH_SCHEME = "Bearer";
+
+export type MailboxRequestOptions = {
+	/** OAuth authorization scheme, e.g. `Bearer` or `Zoho-oauthtoken`. */
+	scheme?: string;
+};
+
 const MIN_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
 
@@ -20,6 +29,7 @@ export class MailboxApiClient {
 		url: string,
 		accessToken: string,
 		params: Record<string, string | number | boolean | undefined> = {},
+		options: MailboxRequestOptions = {},
 	): Promise<MailboxResult<T>> {
 		const target = new URL(url);
 		for (const [key, value] of Object.entries(params)) {
@@ -30,8 +40,13 @@ export class MailboxApiClient {
 		const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
 		try {
+			const scheme = options.scheme ?? DEFAULT_AUTH_SCHEME;
+
 			const response = await fetch(target, {
-				headers: { authorization: `Bearer ${accessToken}` },
+				headers: {
+					authorization: `${scheme} ${accessToken}`,
+					accept: "application/json",
+				},
 				signal: controller.signal,
 			});
 
@@ -114,11 +129,17 @@ export class MailboxApiClient {
 		try {
 			const body = (await response.json()) as {
 				error?: { message?: string; status?: string; code?: string };
+				// Zoho puts the human-readable reason in the envelope instead.
+				status?: { description?: string };
+				data?: { errorCode?: string; moreInfo?: string };
 			};
 			return (
 				body.error?.message ??
 				body.error?.status ??
 				body.error?.code ??
+				body.data?.moreInfo ??
+				body.data?.errorCode ??
+				body.status?.description ??
 				`HTTP ${response.status}`
 			);
 		} catch {

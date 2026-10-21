@@ -70,6 +70,19 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	ZOHO_CLIENT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	ZOHO_CLIENT_SECRET?: string;
+
+	/** Zoho data-centre suffix: com, eu, in, com.au, jp, ca, sa, com.cn. */
+	@IsOptional()
+	@IsString()
+	ZOHO_REGION?: string;
+
+	@IsOptional()
+	@IsString()
 	SLACK_CLIENT_ID?: string;
 
 	@IsOptional()

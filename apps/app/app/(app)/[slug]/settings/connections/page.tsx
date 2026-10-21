@@ -1,6 +1,7 @@
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
+import ZohoLogo from "@crm/ui/components/brand-logos/zoho";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import type { Metadata } from "next";
@@ -30,10 +31,11 @@ async function ConnectionsSettingsPageContent({
 	const [{ slug }, query] = await Promise.all([params, searchParams]);
 	const queryClient = getServerQueryClient();
 	const trpc = getServerTrpc();
-	const [google, microsoft, slack] = await Promise.all([
+	const [google, microsoft, slack, zoho] = await Promise.all([
 		queryClient.fetchQuery(trpc.google.status.queryOptions()),
 		queryClient.fetchQuery(trpc.microsoft.status.queryOptions()),
 		queryClient.fetchQuery(trpc.slack.status.queryOptions()),
+		queryClient.fetchQuery(trpc.zoho.status.queryOptions()),
 	]);
 	const rows = [
 		...(google.linked
@@ -71,6 +73,18 @@ async function ConnectionsSettingsPageContent({
 						sends: "Nothing yet",
 						href: `/${slug}/settings/connections/microsoft`,
 						logo: MicrosoftLogo,
+					},
+				]
+			: []),
+		...(zoho.linked
+			? [
+					{
+						name: "Zoho Mail",
+						status: "Connected",
+						bringsIn: "Zoho Mail email and the people on it",
+						sends: "Nothing yet",
+						href: `/${slug}/settings/connections/zoho`,
+						logo: ZohoLogo,
 					},
 				]
 			: []),
@@ -132,6 +146,12 @@ async function ConnectionsSettingsPageContent({
 							name="Microsoft 365"
 							description="File Outlook email against the right company"
 							href={`/${slug}/settings/connections/microsoft`}
+						/>
+						<StarterRow
+							logo={ZohoLogo}
+							name="Zoho Mail"
+							description="File Zoho Mail email against the right company"
+							href={`/${slug}/settings/connections/zoho`}
 						/>
 					</div>
 					<p className="px-(--spacing-block-inline) text-muted-foreground text-sm">

@@ -29,6 +29,8 @@ export type IncomingMessage = {
 	gmailMessageId?: string | null;
 	outlookMessageId?: string | null;
 	outlookWebLink?: string | null;
+	zohoMessageId?: string | null;
+	zohoWebLink?: string | null;
 };
 
 @Injectable()
@@ -148,6 +150,8 @@ export class ThreadWriterService {
 							gmailMessageId: parsed.gmailMessageId ?? null,
 							outlookMessageId: parsed.outlookMessageId ?? null,
 							outlookWebLink: parsed.outlookWebLink ?? null,
+							zohoMessageId: parsed.zohoMessageId ?? null,
+							zohoWebLink: parsed.zohoWebLink ?? null,
 							direction: outbound
 								? EmailDirection.OUTBOUND
 								: EmailDirection.INBOUND,

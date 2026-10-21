@@ -91,6 +91,7 @@ const emailThreadMessageOutput = z.object({
 	sentAt: z.string(),
 	gmailMessageId: z.string().nullable(),
 	outlookWebLink: z.string().nullable(),
+	zohoWebLink: z.string().nullable(),
 	fromImageUrl: z.string().nullable(),
 	mailboxUrl: z.string().nullable(),
 	mailboxName: z.string().nullable(),

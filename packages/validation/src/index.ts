@@ -7,6 +7,7 @@ import * as builderQuestion from "./builder-question";
 import * as eveStream from "./eve-stream";
 import * as eveTool from "./eve-tool";
 import * as slack from "./slack";
+import * as zoho from "./zoho";
 
 export const schemas = {
 	activityMeta,
@@ -17,6 +18,7 @@ export const schemas = {
 	eveStream,
 	eveTool,
 	slack,
+	zoho,
 } as const;
 
 export type { ActivityMeta, ActivityMetaFields } from "./activity-meta";

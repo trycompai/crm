@@ -5,10 +5,13 @@ import { GoogleSyncService } from "../google/google-sync.service";
 import {
 	isGoogleSyncSource,
 	isMicrosoftSyncSource,
+	isZohoSyncSource,
 } from "../mailbox/mailbox.constants";
 import { SyncStateService } from "../mailbox/sync-state.service";
 import { MicrosoftConnectionService } from "../microsoft/microsoft-connection.service";
 import { MicrosoftSyncService } from "../microsoft/microsoft-sync.service";
+import { ZohoConnectionService } from "../zoho/zoho-connection.service";
+import { ZohoSyncService } from "../zoho/zoho-sync.service";
 
 const TICK_BUDGET_MS = 60_000;
 
@@ -31,6 +34,8 @@ export class MailboxSyncService {
 		private readonly microsoft: MicrosoftSyncService,
 		private readonly googleConnections: GoogleConnectionService,
 		private readonly microsoftConnections: MicrosoftConnectionService,
+		private readonly zoho: ZohoSyncService,
+		private readonly zohoConnections: ZohoConnectionService,
 	) {}
 
 	async runDue(): Promise<TickSummary> {
@@ -46,6 +51,7 @@ export class MailboxSyncService {
 
 		await this.googleConnections.reconcileAll();
 		await this.microsoftConnections.reconcileAll();
+		await this.zohoConnections.reconcileAll();
 
 		const due = await this.state.due(new Date());
 
@@ -118,6 +124,8 @@ export class MailboxSyncService {
 		if (isMicrosoftSyncSource(source)) {
 			return this.microsoft.runOne(userId, source);
 		}
+
+		if (isZohoSyncSource(source)) return this.zoho.runOne(userId, source);
 
 		return null;
 	}

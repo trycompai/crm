@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 type SignInOptions = {
 	google: boolean;
 	microsoft: boolean;
+	zoho: boolean;
 	providers: SsoProvider[];
 };
 
@@ -73,6 +74,7 @@ async function SignIn({
 	const configured: MailboxProviderId[] = [];
 	if (options?.google ?? true) configured.push("google");
 	if (options?.microsoft ?? false) configured.push("microsoft");
+	if (options?.zoho ?? false) configured.push("zoho");
 
 	const providers = options?.providers ?? [];
 
@@ -94,10 +96,10 @@ async function SignIn({
 				/>
 
 				<p className="text-center text-muted-foreground text-sm/5">
-					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — or MICROSOFT_CLIENT_ID
-					and MICROSOFT_CLIENT_SECRET — in the root .env file and restart. Your
-					own identity provider can be added from Settings once somebody is
-					signed in.
+					Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — or the MICROSOFT_ or
+					ZOHO_ equivalents — in the root .env file and restart. Your own
+					identity provider can be added from Settings once somebody is signed
+					in.
 				</p>
 			</>
 		);

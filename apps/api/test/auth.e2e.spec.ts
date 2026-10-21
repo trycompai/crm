@@ -67,6 +67,9 @@ describe("Auth (e2e)", () => {
 		expect(response.body.result.data).toEqual({
 			google: true,
 			microsoft: microsoftConfigured,
+			zoho: Boolean(
+				process.env.ZOHO_CLIENT_ID && process.env.ZOHO_CLIENT_SECRET,
+			),
 			providers: [],
 		});
 	});

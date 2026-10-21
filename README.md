@@ -221,10 +221,14 @@ Open `.env` and set these. Everything else in the file is optional and commented
 | `ALLOWED_SIGN_IN`                          | Your email domain, e.g. `acme.com`. Or one address, e.g. `you@gmail.com`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below. Both or neither.             |
 | `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | A Microsoft Entra app registration — below. Both or neither. |
+| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET` | A Zoho API console client, if your mail is on Zoho — below. Both or neither. |
 
-**Pick at least one of Google and Microsoft**, or add your own identity provider on
-**Settings → SSO** once you are in. Setting both is fine and common: the sign-in page
-offers both buttons, and each rep's mail is read from whichever they signed in with.
+**Pick at least one of Google, Microsoft and Zoho**, or add your own identity provider
+on **Settings → SSO** once you are in. Setting several is fine and common: the sign-in
+page offers each button, and a rep's mail is read from whichever they signed in with.
+Zoho can also be attached to an existing Google or Microsoft account from **Settings →
+Connections**, which is what you want if the company signs in on one domain and keeps
+its sales mailbox on another.
 
 `DATABASE_URL` already matches the `docker compose` Postgres, so leave it alone unless
 you brought your own.
@@ -284,6 +288,36 @@ work or school account, no personal ones.
 Microsoft client secrets expire — 24 months at most, and 6 months by default. Note the
 expiry somewhere, because the symptom of a lapsed one is every rep's mail quietly
 failing to sync.
+
+</details>
+
+<details>
+<summary><strong>Getting the Zoho OAuth client</strong></summary>
+
+1. [Zoho API console](https://api-console.zoho.com) → **Add Client** → **Server-based
+   Applications**. Sign in as an admin of the Zoho org that owns the mailbox.
+2. **Homepage URL** is your app's origin, e.g. `http://localhost:3000`.
+3. **Authorized Redirect URIs** →
+   `http://localhost:3001/api/auth/oauth2/callback/zoho`. In production this is
+   `https://<your-api-host>/api/auth/oauth2/callback/zoho` — the API's origin, not the
+   app's. Note the `/oauth2/` segment: Zoho goes through the generic OAuth route, so
+   this path differs from the Google and Microsoft ones above.
+4. Copy the **Client ID** and **Client Secret** into `.env` as `ZOHO_CLIENT_ID` and
+   `ZOHO_CLIENT_SECRET`.
+5. If your Zoho account is not on `zoho.com`, set `ZOHO_REGION` to the suffix you log
+   in on — `eu`, `in`, `com.au`, `jp`, `ca`, `sa` or `com.cn`. An account lives in
+   exactly one data centre and a token minted in one is refused by the others, so a
+   wrong value here looks like an account that will not connect.
+
+The scopes are requested at sign-in and need no entry in the console:
+`ZohoMail.accounts.READ`, `ZohoMail.folders.READ`, `ZohoMail.messages.READ` and
+`AaaServer.profile.READ`. All four are read-only — the CRM can list and read mail and
+can never send, reply, move or delete. Reading is forward-only, exactly like the other
+two: the first check records the current time and imports nothing.
+
+Zoho only issues a refresh token while it is showing the consent screen, so a
+connection that comes back without one has to be disconnected and reconnected rather
+than repaired. The connection card says so when it happens.
 
 </details>
 

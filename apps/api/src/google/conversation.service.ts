@@ -42,6 +42,7 @@ export class ConversationService {
 						sentAt: true,
 						gmailMessageId: true,
 						outlookWebLink: true,
+						zohoWebLink: true,
 					},
 				},
 			},
@@ -66,12 +67,14 @@ export class ConversationService {
 				fromImageUrl: faces.get(message.fromEmail.toLowerCase()) ?? null,
 				mailboxUrl: message.gmailMessageId
 					? `https://mail.google.com/mail/u/0/#all/${message.gmailMessageId}`
-					: message.outlookWebLink,
+					: (message.outlookWebLink ?? message.zohoWebLink),
 				mailboxName: message.gmailMessageId
 					? "Gmail"
 					: message.outlookWebLink
 						? "Outlook"
-						: null,
+						: message.zohoWebLink
+							? "Zoho Mail"
+							: null,
 			})),
 		};
 	}

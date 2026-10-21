@@ -1,14 +1,15 @@
 "use client";
 
-import { signIn } from "@crm/auth/client";
 import type { MailboxProviderId } from "@crm/auth/scopes";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
+import ZohoLogo from "@crm/ui/components/brand-logos/zoho";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { startMailboxSignIn } from "@/lib/mailbox-oauth";
 
 type ProviderChoice = {
 	label: string;
@@ -18,6 +19,7 @@ type ProviderChoice = {
 const PROVIDERS = {
 	google: { label: "Continue with Google", Logo: GoogleLogo },
 	microsoft: { label: "Continue with Microsoft", Logo: MicrosoftLogo },
+	zoho: { label: "Continue with Zoho", Logo: ZohoLogo },
 } as const satisfies Record<MailboxProviderId, ProviderChoice>;
 
 export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
@@ -35,8 +37,7 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 
 		const origin = window.location.origin;
 
-		const { error } = await signIn.social({
-			provider,
+		const { error } = await startMailboxSignIn(provider, {
 			callbackURL: `${origin}/`,
 			errorCallbackURL: `${origin}/sign-in`,
 		});

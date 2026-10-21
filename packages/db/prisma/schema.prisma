@@ -1211,6 +1211,8 @@ model EmailMessage {
   gmailMessageId   String?
   outlookMessageId String?
   outlookWebLink   String?
+  zohoMessageId    String?
+  zohoWebLink      String?
 
   direction  EmailDirection
   fromEmail  String

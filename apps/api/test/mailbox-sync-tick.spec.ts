@@ -12,6 +12,8 @@ import {
 import type { MicrosoftConnectionService } from "../src/microsoft/microsoft-connection.service";
 import type { MicrosoftSyncService } from "../src/microsoft/microsoft-sync.service";
 import { MailboxSyncService } from "../src/sync/mailbox-sync.service";
+import type { ZohoConnectionService } from "../src/zoho/zoho-connection.service";
+import type { ZohoSyncService } from "../src/zoho/zoho-sync.service";
 
 type Outcome = {
 	source: string;
@@ -123,6 +125,8 @@ function build(
 		provider as unknown as MicrosoftSyncService,
 		noConnections as unknown as GoogleConnectionService,
 		noConnections as unknown as MicrosoftConnectionService,
+		provider as unknown as ZohoSyncService,
+		noConnections as unknown as ZohoConnectionService,
 	);
 }
 

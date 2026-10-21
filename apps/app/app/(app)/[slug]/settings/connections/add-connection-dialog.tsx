@@ -6,6 +6,7 @@ import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import StripeLogo from "@crm/ui/components/brand-logos/stripe";
+import ZohoLogo from "@crm/ui/components/brand-logos/zoho";
 import {
 	Dialog,
 	DialogContent,
@@ -63,6 +64,14 @@ export function AddConnectionDialog({
 							name="Microsoft 365"
 							description="Bring in Outlook email and the people on it"
 							href={`/${slug}/settings/connections/microsoft`}
+						/>
+					) : null}
+					{!connected.includes("Zoho Mail") ? (
+						<CatalogRow
+							logo={ZohoLogo}
+							name="Zoho Mail"
+							description="Bring in Zoho Mail email and the people on it"
+							href={`/${slug}/settings/connections/zoho`}
 						/>
 					) : null}
 					<CatalogRow

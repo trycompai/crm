@@ -7,6 +7,7 @@ import {
 	OUTLOOK_MAIL_SCOPE,
 	parseScopes,
 	SYNC_SCOPES,
+	ZOHO_SYNC_SCOPES,
 } from "@crm/auth/scopes";
 
 const BOTH = `openid,email,profile,${GMAIL_SCOPE},${CALENDAR_SCOPE}`;
@@ -108,5 +109,34 @@ describe("hasSyncScopes for Microsoft", () => {
 describe("hasSyncScopes for anything else", () => {
 	it("is false for a provider with no mailbox at all", () => {
 		expect(hasSyncScopes("okta", BOTH)).toBe(false);
+	});
+});
+
+describe("hasSyncScopes for Zoho", () => {
+	it("accepts the comma-separated list Zoho returns", () => {
+		expect(hasSyncScopes("zoho", ZOHO_SYNC_SCOPES.join(","))).toBe(true);
+	});
+
+	it("accepts the profile scope riding along, which Zoho always adds", () => {
+		expect(
+			hasSyncScopes(
+				"zoho",
+				`${ZOHO_SYNC_SCOPES.join(",")},AaaServer.profile.READ`,
+			),
+		).toBe(true);
+	});
+
+	it("refuses a grant that can read messages but cannot find the account id", () => {
+		expect(
+			hasSyncScopes("zoho", "ZohoMail.messages.READ,ZohoMail.folders.READ"),
+		).toBe(false);
+	});
+
+	it("does not read the ALL scope as the READ one it is not spelled as", () => {
+		expect(hasSyncScopes("zoho", "ZohoMail.accounts.ALL")).toBe(false);
+	});
+
+	it("does not read a Google grant as a Zoho one", () => {
+		expect(hasSyncScopes("zoho", BOTH)).toBe(false);
 	});
 });

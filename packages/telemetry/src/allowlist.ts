@@ -228,7 +228,12 @@ export function permittedTaskKind(kind: string | null | undefined): string {
 	return kind && TASK_KIND_SET.has(kind) ? kind : OTHER;
 }
 
-export const SYNC_SOURCES = ["gmail", "calendar", "outlook"] as const;
+export const SYNC_SOURCES = [
+	"gmail",
+	"calendar",
+	"outlook",
+	"zohomail",
+] as const;
 
 export type TelemetrySyncSource = (typeof SYNC_SOURCES)[number];
 
@@ -244,6 +249,7 @@ const SYNC_ERROR_SOURCES = {
 	gmail: "google_sync",
 	calendar: "google_sync",
 	outlook: "microsoft_sync",
+	zohomail: "zoho_sync",
 } as const satisfies Record<TelemetrySyncSource, string>;
 
 export function permittedSyncErrorSource(

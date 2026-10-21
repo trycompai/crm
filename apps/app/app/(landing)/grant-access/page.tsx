@@ -16,6 +16,7 @@ const DESCRIPTION = {
 		"This CRM reads your Gmail and Calendar so meetings and email threads show up on the right company. It is read-only — nothing is ever sent on your behalf.",
 	microsoft:
 		"This CRM reads your Outlook mail so email threads show up on the right company. It is read-only — nothing is ever sent on your behalf.",
+	zoho: "This CRM reads your Zoho Mail so email threads show up on the right company. It is read-only — nothing is ever sent on your behalf.",
 } satisfies Record<MailboxProviderId, string>;
 
 const BOTH =

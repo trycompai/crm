@@ -12,6 +12,8 @@ export {
 	isGoogleConfigured,
 	isMicrosoftConfigured,
 	isSlackConfigured,
+	isZohoConfigured,
+	zohoConfig,
 } from "./env";
 export {
 	canChangeRole,
@@ -51,6 +53,14 @@ export {
 	signsInOnlyWith,
 	signsInWithGoogle,
 	signsInWithMicrosoft,
+	signsInWithZoho,
+	ZOHO_ACCOUNTS_SCOPE,
+	ZOHO_FOLDERS_SCOPE,
+	ZOHO_MESSAGES_SCOPE,
+	ZOHO_PROFILE_SCOPE,
+	ZOHO_PROVIDER_ID,
+	ZOHO_REQUESTED_SCOPES,
+	ZOHO_SYNC_SCOPES,
 } from "./scopes";
 export { onSignedIn, type SignedInHandler } from "./signed-in";
 export {
@@ -78,3 +88,12 @@ export {
 	primaryWorkspaceDomain,
 	workspaceDomains,
 } from "./workspace";
+export {
+	DEFAULT_ZOHO_REGION,
+	isZohoRegion,
+	toZohoRegion,
+	ZOHO_REGIONS,
+	type ZohoEndpoints,
+	type ZohoRegion,
+	zohoEndpoints,
+} from "./zoho-region";

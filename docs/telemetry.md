@@ -221,7 +221,7 @@ our errors would carry contact fields.
 | Event | Properties |
 | --- | --- |
 | `agent_error` | `error_class`, `tool`, `task_kind`, `error_source` (`tool` / `turn` / `session`) |
-| `sync_error` | `error_class`, `sync_source` (`gmail` / `calendar` / `outlook`), `error_source` (`google_sync` / `microsoft_sync` / `mailbox_sync`) |
+| `sync_error` | `error_class`, `sync_source` (`gmail` / `calendar` / `outlook` / `zohomail`), `error_source` (`google_sync` / `microsoft_sync` / `zoho_sync` / `mailbox_sync`) |
 | `api_error` | `error_class`, `route`, `status_code` |
 | `model_error` | `error_class`, `model_id` |
 

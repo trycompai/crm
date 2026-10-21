@@ -3,6 +3,7 @@ import {
 	canConfigureSso,
 	isGoogleConfigured,
 	isMicrosoftConfigured,
+	isZohoConfigured,
 	ssoCallbackBase,
 	ssoCallbackURL,
 	ssoProviderName,
@@ -126,6 +127,7 @@ export class SsoService {
 		return {
 			google: isGoogleConfigured(),
 			microsoft: isMicrosoftConfigured(),
+			zoho: isZohoConfigured(),
 			providers: rows.map((row) => ({
 				providerId: row.providerId,
 				name: ssoProviderName(row.providerId),

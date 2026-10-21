@@ -5,7 +5,10 @@ import { schemas } from "@crm/validation";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
-import { genericOAuth } from "better-auth/plugins/generic-oauth";
+import {
+	type GenericOAuthConfig,
+	genericOAuth,
+} from "better-auth/plugins/generic-oauth";
 import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
@@ -17,6 +20,8 @@ import {
 	MICROSOFT_SYNC_SCOPES,
 	SLACK_PROVIDER_ID,
 	SYNC_SCOPES,
+	ZOHO_PROVIDER_ID,
+	ZOHO_REQUESTED_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import { slackConnectGuard } from "./slack-connect";
@@ -31,10 +36,13 @@ import {
 
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 const slackOAuth = env.slack;
-const slackRedirectUri = new URL(
-	"/api/auth/oauth2/callback/slack",
-	env.apiUrl,
-).toString();
+const zohoOAuth = env.zoho;
+
+const oauth2RedirectUri = (providerId: string) =>
+	new URL(`/api/auth/oauth2/callback/${providerId}`, env.apiUrl).toString();
+
+const slackRedirectUri = oauth2RedirectUri(SLACK_PROVIDER_ID);
+const zohoRedirectUri = oauth2RedirectUri(ZOHO_PROVIDER_ID);
 
 if (env.google) {
 	const google: NonNullable<typeof socialProviders.google> = {
@@ -69,6 +77,133 @@ if (env.microsoft) {
 	};
 }
 
+const oauth2Providers: GenericOAuthConfig[] = [];
+
+if (slackOAuth) {
+	oauth2Providers.push({
+		providerId: SLACK_PROVIDER_ID,
+		authorizationUrl: "https://slack.com/oauth/v2/authorize",
+		tokenUrl: "https://slack.com/api/oauth.v2.access",
+		clientId: slackOAuth.clientId,
+		clientSecret: slackOAuth.clientSecret,
+		disableSignUp: true,
+		redirectURI: slackRedirectUri,
+		scopes: [...SLACK_REQUESTED_SCOPES],
+		authorizationUrlParams: {
+			user_scope: SLACK_USER_SCOPES.join(","),
+		},
+		getToken: async ({ code }) => {
+			const response = await fetch("https://slack.com/api/oauth.v2.access", {
+				method: "POST",
+				headers: {
+					"content-type": "application/x-www-form-urlencoded",
+				},
+				body: new URLSearchParams({
+					client_id: slackOAuth.clientId,
+					client_secret: slackOAuth.clientSecret,
+					code,
+					redirect_uri: slackRedirectUri,
+				}),
+			});
+			const grant = schemas.slack.oauthAccess.parse(await response.json());
+			if (!response.ok || !grant.ok || !grant.access_token) {
+				throw new APIError("BAD_REQUEST", {
+					message: `Slack authorization failed (${grant.error ?? "rejected"}).`,
+				});
+			}
+			await rememberSlackInstall(grant);
+
+			return {
+				accessToken: grant.access_token,
+				tokenType: grant.token_type,
+				scopes: (grant.scope ?? "")
+					.split(",")
+					.map((scope) => scope.trim())
+					.filter(Boolean),
+				raw: grant,
+			};
+		},
+		getUserInfo: async (tokens) => {
+			try {
+				const granted = schemas.slack.oauthAccess.parse(tokens.raw);
+				const userId = granted.authed_user?.id;
+				if (!tokens.accessToken || !userId) return null;
+				const userResponse = await fetch(
+					`https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`,
+					{
+						headers: {
+							Authorization: `Bearer ${tokens.accessToken}`,
+						},
+					},
+				);
+				const profile = schemas.slack.userInfo.parse(await userResponse.json());
+				if (!userResponse.ok || !profile.ok) return null;
+				const details = profile.user.profile;
+				const email = details.email;
+				if (!email) return null;
+				return {
+					id: userId,
+					name: details.real_name ?? profile.user.name ?? email,
+					email,
+					emailVerified: true,
+					image: details.image_512,
+				};
+			} catch {
+				return null;
+			}
+		},
+	});
+}
+
+if (zohoOAuth) {
+	oauth2Providers.push({
+		providerId: ZOHO_PROVIDER_ID,
+		authorizationUrl: zohoOAuth.endpoints.authorizationUrl,
+		tokenUrl: zohoOAuth.endpoints.tokenUrl,
+		clientId: zohoOAuth.clientId,
+		clientSecret: zohoOAuth.clientSecret,
+		redirectURI: zohoRedirectUri,
+		disableSignUp: false,
+
+		// Zoho delimits scopes with commas, not spaces. better-auth joins the
+		// array with a space, so the whole list is handed over as one element.
+		scopes: [ZOHO_REQUESTED_SCOPES.join(",")],
+
+		// Without both of these Zoho issues an access token and no refresh
+		// token, and the connection silently dies an hour later.
+		authorizationUrlParams: {
+			access_type: "offline",
+			prompt: "consent",
+		},
+
+		getUserInfo: async (tokens) => {
+			if (!tokens.accessToken) return null;
+
+			try {
+				const response = await fetch(zohoOAuth.endpoints.userInfoUrl, {
+					headers: {
+						Authorization: `Zoho-oauthtoken ${tokens.accessToken}`,
+						Accept: "application/json",
+					},
+				});
+
+				if (!response.ok) return null;
+
+				const profile = schemas.zoho.userInfo.parse(await response.json());
+
+				return {
+					id: profile.ZUID,
+					email: profile.Email,
+					name: profile.Display_Name ?? profile.Email,
+					emailVerified: true,
+				};
+			} catch {
+				return null;
+			}
+		},
+	});
+}
+
 export const auth = betterAuth({
 	appName: "CRM",
 	baseURL: env.apiUrl,
@@ -86,7 +221,11 @@ export const auth = betterAuth({
 	account: {
 		accountLinking: {
 			enabled: true,
-			trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID],
+			trustedProviders: [
+				GOOGLE_PROVIDER_ID,
+				MICROSOFT_PROVIDER_ID,
+				ZOHO_PROVIDER_ID,
+			],
 		},
 	},
 
@@ -122,93 +261,8 @@ export const auth = betterAuth({
 	},
 
 	plugins: [
-		...(slackOAuth
-			? [
-					genericOAuth({
-						config: [
-							{
-								providerId: SLACK_PROVIDER_ID,
-								authorizationUrl: "https://slack.com/oauth/v2/authorize",
-								tokenUrl: "https://slack.com/api/oauth.v2.access",
-								clientId: slackOAuth.clientId,
-								clientSecret: slackOAuth.clientSecret,
-								disableSignUp: true,
-								redirectURI: slackRedirectUri,
-								scopes: [...SLACK_REQUESTED_SCOPES],
-								authorizationUrlParams: {
-									user_scope: SLACK_USER_SCOPES.join(","),
-								},
-								getToken: async ({ code }) => {
-									const response = await fetch(
-										"https://slack.com/api/oauth.v2.access",
-										{
-											method: "POST",
-											headers: {
-												"content-type": "application/x-www-form-urlencoded",
-											},
-											body: new URLSearchParams({
-												client_id: slackOAuth.clientId,
-												client_secret: slackOAuth.clientSecret,
-												code,
-												redirect_uri: slackRedirectUri,
-											}),
-										},
-									);
-									const grant = schemas.slack.oauthAccess.parse(
-										await response.json(),
-									);
-									if (!response.ok || !grant.ok || !grant.access_token) {
-										throw new APIError("BAD_REQUEST", {
-											message: `Slack authorization failed (${grant.error ?? "rejected"}).`,
-										});
-									}
-									await rememberSlackInstall(grant);
-
-									return {
-										accessToken: grant.access_token,
-										tokenType: grant.token_type,
-										scopes: (grant.scope ?? "")
-											.split(",")
-											.map((scope) => scope.trim())
-											.filter(Boolean),
-										raw: grant,
-									};
-								},
-								getUserInfo: async (tokens) => {
-									try {
-										const granted = schemas.slack.oauthAccess.parse(tokens.raw);
-										const userId = granted.authed_user?.id;
-										if (!tokens.accessToken || !userId) return null;
-										const userResponse = await fetch(
-											`https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`,
-											{
-												headers: {
-													Authorization: `Bearer ${tokens.accessToken}`,
-												},
-											},
-										);
-										const profile = schemas.slack.userInfo.parse(
-											await userResponse.json(),
-										);
-										if (!userResponse.ok || !profile.ok) return null;
-										const details = profile.user.profile;
-										const email = details.email;
-										if (!email) return null;
-										return {
-											id: userId,
-											name: details.real_name ?? profile.user.name ?? email,
-											email,
-											emailVerified: true,
-											image: details.image_512,
-										};
-									} catch {
-										return null;
-									}
-								},
-							},
-						],
-					}),
-				]
+		...(oauth2Providers.length > 0
+			? [genericOAuth({ config: oauth2Providers })]
 			: []),
 		organization({
 			allowUserToCreateOrganization: false,

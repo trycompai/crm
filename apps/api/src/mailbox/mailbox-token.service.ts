@@ -9,9 +9,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	GOOGLE_PROVIDER_ID,
+	MICROSOFT_PROVIDER_ID,
 	PROVIDER_FOR_SOURCE,
 	SCOPE_FOR_SOURCE,
 	type SyncSource,
+	ZOHO_PROVIDER_ID,
 } from "./mailbox.constants";
 
 export type TokenFailure =
@@ -164,6 +166,12 @@ export class MailboxTokenService {
 	}
 }
 
+const PROVIDER_LABELS = {
+	[GOOGLE_PROVIDER_ID]: "Google",
+	[MICROSOFT_PROVIDER_ID]: "Microsoft",
+	[ZOHO_PROVIDER_ID]: "Zoho",
+} satisfies Record<MailboxProviderId, string>;
+
 function label(providerId: MailboxProviderId): string {
-	return providerId === GOOGLE_PROVIDER_ID ? "Google" : "Microsoft";
+	return PROVIDER_LABELS[providerId];
 }

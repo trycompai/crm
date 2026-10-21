@@ -43,8 +43,18 @@ the three that is genuinely optional on its own — set it to your tenant's GUID
 refuse other tenants at Microsoft instead of at `ALLOWED_SIGN_IN`. There is **no
 Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
 
-**Neither pair is required, but an install wants one of them or an SSO provider** —
-with none, the sign-in page says so by name rather than rendering nothing.
+**`ZOHO_CLIENT_ID` + `ZOHO_CLIENT_SECRET`** are the third of the same bargain, and the
+only one that is not a better-auth *social* provider: Zoho is registered through the
+`genericOAuth` plugin, so its callback is `/api/auth/oauth2/callback/zoho` — note the
+extra `/oauth2` segment the other two do not have. Same pair rule.
+**`ZOHO_REGION`** defaults to `com` and names the data centre suffix (`com`, `eu`,
+`in`, `com.au`, `jp`, `ca`, `sa`, `com.cn`). It is not cosmetic: an account lives in
+exactly one data centre, every host name carries the suffix, and a token minted in one
+is refused by the others. `packages/auth/src/zoho-region.ts` throws on an unknown
+value rather than composing a hostname that does not resolve.
+
+**None of the three pairs is required, but an install wants one of them or an SSO
+provider** — with none, the sign-in page says so by name rather than rendering nothing.
 
 **`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
 addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
@@ -169,7 +179,13 @@ canonicaliser and strips that prefix, so the comparison is against the bare perm
 everywhere.
 
 **Sync is forward-only** — Gmail records the current `historyId` on its first pass and
-imports nothing, Calendar reads from `now`, and Outlook records `now` as its cursor.
+imports nothing, Calendar reads from `now`, and Outlook and Zoho each record `now` as
+their cursor.
+
+**Zoho only issues a refresh token while the consent screen is up**, which is why the
+authorization URL always carries `access_type=offline` and `prompt=consent`. A
+connection that comes back without one cannot be repaired in place — the status card
+reports `hasRefreshToken: false` and asks for a disconnect and reconnect.
 
 **`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
 `/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is

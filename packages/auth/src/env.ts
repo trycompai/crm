@@ -1,4 +1,10 @@
 import "@crm/env/load";
+import {
+	toZohoRegion,
+	type ZohoEndpoints,
+	type ZohoRegion,
+	zohoEndpoints,
+} from "./zoho-region";
 
 const DEFAULT_API_URL = "http://localhost:3001";
 const DEFAULT_APP_URL = "http://localhost:3000";
@@ -42,6 +48,22 @@ const microsoftCredentials = ():
 	};
 };
 
+const zohoCredentials = ():
+	| {
+			clientId: string;
+			clientSecret: string;
+			region: ZohoRegion;
+			endpoints: ZohoEndpoints;
+	  }
+	| undefined => {
+	const credentials = pair("ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET");
+	if (!credentials) return undefined;
+
+	const region = toZohoRegion(optional("ZOHO_REGION"));
+
+	return { ...credentials, region, endpoints: zohoEndpoints(region) };
+};
+
 const slackCredentials = ():
 	| { clientId: string; clientSecret: string }
 	| undefined => pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
@@ -62,6 +84,7 @@ export const env = {
 	google: googleCredentials(),
 	microsoft: microsoftCredentials(),
 	slack: slackCredentials(),
+	zoho: zohoCredentials(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",
@@ -79,4 +102,12 @@ export function isSlackConfigured(): boolean {
 	return env.slack !== undefined;
 }
 
+export function isZohoConfigured(): boolean {
+	return env.zoho !== undefined;
+}
+
 export { apiUrl, appUrl };
+
+export function zohoConfig() {
+	return env.zoho;
+}

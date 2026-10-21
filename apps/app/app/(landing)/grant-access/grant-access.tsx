@@ -1,37 +1,26 @@
 "use client";
 
-import { authClient } from "@crm/auth/client";
-import {
-	type MailboxProviderId,
-	MICROSOFT_SYNC_SCOPES,
-	SYNC_SCOPES,
-} from "@crm/auth/scopes";
+import type { MailboxProviderId } from "@crm/auth/scopes";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
+import ZohoLogo from "@crm/ui/components/brand-logos/zoho";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { startMailboxGrant } from "@/lib/mailbox-oauth";
 import { signOutAndRedirect } from "@/lib/sign-out";
 
 type ProviderGrant = {
 	label: string;
-	scopes: readonly string[];
 	Logo: FC<SVGProps<SVGSVGElement>>;
 };
 
 const PROVIDERS = {
-	google: {
-		label: "Grant Google access",
-		scopes: [...SYNC_SCOPES],
-		Logo: GoogleLogo,
-	},
-	microsoft: {
-		label: "Grant Microsoft access",
-		scopes: [...MICROSOFT_SYNC_SCOPES],
-		Logo: MicrosoftLogo,
-	},
+	google: { label: "Grant Google access", Logo: GoogleLogo },
+	microsoft: { label: "Grant Microsoft access", Logo: MicrosoftLogo },
+	zoho: { label: "Grant Zoho Mail access", Logo: ZohoLogo },
 } as const satisfies Record<MailboxProviderId, ProviderGrant>;
 
 export function GrantAccess({
@@ -51,9 +40,7 @@ export function GrantAccess({
 
 		const origin = window.location.origin;
 
-		const { error } = await authClient.linkSocial({
-			provider,
-			scopes: [...PROVIDERS[provider].scopes],
+		const { error } = await startMailboxGrant(provider, {
 			callbackURL: `${origin}/`,
 			errorCallbackURL: `${origin}/grant-access`,
 		});

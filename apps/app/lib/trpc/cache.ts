@@ -34,6 +34,7 @@ export type CrmCache = {
 	activity(options?: Options): Promise<void>;
 	google(options?: Options): Promise<void>;
 	microsoft(options?: Options): Promise<void>;
+	zoho(options?: Options): Promise<void>;
 	settings(options?: Options): Promise<void>;
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
@@ -261,6 +262,19 @@ export function useCrmCache(): CrmCache {
 		microsoft: (options) =>
 			run(
 				[trpc.microsoft.status.queryKey()],
+				[
+					...activityKeys(),
+					...listKeys(),
+					trpc.companies.byId.queryKey(),
+					trpc.contacts.byId.queryKey(),
+					trpc.dashboard.summary.queryKey(),
+				],
+				options,
+			),
+
+		zoho: (options) =>
+			run(
+				[trpc.zoho.status.queryKey()],
 				[
 					...activityKeys(),
 					...listKeys(),

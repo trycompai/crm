@@ -163,17 +163,19 @@ Two rules follow for the serverless build:
   `MODULE_NOT_FOUND` on the first request. Adding a name to `EXTERNALS` without
   checking it lands in `.vercel/output` breaks production, and the build stays green.
 
-## Two mail providers, one pipeline
+## Three mail providers, one pipeline
 
-`apps/api/src/mailbox` is everything neither Google nor Microsoft owns:
-`MailboxApiClient` (bearer GET, and the one place a status code becomes an outcome),
+`apps/api/src/mailbox` is everything no single provider owns:
+`MailboxApiClient` (an authorised GET, and the one place a status code becomes an
+outcome — the scheme is `Bearer` unless the caller asks for another, which only Zoho
+does),
 `SyncStateService` (the `MailboxSync` row), `MailboxTokenService`,
-`MailboxMatchService`, `participants.ts`, `message-text.ts`, and
+`MailboxMatchService`, `participants.ts`, `message-text.ts`, `thread-rebuild.ts` and
 `ThreadWriterService`.
 
 - **`ThreadWriterService.store` is the only writer of `EmailThread`, `EmailMessage`
-  and the `EMAIL` activity.** Gmail and Outlook each parse their own wire format down
-  to one `IncomingMessage` and hand it over; matching, threading, counting and
+  and the `EMAIL` activity.** Gmail, Outlook and Zoho each parse their own wire format
+  down to one `IncomingMessage` and hand it over; matching, threading, counting and
   stamping happen once. A second copy of that is how a rule like *reply before you
   create a company* comes to be true in one inbox and not the other.
 - **A thread is keyed by RFC message id, not by the provider's thread id.** Root comes
@@ -181,8 +183,12 @@ Two rules follow for the serverless build:
   Outlook land on the same `EmailThread` for the same conversation. Graph only returns
   `internetMessageHeaders` when `$select`ed and not for every message, so Outlook falls
   back to `outlook-conversation:<conversationId>` — threading that still holds inside
-  Outlook, just not across to Gmail.
-- **`MailboxSync.source` is the discriminator** — `calendar`, `gmail`, `outlook`. Each
+  Outlook, just not across to Gmail. Zoho's message list carries no RFC headers at all,
+  so its adapter spends one extra call per new message on `/header` to get a real
+  `Message-ID` rather than falling back; `zoho-thread:<threadId>` is only used when the
+  message genuinely has no `References` or `In-Reply-To`.
+- **`MailboxSync.source` is the discriminator** — `calendar`, `gmail`, `outlook`,
+  `zohomail`. Each
   provider's module only ever sees its own, and `sync/mailbox-sync.service.ts` is the
   one place that dispatches. One cron, one budget:
   `POST /internal/sync/mailboxes` (`/google` is kept as an alias so an existing
@@ -191,9 +197,14 @@ Two rules follow for the serverless build:
   mailbox-wide delta, so the Outlook cursor is the last `receivedDateTime` seen,
   re-read with a one-second overlap; `rfcMessageId` is unique, so the overlap costs a
   duplicate fetch and never a duplicate row.
-- **Microsoft has no token-revocation endpoint.** `revoke` clears the columns and the
-  UI says the consent itself is removed in the user's Microsoft account. Google's still
-  posts to `oauth2.googleapis.com/revoke` and refuses to clear if that fails.
+- **Zoho has no delta and no date filter at all.** `/messages/view` pages with
+  `start`/`limit` over a date-sorted list, so the adapter reads newest-first and stops
+  at the first message under its cursor; the cursor is epoch milliseconds, not an ISO
+  string. Its per-tick ceiling is lower than Outlook's because each new message costs
+  three calls rather than one.
+- **Microsoft and Zoho have no token-revocation endpoint we call.** `revoke` clears the
+  columns and the UI says where to withdraw the consent itself. Google's still posts to
+  `oauth2.googleapis.com/revoke` and refuses to clear if that fails.
 
 ## Not every address on a thread is a person
 
