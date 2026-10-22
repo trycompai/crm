@@ -11,6 +11,6 @@
 		"./react-library.json": "./react-library.json"
 	},
 	"peerDependencies": {
-		"next": "^16.0.0"
+		"next": "^16.4.2"
 	}
 }
