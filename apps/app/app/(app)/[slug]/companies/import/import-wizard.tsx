@@ -44,7 +44,6 @@ import Link from "next/link";
 import { useId, useReducer, useState } from "react";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 import {
 	buildImportRows,
 	type CompanyImportField,
@@ -78,8 +77,7 @@ function focusElement(element: HTMLElement | null) {
 	element?.focus();
 }
 
-export function ImportWizard() {
-	const workspaceUrl = useWorkspaceUrl();
+export function ImportWizard({ companiesUrl }: { companiesUrl: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const [state, dispatch] = useReducer(reduceImportWizard, {
@@ -167,7 +165,7 @@ export function ImportWizard() {
 			{state.step === "result" ? (
 				<ResultStep
 					result={state.result}
-					companiesUrl={workspaceUrl("/companies")}
+					companiesUrl={companiesUrl}
 					onRestart={() => dispatch({ type: "restart" })}
 				/>
 			) : null}
