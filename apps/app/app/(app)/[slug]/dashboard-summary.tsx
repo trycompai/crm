@@ -204,6 +204,11 @@ export function DashboardSummary() {
 								? "Every task you have logged is either done or still to come"
 								: `${formatCount(overdueTasks.length, "task")} past due`}
 						</CardDescription>
+						<CardAction>
+							<Button asChild variant="contrast" size="sm">
+								<Link href={workspaceUrl("/tasks")}>Open tasks</Link>
+							</Button>
+						</CardAction>
 					</CardHeader>
 					<CardPanel>
 						{overdueTasks.length === 0 ? (

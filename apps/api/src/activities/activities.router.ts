@@ -14,10 +14,14 @@ import { restMeta } from "../trpc/openapi";
 import {
 	activityCreateInput,
 	activityCreateOutput,
+	activityUpdateInput,
+	activityUpdateOutput,
 	completeInput,
 	completeOutput,
 	myTasksInput,
 	myTasksOutput,
+	taskListInput,
+	taskListOutput,
 	timelineCountsInput,
 	timelineCountsOutput,
 	timelineInput,
@@ -62,6 +66,15 @@ export class ActivitiesRouter {
 		return this.activities.myTasks(input, ctx.user.id);
 	}
 
+	@Query({
+		input: taskListInput,
+		output: taskListOutput,
+		meta: restMeta("GET", "/activities/tasks", ["Activities"]),
+	})
+	async tasks(@Input() input: z.infer<typeof taskListInput>) {
+		return this.activities.tasks(input);
+	}
+
 	@Mutation({
 		input: activityCreateInput,
 		output: activityCreateOutput,
@@ -72,6 +85,15 @@ export class ActivitiesRouter {
 		@Input() input: z.infer<typeof activityCreateInput>,
 	) {
 		return this.activities.create(input, ctx.user.id);
+	}
+
+	@Mutation({
+		input: activityUpdateInput,
+		output: activityUpdateOutput,
+		meta: restMeta("PATCH", "/activities/{id}", ["Activities"]),
+	})
+	async update(@Input() input: z.infer<typeof activityUpdateInput>) {
+		return this.activities.update(input);
 	}
 
 	@Mutation({

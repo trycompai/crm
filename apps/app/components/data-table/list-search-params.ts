@@ -70,6 +70,7 @@ export type ListTableConfig<TTab extends string, TFacet extends string> = {
 	defaultDir?: SortDirection;
 	pageSize?: number;
 	tabId?: TTab;
+	tabDefault?: string;
 	facetIds?: readonly TFacet[];
 	facetDefaults?: Partial<Record<TFacet, string[]>>;
 };
@@ -95,6 +96,7 @@ export function createListSearchParams<
 		defaultDir = "asc",
 		pageSize = 25,
 		tabId,
+		tabDefault = "all",
 		facetIds = [],
 		facetDefaults,
 	} = config;
@@ -105,7 +107,7 @@ export function createListSearchParams<
 	);
 
 	const tabExtras: Record<string, StringParser> = {};
-	if (tabId) tabExtras[tabId] = parseAsString.withDefault("all");
+	if (tabId) tabExtras[tabId] = parseAsString.withDefault(tabDefault);
 
 	const facetExtras: Record<string, ArrayParser> = {};
 	for (const id of facetIds) {
@@ -129,7 +131,7 @@ export function createListSearchParams<
 
 	const toInput = (values: ListSearchValues<TTab, TFacet>) => {
 		const selectedTab: Record<string, string> = {};
-		if (tabId) selectedTab[tabId] = values[tabId] ?? "all";
+		if (tabId) selectedTab[tabId] = values[tabId] ?? tabDefault;
 
 		const selectedFacets: Record<string, string[]> = {};
 		for (const id of facetIds) {

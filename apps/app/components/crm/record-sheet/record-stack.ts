@@ -6,7 +6,15 @@ import {
 	parseAsStringLiteral,
 	useQueryStates,
 } from "nuqs";
-import { useCallback, useMemo } from "react";
+import {
+	createContext,
+	createElement,
+	type ReactNode,
+	useCallback,
+	useContext,
+	useMemo,
+	useRef,
+} from "react";
 import { timelineTabParser } from "@/components/crm/timeline/timeline-search-params";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 
@@ -50,9 +58,10 @@ function parseRef(raw: string): RecordRef | null {
 		: null;
 }
 
-export function useRecordStack() {
+function useRecordStackState() {
 	const [values, setParams] = useQueryStates(params);
 	const record = values[SEARCH_PARAM.record.stack];
+	const returnFocus = useRef<HTMLElement | null>(null);
 
 	const stack = useMemo(
 		() => record.map(parseRef).filter((ref): ref is RecordRef => ref !== null),
@@ -61,7 +70,7 @@ export function useRecordStack() {
 
 	const write = useCallback(
 		(next: RecordRef[], history: "push" | "replace") => {
-			void setParams(
+			return setParams(
 				{
 					[SEARCH_PARAM.record.stack]:
 						next.length === 0 ? null : next.map(recordKey),
@@ -73,15 +82,18 @@ export function useRecordStack() {
 					[SEARCH_PARAM.record.timeline]: null,
 				},
 				{ history },
-			);
+			).then(() => undefined);
 		},
 		[setParams],
 	);
 
 	const open = useCallback(
 		(ref: RecordRef) => {
+			if (stack.length === 0 && document.activeElement instanceof HTMLElement) {
+				returnFocus.current = document.activeElement;
+			}
 			const key = recordKey(ref);
-			write(
+			void write(
 				[...stack.filter((entry) => recordKey(entry) !== key), ref],
 				stack.length === 0 ? "push" : "replace",
 			);
@@ -89,12 +101,19 @@ export function useRecordStack() {
 		[stack, write],
 	);
 
-	const close = useCallback(
-		() => write(stack.slice(0, -1), "replace"),
-		[stack, write],
-	);
+	const close = useCallback(() => {
+		const next = stack.slice(0, -1);
+		void write(next, "replace").then(() => {
+			if (next.length > 0) return;
+			requestAnimationFrame(() => returnFocus.current?.focus());
+		});
+	}, [stack, write]);
 
-	const closeAll = useCallback(() => write([], "replace"), [write]);
+	const closeAll = useCallback(() => {
+		void write([], "replace").then(() => {
+			requestAnimationFrame(() => returnFocus.current?.focus());
+		});
+	}, [write]);
 
 	return {
 		stack,
@@ -103,6 +122,21 @@ export function useRecordStack() {
 		close,
 		closeAll,
 	};
+}
+
+type RecordStackState = ReturnType<typeof useRecordStackState>;
+
+const RecordStackContext = createContext<RecordStackState | null>(null);
+
+export function RecordStackProvider({ children }: { children: ReactNode }) {
+	const state = useRecordStackState();
+	return createElement(RecordStackContext.Provider, { value: state }, children);
+}
+
+export function useRecordStack(): RecordStackState {
+	const state = useContext(RecordStackContext);
+	if (!state) throw new Error("RecordStackProvider is missing.");
+	return state;
 }
 
 export function useOpenRecord() {

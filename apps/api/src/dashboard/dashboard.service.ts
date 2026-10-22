@@ -2,6 +2,7 @@ import { ActivityType, type Db, DealStage } from "@crm/db";
 import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import { activityMeta } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
+import { taskDayBoundaries } from "../activities/task-due-date";
 import { toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -42,6 +43,7 @@ export class DashboardService {
 		const owned = mine ? { ownerId: actingUserId } : {};
 
 		const now = new Date();
+		const { startOfToday } = taskDayBoundaries(now);
 		const startOfMonth = monthStart(now, 0);
 		const startOfNextMonth = monthStart(now, 1);
 		const startOfPrevMonth = monthStart(now, -1);
@@ -136,7 +138,7 @@ export class DashboardService {
 				where: {
 					type: ActivityType.TASK,
 					completedAt: null,
-					dueAt: { lt: now },
+					dueAt: { lt: startOfToday },
 					createdById: actingUserId,
 				},
 				orderBy: [{ dueAt: "asc" }],

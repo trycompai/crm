@@ -1,6 +1,8 @@
 import { ActivityType } from "@crm/db";
 import { activityMeta } from "@crm/validation/activity-meta";
 import { z } from "zod";
+import { listInput } from "../trpc/list-input";
+import { TASK_WINDOWS, taskDueDayInput } from "./task-due-date";
 
 const COMPOSABLE_TYPES = [
 	ActivityType.NOTE,
@@ -59,7 +61,7 @@ export const activityCreateInput = z
 		subject: z.string().trim().optional(),
 		body: z.string().trim().optional(),
 		occurredAt: z.string().optional(),
-		dueAt: z.string().nullable().optional(),
+		dueAt: taskDueDayInput.nullable().optional(),
 		companyId: z.string().optional(),
 		contactId: z.string().optional(),
 		dealId: z.string().optional(),
@@ -77,6 +79,16 @@ export const activityCreateInput = z
 
 export type ActivityCreateInput = z.infer<typeof activityCreateInput>;
 
+export const activityUpdateInput = z.object({
+	id: z.string(),
+	subject: z.string().trim().min(1, {
+		message: "A task needs a subject — it is the thing to do.",
+	}),
+	dueAt: taskDueDayInput.nullable(),
+});
+
+export type ActivityUpdateInput = z.infer<typeof activityUpdateInput>;
+
 export const completeInput = z.object({
 	id: z.string(),
 	completed: z.boolean().default(true),
@@ -88,6 +100,14 @@ export const myTasksInput = z.object({
 });
 
 export type MyTasksInput = z.infer<typeof myTasksInput>;
+
+export const taskListInput = listInput.extend({
+	status: z.enum(["all", "open", "done"]).default("all"),
+	due: z.array(z.enum(TASK_WINDOWS)).default([]),
+	createdBy: z.array(z.string()).default([]),
+});
+
+export type TaskListInput = z.infer<typeof taskListInput>;
 
 const activityAuthorOutput = z.object({
 	id: z.string(),
@@ -178,6 +198,44 @@ export type TimelineCounts = z.infer<typeof timelineCountsOutput>;
 
 export const myTasksOutput = z.array(activityEntryOutput);
 
+const taskCompanyRefOutput = z
+	.object({
+		id: z.string(),
+		name: z.string(),
+		domain: z.string().nullable(),
+		iconUrl: z.string().nullable(),
+		iconDarkUrl: z.string().nullable(),
+		iconTone: z.string().nullable(),
+		logoUrl: z.string().nullable(),
+	})
+	.nullable();
+
+const taskRowOutput = z.object({
+	id: z.string(),
+	subject: z.string().nullable(),
+	dueAt: z.string().nullable(),
+	completedAt: z.string().nullable(),
+	createdAt: z.string(),
+	createdBy: activityAuthorOutput,
+	company: taskCompanyRefOutput,
+	contact: activityContactRefOutput,
+	deal: activityDealRefOutput,
+});
+
+export const taskListOutput = z.object({
+	rows: z.array(taskRowOutput),
+	total: z.number(),
+	day: z.object({
+		today: taskDueDayInput,
+		timeZone: z.string(),
+	}),
+	facetCounts: z.record(z.string(), z.record(z.string(), z.number())),
+});
+
+export type TaskListResult = z.infer<typeof taskListOutput>;
+
 export const activityCreateOutput = activityEntryOutput;
+
+export const activityUpdateOutput = activityEntryOutput;
 
 export const completeOutput = activityEntryOutput;

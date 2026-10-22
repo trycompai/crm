@@ -5,6 +5,10 @@ import { useCallback } from "react";
 import { companiesSearchParams } from "@/app/(app)/[slug]/companies/companies-search-params";
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
 import { dealsSearchParams } from "@/app/(app)/[slug]/deals/deals-search-params";
+import {
+	normalizeTasksInput,
+	tasksSearchParams,
+} from "@/app/(app)/[slug]/tasks/tasks-search-params";
 import { useTRPC } from "@/lib/trpc/client";
 
 export function usePrefetchSection(): (section: string) => void {
@@ -36,6 +40,13 @@ export function usePrefetchSection(): (section: string) => void {
 				case "/deals":
 					void queryClient.prefetchQuery(
 						trpc.deals.list.queryOptions(dealsSearchParams.defaultInput()),
+					);
+					return;
+				case "/tasks":
+					void queryClient.prefetchQuery(
+						trpc.activities.tasks.queryOptions(
+							normalizeTasksInput(tasksSearchParams.defaultInput()),
+						),
 					);
 					return;
 				default:

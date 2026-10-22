@@ -5,6 +5,7 @@ import { AppHeader, AppHeaderFallback } from "@/components/app-header";
 import { AppIconRail, AppIconRailFallback } from "@/components/app-icon-rail";
 import { QuickSwitcher } from "@/components/crm/quick-switcher";
 import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host";
+import { RecordStackProvider } from "@/components/crm/record-sheet/record-stack";
 import { MobileNavProvider } from "@/components/mobile-nav";
 import { requireMailboxAccess } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
@@ -16,26 +17,28 @@ export default function AppLayout({
 }: LayoutProps<"/[slug]">) {
 	return (
 		<MobileNavProvider>
-			<div className="isolate flex h-svh flex-col">
-				<Suspense fallback={<AppHeaderFallback />}>
-					<WorkspaceHeader params={params} />
-				</Suspense>
-
-				<div className="flex min-h-0 flex-1">
-					<Suspense fallback={<AppIconRailFallback />}>
-						<AppIconRail />
+			<RecordStackProvider>
+				<div className="isolate flex h-svh flex-col">
+					<Suspense fallback={<AppHeaderFallback />}>
+						<WorkspaceHeader params={params} />
 					</Suspense>
-					{children}
+
+					<div className="flex min-h-0 flex-1">
+						<Suspense fallback={<AppIconRailFallback />}>
+							<AppIconRail />
+						</Suspense>
+						{children}
+					</div>
+
+					<Suspense fallback={null}>
+						<RecordSheetHost />
+					</Suspense>
+
+					<Suspense fallback={null}>
+						<QuickSwitcher />
+					</Suspense>
 				</div>
-
-				<Suspense fallback={null}>
-					<RecordSheetHost />
-				</Suspense>
-
-				<Suspense fallback={null}>
-					<QuickSwitcher />
-				</Suspense>
-			</div>
+			</RecordStackProvider>
 		</MobileNavProvider>
 	);
 }

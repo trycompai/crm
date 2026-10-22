@@ -16,6 +16,7 @@ import {
 } from "@crm/ui/components/popover";
 import { Spinner } from "@crm/ui/components/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
+import { toDay } from "@crm/ui/lib/format";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -75,7 +76,7 @@ export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 			type,
 			subject: isTask ? text : undefined,
 			body: isTask ? undefined : text,
-			dueAt: isTask ? (dueAt?.toISOString() ?? null) : undefined,
+			dueAt: isTask ? (dueAt ? toDay(dueAt) : null) : undefined,
 		});
 	};
 
