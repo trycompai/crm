@@ -769,13 +769,21 @@ describe("ConversationsService continued", () => {
 			data: {
 				sessionId,
 				continuationToken: `crm:builder:${conversation.id}`,
-				pendingInputRequest: {
-					kind: "question",
-					requestId: "question-1",
-					prompt: "Where should this go?",
-					display: "select",
-					options: [{ id: "crm-task", label: "Create a CRM task" }],
-				},
+				pendingInputRequests: [
+					{
+						kind: "question",
+						requestId: "question-1",
+						prompt: "Where should this go?",
+						action: {
+							kind: "tool-call",
+							callId: "call-question-1",
+							toolName: "ask_question",
+							input: { prompt: "Where should this go?" },
+						},
+						display: "select",
+						options: [{ id: "crm-task", label: "Create a CRM task" }],
+					},
+				],
 			},
 		});
 
@@ -836,21 +844,23 @@ describe("ConversationsService continued", () => {
 			data: {
 				sessionId,
 				continuationToken: `crm:builder:${conversation.id}`,
-				pendingInputRequest: {
-					kind: "tool-approval",
-					requestId: "approval-1",
-					prompt: "Archive the Renewal date field?",
-					action: {
-						kind: "tool-call",
-						callId: "call-approval-1",
-						toolName: "archive_field",
-						input: { fieldId: "field-1" },
+				pendingInputRequests: [
+					{
+						kind: "tool-approval",
+						requestId: "approval-1",
+						prompt: "Archive the Renewal date field?",
+						action: {
+							kind: "tool-call",
+							callId: "call-approval-1",
+							toolName: "archive_field",
+							input: { fieldId: "field-1" },
+						},
+						options: [
+							{ id: "approve", label: "Approve", style: "primary" },
+							{ id: "cancel", label: "Decline", style: "danger" },
+						],
 					},
-					options: [
-						{ id: "approve", label: "Approve", style: "primary" },
-						{ id: "cancel", label: "Decline", style: "danger" },
-					],
-				},
+				],
 			},
 		});
 
@@ -899,6 +909,101 @@ describe("ConversationsService continued", () => {
 				},
 			},
 		});
+	});
+
+	it("keeps every pending request and presents them by explicit priority", async () => {
+		const conversation = await service.createBuilder(
+			{
+				clientRequestId: crypto.randomUUID(),
+				commandType: "CREATE_AGENT",
+				message: "/Create agent Review new deals",
+				resources: [],
+				attachments: [],
+			},
+			userId,
+		);
+		await db.agentConversation.update({
+			where: { id: conversation.id },
+			data: {
+				sessionId: `builder-input-priority-${suffix}`,
+				continuationToken: `crm:builder:${conversation.id}`,
+				pendingInputRequests: [
+					{
+						kind: "question",
+						requestId: "question-after-gates",
+						prompt: "Which stage?",
+						action: {
+							kind: "tool-call",
+							callId: "call-question-after-gates",
+							toolName: "ask_question",
+							input: { prompt: "Which stage?" },
+						},
+						display: "text",
+					},
+					{
+						kind: "tool-approval",
+						requestId: "approval-after-limit",
+						prompt: "Save the draft?",
+						action: {
+							kind: "tool-call",
+							callId: "call-approval-after-limit",
+							toolName: "save_agent_draft",
+							input: { name: "Deal review" },
+						},
+						options: [
+							{ id: "approve", label: "Approve" },
+							{ id: "cancel", label: "Decline" },
+						],
+					},
+					{
+						kind: "session-limit",
+						requestId: "limit-before-approval",
+						prompt: "Continue this builder session?",
+						action: {
+							kind: "tool-call",
+							callId: "call-limit-before-approval",
+							toolName: "session_limit_continuation",
+							input: { kind: "output", limit: 40_000 },
+						},
+						options: [
+							{ id: "continue", label: "Continue" },
+							{ id: "stop", label: "Stop" },
+						],
+					},
+				],
+			},
+		});
+
+		const first = await service.builderById(conversation.id, userId);
+		expect(first.pendingSessionLimit?.requestId).toBe("limit-before-approval");
+		expect(first.pendingApproval).toBeNull();
+		expect(first.pendingQuestion).toBeNull();
+
+		await service.answerBuilderSessionLimit(
+			{
+				id: conversation.id,
+				clientRequestId: crypto.randomUUID(),
+				requestId: "limit-before-approval",
+				decision: "continue",
+			},
+			userId,
+		);
+		const second = await service.builderById(conversation.id, userId);
+		expect(second.pendingSessionLimit).toBeNull();
+		expect(second.pendingApproval?.requestId).toBe("approval-after-limit");
+
+		await service.answerBuilderApproval(
+			{
+				id: conversation.id,
+				clientRequestId: crypto.randomUUID(),
+				requestId: "approval-after-limit",
+				decision: "approve",
+			},
+			userId,
+		);
+		const third = await service.builderById(conversation.id, userId);
+		expect(third.pendingApproval).toBeNull();
+		expect(third.pendingQuestion?.requestId).toBe("question-after-gates");
 	});
 
 	it("rejects an answer when the conversation has no durable question", async () => {
@@ -956,16 +1061,24 @@ describe("ConversationsService continued", () => {
 			data: {
 				sessionId,
 				continuationToken: `crm:builder:${conversation.id}`,
-				pendingInputRequest: {
-					kind: "question",
-					requestId: "question-concurrent",
-					prompt: "Which output?",
-					display: "select",
-					options: [
-						{ id: "note", label: "Create a note" },
-						{ id: "task", label: "Create a task" },
-					],
-				},
+				pendingInputRequests: [
+					{
+						kind: "question",
+						requestId: "question-concurrent",
+						prompt: "Which output?",
+						action: {
+							kind: "tool-call",
+							callId: "call-question-concurrent",
+							toolName: "ask_question",
+							input: { prompt: "Which output?" },
+						},
+						display: "select",
+						options: [
+							{ id: "note", label: "Create a note" },
+							{ id: "task", label: "Create a task" },
+						],
+					},
+				],
 			},
 		});
 

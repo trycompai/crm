@@ -120,6 +120,12 @@ the same background task rather than waiting on a round trip
 (`apps/agent/agent/lib/slack-people.ts`). A builder chat that blocks on Slack is
 a builder chat that is as slow as Slack is.
 
+The connections page also recovers a missing channel inventory. When Slack is
+connected and an unfiltered channel read returns no rows, the API queues the
+same durable agent task. It never calls Slack itself. A completed empty fill is
+valid for `SLACK_INVENTORY.throttleMs`. A fill from before the current Slack
+connection does not count, because a reconnect can select another workspace.
+
 ## Permissions are shown in groups, not one line each
 
 Sixteen scopes read as noise. Group them by what they touch — people, channels it

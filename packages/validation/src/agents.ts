@@ -63,6 +63,8 @@ export const inputRequested = z.object({
 	turnId: z.string().min(1),
 });
 
+export const inputRequests = z.array(inputRequest).max(100);
+
 export type InputOption = z.infer<typeof inputOption>;
 export type InputRequest = z.infer<typeof inputRequest>;
 export type InputRequested = z.infer<typeof inputRequested>;

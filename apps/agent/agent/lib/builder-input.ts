@@ -1,11 +1,6 @@
 import { db, type Prisma } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
-import {
-	type InputRequest,
-	type InputRequested,
-	parse,
-	schemas,
-} from "@crm/validation";
+import { type InputRequested, parse, schemas } from "@crm/validation";
 import type { ChannelEvents } from "eve/channels";
 import { readBuilderEvent, storeBuilderEvent } from "./builder-event-storage";
 import {
@@ -40,10 +35,9 @@ export async function persistBuilderInputRequest(
 		data,
 		BUILDER_INPUT.eventType,
 	);
-	const request = pendingBuilderRequest(event.requests);
-	if (!request) return false;
+	if (event.requests.length === 0) return false;
 
-	const eventId = `${eventPrefix(conversationId)}${request.requestId}`;
+	const eventId = `${eventPrefix(conversationId)}${event.turnId}:${event.sequence}:${event.stepIndex}`;
 
 	return db.$transaction(async (tx) => {
 		await lockIdempotencyKey(tx, eventId);
@@ -106,22 +100,12 @@ export async function persistBuilderInputRequest(
 			where: { id: conversation.id },
 			data: {
 				continuationToken: builderToken(conversation.id),
-				pendingInputRequest: request as Prisma.InputJsonValue,
+				pendingInputRequests: event.requests as Prisma.InputJsonValue,
 			},
 		});
 
 		return true;
 	});
-}
-
-function pendingBuilderRequest(
-	requests: readonly InputRequest[],
-): InputRequest | null {
-	return (
-		requests.find((request) => request.kind === "tool-approval") ??
-		requests.find((request) => request.kind === "question") ??
-		null
-	);
 }
 
 function eventPrefix(conversationId: string): string {

@@ -1,6 +1,7 @@
 import { isSlackConfigured } from "@crm/auth/env";
 import { canManageConnections, WORKSPACE_ID } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
+import { SLACK_INVENTORY } from "@crm/db/slack-inventory";
 import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
@@ -209,10 +210,40 @@ export class SlackConnectionService {
 		]);
 
 		const page = rows.slice(0, take);
+		const emptyInventory = sync === "idle" && !needle && page.length === 0;
+		const [account, lastFill] = emptyInventory
+			? await Promise.all([
+					this.db.account.findFirst({
+						where: { providerId: "slack", accessToken: { not: null } },
+						orderBy: { updatedAt: "desc" },
+						select: { updatedAt: true },
+					}),
+					this.db.agentTask.findFirst({
+						where: {
+							kind: SLACK_INVENTORY.kind,
+							finishedAt: { not: null },
+						},
+						orderBy: { finishedAt: "desc" },
+						select: { finishedAt: true },
+					}),
+				])
+			: [null, null];
+		const refillDue =
+			account !== null &&
+			(lastFill?.finishedAt === null ||
+				lastFill?.finishedAt === undefined ||
+				lastFill.finishedAt < account.updatedAt ||
+				Date.now() - lastFill.finishedAt.getTime() >=
+					SLACK_INVENTORY.throttleMs);
+		if (refillDue) {
+			await this.agent.slackPeopleRequested(
+				"Fill the Slack channel inventory for the connections page",
+			);
+		}
 
 		return {
 			canInviteItself: Boolean(grant),
-			sync,
+			sync: refillDue ? "syncing" : sync,
 			nextCursor: rows.length > take ? (page.at(-1)?.id ?? null) : null,
 			rows: page.map(({ classifiedAt, ...row }) => ({
 				...row,

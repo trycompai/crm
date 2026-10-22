@@ -1,4 +1,4 @@
-import { db, Prisma } from "@crm/db";
+import { db, type Prisma } from "@crm/db";
 import { WORKSPACE_ID } from "@crm/db/workspace";
 import { publicEveEventData } from "@crm/validation/eve-public-event";
 import { defineHook } from "eve/hooks";
@@ -173,10 +173,6 @@ async function persistBuilderLifecycle(
 			await tx.agentConversationSubmission.updateMany({
 				where: { id: submissionId, conversationId },
 				data: { status: "ACCEPTED", acceptedAt: new Date() },
-			});
-			await tx.agentConversation.updateMany({
-				where: { id: conversationId, kind: "BUILDER" },
-				data: { pendingInputRequest: Prisma.DbNull },
 			});
 		}
 	}

@@ -5,6 +5,7 @@ import {
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
+import { type InputRequest, schemas } from "@crm/validation";
 import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
 import {
 	type AgentPermissionMode,
@@ -16,6 +17,10 @@ import {
 	type BuilderQuestion,
 	builderQuestion,
 } from "@crm/validation/builder-question";
+import {
+	type BuilderSessionLimit,
+	builderSessionLimit,
+} from "@crm/validation/builder-session-limit";
 import {
 	BadRequestException,
 	Injectable,
@@ -40,6 +45,7 @@ import type {
 	BuilderConversationSubmitInput,
 	BuilderConversationSummary,
 	BuilderQuestionResponseInput,
+	BuilderSessionLimitResponseInput,
 	ConversationEventsInput,
 	ConversationListInput,
 	ConversationSaveInput,
@@ -267,7 +273,7 @@ export class ConversationsService {
 				permissionMode: true,
 				sessionId: true,
 				continuationToken: true,
-				pendingInputRequest: true,
+				pendingInputRequests: true,
 				streamIndex: true,
 				title: true,
 				messageCount: true,
@@ -352,6 +358,7 @@ export class ConversationsService {
 						createdAt: true,
 						sentAt: true,
 						acceptedAt: true,
+						inputRequestId: true,
 						attachments: {
 							orderBy: { position: "asc" },
 							select: {
@@ -370,7 +377,13 @@ export class ConversationsService {
 			throw new NotFoundException(`No builder conversation with id ${id}.`);
 		}
 
-		const { pendingInputRequest, ...conversation } = row;
+		const { pendingInputRequests, ...conversation } = row;
+		const activeInputRequest = activeBuilderInputRequest(
+			pendingInputRequests,
+			row.submissions.flatMap((submission) =>
+				submission.inputRequestId ? [submission.inputRequestId] : [],
+			),
+		);
 		const resume = row.sessionId
 			? conversationResumeSnapshot(
 					row.sessionId,
@@ -399,8 +412,9 @@ export class ConversationsService {
 			...conversation,
 			permissionMode: permissionModeOutput(row.permissionMode),
 			resume,
-			pendingQuestion: pendingBuilderQuestionOf(pendingInputRequest),
-			pendingApproval: pendingBuilderApprovalOf(pendingInputRequest),
+			pendingQuestion: pendingBuilderQuestionOf(activeInputRequest),
+			pendingApproval: pendingBuilderApprovalOf(activeInputRequest),
+			pendingSessionLimit: pendingBuilderSessionLimitOf(activeInputRequest),
 			lastMessageAt: row.lastMessageAt.toISOString(),
 			lastAssistantAt: row.lastAssistantAt?.toISOString() ?? null,
 			lastReadAt: row.lastReadAt?.toISOString() ?? null,
@@ -429,13 +443,18 @@ export class ConversationsService {
 				...artifact,
 				createdAt: artifact.createdAt.toISOString(),
 			})),
-			submissions: row.submissions.map(({ attachments, ...submission }) => ({
-				...submission,
-				message: builderMessageWithAttachments(submission.message, attachments),
-				createdAt: submission.createdAt.toISOString(),
-				sentAt: submission.sentAt?.toISOString() ?? null,
-				acceptedAt: submission.acceptedAt?.toISOString() ?? null,
-			})),
+			submissions: row.submissions.map(
+				({ attachments, inputRequestId: _, ...submission }) => ({
+					...submission,
+					message: builderMessageWithAttachments(
+						submission.message,
+						attachments,
+					),
+					createdAt: submission.createdAt.toISOString(),
+					sentAt: submission.sentAt?.toISOString() ?? null,
+					acceptedAt: submission.acceptedAt?.toISOString() ?? null,
+				}),
+			),
 		};
 	}
 
@@ -561,7 +580,8 @@ export class ConversationsService {
 				id: true,
 				sessionId: true,
 				continuationToken: true,
-				pendingInputRequest: true,
+				pendingInputRequests: true,
+				submissions: { select: { inputRequestId: true } },
 			},
 		});
 
@@ -577,7 +597,14 @@ export class ConversationsService {
 			);
 		}
 
-		const question = pendingBuilderQuestionOf(conversation.pendingInputRequest);
+		const question = pendingBuilderQuestionOf(
+			activeBuilderInputRequest(
+				conversation.pendingInputRequests,
+				conversation.submissions.flatMap((submission) =>
+					submission.inputRequestId ? [submission.inputRequestId] : [],
+				),
+			),
+		);
 		if (!question) {
 			throw new BadRequestException(
 				"The agent is no longer waiting for that answer.",
@@ -687,7 +714,8 @@ export class ConversationsService {
 				id: true,
 				sessionId: true,
 				continuationToken: true,
-				pendingInputRequest: true,
+				pendingInputRequests: true,
+				submissions: { select: { inputRequestId: true } },
 			},
 		});
 
@@ -703,7 +731,14 @@ export class ConversationsService {
 			);
 		}
 
-		const approval = pendingBuilderApprovalOf(conversation.pendingInputRequest);
+		const approval = pendingBuilderApprovalOf(
+			activeBuilderInputRequest(
+				conversation.pendingInputRequests,
+				conversation.submissions.flatMap((submission) =>
+					submission.inputRequestId ? [submission.inputRequestId] : [],
+				),
+			),
+		);
 		if (!approval || approval.requestId !== input.requestId) {
 			throw new BadRequestException(
 				"That approval request is no longer active.",
@@ -756,6 +791,107 @@ export class ConversationsService {
 
 			throw new BadRequestException(
 				"That approval request has already been answered.",
+			);
+		}
+	}
+
+	async answerBuilderSessionLimit(
+		input: BuilderSessionLimitResponseInput,
+		userId: string,
+	): Promise<{ id: string }> {
+		await this.assertWorkspaceMember(userId);
+		const existing = await this.requestByClientId(input.clientRequestId);
+
+		if (existing) {
+			return this.replayBuilderSubmission(existing, input.id, userId);
+		}
+
+		const conversation = await this.db.agentConversation.findFirst({
+			where: { id: input.id, userId, kind: "BUILDER" },
+			select: {
+				id: true,
+				sessionId: true,
+				continuationToken: true,
+				pendingInputRequests: true,
+				submissions: { select: { inputRequestId: true } },
+			},
+		});
+
+		if (!conversation) {
+			throw new NotFoundException(
+				`No builder conversation with id ${input.id}.`,
+			);
+		}
+
+		if (!conversation.sessionId || !conversation.continuationToken) {
+			throw new BadRequestException(
+				"The agent is no longer waiting for that decision.",
+			);
+		}
+
+		const limit = pendingBuilderSessionLimitOf(
+			activeBuilderInputRequest(
+				conversation.pendingInputRequests,
+				conversation.submissions.flatMap((submission) =>
+					submission.inputRequestId ? [submission.inputRequestId] : [],
+				),
+			),
+		);
+		if (!limit || limit.requestId !== input.requestId) {
+			throw new BadRequestException(
+				"That session limit request is no longer active.",
+			);
+		}
+
+		const option = limit.options?.find(
+			(candidate) => candidate.id === input.decision,
+		);
+		if (!option) {
+			throw new BadRequestException("That decision is not available.");
+		}
+
+		try {
+			const submission = await this.db.$transaction(async (tx) => {
+				const created = await tx.agentConversationSubmission.create({
+					data: {
+						conversationId: input.id,
+						submittedById: userId,
+						clientRequestId: input.clientRequestId,
+						inputRequestId: input.requestId,
+						commandType: "CHAT",
+						message: {
+							text: option.label,
+							resources: [],
+							attachments: [],
+							inputResponse: {
+								requestId: input.requestId,
+								optionId: input.decision,
+							},
+						},
+					},
+					select: { id: true },
+				});
+
+				await tx.agentConversation.update({
+					where: { id: input.id },
+					data: { lastMessageAt: new Date(), lastReadAt: new Date() },
+				});
+
+				return created;
+			});
+
+			this.agent?.builderConversationQueued();
+			return submission;
+		} catch (error) {
+			if (!isUniqueConstraint(error)) throw error;
+
+			const winner = await this.requestByClientId(input.clientRequestId);
+			if (winner) {
+				return this.replayBuilderSubmission(winner, input.id, userId);
+			}
+
+			throw new BadRequestException(
+				"That session limit request has already been answered.",
 			);
 		}
 	}
@@ -1266,6 +1402,34 @@ function pendingBuilderApprovalOf(
 	value: Prisma.JsonValue,
 ): BuilderToolApproval | null {
 	return builderToolApproval.parse(value);
+}
+
+function pendingBuilderSessionLimitOf(
+	value: Prisma.JsonValue,
+): BuilderSessionLimit | null {
+	return builderSessionLimit.parse(value);
+}
+
+const BUILDER_INPUT_PRIORITY = {
+	"session-limit": 0,
+	"tool-approval": 1,
+	question: 2,
+} as const satisfies Record<InputRequest["kind"], number>;
+
+function activeBuilderInputRequest(
+	value: Prisma.JsonValue,
+	answeredRequestIds: readonly string[],
+): InputRequest | null {
+	const answered = new Set(answeredRequestIds);
+	const requests = schemas.agents.inputRequests.parse(value ?? []);
+	return requests.reduce<InputRequest | null>((active, request) => {
+		if (answered.has(request.requestId)) return active;
+		if (!active) return request;
+		return BUILDER_INPUT_PRIORITY[request.kind] <
+			BUILDER_INPUT_PRIORITY[active.kind]
+			? request
+			: active;
+	}, null);
 }
 
 function permissionModeInput(

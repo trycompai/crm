@@ -4,6 +4,7 @@ import * as agentEvents from "./agent-events";
 import * as agentManifest from "./agent-manifest";
 import * as agents from "./agents";
 import * as builderQuestion from "./builder-question";
+import * as builderSessionLimit from "./builder-session-limit";
 import * as eveStream from "./eve-stream";
 import * as eveTool from "./eve-tool";
 import * as slack from "./slack";
@@ -14,6 +15,7 @@ export const schemas = {
 	agentManifest,
 	agents,
 	builderQuestion,
+	builderSessionLimit,
 	eveStream,
 	eveTool,
 	slack,
@@ -43,6 +45,7 @@ export type {
 	BuilderQuestion,
 	BuilderQuestionOption,
 } from "./builder-question";
+export type { BuilderSessionLimit } from "./builder-session-limit";
 export type {
 	EveRequestedActions,
 	EveSettledAction,

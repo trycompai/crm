@@ -315,6 +315,24 @@ export function AgentBuilderChat({
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	const answerSessionLimit = useMutation(
+		trpc.conversations.answerBuilderSessionLimit.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversations.builderById.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversations.builderList.pathKey(),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversations.events.pathKey(),
+					}),
+				]);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const setPermissionMode = useMutation(
 		trpc.conversations.setBuilderPermissionMode.mutationOptions({
 			onSuccess: () =>
@@ -402,6 +420,12 @@ export function AgentBuilderChat({
 		waitingApproval &&
 		!hasQueuedInputResponse(submissions, waitingApproval.requestId)
 			? waitingApproval
+			: null;
+	const waitingSessionLimit = data.pendingSessionLimit;
+	const sessionLimit =
+		waitingSessionLimit &&
+		!hasQueuedInputResponse(submissions, waitingSessionLimit.requestId)
+			? waitingSessionLimit
 			: null;
 	const failure = latestTurnFailure(transcriptEvents);
 	const creatingAgent = hasCreateAgentCommand(submissions);
@@ -568,6 +592,25 @@ export function AgentBuilderChat({
 										id: conversationId,
 										clientRequestId: crypto.randomUUID(),
 										requestId: approval.requestId,
+										decision,
+									})
+								}
+							/>
+						</ChatThreadItem>
+					) : null}
+					{sessionLimit ? (
+						<ChatThreadItem
+							id={`session-limit:${sessionLimit.requestId}`}
+							scrollAnchor
+						>
+							<AgentSessionLimitCard
+								request={sessionLimit}
+								pending={answerSessionLimit.isPending}
+								onDecision={(decision) =>
+									answerSessionLimit.mutate({
+										id: conversationId,
+										clientRequestId: crypto.randomUUID(),
+										requestId: sessionLimit.requestId,
 										decision,
 									})
 								}
@@ -1124,6 +1167,7 @@ function FollowUpTranscriptItem({
 
 type PermissionMode = Conversation["permissionMode"];
 type ToolApproval = NonNullable<Conversation["pendingApproval"]>;
+type SessionLimit = NonNullable<Conversation["pendingSessionLimit"]>;
 
 const PERMISSION_MODES: ReadonlyArray<{
 	value: PermissionMode;
@@ -1240,6 +1284,42 @@ function AgentApprovalCard({
 				</Button>
 				<Button type="button" size="sm" onClick={() => onDecision("approve")}>
 					{pending ? "Approving" : "Approve"}
+				</Button>
+			</div>
+		</fieldset>
+	);
+}
+
+function AgentSessionLimitCard({
+	request,
+	pending,
+	onDecision,
+}: {
+	request: SessionLimit;
+	pending: boolean;
+	onDecision: (decision: "continue" | "stop") => void;
+}) {
+	return (
+		<fieldset
+			disabled={pending}
+			className="w-full max-w-lg overflow-hidden rounded-lg border bg-card"
+		>
+			<legend className="sr-only">Session limit reached</legend>
+			<div className="p-4">
+				<p className="font-medium text-sm">Session limit reached</p>
+				<p className="mt-2 text-pretty text-sm leading-5">{request.prompt}</p>
+			</div>
+			<div className="flex items-center justify-end gap-2 border-t bg-muted px-4 py-3">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onClick={() => onDecision("stop")}
+				>
+					Stop
+				</Button>
+				<Button type="button" size="sm" onClick={() => onDecision("continue")}>
+					{pending ? "Continuing" : "Continue"}
 				</Button>
 			</div>
 		</fieldset>

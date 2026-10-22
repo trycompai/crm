@@ -1,4 +1,4 @@
-import { db, Prisma } from "@crm/db";
+import { db, type Prisma } from "@crm/db";
 import { CRM_EVENT_CATALOG } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { crmEventTask } from "@crm/validation/agent-events";
@@ -221,7 +221,6 @@ export async function dispatchBuilderSubmission(
 				where: { id: conversationId },
 				data: {
 					sessionId: session.id,
-					pendingInputRequest: Prisma.DbNull,
 				},
 			});
 		});

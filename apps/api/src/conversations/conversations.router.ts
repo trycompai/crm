@@ -24,6 +24,7 @@ import {
 	builderResourcesOutput,
 	builderResponseRatingInput,
 	builderResponseRatingOutput,
+	builderSessionLimitResponseInput,
 	conversationEventsInput,
 	conversationEventsOutput,
 	conversationIdInput,
@@ -164,6 +165,20 @@ export class ConversationsRouter {
 		@Input() input: z.infer<typeof builderApprovalResponseInput>,
 	) {
 		return this.conversations.answerBuilderApproval(input, ctx.user.id);
+	}
+
+	@Mutation({
+		input: builderSessionLimitResponseInput,
+		output: conversationIdOutput,
+		meta: restMeta("POST", "/conversations/{id}/answer-builder-session-limit", [
+			"Conversations",
+		]),
+	})
+	async answerBuilderSessionLimit(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof builderSessionLimitResponseInput>,
+	) {
+		return this.conversations.answerBuilderSessionLimit(input, ctx.user.id);
 	}
 
 	@Mutation({

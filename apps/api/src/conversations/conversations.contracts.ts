@@ -11,6 +11,7 @@ import {
 	agentPermissionMode,
 	builderToolApproval,
 } from "@crm/validation/agent-permission";
+import { builderSessionLimit } from "@crm/validation/builder-session-limit";
 import { z } from "zod";
 
 const agentManifestSummaryOutput = z.object({
@@ -175,6 +176,17 @@ export const builderApprovalResponseInput = z.object({
 
 export type BuilderApprovalResponseInput = z.infer<
 	typeof builderApprovalResponseInput
+>;
+
+export const builderSessionLimitResponseInput = z.object({
+	id: z.string().min(1),
+	clientRequestId: z.uuid(),
+	requestId: z.string().trim().min(1).max(240),
+	decision: z.enum(["continue", "stop"]),
+});
+
+export type BuilderSessionLimitResponseInput = z.infer<
+	typeof builderSessionLimitResponseInput
 >;
 
 export const builderPermissionModeInput = z.object({
@@ -402,6 +414,7 @@ export const builderConversationDetailOutput = z.object({
 	lastReadAt: z.string().nullable(),
 	pendingQuestion: builderQuestionOutput,
 	pendingApproval: builderToolApproval,
+	pendingSessionLimit: builderSessionLimit,
 	permissionMode: agentPermissionMode,
 	agent: builderAgentDetailOutput.nullable(),
 	createdVersions: z.array(builderCreatedVersionOutput),

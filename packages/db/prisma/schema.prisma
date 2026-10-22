@@ -666,7 +666,7 @@ model AgentConversation {
   sessionId           String? @unique
   continuationToken   String?
   streamIndex         Int     @default(0)
-  pendingInputRequest Json?
+  pendingInputRequests Json?
 
   permissionMode AgentConversationPermissionMode @default(MANUAL)
 

@@ -11,6 +11,7 @@
 		"./agent-manifest": "./src/agent-manifest.ts",
 		"./agent-permission": "./src/agent-permission.ts",
 		"./builder-question": "./src/builder-question.ts",
+		"./builder-session-limit": "./src/builder-session-limit.ts",
 		"./company-import": "./src/company-import.ts",
 		"./enrichment-queue": "./src/enrichment-queue.ts",
 		"./eve-stream": "./src/eve-stream.ts",

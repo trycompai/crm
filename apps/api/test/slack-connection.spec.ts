@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { WorkspaceRole } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
+import { SLACK_INVENTORY } from "@crm/db/slack-inventory";
 import type { AgentAccessService } from "../src/agent/agent-access.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import type { SlackChannelsService } from "../src/slack/slack-channels.service";
@@ -30,6 +31,16 @@ function serviceFor(input: {
 		startedAt: Date | null;
 		leasedUntil: Date | null;
 	};
+	lastFill?: { finishedAt: Date | null };
+	channels?: Array<{
+		id: string;
+		name: string;
+		memberCount: number;
+		isPrivate: boolean;
+		isMember: boolean;
+		classifiedAt: Date | null;
+		inviteRequestedAt: Date | null;
+	}>;
 	grant?: boolean;
 	role?: WorkspaceRole;
 }) {
@@ -78,7 +89,13 @@ function serviceFor(input: {
 			findMany: async () => input.members ?? [],
 		},
 		agentTask: {
-			findFirst: async () => input.syncingTask ?? null,
+			findFirst: async (args: { where: { finishedAt?: null } }) =>
+				args.where.finishedAt === null
+					? (input.syncingTask ?? null)
+					: (input.lastFill ?? null),
+		},
+		slackChannel: {
+			findMany: async () => input.channels ?? [],
 		},
 	} as unknown as Db;
 	const agent = {
@@ -241,5 +258,91 @@ describe("Slack connection", () => {
 
 		expect(await service.disconnect(userId)).toEqual({ disconnected: true });
 		expect(deleted).toEqual(["account", "slackChannel", "slackWorkspaceGrant"]);
+	});
+});
+
+const channel = {
+	id: "C1",
+	name: "deals",
+	memberCount: 2,
+	isPrivate: false,
+	isMember: true,
+	classifiedAt: new Date("2026-08-10T10:00:00.000Z"),
+	inviteRequestedAt: null,
+};
+
+describe("Slack channel inventory recovery", () => {
+	it("queues a durable fill when a connected workspace has no channels", async () => {
+		const { service, requested } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			channels: [],
+		});
+
+		const result = await service.channels({}, userId);
+
+		expect(result.rows).toEqual([]);
+		expect(result.sync).toBe("syncing");
+		expect(requested).toEqual([
+			{
+				reason: "Fill the Slack channel inventory for the connections page",
+				required: undefined,
+			},
+		]);
+	});
+
+	it("does not refill a populated inventory", async () => {
+		const { service, requested } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			channels: [channel],
+		});
+
+		expect((await service.channels({}, userId)).rows).toHaveLength(1);
+		expect(requested).toEqual([]);
+	});
+
+	it("does not treat an empty search result as a missing inventory", async () => {
+		const { service, requested } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			channels: [],
+		});
+
+		expect((await service.channels({ query: "missing" }, userId)).sync).toBe(
+			"idle",
+		);
+		expect(requested).toEqual([]);
+	});
+
+	it("accepts a recent empty inventory as complete", async () => {
+		const { service, requested } = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			channels: [],
+			lastFill: { finishedAt: new Date() },
+		});
+
+		expect((await service.channels({}, userId)).sync).toBe("idle");
+		expect(requested).toEqual([]);
+	});
+
+	it("refills after a reconnect or the shared throttle window", async () => {
+		const connectedAt = new Date();
+		const reconnected = serviceFor({
+			accountUpdatedAt: connectedAt,
+			channels: [],
+			lastFill: { finishedAt: new Date(connectedAt.getTime() - 1) },
+		});
+		const expired = serviceFor({
+			accountUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+			channels: [],
+			lastFill: {
+				finishedAt: new Date(Date.now() - SLACK_INVENTORY.throttleMs),
+			},
+		});
+
+		expect((await reconnected.service.channels({}, userId)).sync).toBe(
+			"syncing",
+		);
+		expect((await expired.service.channels({}, userId)).sync).toBe("syncing");
+		expect(reconnected.requested).toHaveLength(1);
+		expect(expired.requested).toHaveLength(1);
 	});
 });

@@ -328,7 +328,7 @@ export default defineChannel({
 					where: { id: conversationId, kind: "BUILDER" },
 					data: {
 						continuationToken: builderToken(conversationId),
-						pendingInputRequest: Prisma.DbNull,
+						pendingInputRequests: Prisma.DbNull,
 					},
 				});
 				return;
@@ -346,7 +346,7 @@ export default defineChannel({
 				const { db } = await import("@crm/db");
 				await db.agentConversation.updateMany({
 					where: { id: conversationId, kind: "BUILDER" },
-					data: { pendingInputRequest: Prisma.DbNull },
+					data: { pendingInputRequests: Prisma.DbNull },
 				});
 				return;
 			}
@@ -393,7 +393,7 @@ export default defineChannel({
 					where: { id: conversationId, kind: "BUILDER" },
 					data: {
 						continuationToken: builderToken(conversationId),
-						pendingInputRequest: Prisma.DbNull,
+						pendingInputRequests: Prisma.DbNull,
 					},
 				});
 				return;
@@ -417,7 +417,7 @@ export default defineChannel({
 					where: { id: conversationId, kind: "BUILDER" },
 					data: {
 						continuationToken: builderToken(conversationId),
-						pendingInputRequest: Prisma.DbNull,
+						pendingInputRequests: Prisma.DbNull,
 						lastAssistantAt: new Date(),
 						lastMessageAt: new Date(),
 					},
