@@ -30,7 +30,7 @@ import {
 } from "@crm/ui/components/popover";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { SkeletonSwap } from "@crm/ui/components/skeleton-swap";
-import { TokenField } from "@crm/ui/components/token-field";
+import { TokenField, TokenFieldEditable } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useReducer, useRef } from "react";
@@ -518,7 +518,8 @@ export function AgentComposer({
 				composingRef={composing}
 				mode={mode}
 				state={state}
-				disabled={locked}
+				disabled={disabled}
+				loading={submitAction.pending}
 				onChanged={updateEditor}
 				onSelectionChanged={(offset) => {
 					selectionOffset.current = offset;
@@ -616,6 +617,7 @@ function ComposerEditor({
 	mode,
 	state,
 	disabled,
+	loading,
 	onChanged,
 	onSelectionChanged,
 	onRemoveContext,
@@ -626,11 +628,13 @@ function ComposerEditor({
 	mode: "home" | "chat";
 	state: ComposerState;
 	disabled: boolean;
+	loading: boolean;
 	onChanged: (snapshot: ComposerEditorSnapshot) => void;
 	onSelectionChanged: (offset: number) => void;
 	onRemoveContext: (key: string) => void;
 	onSubmit: () => void;
 }) {
+	const inactive = disabled || loading;
 	const parts = composerEditorParts(state);
 	const placeholder =
 		mode === "home"
@@ -651,10 +655,12 @@ function ComposerEditor({
 		<TokenField
 			ref={editorRef}
 			role="textbox"
-			tabIndex={disabled ? -1 : 0}
+			tabIndex={0}
 			aria-label="Message the agent builder"
 			aria-multiline="true"
-			aria-disabled={disabled}
+			disabled={disabled}
+			loading={loading}
+			loadingLabel="Sending message"
 			data-empty={state.draft.length === 0 && state.anchors.length === 0}
 			data-placeholder={placeholder}
 			spellCheck
@@ -731,7 +737,6 @@ function ComposerEditor({
 						key={part.key}
 						start={part.start}
 						value={part.value}
-						disabled={disabled}
 						detectedIntent={state.detectedCommandLabel}
 						intentStart={
 							state.detectedCommandLabel
@@ -744,7 +749,7 @@ function ComposerEditor({
 						key={part.anchor.key}
 						anchor={part.anchor}
 						state={state}
-						disabled={disabled}
+						disabled={inactive}
 						onRemove={onRemoveContext}
 					/>
 				),
@@ -756,13 +761,11 @@ function ComposerEditor({
 function ComposerEditorText({
 	start,
 	value,
-	disabled,
 	detectedIntent,
 	intentStart,
 }: {
 	start: number;
 	value: string;
-	disabled: boolean;
 	detectedIntent: string | null;
 	intentStart: number;
 }) {
@@ -773,10 +776,7 @@ function ComposerEditorText({
 		localIntentStart + detectedIntent.length <= value.length;
 
 	return (
-		<span
-			contentEditable={!disabled}
-			suppressContentEditableWarning
-			tabIndex={-1}
+		<TokenFieldEditable
 			role="none"
 			data-composer-text
 			data-composer-text-start={start}
@@ -797,7 +797,7 @@ function ComposerEditorText({
 			) : (
 				value || EDITOR_SENTINEL
 			)}
-		</span>
+		</TokenFieldEditable>
 	);
 }
 
@@ -980,6 +980,7 @@ function composerEditableText(node: Node): string {
 		return (node.textContent ?? "").replaceAll(EDITOR_SENTINEL, "");
 	}
 	if (node instanceof HTMLElement) {
+		if (node.contentEditable === "false") return "";
 		if (
 			node.dataset.composerTokenKey ||
 			node.dataset.intentAccent !== undefined
