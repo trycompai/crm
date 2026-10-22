@@ -10,6 +10,7 @@ import {
 	createContext,
 	createElement,
 	type ReactNode,
+	Suspense,
 	useCallback,
 	useContext,
 	useMemo,
@@ -128,9 +129,35 @@ type RecordStackState = ReturnType<typeof useRecordStackState>;
 
 const RecordStackContext = createContext<RecordStackState | null>(null);
 
+const EMPTY_RECORD_STACK: RecordStackState = {
+	stack: [],
+	top: null,
+	open: () => undefined,
+	close: () => undefined,
+	closeAll: () => undefined,
+};
+
+function RecordStackFallbackProvider({ children }: { children: ReactNode }) {
+	return createElement(
+		RecordStackContext.Provider,
+		{ value: EMPTY_RECORD_STACK },
+		children,
+	);
+}
+
 export function RecordStackProvider({ children }: { children: ReactNode }) {
 	const state = useRecordStackState();
 	return createElement(RecordStackContext.Provider, { value: state }, children);
+}
+
+export function RecordStackBoundary({ children }: { children: ReactNode }) {
+	return createElement(
+		Suspense,
+		{
+			fallback: createElement(RecordStackFallbackProvider, null, children),
+		},
+		createElement(RecordStackProvider, null, children),
+	);
 }
 
 export function useRecordStack(): RecordStackState {
