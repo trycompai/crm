@@ -341,6 +341,14 @@ export class FieldsService {
 		entity: FieldEntity,
 		recordId: string,
 	): Promise<void> {
+		await this.queueBackfillForNewRecords(entity, [recordId]);
+	}
+
+	async queueBackfillForNewRecords(
+		entity: FieldEntity,
+		recordIds: string[],
+	): Promise<void> {
+		if (recordIds.length === 0) return;
 		const definitions = await this.db.fieldDefinition.findMany({
 			where: { entity, archivedAt: null, agentFilled: true },
 			select: { key: true },
@@ -351,7 +359,7 @@ export class FieldsService {
 		await this.agent.fieldBackfillRecords(
 			entity,
 			definitions.map((definition) => definition.key),
-			[recordId],
+			recordIds,
 			"New record",
 		);
 	}

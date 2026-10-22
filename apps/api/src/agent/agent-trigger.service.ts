@@ -54,16 +54,23 @@ export class AgentTriggerService {
 		companyId: string,
 		reason = "New company",
 	): Promise<void> {
-		await this.enqueue({
-			companyId,
+		await this.companiesCreated([companyId], reason);
+	}
+
+	async companiesCreated(
+		companyIds: string[],
+		reason = "New company",
+	): Promise<void> {
+		await this.backfill({
+			companyIds,
 			kind: "brand",
 			reason,
 			priority: PRIORITY.brand,
 			budget: 2,
 		});
 
-		await this.enqueue({
-			companyId,
+		await this.backfill({
+			companyIds,
 			kind: "company-profile",
 			reason,
 			priority: PRIORITY.companyProfile,

@@ -1,5 +1,9 @@
 import { DealStage, EnrichmentStatus, RecordSource } from "@crm/db";
 import { FIELD_TYPES } from "@crm/db/fields";
+import {
+	type CompanyImportInput,
+	companyImportInput as sharedCompanyImportInput,
+} from "@crm/validation/company-import";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { fieldEntity, recordFieldValues } from "../fields/fields.contracts";
@@ -24,6 +28,9 @@ export const companyCreateInput = z.object({
 });
 
 export type CompanyCreateInput = z.infer<typeof companyCreateInput>;
+
+export const companyImportInput = sharedCompanyImportInput;
+export type { CompanyImportInput };
 
 const companyUpdateInput = z.object({
 	name: z.string().trim().min(1).optional(),
@@ -239,6 +246,12 @@ export const companyBulkResultOutput = z.object({
 	succeeded: z.number(),
 	failed: z.number(),
 	message: z.string().nullable(),
+});
+
+export const companyImportOutput = z.object({
+	created: z.number(),
+	skipped: z.number(),
+	skips: z.array(z.object({ row: z.number(), reason: z.string() })),
 });
 
 export const companyEnrichOutput = z.object({

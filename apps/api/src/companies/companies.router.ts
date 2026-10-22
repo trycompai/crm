@@ -20,6 +20,8 @@ import {
 	companyDetailOutput,
 	companyEnrichOutput,
 	companyIdInput,
+	companyImportInput,
+	companyImportOutput,
 	companyListInput,
 	companyListOutput,
 	companyOptionOutput,
@@ -73,6 +75,15 @@ export class CompaniesRouter {
 	})
 	async create(@Input() input: z.infer<typeof companyCreateInput>) {
 		return this.companies.create(input);
+	}
+
+	@Mutation({
+		input: companyImportInput,
+		output: companyImportOutput,
+		meta: restMeta("POST", "/companies/import", ["Companies"]),
+	})
+	async import(@Input() input: z.infer<typeof companyImportInput>) {
+		return this.companies.import(input);
 	}
 
 	@Mutation({
