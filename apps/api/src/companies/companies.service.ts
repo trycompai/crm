@@ -1,9 +1,9 @@
 import {
 	type Db,
-	type EnrichmentStatus,
+	EnrichmentStatus,
 	type Prisma,
 	Prisma as PrismaNamespace,
-	type RecordSource,
+	RecordSource,
 } from "@crm/db";
 import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
@@ -41,6 +41,7 @@ import {
 import type {
 	CompanyBulkOwnerInput,
 	CompanyCreateInput,
+	CompanyImportInput,
 	CompanyListInput,
 	CompanyRow,
 	CompanyUpdateInput,
@@ -718,6 +719,43 @@ export class CompaniesService {
 				]),
 			),
 		};
+	}
+
+	async import(input: CompanyImportInput) {
+		const toCreate: Prisma.CompanyCreateManyInput[] = [];
+		const skips: { row: number; reason: string }[] = [];
+
+		for (const [i, row] of input.rows.entries()) {
+			const name = row.name.trim();
+			if (!name) {
+				skips.push({ row: i + 1, reason: "No name" });
+				continue;
+			}
+			toCreate.push({
+				name,
+				phone: row.phone?.trim() || null,
+				city: row.city?.trim() || null,
+				stateCode: row.stateCode?.trim() || null,
+				industry: row.industry?.trim() || null,
+				subIndustry: row.subIndustry?.trim() || null,
+				website: row.website?.trim() || null,
+				description: row.description?.trim() || null,
+				source: RecordSource.IMPORT,
+				enrichmentStatus: EnrichmentStatus.SKIPPED,
+			});
+		}
+
+		if (toCreate.length > 0) {
+			await this.db.company.createMany({ data: toCreate });
+		}
+
+		this.logger.log({
+			message: "Companies imported",
+			created: toCreate.length,
+			skipped: skips.length,
+		});
+
+		return { created: toCreate.length, skipped: skips.length, skips };
 	}
 
 	private translate(cause: unknown, id: string): never {

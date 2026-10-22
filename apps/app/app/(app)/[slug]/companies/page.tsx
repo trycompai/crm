@@ -16,6 +16,7 @@ import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { companiesSearchParams } from "./companies-search-params";
 import { CompaniesTable } from "./companies-table";
 import { CreateCompanySheet } from "./create-company-sheet";
+import { ImportCompaniesLink } from "./import-companies-link";
 
 export const metadata: Metadata = {
 	title: "Companies",
@@ -34,6 +35,7 @@ export default function CompaniesPage({
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
+					<ImportCompaniesLink />
 					<CreateCompanySheet />
 				</PageShellActions>
 			</PageShellHeader>

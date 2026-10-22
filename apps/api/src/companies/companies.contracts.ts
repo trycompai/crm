@@ -241,6 +241,31 @@ export const companyBulkResultOutput = z.object({
 	message: z.string().nullable(),
 });
 
+export const companyImportRowInput = z.object({
+	name: z.string(),
+	phone: z.string().optional(),
+	city: z.string().optional(),
+	stateCode: z.string().optional(),
+	industry: z.string().optional(),
+	subIndustry: z.string().optional(),
+	website: z.string().optional(),
+	description: z.string().optional(),
+});
+
+export type CompanyImportRowInput = z.infer<typeof companyImportRowInput>;
+
+export const companyImportInput = z.object({
+	rows: z.array(companyImportRowInput).min(1).max(5000),
+});
+
+export type CompanyImportInput = z.infer<typeof companyImportInput>;
+
+export const companyImportOutput = z.object({
+	created: z.number(),
+	skipped: z.number(),
+	skips: z.array(z.object({ row: z.number(), reason: z.string() })),
+});
+
 export const companyEnrichOutput = z.object({
 	id: z.string(),
 	queued: z.boolean(),
