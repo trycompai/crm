@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.16.0](https://github.com/trycompai/crm/compare/v1.15.3...v1.16.0) (2026-10-22)
+
+
+### Features
+
+* add reviewed MCP integrations ([#245](https://github.com/trycompai/crm/issues/245)) ([ce278b0](https://github.com/trycompai/crm/commit/ce278b08a145394c8d6af0af910ba0edfd35fc44))
+
+
+### Fixes
+
+* update vulnerable dependencies and checks ([#243](https://github.com/trycompai/crm/issues/243)) ([09df0ed](https://github.com/trycompai/crm/commit/09df0ed5ea1bf8e14df4cb7a0416d8c4a87a9336))
+
+
+### Documentation
+
+* remove median task workflow and document branching from main ([#196](https://github.com/trycompai/crm/issues/196)) ([f655085](https://github.com/trycompai/crm/commit/f6550854d6311487d670d6ee1708f6e3ce7d6884))
+
 ## [1.15.3](https://github.com/trycompai/crm/compare/v1.15.2...v1.15.3) (2026-08-21)
 
 
