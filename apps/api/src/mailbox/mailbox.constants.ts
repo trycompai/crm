@@ -5,15 +5,7 @@ import {
 	type MailboxProviderId,
 	MICROSOFT_PROVIDER_ID,
 	OUTLOOK_MAIL_SCOPE,
-} from "@crm/auth";
-
-export {
-	GOOGLE_PROVIDER_ID,
-	type MailboxProviderId,
-	MICROSOFT_PROVIDER_ID,
-	OUTLOOK_MAIL_SCOPE,
-	SYNC_SCOPES,
-} from "@crm/auth";
+} from "@crm/auth/scopes";
 
 const SYNC_SOURCES = ["calendar", "gmail", "outlook"] as const;
 export type SyncSource = (typeof SYNC_SOURCES)[number];

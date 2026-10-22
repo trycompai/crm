@@ -104,7 +104,10 @@ Node module that cannot exist in a browser.
 
 ```tsx
 "use client";
-import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
+import {
+  describeSlackScopes,
+  SLACK_SCOPE_GROUPS,
+} from "@crm/auth/slack-scopes";
 
 export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
   const groups = SLACK_SCOPE_GROUPS.map(...)
@@ -115,7 +118,10 @@ export function SlackScopeGroups({ scopes }: { scopes: string[] }) {
 
 ```tsx
 // page.tsx — server
-import { describeSlackScopes, SLACK_SCOPE_GROUPS } from "@crm/auth";
+import {
+  describeSlackScopes,
+  SLACK_SCOPE_GROUPS,
+} from "@crm/auth/slack-scopes";
 
 const groups = groupScopes(status.scopes);
 return <SlackScopeGroups groups={groups} />;

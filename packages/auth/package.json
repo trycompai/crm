@@ -4,13 +4,21 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts",
+		"./api-keys": "./src/api-keys.ts",
+		"./auth": "./src/auth.ts",
+		"./chat-event-crypto": "./src/chat-event-crypto.ts",
 		"./client": "./src/client.ts",
 		"./cookies": "./src/cookies.ts",
+		"./env": "./src/env.ts",
 		"./mcp-crypto": "./src/mcp-crypto.ts",
 		"./mcp-config": "./src/mcp-config.ts",
 		"./mcp-oauth": "./src/mcp-oauth.ts",
+		"./organization": "./src/organization.ts",
 		"./scopes": "./src/scopes.ts",
+		"./secret-box": "./src/secret-box.ts",
+		"./signed-in": "./src/signed-in.ts",
+		"./slack-scopes": "./src/slack-scopes.ts",
+		"./sso": "./src/sso.ts",
 		"./workspace": "./src/workspace.ts"
 	},
 	"scripts": {

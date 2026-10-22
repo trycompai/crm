@@ -1,8 +1,11 @@
 import { db, Prisma } from "@crm/db";
 import { WORKSPACE_ID } from "@crm/db/workspace";
+import { publicEveEventData } from "@crm/validation/eve-public-event";
 import { defineHook } from "eve/hooks";
 import { z } from "zod";
-import { isTransportOnlyEvent } from "../lib/event-persistence";
+import { prepareBuilderEventForStorage } from "../lib/builder-event-storage";
+import { BUILDER_INPUT_EVENT_PREFIX } from "../lib/builder-input";
+import { lockBuilderConversation } from "../lib/custom-agent-dispatch";
 import { currentFocus } from "../lib/focus";
 import { capMcpArchivedResult, mcpActionResultEvent } from "../lib/mcp-runtime";
 import { lockAgentRun } from "../lib/run-state";
@@ -31,10 +34,10 @@ export default defineHook({
 		async "*"(event, ctx) {
 			const id = event.meta?.id;
 
-			if (!id || isTransportOnlyEvent(event.type)) return;
+			if (!id) return;
 
 			try {
-				const data = capMcpArchivedResult(
+				const archivedData = capMcpArchivedResult(
 					event.type,
 					("data" in event ? (event.data ?? {}) : {}) as Prisma.InputJsonObject,
 				);
@@ -42,27 +45,60 @@ export default defineHook({
 				const purpose = purposeOf(ctx);
 				const conversationId =
 					purpose === "builder" ? attribute(ctx, "conversationId") : null;
-				await db.$transaction(async (tx) => {
-					await tx.agentEvent.createMany({
-						data: [
-							{
-								id,
-								sessionId: ctx.session.id,
-								contactId: currentFocus().contactId,
+				const storedEvent =
+					purpose === "builder" && conversationId
+						? prepareBuilderEventForStorage(event.type, archivedData, {
 								conversationId,
-								type: event.type,
-								data,
-								emittedAt,
-							},
-						],
-						skipDuplicates: true,
+								eventId: id,
+							})
+						: {
+								...publicEveEventData(event.type, archivedData),
+								encryptedData: null,
+							};
+				await db.$transaction(async (tx) => {
+					const existing = await tx.agentEvent.findUnique({
+						where: { id },
+						select: { id: true },
+					});
+					if (existing) return;
+
+					const streamIndex =
+						purpose === "builder" && conversationId && isRootSession(ctx)
+							? await reserveBuilderStreamIndex(
+									tx,
+									conversationId,
+									ctx.session.id,
+									event.type,
+								)
+							: null;
+
+					await tx.agentEvent.create({
+						data: {
+							id,
+							sessionId: ctx.session.id,
+							streamIndex,
+							deliveryIds: [...(event.meta?.deliveryIds ?? [])],
+							contactId: currentFocus().contactId,
+							conversationId,
+							type: storedEvent.type,
+							data: storedEvent.data,
+							encryptedData: storedEvent.encryptedData,
+							emittedAt,
+						},
 					});
 
 					if (purpose === "builder") {
 						await persistBuilderLifecycle(tx, event, ctx.session.id, ctx);
 					}
 					if (purpose === "team-agent") {
-						await persistRunEvent(tx, id, event.type, data, emittedAt, ctx);
+						await persistRunEvent(
+							tx,
+							id,
+							event.type,
+							archivedData,
+							emittedAt,
+							ctx,
+						);
 					}
 				});
 			} catch (error) {
@@ -74,6 +110,46 @@ export default defineHook({
 		},
 	},
 });
+
+async function reserveBuilderStreamIndex(
+	tx: Prisma.TransactionClient,
+	conversationId: string,
+	sessionId: string,
+	eventType: string,
+): Promise<number | null> {
+	const conversation = await lockBuilderConversation(tx, conversationId);
+	if (conversation?.kind !== "BUILDER") return null;
+	if (
+		conversation.sessionId !== sessionId &&
+		!(conversation.sessionId === null && eventType === "session.started")
+	) {
+		return null;
+	}
+	if (conversation.sessionId === sessionId) {
+		const legacyEvents = await tx.agentEvent.count({
+			where: {
+				conversationId,
+				sessionId,
+				streamIndex: null,
+				NOT: { id: { startsWith: BUILDER_INPUT_EVENT_PREFIX } },
+			},
+		});
+		if (legacyEvents > 0) return null;
+	}
+
+	const streamIndex = conversation.streamIndex;
+	await tx.agentConversation.update({
+		where: { id: conversationId },
+		data: {
+			sessionId:
+				conversation.sessionId === null && eventType === "session.started"
+					? sessionId
+					: undefined,
+			streamIndex: { increment: 1 },
+		},
+	});
+	return streamIndex;
+}
 
 async function persistBuilderLifecycle(
 	tx: Prisma.TransactionClient,

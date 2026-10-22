@@ -1,4 +1,4 @@
-import { workspaceDomains } from "@crm/auth";
+import { workspaceDomains } from "@crm/auth/workspace";
 import { ActivityType, type Db, Prisma, RecordSource } from "@crm/db";
 import type { Touch } from "@crm/db/attribution";
 import {

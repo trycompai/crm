@@ -9,12 +9,14 @@ import Calendar from "@carbon/icons-react/es/Calendar";
 import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Search from "@carbon/icons-react/es/Search";
+import StopFilled from "@carbon/icons-react/es/StopFilled";
 import User from "@carbon/icons-react/es/User";
 import {
 	AsyncButtonContent,
 	useAsyncAction,
 } from "@crm/ui/components/async-action";
 import { Button } from "@crm/ui/components/button";
+import { CHAT_COMPOSER_SURFACE_CLASS_NAME } from "@crm/ui/components/chat-composer";
 import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
 import {
 	InputGroup,
@@ -31,7 +33,7 @@ import { SkeletonSwap } from "@crm/ui/components/skeleton-swap";
 import { TokenField } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { useReducer, useRef } from "react";
+import { type ReactNode, useReducer, useRef } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -41,7 +43,6 @@ import {
 	consumeBuilderIntent,
 } from "@/lib/agent-builder";
 import { useTRPC } from "@/lib/trpc/client";
-import { AGENT_COMPOSER_CLASS_NAME } from "../agent-composer-frame";
 import {
 	ChatAttachmentChip,
 	type ChatChipAttachment,
@@ -402,11 +403,17 @@ export function AgentComposer({
 	mode,
 	disabled = false,
 	initialPrompt = "",
+	permissionControl,
+	busy = false,
+	onStop,
 	onSubmit,
 }: {
 	mode: "home" | "chat";
 	disabled?: boolean;
 	initialPrompt?: string;
+	permissionControl?: ReactNode;
+	busy?: boolean;
+	onStop?: () => Promise<unknown>;
 	onSubmit: (
 		prompt: BuilderComposerPrompt,
 		clientRequestId: string,
@@ -434,6 +441,13 @@ export function AgentComposer({
 			pendingSubmission.current = null;
 			dispatch({ type: "submitted" });
 		},
+	});
+	const stopAction = useAsyncAction({
+		action: async () => {
+			await onStop?.();
+		},
+		onSuccess: () => toast.success("Stop requested."),
+		onError: () => toast.error("The agent could not be stopped. Try again."),
 	});
 	const locked = disabled || submitAction.pending;
 	const canSend =
@@ -495,7 +509,7 @@ export function AgentComposer({
 	return (
 		<div
 			className={cn(
-				AGENT_COMPOSER_CLASS_NAME,
+				CHAT_COMPOSER_SURFACE_CLASS_NAME,
 				mode === "home" ? "min-h-24" : "min-h-[78px]",
 			)}
 		>
@@ -514,43 +528,73 @@ export function AgentComposer({
 			/>
 
 			<div className="flex h-7 items-center justify-between">
-				<ComposerTools
-					state={state}
-					resources={resourceResults.data ?? []}
-					resourcesLoading={resourceResults.isFetching}
-					resourcesReady={resourceResults.isSuccess}
-					connectedGoogle={connectedGoogle}
-					disabled={locked}
-					attachmentsReading={state.attachmentsReading}
-					dispatch={dispatch}
-					getInsertionOffset={() => selectionOffset.current}
-					onContextAdded={focusAfterContext}
-				/>
+				<div className="flex min-w-0 items-center gap-1">
+					{permissionControl}
+					<ComposerTools
+						state={state}
+						resources={resourceResults.data ?? []}
+						resourcesLoading={resourceResults.isFetching}
+						resourcesReady={resourceResults.isSuccess}
+						connectedGoogle={connectedGoogle}
+						disabled={locked}
+						attachmentsReading={state.attachmentsReading}
+						dispatch={dispatch}
+						getInsertionOffset={() => selectionOffset.current}
+						onContextAdded={focusAfterContext}
+					/>
+				</div>
 
-				<Button
-					variant="default"
-					size="icon-sm"
-					disabled={!canSend}
-					aria-busy={submitAction.pending || state.attachmentsReading}
-					aria-label={
-						state.attachmentsReading ? "Preparing attachments" : "Send message"
-					}
-					onClick={submit}
-					className="rounded-full"
-				>
-					<AsyncButtonContent
-						status={state.attachmentsReading ? "pending" : submitAction.status}
-						pendingLabel={
-							<span className="sr-only">
-								{state.attachmentsReading ? "Preparing attachments" : "Sending"}
-							</span>
-						}
-						successLabel={<span className="sr-only">Sent</span>}
-						errorLabel={<span className="sr-only">Send failed</span>}
+				{busy && onStop ? (
+					<Button
+						variant="default"
+						size="icon-sm"
+						disabled={stopAction.pending}
+						aria-busy={stopAction.pending}
+						aria-label="Stop reply"
+						onClick={() => stopAction.run()}
+						className="rounded-full"
 					>
-						<Icon icon={ArrowUp} />
-					</AsyncButtonContent>
-				</Button>
+						<AsyncButtonContent
+							status={stopAction.status}
+							pendingLabel={<span className="sr-only">Stopping</span>}
+							successLabel={<span className="sr-only">Stopping</span>}
+							errorLabel={<span className="sr-only">Stop failed</span>}
+						>
+							<Icon icon={StopFilled} motion="none" />
+						</AsyncButtonContent>
+					</Button>
+				) : (
+					<Button
+						variant="default"
+						size="icon-sm"
+						disabled={!canSend}
+						aria-busy={submitAction.pending || state.attachmentsReading}
+						aria-label={
+							state.attachmentsReading
+								? "Preparing attachments"
+								: "Send message"
+						}
+						onClick={submit}
+						className="rounded-full"
+					>
+						<AsyncButtonContent
+							status={
+								state.attachmentsReading ? "pending" : submitAction.status
+							}
+							pendingLabel={
+								<span className="sr-only">
+									{state.attachmentsReading
+										? "Preparing attachments"
+										: "Sending"}
+								</span>
+							}
+							successLabel={<span className="sr-only">Sent</span>}
+							errorLabel={<span className="sr-only">Send failed</span>}
+						>
+							<Icon icon={ArrowUp} />
+						</AsyncButtonContent>
+					</Button>
+				)}
 			</div>
 		</div>
 	);

@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { changeWrite } from "../lib/approval";
 import type { Evidence, EvidenceKind } from "../lib/evidence";
 import { WEIGHTS } from "../lib/evidence";
 import { writeBrief } from "../lib/facts";
@@ -48,6 +49,7 @@ export default defineTool({
 			.min(1),
 		sourceUrl: z.string().optional(),
 	}),
+	approval: changeWrite(),
 	async execute(input, ctx) {
 		assertResearchPurpose(ctx);
 		focusOn({ contactId: input.contactId });

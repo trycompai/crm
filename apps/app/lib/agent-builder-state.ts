@@ -59,9 +59,61 @@ export function builderConversationIsWorking(
 
 export function builderSessionStreamKey(
 	sessionId: string | null,
-	submissionId: string | null,
 ): string | null {
-	return sessionId ? `${sessionId}:${submissionId ?? "initial"}` : null;
+	return sessionId;
+}
+
+export function mergeBuilderEventHistory<T extends { meta: { id: string } }>(
+	prefix: readonly T[],
+	recent: readonly T[],
+): readonly T[] {
+	const ids = new Set(prefix.map((event) => event.meta.id));
+	return [
+		...prefix,
+		...recent.filter((event) => {
+			if (ids.has(event.meta.id)) return false;
+			ids.add(event.meta.id);
+			return true;
+		}),
+	];
+}
+
+export function replacedFailedSubmissionIds(
+	submissions: readonly {
+		id: string;
+		status: string;
+		retryKey: string | null;
+	}[],
+): ReadonlySet<string> {
+	const acceptedKeys = new Set(
+		submissions.flatMap((submission) =>
+			submission.status === "ACCEPTED" && submission.retryKey
+				? [submission.retryKey]
+				: [],
+		),
+	);
+
+	return new Set(
+		submissions.flatMap((submission) =>
+			submission.status === "FAILED" &&
+			submission.retryKey &&
+			acceptedKeys.has(submission.retryKey)
+				? [submission.id]
+				: [],
+		),
+	);
+}
+
+export type BuilderStreamView = {
+	resuming: boolean;
+	cancellable: boolean;
+};
+
+export function builderStreamState(status: string): BuilderStreamView {
+	return {
+		resuming: status === "resuming",
+		cancellable: status === "submitted" || status === "streaming",
+	} satisfies BuilderStreamView;
 }
 
 export function agentBuilderCallIsActive(

@@ -8,7 +8,7 @@ function TokenField({ className, ...props }: React.ComponentProps<"div">) {
 			data-slot="token-field"
 			role="group"
 			className={cn(
-				"max-h-40 min-h-6 w-full min-w-0 cursor-text overflow-y-auto whitespace-pre-wrap break-words px-1 text-base leading-6 outline-none data-[empty=true]:before:pointer-events-none data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)] aria-disabled:cursor-not-allowed aria-disabled:opacity-60 sm:text-[15px] md:text-xs [&>[contenteditable]]:outline-none",
+				"max-h-40 min-h-6 w-full min-w-0 cursor-text overflow-y-auto whitespace-pre-wrap break-words px-1 text-base leading-6 outline-none data-[empty=true]:before:pointer-events-none data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)] focus-within:before:hidden aria-disabled:cursor-not-allowed aria-disabled:opacity-60 sm:text-[15px] md:text-xs [&>[contenteditable]]:outline-none",
 				className,
 			)}
 			{...props}

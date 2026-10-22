@@ -1,19 +1,18 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import {
-	apiUrl,
-	appUrl,
-	canManageConnections,
-	WORKSPACE_ID,
-	workspaceRoleOf,
-} from "@crm/auth";
+import { apiUrl, appUrl } from "@crm/auth/env";
 import { MCP_AUTH } from "@crm/auth/mcp-config";
-import { createMcpSecretBox } from "@crm/auth/mcp-crypto";
+import { createMcpSecretBox, type McpSecretBox } from "@crm/auth/mcp-crypto";
 import {
 	type AuthorizationServer,
 	createPkce,
 	McpOAuthClient,
 	McpOAuthError,
 } from "@crm/auth/mcp-oauth";
+import {
+	canManageConnections,
+	WORKSPACE_ID,
+	workspaceRoleOf,
+} from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import {
@@ -29,8 +28,10 @@ import {
 	NotFoundException,
 	ServiceUnavailableException,
 } from "@nestjs/common";
+import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
 import type { McpStartInput } from "./mcp.contracts";
+import { agentsByMcpPlatform } from "./mcp-agent-usage";
 
 type CallbackInput = {
 	state: string;
@@ -78,8 +79,69 @@ function statePurpose(hash: string): string {
 	return `mcp-state:${hash}`;
 }
 
+function decryptAuthorizationValue(
+	box: McpSecretBox,
+	value: string,
+	purpose: string,
+): string {
+	try {
+		return box.decrypt(value, purpose);
+	} catch {
+		throw new BadRequestException("The MCP authorization must restart.");
+	}
+}
+
+function registrationIsReadable(
+	box: McpSecretBox,
+	registration: {
+		id: string;
+		encryptedClientSecret: string | null;
+		encryptedRegistrationAccessToken: string | null;
+	},
+): boolean {
+	try {
+		if (registration.encryptedClientSecret) {
+			box.decrypt(
+				registration.encryptedClientSecret,
+				registrationPurpose(registration.id),
+			);
+		}
+		if (registration.encryptedRegistrationAccessToken) {
+			box.decrypt(
+				registration.encryptedRegistrationAccessToken,
+				registrationAccessPurpose(registration.id),
+			);
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function accessModeOf(value: "READ_ONLY" | "READ_WRITE"): AccessMode {
 	return value === "READ_ONLY" ? "read_only" : "read_write";
+}
+
+export function assertGrantedScopeBounds(
+	platformSlug: string,
+	accessMode: "READ_ONLY" | "READ_WRITE",
+	granted: readonly string[],
+): void {
+	const vendor = vendorBySlug(platformSlug);
+	if (!vendor)
+		throw new BadRequestException("The MCP platform is unavailable.");
+	const readScopes = new Set(vendor.access.read_only.scopes);
+	const writeOnlyScopes = vendor.access.read_write.scopes.filter(
+		(scope) => !readScopes.has(scope),
+	);
+	if (
+		accessMode === "READ_ONLY" &&
+		writeOnlyScopes.some((scope) => granted.includes(scope))
+	) {
+		throw new BadRequestException(
+			"The MCP platform granted unexpected access.",
+		);
+	}
 }
 
 function dateFromSeconds(value: number | null): Date | null {
@@ -94,10 +156,11 @@ export class McpConnectionsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly oauth: McpOAuthClient,
+		private readonly agent: AgentTriggerService,
 	) {}
 
 	async list(userId: string) {
-		const [role, connections] = await Promise.all([
+		const [role, connections, agentRows] = await Promise.all([
 			workspaceRoleOf(userId, this.db),
 			this.db.mcpConnection.findMany({
 				where: { organizationId: WORKSPACE_ID },
@@ -111,10 +174,26 @@ export class McpConnectionsService {
 					lastErrorCode: true,
 				},
 			}),
+			this.db.agentDefinition.findMany({
+				where: {
+					status: { in: ["LIVE", "PAUSED"] },
+					deletedAt: null,
+					currentVersionId: { not: null },
+				},
+				orderBy: { updatedAt: "desc" },
+				select: {
+					id: true,
+					name: true,
+					description: true,
+					status: true,
+					currentVersion: { select: { manifest: true } },
+				},
+			}),
 		]);
 		const bySlug = new Map(
 			connections.map((entry) => [entry.platformSlug, entry]),
 		);
+		const agentsByPlatform = agentsByMcpPlatform(agentRows);
 
 		return {
 			configured: createMcpSecretBox() !== undefined,
@@ -127,6 +206,7 @@ export class McpConnectionsService {
 					resource: vendor.mcp.resource,
 					readOnlyScopes: [...vendor.access.read_only.scopes],
 					readWriteScopes: [...vendor.access.read_write.scopes],
+					agents: agentsByPlatform.get(vendor.slug) ?? [],
 					connection: connection
 						? {
 								...connection,
@@ -216,7 +296,7 @@ export class McpConnectionsService {
 		});
 
 		const authorizationUrl = new URL(server.authorizationEndpoint);
-		authorizationUrl.search = new URLSearchParams({
+		const authorizationParameters = new URLSearchParams({
 			response_type: "code",
 			client_id: registration.clientId,
 			redirect_uri: this.callbackUrl(),
@@ -225,7 +305,11 @@ export class McpConnectionsService {
 			scope: access.scopes.join(" "),
 			code_challenge: pkce.challenge,
 			code_challenge_method: "S256",
-		}).toString();
+		});
+		if (vendor.auth.consentPrompt) {
+			authorizationParameters.set("prompt", "consent");
+		}
+		authorizationUrl.search = authorizationParameters.toString();
 
 		return { authorizationUrl: authorizationUrl.toString() };
 	}
@@ -383,7 +467,8 @@ export class McpConnectionsService {
 		}
 
 		const clientSecret = state.registration.encryptedClientSecret
-			? box.decrypt(
+			? decryptAuthorizationValue(
+					box,
 					state.registration.encryptedClientSecret,
 					registrationPurpose(state.registration.id),
 				)
@@ -396,7 +481,8 @@ export class McpConnectionsService {
 			},
 			{
 				code: input.code,
-				verifier: box.decrypt(
+				verifier: decryptAuthorizationValue(
+					box,
 					state.encryptedCodeVerifier,
 					statePurpose(state.stateHash),
 				),
@@ -412,23 +498,7 @@ export class McpConnectionsService {
 		const granted = tokens.scope?.split(/\s+/).filter(Boolean) ?? [
 			...requested,
 		];
-		if (requested.some((scope) => !granted.includes(scope))) {
-			throw new BadRequestException(
-				"The MCP platform granted insufficient access.",
-			);
-		}
-		const readScopes = new Set(vendor.access.read_only.scopes);
-		const writeOnlyScopes = vendor.access.read_write.scopes.filter(
-			(scope) => !readScopes.has(scope),
-		);
-		if (
-			state.accessMode === "READ_ONLY" &&
-			writeOnlyScopes.some((scope) => granted.includes(scope))
-		) {
-			throw new BadRequestException(
-				"The MCP platform granted unexpected write access.",
-			);
-		}
+		assertGrantedScopeBounds(vendor.slug, state.accessMode, granted);
 
 		const connection = await this.db.mcpConnection.findUniqueOrThrow({
 			where: {
@@ -477,6 +547,7 @@ export class McpConnectionsService {
 				},
 			}),
 		]);
+		this.agent.mcpToolDiscoveryQueued();
 
 		return new URL(state.returnPath, appUrl).toString();
 	}
@@ -708,10 +779,16 @@ export class McpConnectionsService {
 				},
 			},
 		});
+		const box = createMcpSecretBox();
+		if (!box)
+			throw new ServiceUnavailableException(
+				"MCP connections are not configured.",
+			);
 		if (
 			existing &&
 			(!existing.clientSecretExpiresAt ||
-				existing.clientSecretExpiresAt > new Date())
+				existing.clientSecretExpiresAt > new Date()) &&
+			registrationIsReadable(box, existing)
 		) {
 			return existing;
 		}
@@ -722,11 +799,6 @@ export class McpConnectionsService {
 			scopes,
 		);
 		const id = existing?.id ?? randomUUID();
-		const box = createMcpSecretBox();
-		if (!box)
-			throw new ServiceUnavailableException(
-				"MCP connections are not configured.",
-			);
 
 		return this.db.mcpClientRegistration.upsert({
 			where: {

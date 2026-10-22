@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { WorkspaceRole } from "@crm/auth";
+import type { WorkspaceRole } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import type { AgentAccessService } from "../src/agent/agent-access.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";

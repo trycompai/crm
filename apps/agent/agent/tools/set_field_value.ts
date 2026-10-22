@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { changeWrite } from "../lib/approval";
 import { writeField } from "../lib/fields";
 import { focusOn } from "../lib/focus";
 
@@ -18,6 +19,7 @@ export default defineTool({
 				"The value. A select takes the option's label, a date takes YYYY-MM-DD, and null clears it.",
 			),
 	}),
+	approval: changeWrite(),
 	async execute({ entity, recordId, key, value }) {
 		if (entity === "COMPANY") focusOn({ companyId: recordId });
 		if (entity === "CONTACT") focusOn({ contactId: recordId });

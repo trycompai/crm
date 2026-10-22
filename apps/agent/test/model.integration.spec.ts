@@ -45,7 +45,10 @@ describe("the configured model", () => {
 		expect(setting.id).toBe(DEFAULT_AGENT_MODEL.id);
 		expect(setting.isDefault).toBe(true);
 
-		expect(await selectedModel()).toBeNull();
+		expect(await selectedModel()).toEqual({
+			model: DEFAULT_AGENT_MODEL.id,
+			modelContextWindowTokens: DEFAULT_AGENT_MODEL.contextWindowTokens,
+		});
 	});
 
 	it("returns the chosen model with its own context window", async () => {
@@ -67,7 +70,10 @@ describe("the configured model", () => {
 		});
 		await writeAgentModel(db, null);
 
-		expect(await selectedModel()).toBeNull();
+		expect(await selectedModel()).toEqual({
+			model: DEFAULT_AGENT_MODEL.id,
+			modelContextWindowTokens: DEFAULT_AGENT_MODEL.contextWindowTokens,
+		});
 		expect((await readAgentModel(db)).isDefault).toBe(true);
 	});
 

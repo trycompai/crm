@@ -1,7 +1,13 @@
 import { db, type Prisma } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
-import { type InputRequested, parse, schemas } from "@crm/validation";
+import {
+	type InputRequest,
+	type InputRequested,
+	parse,
+	schemas,
+} from "@crm/validation";
 import type { ChannelEvents } from "eve/channels";
+import { readBuilderEvent, storeBuilderEvent } from "./builder-event-storage";
 import {
 	builderIdFromToken,
 	builderToken,
@@ -12,6 +18,8 @@ const BUILDER_INPUT = {
 	eventType: "input.requested",
 	idPrefix: "builder-input",
 } as const;
+
+export const BUILDER_INPUT_EVENT_PREFIX = `${BUILDER_INPUT.idPrefix}:`;
 
 type InputRequestedEvent = Parameters<
 	NonNullable<ChannelEvents["input.requested"]>
@@ -32,12 +40,10 @@ export async function persistBuilderInputRequest(
 		data,
 		BUILDER_INPUT.eventType,
 	);
-	const question = event.requests.find(
-		(request) => request.kind === "question",
-	);
-	if (!question) return false;
+	const request = pendingBuilderRequest(event.requests);
+	if (!request) return false;
 
-	const eventId = `${eventPrefix(conversationId)}${question.requestId}`;
+	const eventId = `${eventPrefix(conversationId)}${request.requestId}`;
 
 	return db.$transaction(async (tx) => {
 		await lockIdempotencyKey(tx, eventId);
@@ -59,17 +65,30 @@ export async function persistBuilderInputRequest(
 				id: { startsWith: eventPrefix(conversation.id) },
 			},
 			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
-			select: { id: true, data: true },
+			select: { id: true, data: true, encryptedData: true },
 		});
+		const recordedData = recorded
+			? readBuilderEvent(recorded, {
+					conversationId: conversation.id,
+					eventId: recorded.id,
+				})
+			: null;
 		if (
 			recorded &&
+			recordedData &&
 			!supersedes(
 				event,
-				parse(schemas.agents.inputRequested, recorded.data, recorded.id),
+				parse(schemas.agents.inputRequested, recordedData, recorded.id),
 			)
 		) {
 			return false;
 		}
+		if (recorded && !recordedData) return false;
+
+		const storedEvent = storeBuilderEvent(event as Prisma.InputJsonValue, {
+			conversationId: conversation.id,
+			eventId,
+		});
 
 		await tx.agentEvent.create({
 			data: {
@@ -77,7 +96,8 @@ export async function persistBuilderInputRequest(
 				sessionId: conversation.sessionId,
 				conversationId: conversation.id,
 				type: BUILDER_INPUT.eventType,
-				data: event as Prisma.InputJsonValue,
+				data: storedEvent.data,
+				encryptedData: storedEvent.encryptedData,
 				emittedAt: new Date(),
 			},
 		});
@@ -86,7 +106,7 @@ export async function persistBuilderInputRequest(
 			where: { id: conversation.id },
 			data: {
 				continuationToken: builderToken(conversation.id),
-				pendingInputRequest: question as Prisma.InputJsonValue,
+				pendingInputRequest: request as Prisma.InputJsonValue,
 			},
 		});
 
@@ -94,8 +114,18 @@ export async function persistBuilderInputRequest(
 	});
 }
 
+function pendingBuilderRequest(
+	requests: readonly InputRequest[],
+): InputRequest | null {
+	return (
+		requests.find((request) => request.kind === "tool-approval") ??
+		requests.find((request) => request.kind === "question") ??
+		null
+	);
+}
+
 function eventPrefix(conversationId: string): string {
-	return `${BUILDER_INPUT.idPrefix}:${conversationId}:`;
+	return `${BUILDER_INPUT_EVENT_PREFIX}${conversationId}:`;
 }
 
 function supersedes(event: InputRequested, current: InputRequested): boolean {

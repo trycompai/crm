@@ -1,10 +1,11 @@
+import { vendorBySlug, vendors } from "@crm/mcp-integrations/catalog";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
-import LinearLogo from "@crm/ui/components/brand-logos/linear";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
-import SupabaseLogo from "@crm/ui/components/brand-logos/supabase";
 import { Button } from "@crm/ui/components/button";
+import { ProviderMark } from "@crm/ui/components/provider-mark";
 import { Spinner } from "@crm/ui/components/spinner";
+import { providerBrand } from "@crm/ui/lib/provider-brand";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -32,14 +33,38 @@ async function ConnectionsSettingsPageContent({
 	const [{ slug }, query] = await Promise.all([params, searchParams]);
 	const queryClient = getServerQueryClient();
 	const trpc = getServerTrpc();
+	const dialogOpen = first(query.add) === "1";
 	const [google, microsoft, slack, mcp] = await Promise.all([
 		queryClient.fetchQuery(trpc.google.status.queryOptions()),
 		queryClient.fetchQuery(trpc.microsoft.status.queryOptions()),
 		queryClient.fetchQuery(trpc.slack.status.queryOptions()),
 		queryClient.fetchQuery(trpc.mcp.list.queryOptions()),
 	]);
-	const linear = mcp.entries.find((entry) => entry.slug === "linear");
-	const supabase = mcp.entries.find((entry) => entry.slug === "supabase");
+	const mcpRows = mcp.entries.flatMap((entry) => {
+		const vendor = vendorBySlug(entry.slug);
+		if (!vendor || entry.connection?.status !== "connected") return [];
+
+		return [
+			{
+				name: vendor.name,
+				status: "Connected",
+				bringsIn: vendor.presentation.bringsIn,
+				sends:
+					entry.connection.accessMode === "read_write"
+						? vendor.presentation.sendsReadWrite
+						: vendor.presentation.sendsReadOnly,
+				href: `/${slug}/settings/connections/${vendor.slug}`,
+				mark: (
+					<ProviderMark
+						slug={vendor.slug}
+						name={vendor.name}
+						brand={providerBrand(vendor.slug, vendor.name)}
+						className="size-5"
+					/>
+				),
+			},
+		];
+	});
 	const rows = [
 		...(google.linked
 			? [
@@ -49,7 +74,7 @@ async function ConnectionsSettingsPageContent({
 						bringsIn: "Emails, meetings and the people on them",
 						sends: "Nothing yet",
 						href: `/${slug}/settings/connections/google`,
-						logo: GoogleLogo,
+						mark: <GoogleLogo className="size-5 shrink-0" />,
 					},
 				]
 			: []),
@@ -63,7 +88,7 @@ async function ConnectionsSettingsPageContent({
 						bringsIn: "Workspace members and channels the app has joined",
 						sends: "Messages to approved channels and people",
 						href: `/${slug}/settings/connections/slack`,
-						logo: SlackLogo,
+						mark: <SlackLogo className="size-5 shrink-0" />,
 					},
 				]
 			: []),
@@ -75,40 +100,11 @@ async function ConnectionsSettingsPageContent({
 						bringsIn: "Outlook email and the people on it",
 						sends: "Nothing yet",
 						href: `/${slug}/settings/connections/microsoft`,
-						logo: MicrosoftLogo,
+						mark: <MicrosoftLogo className="size-5 shrink-0" />,
 					},
 				]
 			: []),
-		...(linear?.connection?.status === "connected"
-			? [
-					{
-						name: "Linear",
-						status: "Connected",
-						bringsIn: "Issues, projects and teams selected by deployed agents",
-						sends:
-							linear.connection.accessMode === "read_write"
-								? "Approved issue and project changes"
-								: "Nothing",
-						href: `/${slug}/settings/connections/linear`,
-						logo: LinearLogo,
-					},
-				]
-			: []),
-		...(supabase?.connection?.status === "connected"
-			? [
-					{
-						name: "Supabase",
-						status: "Connected",
-						bringsIn: "Projects, database structure and diagnostics",
-						sends:
-							supabase.connection.accessMode === "read_write"
-								? "Approved database and project changes"
-								: "Nothing",
-						href: `/${slug}/settings/connections/supabase`,
-						logo: SupabaseLogo,
-					},
-				]
-			: []),
+		...mcpRows,
 	];
 
 	return (
@@ -182,10 +178,16 @@ async function ConnectionsSettingsPageContent({
 			)}
 			<AddConnectionDialog
 				slug={slug}
-				open={first(query.add) === "1"}
+				open={dialogOpen}
 				connected={rows.map((row) => row.name)}
 				mcpConfigured={mcp.configured}
 				canManageMcp={mcp.canManage}
+				mcpProviders={vendors.map((vendor) => ({
+					slug: vendor.slug,
+					name: vendor.name,
+					description: vendor.presentation.description,
+					brand: providerBrand(vendor.slug, vendor.name),
+				}))}
 			/>
 		</main>
 	);
@@ -205,19 +207,19 @@ function ConnectionCard({
 	bringsIn,
 	sends,
 	href,
-	logo: Logo,
+	mark,
 }: {
 	name: string;
 	status: string;
 	bringsIn: string;
 	sends: string;
 	href: string;
-	logo: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+	mark: React.ReactNode;
 }) {
 	return (
 		<section className="flex flex-col gap-4 rounded-lg border bg-card px-(--spacing-block-inline) py-4">
 			<div className="flex items-center gap-3">
-				<Logo className="size-5 shrink-0" />
+				{mark}
 				<h2 className="font-medium text-sm">{name}</h2>
 				<p className="ml-auto text-right text-muted-foreground text-xs">
 					{status}

@@ -231,7 +231,7 @@ function Thread({
 		if (!message.trim() || locked) return;
 		opening.current ||= message.trim();
 		setDraft("");
-		void agent.send({ message: message.trim() });
+		void agent.send(message.trim());
 	};
 
 	return (
@@ -289,7 +289,7 @@ function Thread({
 						key={question.requestId}
 						question={question}
 						pending={busy}
-						onSubmit={(response) => agent.send({ inputResponses: [response] })}
+						onSubmit={(response) => agent.respond([response])}
 					/>
 				) : (
 					<form

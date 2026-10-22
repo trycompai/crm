@@ -1,9 +1,10 @@
-import { defaultBackend, defineSandbox } from "eve/sandbox";
+import { DefaultSandbox, defineSandbox } from "eve/sandbox";
+import { denySandboxNetwork } from "../../../lib/sandbox-network";
 
-export default defineSandbox({
-	backend: defaultBackend({
-		vercel: { networkPolicy: "deny-all" },
-		docker: { networkPolicy: "deny-all" },
-		microsandbox: { networkPolicy: "deny-all" },
-	}),
+export const environment = DefaultSandbox.environment({
+	vercel: { networkPolicy: "deny-all" },
 });
+
+export default defineSandbox(async () =>
+	denySandboxNetwork(await environment.open()),
+);

@@ -548,6 +548,10 @@ export class AgentTriggerService {
 		return bridge() !== null;
 	}
 
+	mcpToolDiscoveryQueued(): void {
+		this.poke();
+	}
+
 	drainQueues(): void {
 		this.poke();
 		this.deployedAgentRunQueued();

@@ -4,8 +4,15 @@ import { createMcpSecretBox } from "../src/mcp-crypto";
 
 describe("MCP secret encryption", () => {
 	test("stays disabled without a valid key", () => {
-		expect(createMcpSecretBox(undefined)).toBeUndefined();
-		expect(createMcpSecretBox("invalid")).toBeUndefined();
+		const previous = process.env.MCP_ENCRYPTION_KEY;
+		delete process.env.MCP_ENCRYPTION_KEY;
+		try {
+			expect(createMcpSecretBox()).toBeUndefined();
+			expect(createMcpSecretBox("invalid")).toBeUndefined();
+		} finally {
+			if (previous === undefined) delete process.env.MCP_ENCRYPTION_KEY;
+			else process.env.MCP_ENCRYPTION_KEY = previous;
+		}
 	});
 
 	test("encrypts and decrypts one purpose", () => {

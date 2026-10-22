@@ -10,7 +10,7 @@ export const eveToolInput = eveToolFields.nullable().catch(null);
 
 export type EveToolInput = z.infer<typeof eveToolInput>;
 
-export const eveToolOutput = eveToolFields.nullable().catch(null);
+export const eveToolOutput = json.nullable().catch(null);
 
 export type EveToolOutput = z.infer<typeof eveToolOutput>;
 

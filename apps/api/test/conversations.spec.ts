@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth";
+import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth/organization";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
 import { z } from "zod";
@@ -274,12 +274,18 @@ describe("ConversationsService", () => {
 		const sessionId = `ses_${suffix}_events`;
 		const saved = await service.save({ contactId, sessionId }, userId);
 		const emittedAt = new Date("2026-08-05T12:00:00.000Z");
+		const eventTypes = [
+			"turn.started",
+			"turn.completed",
+			"step.started",
+			"step.completed",
+		];
 		await db.agentEvent.createMany({
-			data: [0, 1, 2, 3].map((position) => ({
+			data: eventTypes.map((type, position) => ({
 				id: `evt_${suffix}_window_${position}`,
 				sessionId,
 				contactId,
-				type: `event.${position}`,
+				type,
 				data: {},
 				emittedAt: new Date(emittedAt.getTime() + position),
 			})),
@@ -289,7 +295,7 @@ describe("ConversationsService", () => {
 			(await service.events({ id: saved.id, limit: 2 }, userId)).map(
 				(event) => event.type,
 			),
-		).toEqual(["event.2", "event.3"]);
+		).toEqual(["step.started", "step.completed"]);
 	});
 
 	it("returns builder events from descendant sessions", async () => {
@@ -316,7 +322,16 @@ describe("ConversationsService", () => {
 					sessionId: rootSessionId,
 					conversationId: builder.id,
 					type: "actions.requested",
-					data: {},
+					data: {
+						actions: [
+							{
+								kind: "tool-call",
+								callId: "call-root",
+								toolName: "search_crm",
+								input: {},
+							},
+						],
+					},
 					emittedAt,
 				},
 				{
@@ -324,7 +339,21 @@ describe("ConversationsService", () => {
 					sessionId: `builder-question-${suffix}-child`,
 					conversationId: builder.id,
 					type: "input.requested",
-					data: {},
+					data: {
+						requests: [
+							{
+								requestId: "request-child",
+								kind: "question",
+								action: {
+									kind: "tool-call",
+									callId: "call-child",
+									toolName: "ask_user",
+									input: {},
+								},
+								prompt: "Choose one option.",
+							},
+						],
+					},
 					emittedAt: new Date(emittedAt.getTime() + 1),
 				},
 			],
@@ -336,7 +365,49 @@ describe("ConversationsService", () => {
 			),
 		).toEqual(["actions.requested", "input.requested"]);
 	});
+});
 
+describe("ConversationsService resume", () => {
+	it("returns the indexed root prefix for a builder reload", async () => {
+		const builder = await service.createBuilder(
+			{
+				clientRequestId: crypto.randomUUID(),
+				commandType: "CHAT",
+				message: "Keep this chat durable",
+				resources: [],
+				attachments: [],
+			},
+			userId,
+		);
+		const sessionId = `builder-resume-${suffix}`;
+		await db.agentConversation.update({
+			where: { id: builder.id },
+			data: { sessionId, streamIndex: 2 },
+		});
+		await db.agentEvent.createMany({
+			data: [0, 1].map((streamIndex) => ({
+				id: `evt_${suffix}_resume_${streamIndex}`,
+				sessionId,
+				conversationId: builder.id,
+				streamIndex,
+				deliveryIds: [`delivery-${streamIndex}`],
+				type: "message.completed",
+				data: { message: `Message ${streamIndex}` },
+				emittedAt: new Date(1_786_000_000_000 + streamIndex),
+			})),
+		});
+
+		const reloaded = await service.builderById(builder.id, userId);
+
+		expect(reloaded.resume?.session).toEqual({ sessionId, streamIndex: 2 });
+		expect(reloaded.resume?.events.map((event) => event.meta.id)).toEqual([
+			`evt_${suffix}_resume_0`,
+			`evt_${suffix}_resume_1`,
+		]);
+	});
+});
+
+describe("ConversationsService continued", () => {
 	it("forgets a conversation and the events behind it", async () => {
 		const sessionId = `ses_${suffix}_delete`;
 		const conversation = await service.save({ contactId, sessionId }, userId);
@@ -743,6 +814,88 @@ describe("ConversationsService", () => {
 				inputResponse: {
 					requestId: "question-1",
 					optionId: "crm-task",
+				},
+			},
+		});
+	});
+
+	it("persists permission modes and queues durable tool approvals", async () => {
+		const conversation = await service.createBuilder(
+			{
+				clientRequestId: crypto.randomUUID(),
+				commandType: "CHAT",
+				message: "Archive the unused field",
+				resources: [],
+				attachments: [],
+			},
+			userId,
+		);
+		const sessionId = `builder-question-${suffix}-approval`;
+		await db.agentConversation.update({
+			where: { id: conversation.id },
+			data: {
+				sessionId,
+				continuationToken: `crm:builder:${conversation.id}`,
+				pendingInputRequest: {
+					kind: "tool-approval",
+					requestId: "approval-1",
+					prompt: "Archive the Renewal date field?",
+					action: {
+						kind: "tool-call",
+						callId: "call-approval-1",
+						toolName: "archive_field",
+						input: { fieldId: "field-1" },
+					},
+					options: [
+						{ id: "approve", label: "Approve", style: "primary" },
+						{ id: "cancel", label: "Decline", style: "danger" },
+					],
+				},
+			},
+		});
+
+		expect(
+			(await service.builderById(conversation.id, userId)).permissionMode,
+		).toBe("manual");
+		await service.setBuilderPermissionMode(
+			{ id: conversation.id, permissionMode: "auto" },
+			userId,
+		);
+		const detail = await service.builderById(conversation.id, userId);
+		expect(detail.permissionMode).toBe("auto");
+		expect(detail.pendingApproval).toMatchObject({
+			requestId: "approval-1",
+			action: { toolName: "archive_field" },
+		});
+
+		const response = await service.answerBuilderApproval(
+			{
+				id: conversation.id,
+				clientRequestId: crypto.randomUUID(),
+				requestId: "approval-1",
+				decision: "approve",
+			},
+			userId,
+		);
+		const submission = await db.agentConversationSubmission.findUnique({
+			where: { id: response.id },
+			select: {
+				commandType: true,
+				inputRequestId: true,
+				message: true,
+				status: true,
+			},
+		});
+
+		expect(submission).toMatchObject({
+			commandType: "CHAT",
+			inputRequestId: "approval-1",
+			status: "PENDING",
+			message: {
+				text: "Approved",
+				inputResponse: {
+					requestId: "approval-1",
+					optionId: "approve",
 				},
 			},
 		});

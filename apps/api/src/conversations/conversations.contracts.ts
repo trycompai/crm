@@ -7,6 +7,10 @@ import {
 	AgentTriggerType,
 	AgentVersionStatus,
 } from "@crm/db";
+import {
+	agentPermissionMode,
+	builderToolApproval,
+} from "@crm/validation/agent-permission";
 import { z } from "zod";
 
 const agentManifestSummaryOutput = z.object({
@@ -161,6 +165,22 @@ export const builderQuestionResponseInput = z
 export type BuilderQuestionResponseInput = z.infer<
 	typeof builderQuestionResponseInput
 >;
+
+export const builderApprovalResponseInput = z.object({
+	id: z.string().min(1),
+	clientRequestId: z.uuid(),
+	requestId: z.string().trim().min(1).max(240),
+	decision: z.enum(["approve", "cancel"]),
+});
+
+export type BuilderApprovalResponseInput = z.infer<
+	typeof builderApprovalResponseInput
+>;
+
+export const builderPermissionModeInput = z.object({
+	id: z.string().min(1),
+	permissionMode: agentPermissionMode,
+});
 
 export const sharedConversationInput = z.object({
 	token: z.string().trim().min(32).max(256),
@@ -350,6 +370,26 @@ const builderSubmissionOutput = z.object({
 	acceptedAt: z.string().nullable(),
 });
 
+export const conversationEventOutput = z.object({
+	type: z.string(),
+	data: z.unknown(),
+	meta: z.object({
+		id: z.string(),
+		at: z.string(),
+		deliveryIds: z.array(z.string()).optional(),
+	}),
+});
+
+export const conversationEventsOutput = z.array(conversationEventOutput);
+
+const conversationResumeOutput = z.object({
+	events: conversationEventsOutput,
+	session: z.object({
+		sessionId: z.string(),
+		streamIndex: z.number().int().min(0),
+	}),
+});
+
 export const builderConversationDetailOutput = z.object({
 	id: z.string(),
 	sessionId: z.string().nullable(),
@@ -361,20 +401,15 @@ export const builderConversationDetailOutput = z.object({
 	lastAssistantAt: z.string().nullable(),
 	lastReadAt: z.string().nullable(),
 	pendingQuestion: builderQuestionOutput,
+	pendingApproval: builderToolApproval,
+	permissionMode: agentPermissionMode,
 	agent: builderAgentDetailOutput.nullable(),
 	createdVersions: z.array(builderCreatedVersionOutput),
 	builderArtifacts: z.array(agentBuilderArtifactOutput),
 	feedback: z.array(builderFeedbackOutput),
 	submissions: z.array(builderSubmissionOutput),
+	resume: conversationResumeOutput.nullable(),
 });
-
-export const conversationEventOutput = z.object({
-	type: z.string(),
-	data: z.unknown(),
-	meta: z.object({ id: z.string(), at: z.string() }),
-});
-
-export const conversationEventsOutput = z.array(conversationEventOutput);
 
 export const builderResponseRatingOutput = z.object({
 	id: z.string(),

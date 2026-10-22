@@ -1,4 +1,4 @@
-import { DEFAULT_WORKSPACE_NAME } from "@crm/auth";
+import { DEFAULT_WORKSPACE_NAME } from "@crm/auth/organization";
 import type { Metadata } from "next";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { requireMailboxAccess } from "@/lib/session";

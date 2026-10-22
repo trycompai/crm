@@ -1,4 +1,4 @@
-import type { Session, SessionUser } from "@crm/auth";
+import type { Session, SessionUser } from "@crm/auth/auth";
 import type { Request } from "express";
 
 export type BaseTrpcContext = {

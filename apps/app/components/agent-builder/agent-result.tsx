@@ -8,10 +8,17 @@ import {
 	groupDealListPages,
 	type TranscriptItem,
 } from "@/lib/agent-transcript";
+import {
+	providerCardOf,
+	providerForTool,
+	type SupportedResultProvider,
+} from "@/lib/connection-result";
 import { DealListResultTable } from "./deal-list-result";
+import { ProviderConnectionResult } from "./provider-connection-result";
 
 type ResultEntry = {
 	anchor: (items: readonly TranscriptItem[]) => Map<string, ReactNode[]>;
+	ownsResponse: boolean;
 	skeleton: ReactNode;
 };
 
@@ -21,6 +28,7 @@ function defineResult<T>({
 	group,
 	render,
 	skeleton,
+	ownsResponse = false,
 }: {
 	tool: string;
 	validate: (output: EveToolOutput) => T | null;
@@ -29,8 +37,10 @@ function defineResult<T>({
 	) => readonly { itemId: string; value: T }[];
 	render: (result: T, key: string) => ReactNode;
 	skeleton: ReactNode;
+	ownsResponse?: boolean;
 }): ResultEntry {
 	return {
+		ownsResponse,
 		skeleton,
 		anchor: (items) => {
 			const anchored = anchorResults({ items, tool, validate, group });
@@ -74,16 +84,34 @@ const REGISTRY = new Map<string, ResultEntry>([
 	],
 ]);
 
-export function hasAgentResult(tool: string): boolean {
-	return REGISTRY.has(tool);
+export function hasAgentResult(
+	tool: string,
+	providers: readonly SupportedResultProvider[] = [],
+): boolean {
+	return REGISTRY.has(tool) || providerForTool(tool, providers) !== null;
 }
 
-export function agentResultSkeleton(tool: string): ReactNode {
-	return REGISTRY.get(tool)?.skeleton ?? null;
+export function agentResultOwnsResponse(
+	tool: string,
+	providers: readonly SupportedResultProvider[] = [],
+): boolean {
+	const registered = REGISTRY.get(tool);
+	if (registered) return registered.ownsResponse;
+	return providerForTool(tool, providers) !== null;
+}
+
+export function agentResultSkeleton(
+	tool: string,
+	providers: readonly SupportedResultProvider[] = [],
+): ReactNode {
+	const registered = REGISTRY.get(tool);
+	if (registered) return registered.skeleton;
+	return providerForTool(tool, providers) ? listSkeleton : null;
 }
 
 export function agentResultsByItem(
 	items: readonly TranscriptItem[],
+	providers: readonly SupportedResultProvider[] = [],
 ): Map<string, ReactNode[]> {
 	const rendered = new Map<string, ReactNode[]>();
 
@@ -93,6 +121,27 @@ export function agentResultsByItem(
 			if (bucket) bucket.push(...nodes);
 			else rendered.set(itemId, nodes);
 		}
+	}
+
+	for (const item of items) {
+		if (item.kind !== "did" || item.pending) continue;
+		const provider = providerForTool(item.tool, providers);
+		if (!provider) continue;
+		const result = providerCardOf({
+			provider,
+			tool: item.tool,
+			output: item.output,
+		});
+		if (!result) continue;
+		const node = (
+			<ProviderConnectionResult
+				key={`${item.tool}-${item.id}`}
+				result={result}
+			/>
+		);
+		const bucket = rendered.get(item.id);
+		if (bucket) bucket.push(node);
+		else rendered.set(item.id, [node]);
 	}
 
 	return rendered;

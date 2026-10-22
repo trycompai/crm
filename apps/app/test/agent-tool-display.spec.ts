@@ -25,24 +25,66 @@ describe("toolLabel", () => {
 		).toBe("Wrote the manifest");
 	});
 
-	it("falls back to the raw path for an unmapped artifact", () => {
+	it("does not expose an untrusted artifact path", () => {
 		expect(
 			toolLabel({
 				...base,
 				tool: "write_agent_file",
 				input: { path: "agent/other.md" },
 			}),
-		).toBe("Wrote agent/other.md");
+		).toBe("Wrote a file");
 	});
 
-	it("labels the draft save under the tool the builder actually calls", () => {
+	it("does not expose an untrusted draft name", () => {
 		expect(
 			toolLabel({
 				...base,
 				tool: "save_agent_draft",
 				input: { name: "Collections nudge" },
 			}),
-		).toBe("Saved draft · Collections nudge");
+		).toBe("Saved draft");
+	});
+
+	it("uses a trusted catalog name for a connected tool", () => {
+		expect(
+			toolLabel({
+				...base,
+				tool: "linear__create_issue",
+				input: { title: "Untrusted title" },
+				pending: true,
+			}),
+		).toBe("Using Linear");
+	});
+
+	it("hides unknown provider and tool names", () => {
+		expect(
+			toolLabel({
+				...base,
+				tool: "fake-provider__delete_everything",
+				input: null,
+			}),
+		).toBe("Used a connected tool");
+	});
+
+	it("describes a connection call with trusted catalog data", () => {
+		expect(
+			toolLabel({
+				...base,
+				tool: "connection_execute",
+				input: { connection: "linear", tool: "create_issue" },
+				pending: true,
+			}),
+		).toBe("Asking Linear to create issue");
+	});
+
+	it("hides an unknown connection call", () => {
+		expect(
+			toolLabel({
+				...base,
+				tool: "connection_execute",
+				input: { connection: "unknown", tool: "delete_everything" },
+			}),
+		).toBe("Used a connected tool");
 	});
 
 	it("keeps the generic label when the tool has no mapping", () => {
@@ -51,9 +93,9 @@ describe("toolLabel", () => {
 		).toBe("Ran a tool");
 	});
 
-	it("keeps the generic label when the input is missing", () => {
+	it("uses a trusted generic file label when the input is missing", () => {
 		expect(toolLabel({ ...base, tool: "write_agent_file", input: null })).toBe(
-			"Ran a tool",
+			"Wrote a file",
 		);
 	});
 });

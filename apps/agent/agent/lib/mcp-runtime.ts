@@ -5,8 +5,9 @@ import { vendorAccess, vendorBySlug } from "@crm/mcp-integrations/catalog";
 import { parseAgentManifest } from "@crm/validation/agent-manifest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { ApprovalContext, ApprovalStatus } from "eve/tools";
+import type { ApprovalContext, ApprovalStatus } from "eve/tools/approval";
 import { z } from "zod";
+import { permissionModeOf } from "./approval";
 import { MCP } from "./mcp-config";
 import { mcpConnectionToken } from "./mcp-token";
 import { attribute, purposeOf } from "./session-purpose";
@@ -182,6 +183,13 @@ export async function authorizeMcpTool(
 	}
 	if (connection.accessMode === "READ_ONLY" && tool.callKind !== "read") {
 		return { type: "denied", reason: "The MCP connection is read-only." };
+	}
+	const permissionMode = permissionModeOf(context);
+	if (
+		(permissionMode === "manual" && tool.callKind !== "read") ||
+		(permissionMode === "auto" && tool.callKind === "risky")
+	) {
+		return "user-approval";
 	}
 	if (tool.callKind === "read") return "approved";
 

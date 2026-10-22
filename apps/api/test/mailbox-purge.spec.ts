@@ -1,13 +1,13 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
-import { ActivityType, db, EmailDirection, GoogleSyncStatus } from "@crm/db";
-import { ActivityStampService } from "../src/crm/activity-stamp.service";
-import { GoogleConnectionService } from "../src/google/google-connection.service";
 import {
 	GOOGLE_PROVIDER_ID,
 	MICROSOFT_PROVIDER_ID,
 	OUTLOOK_MAIL_SCOPE,
 	SYNC_SCOPES,
-} from "../src/mailbox/mailbox.constants";
+} from "@crm/auth/scopes";
+import { ActivityType, db, EmailDirection, GoogleSyncStatus } from "@crm/db";
+import { ActivityStampService } from "../src/crm/activity-stamp.service";
+import { GoogleConnectionService } from "../src/google/google-connection.service";
 import type { MailboxMatchService } from "../src/mailbox/mailbox-match.service";
 import { MailboxTokenService } from "../src/mailbox/mailbox-token.service";
 import { SyncStateService } from "../src/mailbox/sync-state.service";

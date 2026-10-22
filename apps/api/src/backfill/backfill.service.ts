@@ -1,4 +1,4 @@
-import { onSignedIn } from "@crm/auth";
+import { onSignedIn } from "@crm/auth/signed-in";
 import { type Db, EnrichmentStatus, type Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { readWorkspaceIdentity } from "@crm/db/workspace";

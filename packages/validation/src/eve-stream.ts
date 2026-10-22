@@ -1,8 +1,23 @@
 import { z } from "zod";
 
+export const eveStreamEvent = z.looseObject({
+	type: z.string().min(1),
+	data: z.unknown().optional(),
+	meta: z.looseObject({
+		id: z.string().min(1),
+		at: z.string().min(1),
+		deliveryIds: z.array(z.string().min(1)).optional(),
+	}),
+});
+
 export type EveStreamEvent = {
 	type: string;
 	data?: unknown;
+	meta?: {
+		id: string;
+		at: string;
+		deliveryIds?: readonly string[];
+	};
 };
 
 const text = z.string().nullable().catch(null);

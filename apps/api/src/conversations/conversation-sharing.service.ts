@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { WORKSPACE_ID } from "@crm/auth";
+import { WORKSPACE_ID } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
 import {
 	ForbiddenException,
@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { builderMessageWithAttachments } from "./conversation-attachments";
+import { publicConversationEvent } from "./conversation-resume";
 import { conversationShareTokenHash } from "./conversation-share-token";
 
 @Injectable()
@@ -151,7 +152,16 @@ export class ConversationSharingService {
 			},
 			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
 			take: 5000,
-			select: { id: true, type: true, data: true, emittedAt: true },
+			select: {
+				id: true,
+				type: true,
+				data: true,
+				encryptedData: true,
+				conversationId: true,
+				emittedAt: true,
+				streamIndex: true,
+				deliveryIds: true,
+			},
 		});
 
 		return {
@@ -175,11 +185,7 @@ export class ConversationSharingService {
 					createdAt: submission.createdAt.toISOString(),
 				}),
 			),
-			events: events.reverse().map((event) => ({
-				type: event.type,
-				data: event.data,
-				meta: { id: event.id, at: event.emittedAt.toISOString() },
-			})),
+			events: events.reverse().map(publicConversationEvent),
 		};
 	}
 

@@ -9,15 +9,101 @@ import {
 	eventStreamSettled,
 	latestTurnFailure,
 	mergeDealListResultPages,
+	messagesFromEvents,
 	NEW_THREAD,
 	outcomeTone,
 	pendingQuestion,
+	pendingSupportedConnection,
 	resolveThread,
 	sourcesOf,
 	splitMarkdownTable,
 	TOOL_VERBS,
 	toTranscript,
 } from "../lib/agent-transcript";
+
+const publicEvent = (type: string, data: { name: string }) =>
+	({
+		type,
+		data,
+		meta: { id: crypto.randomUUID(), at: new Date().toISOString() },
+	}) as never;
+
+describe("pendingSupportedConnection", () => {
+	const connections = [
+		{
+			slug: "linear",
+			name: "Linear",
+			description: "Plan and track product work.",
+		},
+	];
+
+	it("returns a supported pending connection", () => {
+		expect(
+			pendingSupportedConnection(
+				[publicEvent("authorization.required", { name: "linear" })],
+				connections,
+			),
+		).toMatchObject({ slug: "linear", name: "Linear" });
+	});
+
+	it("removes a completed connection request", () => {
+		expect(
+			pendingSupportedConnection(
+				[
+					publicEvent("authorization.required", { name: "linear" }),
+					publicEvent("authorization.completed", { name: "linear" }),
+				],
+				connections,
+			),
+		).toBeNull();
+	});
+
+	it("ignores unsupported connection requests", () => {
+		expect(
+			pendingSupportedConnection(
+				[publicEvent("authorization.required", { name: "unknown" })],
+				connections,
+			),
+		).toBeNull();
+	});
+
+	it("returns a connection requested by the agent", () => {
+		expect(
+			pendingSupportedConnection([], connections, [
+				message([
+					tool("request_connection", {
+						output: {
+							vendor: "linear",
+							name: "Linear",
+							status: "not_connected",
+						},
+					}),
+				]),
+			]),
+		).toMatchObject({
+			slug: "linear",
+			name: "Linear",
+			status: "not_connected",
+		});
+	});
+
+	it("clears a connection request after the next user message", () => {
+		expect(
+			pendingSupportedConnection([], connections, [
+				message([
+					tool("request_connection", {
+						output: {
+							vendor: "linear",
+							name: "Linear",
+							status: "not_connected",
+						},
+					}),
+				]),
+				message([{ type: "text", text: "Continue" }], "user", "m2"),
+			]),
+		).toBeNull();
+	});
+});
 
 const message = (
 	parts: unknown[],
@@ -48,6 +134,55 @@ const tool = (toolName: string, extra: ToolPartFixture = {}) => ({
 });
 
 describe("toTranscript", () => {
+	it("shows a stored completed tool result as complete after reload", () => {
+		const meta = (id: string) => ({
+			id,
+			at: "2026-10-20T12:00:00.000Z",
+		});
+		const messages = messagesFromEvents([
+			{
+				type: "actions.requested",
+				data: {
+					actions: [
+						{
+							callId: "call-1",
+							input: { title: "Pipeline review" },
+							kind: "tool-call",
+							toolName: "set_chat_title",
+						},
+					],
+					sequence: 0,
+					stepIndex: 0,
+					turnId: "turn-1",
+				},
+				meta: meta("event-1"),
+			},
+			{
+				type: "action.result",
+				data: {
+					result: {
+						callId: "call-1",
+						kind: "tool-result",
+						output: { saved: true, title: "Pipeline review" },
+						toolName: "set_chat_title",
+					},
+					sequence: 0,
+					status: "completed",
+					stepIndex: 0,
+					turnId: "turn-1",
+				},
+				meta: meta("event-2"),
+			},
+		] as never);
+		const item = toTranscript(messages)[0]?.items[0];
+
+		expect(item).toMatchObject({
+			kind: "did",
+			label: "Named this chat",
+			pending: false,
+		});
+	});
+
 	it("keeps a rep's question as the words they typed", () => {
 		const [first] = toTranscript([
 			message([{ type: "text", text: "Hey!" }], "user"),
@@ -164,6 +299,23 @@ describe("toTranscript", () => {
 		expect(grouped[0]?.items[0]).toMatchObject({
 			kind: "asked",
 			question: { requestId: "req_1", prompt: "Which account should I use?" },
+		});
+	});
+
+	it("replaces a raw vendor failure with safe text", () => {
+		const grouped = toTranscript([
+			message([
+				tool("linear__create_issue", {
+					state: "output-error",
+					errorText: "Vendor token and upstream request body",
+				}),
+			]),
+		]);
+
+		expect(grouped[0]?.items[0]).toMatchObject({
+			kind: "did",
+			errorText: "This step failed. Ask again to retry.",
+			tone: "warning",
 		});
 	});
 });
@@ -346,16 +498,28 @@ describe("describe", () => {
 		);
 	});
 
-	it("carries the reason a write did not happen", () => {
+	it("does not expose a tool result reason", () => {
 		const step = tool("set_contact_socials", {
 			output: { written: false, reason: "the account is named somebody else" },
 		});
 
-		expect(describeStep(step as never)).toContain("named somebody else");
+		expect(describeStep(step as never)).toBe(
+			"Checked a profile against the account itself",
+		);
 	});
 
-	it("falls back to a readable form of an unknown tool", () => {
-		expect(describeStep(tool("some_new_tool") as never)).toBe("Some new tool");
+	it("hides an unknown completed tool name", () => {
+		expect(describeStep(tool("some_new_tool") as never)).toBe(
+			"Finished a step",
+		);
+	});
+
+	it("hides an unknown active tool name", () => {
+		expect(
+			describeStep(
+				tool("some_new_tool", { state: "input-available" }) as never,
+			),
+		).toBe("Working on it");
 	});
 });
 
@@ -548,6 +712,14 @@ describe("latestTurnFailure", () => {
 			]),
 		).toEqual({ code: "AGENT_FAILED", kind: "unknown" });
 	});
+
+	it("represents a stopped turn as a cancelled outcome", () => {
+		expect(
+			latestTurnFailure([
+				{ type: "turn.cancelled", data: { reason: "user.cancelled" } },
+			]),
+		).toEqual({ code: "CANCELLED", kind: "cancelled" });
+	});
 });
 
 describe("resolveThread", () => {
@@ -681,7 +853,7 @@ describe("tool call details", () => {
 		});
 	});
 
-	it("surfaces the failure text instead of dropping it", () => {
+	it("replaces the failure text with safe guidance", () => {
 		const [row] = toTranscript([
 			message([
 				tool("write_agent_file", {
@@ -693,7 +865,7 @@ describe("tool call details", () => {
 
 		expect(row?.items[0]).toMatchObject({
 			kind: "did",
-			errorText: "Draft is closed.",
+			errorText: "This step failed. Ask again to retry.",
 		});
 	});
 

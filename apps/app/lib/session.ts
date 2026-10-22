@@ -1,4 +1,5 @@
-import { auth, needsMailboxGrant, type Session } from "@crm/auth";
+import { auth, type Session } from "@crm/auth/auth";
+import { needsMailboxGrant } from "@crm/auth/scopes";
 import { db } from "@crm/db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";

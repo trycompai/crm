@@ -1,6 +1,6 @@
 import { GoogleSyncStatus } from "@crm/db";
 import { z } from "zod";
-import { MICROSOFT_SYNC_SOURCES } from "./microsoft.constants";
+import { MICROSOFT_SYNC_SOURCES } from "../mailbox/mailbox.constants";
 
 export const setOutlookAutoCreateInput = z.object({
 	source: z.enum(MICROSOFT_SYNC_SOURCES),

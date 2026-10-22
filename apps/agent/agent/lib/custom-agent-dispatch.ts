@@ -3,7 +3,7 @@ import { CRM_EVENT_CATALOG } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { crmEventTask } from "@crm/validation/agent-events";
 import { readAgentTriggerConfig } from "@crm/validation/agent-manifest";
-import type { SendFn } from "eve/channels";
+import type { ChannelSendOptions, ChannelSource, Session } from "eve/channels";
 import { z } from "zod";
 import { DISPATCH } from "./dispatch-config";
 import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
@@ -20,7 +20,28 @@ const MAX_BUILDER_ATTEMPTS = DISPATCH.builder.maxAttempts;
 const BUILDER_LEASE_MS = DISPATCH.builder.leaseMs;
 const RUN_DELIVERY_LEASE_MS = DISPATCH.run.deliveryLeaseMs;
 
-type BuilderMessageParts = Extract<Parameters<SendFn>[0], readonly unknown[]>;
+type AgentMessage = Parameters<ChannelSource["send"]>[0];
+
+type BuilderMessageParts = Extract<AgentMessage, readonly unknown[]>;
+
+type BuilderInputResponse =
+	| { readonly requestId: string; readonly optionId: string }
+	| { readonly requestId: string; readonly text: string };
+
+export type AgentInputResponseDelivery = {
+	readonly inputResponses: readonly [BuilderInputResponse];
+};
+
+export type AgentDelivery = AgentMessage | AgentInputResponseDelivery;
+
+export type AgentSendOptions = ChannelSendOptions & {
+	readonly continuationToken: string;
+};
+
+export type SendFn = (
+	delivery: AgentDelivery,
+	options: AgentSendOptions,
+) => Promise<Session>;
 
 const trimmedText = z.string().trim().catch("");
 
@@ -149,6 +170,7 @@ export async function dispatchBuilderSubmission(
 						title: true,
 						userId: true,
 						kind: true,
+						permissionMode: true,
 					},
 				},
 			},
@@ -176,6 +198,9 @@ export async function dispatchBuilderSubmission(
 						),
 						needsTitle: submission.conversation.title ? "false" : "true",
 						conversationId,
+						permissionMode: permissionModeAttribute(
+							submission.conversation.permissionMode,
+						),
 						userId: submission.conversation.userId,
 						submissionId: submission.id,
 					},
@@ -527,7 +552,6 @@ export async function dispatchAgentRun(runId: string, send: SendFn) {
 			},
 			continuationToken: runToken(run.id),
 			title: `${run.agent.name} run`,
-			mode: "task",
 		});
 
 		await db.agentRun.updateMany({
@@ -722,6 +746,7 @@ export type LockedBuilderConversation = {
 	kind: string;
 	sessionId: string | null;
 	continuationToken: string | null;
+	streamIndex: number;
 };
 
 export async function lockBuilderConversation(
@@ -729,7 +754,7 @@ export async function lockBuilderConversation(
 	conversationId: string,
 ): Promise<LockedBuilderConversation | null> {
 	const [conversation] = await tx.$queryRaw<LockedBuilderConversation[]>`
-		SELECT id, kind, "sessionId", "continuationToken"
+		SELECT id, kind, "sessionId", "continuationToken", "streamIndex"
 		FROM "agentConversation"
 		WHERE id = ${conversationId}
 		FOR UPDATE
@@ -905,4 +930,10 @@ function idFromToken(token: string | undefined, marker: string): string | null {
 	if (index === -1) return null;
 	const id = token.slice(index + marker.length);
 	return id || null;
+}
+
+function permissionModeAttribute(mode: string): string {
+	if (mode === "AUTO") return "auto";
+	if (mode === "BYPASS") return "bypass";
+	return "manual";
 }

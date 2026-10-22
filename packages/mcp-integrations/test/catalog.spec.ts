@@ -1,13 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import { vendorAccess, vendorBySlug } from "../src/catalog";
+import { vendorAccess, vendorBySlug, vendors } from "../src/catalog";
+import { groupGrantedScopes } from "../src/scopes";
 import { classifyTool, toolFingerprint } from "../src/tool";
 import { parseVendor } from "../src/vendor";
 
 describe("MCP catalog", () => {
 	test("returns catalog entries by stable slug", () => {
-		expect(vendorBySlug("linear")?.name).toBe("Linear");
-		expect(vendorBySlug("supabase")?.name).toBe("Supabase");
+		expect(vendors.map((vendor) => vendor.slug)).toEqual([
+			"clerk",
+			"cloudflare",
+			"linear",
+			"neon",
+			"notion",
+			"planetscale",
+			"prisma",
+			"supabase",
+			"vercel",
+		]);
 		expect(vendorBySlug("missing")).toBeUndefined();
+	});
+
+	test("registers Notion through its hosted OAuth server", () => {
+		const notion = vendorBySlug("notion");
+		expect(notion).toBeDefined();
+		if (!notion) throw new Error("Notion is missing");
+
+		expect(notion.mcp.resource).toBe("https://mcp.notion.com/mcp");
+		expect(notion.auth.authorizationServers).toEqual([
+			"https://mcp.notion.com",
+		]);
+		expect(vendorAccess(notion, "read_only").scopes).toEqual(["default"]);
+	});
+
+	test("keeps every provider on an HTTPS hosted server", () => {
+		for (const vendor of vendors) {
+			expect(new URL(vendor.mcp.resource).protocol).toBe("https:");
+			expect(vendor.access.read_only.scopes.length).toBeGreaterThan(0);
+			expect(vendor.access.read_write.scopes.length).toBeGreaterThan(0);
+		}
 	});
 
 	test("selects scopes by access mode", () => {
@@ -39,11 +69,55 @@ describe("MCP catalog", () => {
 		expect(supabase.riskyTools).toContain("execute_sql");
 	});
 
+	test("uses Cloudflare code mode for a bounded tool catalog", () => {
+		const cloudflare = vendorBySlug("cloudflare");
+		expect(cloudflare).toBeDefined();
+		if (!cloudflare) throw new Error("Cloudflare is missing");
+
+		expect(vendorAccess(cloudflare, "read_only").url).toBe(
+			"https://mcp.cloudflare.com/mcp",
+		);
+		expect(vendorAccess(cloudflare, "read_write").url).toBe(
+			"https://mcp.cloudflare.com/mcp",
+		);
+	});
+
+	test("groups every Cloudflare scope into a concise product area", () => {
+		const cloudflare = vendorBySlug("cloudflare");
+		expect(cloudflare).toBeDefined();
+		if (!cloudflare) throw new Error("Cloudflare is missing");
+
+		const groups = groupGrantedScopes(
+			cloudflare.slug,
+			cloudflare.access.read_write.scopes,
+		);
+		expect(groups).toHaveLength(13);
+		expect(groups.some((group) => group.id === "other")).toBe(false);
+		expect(groups.flatMap((group) => group.scopes)).toHaveLength(
+			cloudflare.access.read_write.scopes.length,
+		);
+	});
+
+	test("groups newer Cloudflare grants without an unclassified section", () => {
+		const groups = groupGrantedScopes("cloudflare", [
+			"cfspeed.read",
+			"k2.consume",
+		]);
+
+		expect(groups.map((group) => group.id)).toEqual(["storage", "delivery"]);
+	});
+
 	test("rejects insecure resources", () => {
 		expect(() =>
 			parseVendor({
 				slug: "unsafe",
 				name: "Unsafe",
+				presentation: {
+					description: "Unsafe provider",
+					bringsIn: "Unsafe data",
+					sendsReadOnly: "Nothing",
+					sendsReadWrite: "Unsafe changes",
+				},
 				mcp: {
 					resource: "http://example.com/mcp",
 					transport: "streamable-http",
@@ -58,7 +132,7 @@ describe("MCP catalog", () => {
 				},
 				docsHosts: ["example.com"],
 				source: {
-					integrationsSh: "https://integrations.sh/example",
+					providerDocs: "https://example.com/docs",
 					tools: "https://example.com/docs",
 					checkedAt: "2026-10-20",
 				},

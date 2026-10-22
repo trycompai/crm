@@ -19,6 +19,7 @@ import {
 } from "@crm/ui/components/popover";
 import {
 	IndicatorDot,
+	StatusIndicator,
 	type StatusTone,
 } from "@crm/ui/components/status-indicator";
 import { cn } from "@crm/ui/lib/utils";
@@ -96,11 +97,11 @@ export function EnrichmentQueue() {
 		>
 			<PopoverTrigger asChild>
 				<Button variant="outline" size="sm">
-					<IndicatorDot
+					<StatusIndicator
 						tone={total > 0 ? "primary" : "neutral"}
-						aria-hidden="true"
+						busy={total > 0}
+						label={total > 0 ? `Enriching ${total}` : "Enrichment"}
 					/>
-					{total > 0 ? `Enriching ${total}` : "Enriching"}
 				</Button>
 			</PopoverTrigger>
 

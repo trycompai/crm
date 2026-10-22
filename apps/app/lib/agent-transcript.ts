@@ -1,3 +1,8 @@
+import type { ProviderBrand } from "@crm/ui/lib/provider-brand";
+import {
+	type AgentConnectionRequestStatus,
+	agentConnectionRequest,
+} from "@crm/validation/agent-connection-request";
 import {
 	type EveStreamEvent,
 	eveTurnFailure,
@@ -51,8 +56,28 @@ export type Source = {
 
 export type AgentTurnFailure = {
 	code: string;
-	kind: "rate-limit" | "restricted" | "credits" | "unknown";
+	kind: "rate-limit" | "restricted" | "credits" | "cancelled" | "unknown";
 };
+
+export type SupportedAgentConnection = {
+	slug: string;
+	name: string;
+	description: string;
+	brand?: ProviderBrand | null;
+};
+
+export type PendingAgentConnection = SupportedAgentConnection & {
+	requestName: string;
+	status: AgentConnectionRequestStatus;
+};
+
+const authorizationRequired = z.object({
+	name: z.string().min(1),
+});
+
+const authorizationCompleted = z.object({
+	name: z.string().min(1),
+});
 
 type ToolVerbs = Record<string, string>;
 
@@ -92,21 +117,14 @@ const VERBS: ToolVerbs = {
 	ask_question: "Asked a question",
 	agent: "Handed part of the job to a helper",
 	connection_search: "Looked for a tool it could use",
+	connection_execute: "Used a connected tool",
+	request_connection: "Checked a connection",
 	bash: "Ran a command",
 	read_file: "Read a file",
 	write_file: "Wrote a file",
 	glob: "Looked for files",
 	grep: "Searched inside the files",
 };
-
-function humanise(tool: string): string {
-	const separator = tool.indexOf("__");
-	if (separator > 0) {
-		return `${humanise(tool.slice(0, separator))}: ${humanise(tool.slice(separator + 2))}`;
-	}
-	const words = tool.replace(/_+/g, " ");
-	return words.charAt(0).toUpperCase() + words.slice(1);
-}
 
 export type TranscriptMessage = {
 	id: string;
@@ -129,6 +147,70 @@ export function messagesFromEvents(
 	for (const event of events) data = reducer.reduce(data, event);
 
 	return data.messages;
+}
+
+export function pendingSupportedConnection(
+	events: readonly MessageStreamEvent[],
+	connections: readonly SupportedAgentConnection[],
+	messages: readonly EveMessage[] = [],
+): PendingAgentConnection | null {
+	const pending = new Map<
+		string,
+		{ requestName: string; status: PendingAgentConnection["status"] }
+	>();
+
+	for (const event of events) {
+		if (event.type === "authorization.required") {
+			const required = authorizationRequired.safeParse(event.data);
+			if (required.success) {
+				pending.set(required.data.name.toLowerCase(), {
+					requestName: required.data.name,
+					status: "not_connected",
+				});
+			}
+		}
+
+		if (event.type === "authorization.completed") {
+			const completed = authorizationCompleted.safeParse(event.data);
+			if (completed.success) pending.delete(completed.data.name.toLowerCase());
+		}
+	}
+
+	for (const message of messages) {
+		if (message.role === "user") {
+			pending.clear();
+			continue;
+		}
+
+		for (const part of message.parts) {
+			if (
+				part.type !== "dynamic-tool" ||
+				part.toolName !== "request_connection" ||
+				part.state !== "output-available" ||
+				part.partial
+			) {
+				continue;
+			}
+
+			const request = agentConnectionRequest.safeParse(part.output);
+			if (!request.success) continue;
+			pending.set(request.data.vendor.toLowerCase(), {
+				requestName: request.data.name,
+				status: request.data.status,
+			});
+		}
+	}
+
+	for (const [normalizedName, request] of [...pending].reverse()) {
+		const connection = connections.find(
+			(item) =>
+				item.slug.toLowerCase() === normalizedName ||
+				item.name.toLowerCase() === normalizedName,
+		);
+		if (connection) return { ...connection, ...request };
+	}
+
+	return null;
 }
 
 const SETTLED_EVENT_TYPES = new Set([
@@ -298,14 +380,22 @@ export const TOOL_VERBS = VERBS;
 
 export function describe(part: EveMessagePart): string {
 	const tool = toolName(part);
-	const verb = VERBS[tool] ?? humanise(tool);
-	const reason = outcome(part)?.reason ?? null;
+	const state = "state" in part ? part.state : undefined;
+	const pending =
+		state === "input-streaming" ||
+		state === "input-available" ||
+		state === "approval-requested";
 
-	return reason === null ? verb : `${verb} — ${reason}`;
+	return VERBS[tool] ?? (pending ? "Working on it" : "Finished a step");
 }
 
 export function outcomeTone(part: EveMessagePart): Tone {
-	if ("state" in part && part.state === "output-error") return "warning";
+	if (
+		"state" in part &&
+		(part.state === "output-error" || part.state === "output-denied")
+	) {
+		return "warning";
+	}
 
 	const result = outcome(part);
 	if (!result) return "neutral";
@@ -361,6 +451,9 @@ export function latestTurnFailure(
 		if (event.type === "turn.completed" || event.type === "turn.started") {
 			return null;
 		}
+		if (event.type === "turn.cancelled") {
+			return { code: "CANCELLED", kind: "cancelled" };
+		}
 		if (event.type !== "turn.failed" && event.type !== "session.failed") {
 			continue;
 		}
@@ -404,8 +497,14 @@ function input(part: EveMessagePart): EveToolInput {
 }
 
 function errorTextOf(part: EveMessagePart): string | null {
-	const text = "errorText" in part ? part.errorText : undefined;
-	return text?.trim() ? text : null;
+	if (!("state" in part)) return null;
+	if (part.state === "output-denied") {
+		return "This step was not approved.";
+	}
+	if (part.state === "output-error") {
+		return "This step failed. Ask again to retry.";
+	}
+	return null;
 }
 
 function timestampOf(value: string): number {

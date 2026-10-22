@@ -1,4 +1,5 @@
 import { EnrichmentStatus } from "@crm/db";
+import { DIRECT_KINDS } from "@crm/db/agent-tasks";
 import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
@@ -12,13 +13,7 @@ import { runPortrait } from "./portrait";
 import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
 import { staleTaskSweep } from "./stale-tasks";
-import {
-	claimDue,
-	completeTask,
-	DIRECT_KINDS,
-	type LeasedTask,
-	noteSession,
-} from "./tasks";
+import { claimDue, completeTask, type LeasedTask, noteSession } from "./tasks";
 
 export const VISIBLE_BATCH = DISPATCH.visible.batch;
 export const VISIBLE_CONCURRENCY = DISPATCH.visible.concurrency;

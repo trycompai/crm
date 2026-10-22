@@ -394,6 +394,12 @@ enum AgentConversationCommandType {
   CREATE_AGENT
 }
 
+enum AgentConversationPermissionMode {
+  MANUAL
+  AUTO
+  BYPASS
+}
+
 enum AgentResponseRating {
   UP
   DOWN
@@ -621,15 +627,19 @@ model AgentTask {
 model AgentEvent {
   id             String             @id
   sessionId      String
+  streamIndex    Int?
+  deliveryIds    String[]           @default([])
   contactId      String?
   conversationId String?
   conversation   AgentConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   type           String
   data           Json
+  encryptedData  String?
 
   emittedAt DateTime
 
   @@index([sessionId, emittedAt])
+  @@unique([sessionId, streamIndex])
   @@index([contactId, emittedAt])
   @@index([conversationId, emittedAt])
   @@map("agentEvent")
@@ -657,6 +667,8 @@ model AgentConversation {
   continuationToken   String?
   streamIndex         Int     @default(0)
   pendingInputRequest Json?
+
+  permissionMode AgentConversationPermissionMode @default(MANUAL)
 
   title        String?
   messageCount Int     @default(0)

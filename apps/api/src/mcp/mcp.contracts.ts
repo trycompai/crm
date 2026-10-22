@@ -17,6 +17,14 @@ const mcpCatalogEntry = z.object({
 	resource: z.url(),
 	readOnlyScopes: z.array(z.string()),
 	readWriteScopes: z.array(z.string()),
+	agents: z.array(
+		z.object({
+			id: z.string(),
+			name: z.string(),
+			description: z.string().nullable(),
+			status: z.enum(["LIVE", "PAUSED"]),
+		}),
+	),
 	connection: mcpConnectionState.nullable(),
 });
 

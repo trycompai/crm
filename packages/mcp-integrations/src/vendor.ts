@@ -24,6 +24,12 @@ export const vendorSchema = z
 	.object({
 		slug: z.string().regex(/^[a-z][a-z0-9-]*$/),
 		name: z.string().trim().min(1),
+		presentation: z.object({
+			description: z.string().trim().min(1),
+			bringsIn: z.string().trim().min(1),
+			sendsReadOnly: z.string().trim().min(1),
+			sendsReadWrite: z.string().trim().min(1),
+		}),
 		mcp: z.object({
 			resource: httpsUrl,
 			transport: z.literal("streamable-http"),
@@ -32,6 +38,7 @@ export const vendorSchema = z
 			kind: z.literal("mcp_oauth"),
 			authorizationServers: z.array(httpsOrigin).min(1),
 			endpointOrigins: z.array(httpsOrigin).optional(),
+			consentPrompt: z.boolean().optional(),
 		}),
 		access: z.object({
 			read_only: vendorAccess,
@@ -40,7 +47,7 @@ export const vendorSchema = z
 		riskyTools: z.array(z.string().trim().min(1)).optional(),
 		docsHosts: z.array(z.hostname()).min(1),
 		source: z.object({
-			integrationsSh: httpsUrl,
+			providerDocs: httpsUrl,
 			tools: httpsUrl,
 			checkedAt: z.iso.date(),
 		}),

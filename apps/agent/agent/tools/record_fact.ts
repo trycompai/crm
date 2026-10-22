@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { changeWrite } from "../lib/approval";
 import type { Evidence, EvidenceKind } from "../lib/evidence";
 import { WEIGHTS } from "../lib/evidence";
 import { FACT_FIELDS, type FactField, recordFact } from "../lib/facts";
@@ -45,6 +46,7 @@ export default defineTool({
 			.optional()
 			.describe("The page a rep should open to check."),
 	}),
+	approval: changeWrite(),
 	async execute(input, ctx) {
 		assertResearchPurpose(ctx);
 		focusOn({ contactId: input.contactId });

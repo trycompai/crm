@@ -11,7 +11,7 @@ import { reconcileStaleTasks } from "../lib/stale-tasks";
 
 export default defineSchedule({
 	cron: "* * * * *",
-	async run({ receive, waitUntil, appAuth }) {
+	async run({ to, waitUntil, appAuth }) {
 		waitUntil(
 			Promise.all([
 				sweepBlankFacts(),
@@ -19,9 +19,7 @@ export default defineSchedule({
 				(async () => {
 					await reconcileStaleTasks();
 					await drainAll((task) =>
-						receive(crm, {
-							message: brief(task),
-							target: { taskId: task.id },
+						to(crm, { taskId: task.id }).send(brief(task), {
 							auth: taskAuth(task, appAuth),
 						}),
 					);
@@ -33,16 +31,15 @@ export default defineSchedule({
 
 					await Promise.all([
 						...builderIds.map((builderSubmissionId) =>
-							receive(crm, {
-								message: "Continue a queued private agent-builder chat.",
-								target: { builderSubmissionId },
-								auth: appAuth,
-							}),
+							to(crm, { builderSubmissionId }).send(
+								"Continue a queued private agent-builder chat.",
+								{
+									auth: appAuth,
+								},
+							),
 						),
 						...runIds.map((runId) =>
-							receive(crm, {
-								message: "Execute a queued deployed agent run.",
-								target: { runId },
+							to(crm, { runId }).send("Execute a queued deployed agent run.", {
 								auth: appAuth,
 							}),
 						),

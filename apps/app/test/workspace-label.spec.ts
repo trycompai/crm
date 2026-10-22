@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_WORKSPACE_NAME } from "@crm/auth";
+import { DEFAULT_WORKSPACE_NAME } from "@crm/auth/organization";
 import { workspaceLabel } from "../lib/workspace-label";
 
 describe("what the header calls this install", () => {

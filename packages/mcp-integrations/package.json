@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		"./catalog": "./src/catalog.ts",
+		"./scopes": "./src/scopes.ts",
 		"./tool": "./src/tool.ts",
 		"./vendor": "./src/vendor.ts"
 	},

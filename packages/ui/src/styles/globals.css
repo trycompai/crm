@@ -157,6 +157,7 @@
 	--container-page-wide: 1120px;
 	--container-narrow: 560px;
 	--container-sheet: 640px;
+	--height-tool-panel: clamp(400px, calc(100dvh - 416px), 640px);
 	--color-dark-card: #171717;
 	--color-dark-border: #2a2a2a;
 	--color-dark-ring: #40be96;
@@ -638,6 +639,12 @@
 	transition: transform 0.3s cubic-bezier(0.4, 1, 0.8, 1);
 }
 
+.link-hover--bounce span {
+	display: inline-block;
+	transform: translate3d(0, -4px, 0);
+	transition: transform 0.2s 0.05s cubic-bezier(0.2, 0.57, 0.67, 1.53);
+}
+
 .link-hover--strike:hover span,
 .link-hover--strike:focus-visible span {
 	transform: scale3d(1.08, 1.08, 1);
@@ -766,12 +773,6 @@
 	transition-timing-function: cubic-bezier(0.8, 0, 0.1, 1);
 }
 
-.link-hover--bounce span {
-	display: inline-block;
-	transform: translate3d(0, -4px, 0);
-	transition: transform 0.2s 0.05s cubic-bezier(0.2, 0.57, 0.67, 1.53);
-}
-
 .link-hover--bounce:hover span,
 .link-hover--bounce:focus-visible span {
 	transform: translate3d(0, 0, 0);
@@ -795,6 +796,14 @@
 	stroke-dashoffset: 1;
 }
 
+.link-hover__graphic--arc path {
+	transition: stroke-dashoffset 0.4s cubic-bezier(0.7, 0, 0.3, 1);
+}
+
+.link-hover__graphic--scribble path {
+	transition: stroke-dashoffset 0.6s cubic-bezier(0.7, 0, 0.3, 1);
+}
+
 .link-hover:hover .link-hover__graphic--stroke path,
 .link-hover:focus-visible .link-hover__graphic--stroke path {
 	stroke-dashoffset: 0;
@@ -810,10 +819,6 @@
 	top: 73%;
 }
 
-.link-hover__graphic--arc path {
-	transition: stroke-dashoffset 0.4s cubic-bezier(0.7, 0, 0.3, 1);
-}
-
 .link-hover:hover .link-hover__graphic--arc path,
 .link-hover:focus-visible .link-hover__graphic--arc path {
 	transition-duration: 0.3s;
@@ -822,10 +827,6 @@
 
 .link-hover__graphic--scribble {
 	top: 100%;
-}
-
-.link-hover__graphic--scribble path {
-	transition: stroke-dashoffset 0.6s cubic-bezier(0.7, 0, 0.3, 1);
 }
 
 .link-hover:hover .link-hover__graphic--scribble path,
@@ -877,8 +878,23 @@
 	.link-hover *,
 	.link-hover::before,
 	.link-hover::after {
-		animation: none !important;
-		transition-duration: 0.01ms !important;
+		animation: none;
+		transition-duration: 0.01ms;
+	}
+
+	.link-hover:hover::before,
+	.link-hover:focus-visible::before,
+	.link-hover:hover::after,
+	.link-hover:focus-visible::after,
+	.link-hover:hover span,
+	.link-hover:focus-visible span {
+		animation: none;
+		transition-duration: 0.01ms;
+	}
+
+	.link-hover:hover .link-hover__graphic path,
+	.link-hover:focus-visible .link-hover__graphic path {
+		transition-duration: 0.01ms;
 	}
 }
 

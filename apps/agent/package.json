@@ -19,14 +19,16 @@
 		"clean": "rm -rf .turbo .eve node_modules"
 	},
 	"dependencies": {
-		"@crm/mcp-integrations": "workspace:*",
+		"@crm/auth": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
+		"@crm/mcp-integrations": "workspace:*",
 		"@crm/telemetry": "workspace:*",
 		"@crm/validation": "workspace:*",
 		"@modelcontextprotocol/sdk": "^1.32.1",
+		"ai": "^7.0.126",
 		"context.dev": "2.10.0",
-		"eve": "^0.30.8",
+		"eve": "^0.69.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {

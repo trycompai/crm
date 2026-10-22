@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { changeWrite } from "../lib/approval";
 import { createField, updateFieldBrief } from "../lib/fields";
 
 export default defineTool({
@@ -46,6 +47,7 @@ export default defineTool({
 			.optional()
 			.describe("False hands the field back to the rep entirely."),
 	}),
+	approval: changeWrite(),
 	async execute(input) {
 		if (input.action === "create") {
 			if (!input.label || !input.type) {

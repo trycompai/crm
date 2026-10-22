@@ -1,166 +1,242 @@
 import { db } from "@crm/db";
 import { connection } from "next/server";
+import { z } from "zod";
 import {
 	AGENT_URL,
 	bridgeConfigured,
 	mintBridgeToken,
 } from "@/lib/agent-bridge";
+import {
+	EveProxyRequestError,
+	eveProxyAgentResponse,
+	eveProxyBody,
+	eveProxyBuilderSendAllowed,
+	eveProxyMessageTitle,
+	eveProxyResponseHeaders,
+	eveProxyRoute,
+	eveProxySessionId,
+	eveProxyStream,
+	eveProxyTargetUrl,
+} from "@/lib/eve-session-proxy";
 import { getSession } from "@/lib/session";
+
+const recordId = z.string().regex(/^[a-z0-9]{20,32}$/);
+
+type RecordContext = {
+	contactId?: string;
+	companyId?: string;
+	dealId?: string;
+};
 
 async function handler(request: Request): Promise<Response> {
 	await connection();
 
 	if (!bridgeConfigured()) {
-		return Response.json(
-			{ error: "The research agent is not configured for this install." },
-			{ status: 503 },
+		return failure(
+			"The research agent is not configured for this install.",
+			503,
 		);
 	}
 
+	const route = eveProxyRoute(request);
+	if (!route) return failure("Agent route not found.", 404);
+
 	const session = await getSession();
-	if (!session) {
-		return Response.json({ error: "Not signed in." }, { status: 401 });
-	}
+	if (!session) return failure("Not signed in.", 401);
 
-	const url = new URL(request.url);
-	const target = `${AGENT_URL}${url.pathname}${url.search}`;
-
-	const headers = new Headers(request.headers);
-
-	for (const header of [
-		"host",
-		"cookie",
-		"x-forwarded-host",
-		"x-forwarded-proto",
-		"x-forwarded-for",
-		"forwarded",
-		"transfer-encoding",
-		"connection",
-		"keep-alive",
-		"content-length",
-		"expect",
-	]) {
-		headers.delete(header);
-	}
-
-	const contactId = request.headers.get("x-crm-contact");
-	const companyId = request.headers.get("x-crm-company");
-	const dealId = request.headers.get("x-crm-deal");
-	const builderConversationId = request.headers.get(
-		"x-crm-builder-conversation",
-	);
-	const requestedSession = sessionFromPath(url.pathname);
-	headers.delete("x-crm-contact");
-	headers.delete("x-crm-company");
-	headers.delete("x-crm-deal");
-	headers.delete("x-crm-builder-conversation");
-
-	if (requestedSession) {
+	let record: RecordContext;
+	let builderConversation = false;
+	if (route.kind === "create") {
+		const requested = recordFromHeaders(request.headers);
+		if (!requested) return failure("Name one CRM record.", 400);
+		record = requested;
+	} else {
 		const conversation = await db.agentConversation.findUnique({
-			where: { sessionId: requestedSession },
-			select: { userId: true },
-		});
-		if (conversation && conversation.userId !== session.user.id) {
-			return Response.json(
-				{ error: "Conversation not found." },
-				{ status: 404 },
-			);
-		}
-	}
-
-	if (builderConversationId) {
-		const conversation = await db.agentConversation.findFirst({
-			where: {
-				id: builderConversationId,
-				userId: session.user.id,
-				kind: "BUILDER",
+			where: { sessionId: route.sessionId },
+			select: {
+				id: true,
+				kind: true,
+				userId: true,
+				contactId: true,
+				companyId: true,
+				dealId: true,
 			},
-			select: { sessionId: true },
 		});
+		const builderId = request.headers.get("x-crm-builder-conversation");
 		if (
 			!conversation ||
-			(requestedSession && conversation.sessionId !== requestedSession)
+			conversation.userId !== session.user.id ||
+			(conversation.kind === "BUILDER" && builderId !== conversation.id) ||
+			(conversation.kind !== "BUILDER" && builderId !== null)
 		) {
-			return Response.json(
-				{ error: "Conversation not found." },
-				{ status: 404 },
-			);
+			return failure("Conversation not found.", 404);
+		}
+		builderConversation = conversation.kind === "BUILDER";
+		record = {
+			contactId: conversation.contactId ?? undefined,
+			companyId: conversation.companyId ?? undefined,
+			dealId: conversation.dealId ?? undefined,
+		};
+	}
+
+	const authorization = `Bearer ${await mintBridgeToken(
+		{
+			id: session.user.id,
+			email: session.user.email,
+			name: session.user.name,
+		},
+		record,
+	)}`;
+
+	let body: string | null = null;
+	if (route.kind !== "stream") {
+		try {
+			body = await eveProxyBody(request, route.kind);
+		} catch (error) {
+			if (error instanceof EveProxyRequestError) {
+				return failure(error.message, error.status);
+			}
+			throw error;
 		}
 	}
-
-	headers.set(
-		"authorization",
-		`Bearer ${await mintBridgeToken(
-			{
-				id: session.user.id,
-				email: session.user.email,
-				name: session.user.name,
-			},
-			{
-				contactId: cuid(contactId),
-				companyId: cuid(companyId),
-				dealId: cuid(dealId),
-			},
-		)}`,
-	);
-
-	const init: RequestInit & { duplex?: "half" } = {
-		method: request.method,
-		headers,
-		redirect: "manual",
-		signal: request.signal,
-	};
-
-	if (request.method !== "GET" && request.method !== "HEAD") {
-		init.body = request.body;
-		init.duplex = "half";
+	if (
+		builderConversation &&
+		route.kind === "send" &&
+		!eveProxyBuilderSendAllowed(body)
+	) {
+		return failure("Builder messages must use the durable queue.", 409);
 	}
+
+	const target = eveProxyTargetUrl(request, AGENT_URL);
+	const headers = new Headers({
+		accept:
+			route.kind === "stream" ? "application/x-ndjson" : "application/json",
+		authorization,
+	});
+	if (body !== null) headers.set("content-type", "application/json");
 
 	let upstream: Response;
 	try {
-		upstream = await fetch(target, init);
-	} catch (error) {
-		return Response.json(
-			{
-				error: "The research agent is not reachable.",
-				detail: error instanceof Error ? error.message : String(error),
-			},
-			{ status: 502 },
+		upstream = await fetch(target, {
+			method: request.method,
+			headers,
+			body,
+			redirect: "manual",
+			signal: request.signal,
+		});
+	} catch {
+		return failure("The research agent is not reachable.", 502);
+	}
+
+	if (!upstream.ok) {
+		await upstream.body?.cancel();
+		const status =
+			upstream.status >= 400 && upstream.status < 500 ? upstream.status : 502;
+		return failure(
+			"The research agent rejected the request.",
+			status,
+			upstream.headers,
 		);
 	}
 
-	const responseHeaders = new Headers(upstream.headers);
-	for (const header of [
-		"transfer-encoding",
-		"connection",
-		"content-encoding",
-		"content-length",
-	]) {
-		responseHeaders.delete(header);
+	if (route.kind === "stream") {
+		if (!upstream.body)
+			return failure("The research agent returned no stream.", 502);
+		return new Response(eveProxyStream(upstream.body), {
+			status: upstream.status,
+			headers: eveProxyResponseHeaders(upstream.headers),
+		});
 	}
 
-	return new Response(upstream.body, {
+	const upstreamSessionId = eveProxySessionId(
+		upstream.headers.get("x-eve-session-id"),
+	);
+	let response: ReturnType<typeof eveProxyAgentResponse>;
+	try {
+		response = eveProxyAgentResponse(await upstream.json());
+	} catch {
+		if (route.kind === "create" && upstreamSessionId) {
+			await cancelSession(upstreamSessionId, authorization);
+		}
+		return failure("The research agent returned an invalid response.", 502);
+	}
+
+	if (route.kind === "create") {
+		const createdSessionId = response.sessionId ?? upstreamSessionId;
+		if (!createdSessionId) {
+			return failure("The research agent returned no session.", 502);
+		}
+		response = { ...response, sessionId: createdSessionId };
+		try {
+			await db.agentConversation.create({
+				data: {
+					kind: "RECORD",
+					sessionId: createdSessionId,
+					userId: session.user.id,
+					title: eveProxyMessageTitle(body),
+					...record,
+				},
+			});
+		} catch {
+			await cancelSession(createdSessionId, authorization);
+			return failure("The conversation could not be saved.", 500);
+		}
+	}
+
+	return Response.json(response, {
 		status: upstream.status,
-		statusText: upstream.statusText,
-		headers: responseHeaders,
+		headers: eveProxyResponseHeaders(upstream.headers),
 	});
 }
 
-export {
-	handler as DELETE,
-	handler as GET,
-	handler as HEAD,
-	handler as OPTIONS,
-	handler as PATCH,
-	handler as POST,
-	handler as PUT,
-};
-
-function cuid(value: string | null): string | undefined {
-	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
+function recordFromHeaders(headers: Headers): RecordContext | null {
+	const values = [
+		["contactId", headers.get("x-crm-contact")],
+		["companyId", headers.get("x-crm-company")],
+		["dealId", headers.get("x-crm-deal")],
+	] as const;
+	const present = values.filter((entry) => entry[1] !== null);
+	if (present.length !== 1) return null;
+	const [key, value] = present[0] ?? [];
+	const parsed = recordId.safeParse(value);
+	return key && parsed.success ? { [key]: parsed.data } : null;
 }
 
-function sessionFromPath(pathname: string): string | null {
-	const match = pathname.match(/\/eve\/v1\/session\/([^/]+)/);
-	return match?.[1] ? decodeURIComponent(match[1]) : null;
+async function cancelSession(
+	sessionId: string,
+	authorization: string,
+): Promise<void> {
+	try {
+		const target = new URL(
+			`/eve/v1/session/${encodeURIComponent(sessionId)}/cancel`,
+			AGENT_URL,
+		);
+		const response = await fetch(target, {
+			method: "POST",
+			headers: {
+				accept: "application/json",
+				authorization,
+				"content-type": "application/json",
+			},
+			body: "{}",
+			redirect: "manual",
+		});
+		await response.body?.cancel();
+	} catch {
+		return;
+	}
 }
+
+function failure(
+	error: string,
+	status: number,
+	upstreamHeaders?: Headers,
+): Response {
+	const headers = upstreamHeaders
+		? eveProxyResponseHeaders(upstreamHeaders)
+		: new Headers();
+	headers.set("cache-control", "no-store");
+	return Response.json({ error }, { status, headers });
+}
+
+export { handler as GET, handler as POST };

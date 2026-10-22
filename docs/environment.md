@@ -103,6 +103,14 @@ and lists every variable the API reads and nothing else.
   importing it (see the dynamic `import()` in `test/auth.e2e.spec.ts`).
 - **The schema is the API's, not the repo's** — `@crm/auth` and the agent read their own.
 
+## Builder chat encryption
+
+`CHAT_EVENT_ENCRYPTION_KEY` encrypts new builder chat events before database storage.
+Generate 32 bytes with `openssl rand -base64 32`.
+The API and agent must use the same value.
+Without it, builder chat stores the sanitized public event as plaintext.
+Removing it hides encrypted replay data without stopping the agent or API.
+
 ## Optional: what the agent can do
 
 Every outside source is optional and the agent runs with none. A missing key removes a

@@ -1,4 +1,5 @@
-import { auth, DAY_SECONDS } from "@crm/auth";
+import { DAY_SECONDS } from "@crm/auth/api-keys";
+import { auth } from "@crm/auth/auth";
 import type { Db, Prisma } from "@crm/db";
 import {
 	HttpException,

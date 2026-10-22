@@ -133,6 +133,14 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	@Matches(/^[A-Za-z0-9+/]{43}=$/, {
+		message:
+			"CHAT_EVENT_ENCRYPTION_KEY must contain exactly 32 base64-encoded bytes.",
+	})
+	CHAT_EVENT_ENCRYPTION_KEY?: string;
+
+	@IsOptional()
+	@IsString()
 	CRM_TELEMETRY_DISABLED?: string;
 }
 

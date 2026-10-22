@@ -42,6 +42,8 @@ function requestName(action: ActionRequest): string {
 			return `subagent ${action.subagentName}`;
 		case "remote-agent-call":
 			return `remote ${action.remoteAgentName}`;
+		case "workflow-tool-call":
+			return action.toolName;
 		case "load-skill":
 			return "load_skill";
 	}

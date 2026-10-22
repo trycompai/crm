@@ -14,6 +14,12 @@ const READ_SCOPES = [
 export const supabase = parseVendor({
 	slug: "supabase",
 	name: "Supabase",
+	presentation: {
+		description: "Let deployed agents inspect and manage Supabase",
+		bringsIn: "Projects, database structure and diagnostics",
+		sendsReadOnly: "Nothing",
+		sendsReadWrite: "Approved database and project changes",
+	},
 	mcp: {
 		resource: "https://mcp.supabase.com/mcp",
 		transport: "streamable-http",
@@ -59,7 +65,7 @@ export const supabase = parseVendor({
 	],
 	docsHosts: ["supabase.com"],
 	source: {
-		integrationsSh: "https://integrations.sh/supabase/supabase/",
+		providerDocs: "https://supabase.com/docs/guides/ai-tools/mcp",
 		tools: "https://supabase.com/docs/guides/ai-tools/mcp",
 		checkedAt: "2026-10-20",
 	},

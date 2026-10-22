@@ -20,6 +20,7 @@
 
 <p align="center">
   <a href="#the-agent"><strong>The agent</strong></a> ·
+  <a href="#connections-and-agent-access"><strong>Connections</strong></a> ·
   <a href="#the-stack"><strong>Stack</strong></a> ·
   <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="#configuration"><strong>Configuration</strong></a> ·
@@ -139,6 +140,27 @@ value in both processes to turn it on. Without it the tab reports that it is not
 configured, and the agent carries on running its own schedule.
 
 [`docs/agent.md`](./docs/agent.md) is the full write-up.
+
+## Connections and agent access
+
+Open **Settings → Connections** to connect services for the workspace.
+Only an owner or admin can connect, reconnect, review, or disconnect a service.
+
+The add dialog shows only supported CRM connections.
+Each supported service opens inside CRM.
+
+Choose **Read only** when agents must not change external data.
+Choose **Read and write** when approved agent tools can make external changes.
+The connection page shows every discovered tool and its access type.
+New or changed tools require review before an agent can use them.
+
+A connection gives the workspace a maximum access level.
+Each deployed agent receives a smaller grant with exact tool names and fingerprints.
+The connection page lists every deployed agent that uses the service.
+
+Disconnecting a service blocks the next agent call.
+It also removes every discovered tool from active use.
+Reconnect the service and review its current tools before agents use it again.
 
 ## The stack
 
@@ -312,6 +334,8 @@ short version:
 | `API_URL` / `APP_URL` | Where the two halves are served. Only needed off localhost. |
 | `PERPLEXITY_API_KEY` | Lets the agent search the open web, with citations. |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
+| `CHAT_EVENT_ENCRYPTION_KEY` | Encrypts builder chat history. Generate it with `openssl rand -base64 32`. |
+| `MCP_ENCRYPTION_KEY` | Encrypts MCP OAuth tokens. Generate it with `openssl rand -base64 32`. |
 | `REDIS_URL` | A shared cache. Without it, per-instance and in-memory. |
 | `CRON_SECRET` | Guards the mailbox sync route. Required to use it. |
 | `CRM_TELEMETRY_DISABLED` | Set to `1` and this install reports nothing. `DO_NOT_TRACK` too. |

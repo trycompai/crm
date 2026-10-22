@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { MessageStreamEvent, SessionState } from "eve/client";
+import type { ClientSessionState, MessageStreamEvent } from "eve/client";
 import { recordCopy, recordFilter, recordHeader } from "../lib/agent-record";
 import { classify, composerState, eventsOf } from "../lib/agent-session";
 
@@ -12,17 +12,16 @@ const event = (
 ): MessageStreamEvent =>
 	({ type, data: {}, meta: { id: `evt_${type}`, at } }) as MessageStreamEvent;
 
-const parked: SessionState = {
+const parked: ClientSessionState = {
 	sessionId: "wrun_1",
-	continuationToken: "eve:live",
 	streamIndex: 3,
 };
 
-const unparked: SessionState = { sessionId: "wrun_1", streamIndex: 3 };
+const unparked: ClientSessionState = { sessionId: "wrun_1", streamIndex: 3 };
 
 describe("classify", () => {
-	it("trusts the token over any reading of the events", () => {
-		expect(classify(parked, [event("message.appended")], NOW)).toBe("ready");
+	it("reads a waiting session as ready", () => {
+		expect(classify(parked, [event("session.waiting")], NOW)).toBe("ready");
 	});
 
 	it("knows a terminal session cannot be continued", () => {

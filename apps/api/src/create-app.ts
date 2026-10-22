@@ -1,4 +1,6 @@
-import { API_KEY_HEADER, apiUrl, SESSION_COOKIE_NAME } from "@crm/auth";
+import { API_KEY_HEADER } from "@crm/auth/api-keys";
+import { SESSION_COOKIE_NAME } from "@crm/auth/cookies";
+import { apiUrl } from "@crm/auth/env";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import {

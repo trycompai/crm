@@ -3,10 +3,13 @@ import {
 	agentBuilderCallIsActive,
 	builderConversationIsWorking,
 	builderSessionStreamKey,
+	builderStreamState,
 	completedBuilderSteps,
 	displayedArtifactVersionId,
 	latestBuilderArtifacts,
 	latestCompletedArtifactVersionId,
+	mergeBuilderEventHistory,
+	replacedFailedSubmissionIds,
 	reviewVersionId,
 } from "./agent-builder-state";
 
@@ -102,10 +105,31 @@ describe("agent builder state", () => {
 	});
 
 	it("reloads the Eve snapshot for parked and completed conversations", () => {
-		expect(builderSessionStreamKey("session-1", "submission-2")).toBe(
-			"session-1:submission-2",
-		);
-		expect(builderSessionStreamKey(null, "submission-2")).toBeNull();
+		expect(builderSessionStreamKey("session-1")).toBe("session-1");
+		expect(builderSessionStreamKey(null)).toBeNull();
+	});
+
+	it("keeps a saved prefix when polling returns only the newest 5,000 events", () => {
+		const saved = Array.from({ length: 5_001 }, (_, index) => ({
+			meta: { id: `event-${index}` },
+		}));
+		const recent = saved.slice(1);
+
+		const merged = mergeBuilderEventHistory(saved, recent);
+
+		expect(merged).toHaveLength(5_001);
+		expect(merged[0]?.meta.id).toBe("event-0");
+		expect(merged.at(-1)?.meta.id).toBe("event-5000");
+	});
+
+	it("hides a failed submission after the same retry is accepted", () => {
+		expect(
+			replacedFailedSubmissionIds([
+				{ id: "failed", status: "FAILED", retryKey: "same request" },
+				{ id: "retry", status: "ACCEPTED", retryKey: "same request" },
+				{ id: "other", status: "FAILED", retryKey: "different request" },
+			]),
+		).toEqual(new Set(["failed"]));
 	});
 
 	it("offers a newer ready version for review without replacing the live version", () => {
@@ -144,5 +168,21 @@ describe("agent builder state", () => {
 			latestBuilderArtifacts(artifacts, null).get("agent/manifest.json")?.id,
 		).toBe("working-3");
 		expect(latestCompletedArtifactVersionId(artifacts)).toBe("version-1");
+	});
+});
+
+describe("builderStreamState", () => {
+	it("shows resume without allowing cancellation", () => {
+		expect(builderStreamState("resuming")).toEqual({
+			resuming: true,
+			cancellable: false,
+		});
+	});
+
+	it("allows cancellation during an active turn", () => {
+		expect(builderStreamState("streaming")).toEqual({
+			resuming: false,
+			cancellable: true,
+		});
 	});
 });

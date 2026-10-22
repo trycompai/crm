@@ -13,6 +13,7 @@ const platformSlug = `linear-${suffix}`;
 const userId = `mcp-runtime-user-${suffix}`;
 const readFingerprint = "a".repeat(64);
 const changeFingerprint = "b".repeat(64);
+const riskyFingerprint = "c".repeat(64);
 let agentId = "";
 let versionId = "";
 let runId = "";
@@ -20,7 +21,12 @@ let registrationId = "";
 let connectionId = "";
 let createdWorkspace = false;
 
-function context(toolName: string, callId: string, purpose = "team-agent") {
+function context(
+	toolName: string,
+	callId: string,
+	purpose = "team-agent",
+	permissionMode?: "manual" | "auto" | "bypass",
+) {
 	return {
 		approvedTools: new Set<string>(),
 		callId,
@@ -28,7 +34,7 @@ function context(toolName: string, callId: string, purpose = "team-agent") {
 		session: {
 			id: `session-${suffix}`,
 			auth: {
-				current: { attributes: { purpose, runId } },
+				current: { attributes: { purpose, runId, permissionMode } },
 				initiator: null,
 			},
 			turn: {},
@@ -114,6 +120,12 @@ beforeAll(async () => {
 								callKind: "change",
 								summary: "Create an issue",
 							},
+							{
+								name: "delete_issue",
+								fingerprint: riskyFingerprint,
+								callKind: "risky",
+								summary: "Delete an issue",
+							},
 						],
 					},
 				],
@@ -178,6 +190,14 @@ beforeAll(async () => {
 						inputSchema: {},
 						fingerprint: changeFingerprint,
 						callKind: "change",
+						reviewState: "REVIEWED",
+					},
+					{
+						name: "delete_issue",
+						description: "Delete an issue",
+						inputSchema: {},
+						fingerprint: riskyFingerprint,
+						callKind: "risky",
 						reviewState: "REVIEWED",
 					},
 				],
@@ -255,10 +275,65 @@ describe("MCP runtime authorization", () => {
 		).toBe("approved");
 	});
 
+	it("keeps read tools automatic in manual mode", async () => {
+		expect(
+			await authorizeMcpTool(
+				platformSlug,
+				context("list_issues", "manual-read", "team-agent", "manual"),
+			),
+		).toBe("approved");
+	});
+
+	it("asks before a change in manual mode", async () => {
+		expect(
+			await authorizeMcpTool(
+				platformSlug,
+				context("create_issue", "manual-change", "team-agent", "manual"),
+			),
+		).toBe("user-approval");
+		expect(
+			await db.agentAction.count({
+				where: { idempotencyKey: `${runId}:manual-change` },
+			}),
+		).toBe(0);
+	});
+
+	it("runs a normal change in auto mode", async () => {
+		expect(
+			await authorizeMcpTool(
+				platformSlug,
+				context("create_issue", "auto-change", "team-agent", "auto"),
+			),
+		).toBe("approved");
+		expect(
+			await db.agentAction.count({
+				where: { idempotencyKey: `${runId}:auto-change` },
+			}),
+		).toBe(1);
+	});
+
+	it("asks before a risky change in auto mode", async () => {
+		expect(
+			await authorizeMcpTool(
+				platformSlug,
+				context("delete_issue", "auto-risky", "team-agent", "auto"),
+			),
+		).toBe("user-approval");
+	});
+
+	it("runs a risky change in bypass mode", async () => {
+		expect(
+			await authorizeMcpTool(
+				platformSlug,
+				context("delete_issue", "bypass-risky", "team-agent", "bypass"),
+			),
+		).toBe("approved");
+	});
+
 	it("denies an ungranted tool", async () => {
 		const result = await authorizeMcpTool(
 			platformSlug,
-			context("delete_issue", "ungranted"),
+			context("unknown_issue", "ungranted"),
 		);
 
 		expect(result).toEqual({

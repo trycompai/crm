@@ -1,6 +1,17 @@
-import { WORKSPACE_ID } from "@crm/auth";
-import { type Db, type Prisma, Prisma as PrismaNamespace } from "@crm/db";
+import { WORKSPACE_ID } from "@crm/auth/organization";
+import {
+	AgentConversationPermissionMode,
+	type Db,
+	type Prisma,
+	Prisma as PrismaNamespace,
+} from "@crm/db";
 import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
+import {
+	type AgentPermissionMode,
+	agentPermissionMode,
+	type BuilderToolApproval,
+	builderToolApproval,
+} from "@crm/validation/agent-permission";
 import {
 	type BuilderQuestion,
 	builderQuestion,
@@ -18,8 +29,13 @@ import {
 	builderMessageWithAttachments,
 	isPreviewableImage,
 } from "./conversation-attachments";
+import {
+	conversationResumeSnapshot,
+	publicConversationEvent,
+} from "./conversation-resume";
 import { conversationShareTokenHash } from "./conversation-share-token";
 import type {
+	BuilderApprovalResponseInput,
 	BuilderConversationCreateInput,
 	BuilderConversationSubmitInput,
 	BuilderConversationSummary,
@@ -248,6 +264,7 @@ export class ConversationsService {
 			where: { id, userId, kind: "BUILDER" },
 			select: {
 				id: true,
+				permissionMode: true,
 				sessionId: true,
 				continuationToken: true,
 				pendingInputRequest: true,
@@ -354,10 +371,36 @@ export class ConversationsService {
 		}
 
 		const { pendingInputRequest, ...conversation } = row;
+		const resume = row.sessionId
+			? conversationResumeSnapshot(
+					row.sessionId,
+					await this.db.agentEvent.findMany({
+						where: {
+							conversationId: row.id,
+							sessionId: row.sessionId,
+							streamIndex: { not: null },
+						},
+						orderBy: { streamIndex: "asc" },
+						select: {
+							id: true,
+							type: true,
+							data: true,
+							encryptedData: true,
+							conversationId: true,
+							emittedAt: true,
+							streamIndex: true,
+							deliveryIds: true,
+						},
+					}),
+				)
+			: null;
 
 		return {
 			...conversation,
+			permissionMode: permissionModeOutput(row.permissionMode),
+			resume,
 			pendingQuestion: pendingBuilderQuestionOf(pendingInputRequest),
+			pendingApproval: pendingBuilderApprovalOf(pendingInputRequest),
 			lastMessageAt: row.lastMessageAt.toISOString(),
 			lastAssistantAt: row.lastAssistantAt?.toISOString() ?? null,
 			lastReadAt: row.lastReadAt?.toISOString() ?? null,
@@ -627,6 +670,115 @@ export class ConversationsService {
 		}
 	}
 
+	async answerBuilderApproval(
+		input: BuilderApprovalResponseInput,
+		userId: string,
+	): Promise<{ id: string }> {
+		await this.assertWorkspaceMember(userId);
+		const existing = await this.requestByClientId(input.clientRequestId);
+
+		if (existing) {
+			return this.replayBuilderSubmission(existing, input.id, userId);
+		}
+
+		const conversation = await this.db.agentConversation.findFirst({
+			where: { id: input.id, userId, kind: "BUILDER" },
+			select: {
+				id: true,
+				sessionId: true,
+				continuationToken: true,
+				pendingInputRequest: true,
+			},
+		});
+
+		if (!conversation) {
+			throw new NotFoundException(
+				`No builder conversation with id ${input.id}.`,
+			);
+		}
+
+		if (!conversation.sessionId || !conversation.continuationToken) {
+			throw new BadRequestException(
+				"The agent is no longer waiting for that approval.",
+			);
+		}
+
+		const approval = pendingBuilderApprovalOf(conversation.pendingInputRequest);
+		if (!approval || approval.requestId !== input.requestId) {
+			throw new BadRequestException(
+				"That approval request is no longer active.",
+			);
+		}
+
+		if (!approval.options.some((option) => option.id === input.decision)) {
+			throw new BadRequestException("That approval decision is not available.");
+		}
+
+		try {
+			const submission = await this.db.$transaction(async (tx) => {
+				const created = await tx.agentConversationSubmission.create({
+					data: {
+						conversationId: input.id,
+						submittedById: userId,
+						clientRequestId: input.clientRequestId,
+						inputRequestId: input.requestId,
+						commandType: "CHAT",
+						message: {
+							text: input.decision === "approve" ? "Approved" : "Declined",
+							resources: [],
+							attachments: [],
+							inputResponse: {
+								requestId: input.requestId,
+								optionId: input.decision,
+							},
+						},
+					},
+					select: { id: true },
+				});
+
+				await tx.agentConversation.update({
+					where: { id: input.id },
+					data: { lastMessageAt: new Date(), lastReadAt: new Date() },
+				});
+
+				return created;
+			});
+
+			this.agent?.builderConversationQueued();
+			return submission;
+		} catch (error) {
+			if (!isUniqueConstraint(error)) throw error;
+
+			const winner = await this.requestByClientId(input.clientRequestId);
+			if (winner) {
+				return this.replayBuilderSubmission(winner, input.id, userId);
+			}
+
+			throw new BadRequestException(
+				"That approval request has already been answered.",
+			);
+		}
+	}
+
+	async setBuilderPermissionMode(
+		input: { id: string; permissionMode: AgentPermissionMode },
+		userId: string,
+	): Promise<{ id: string }> {
+		await this.assertWorkspaceMember(userId);
+		const updated = await this.db.agentConversation.updateMany({
+			where: { id: input.id, userId, kind: "BUILDER" },
+			data: { permissionMode: permissionModeInput(input.permissionMode) },
+		});
+
+		if (updated.count !== 1) {
+			throw new NotFoundException(
+				`No builder conversation with id ${input.id}.`,
+			);
+		}
+
+		return { id: input.id };
+	}
+
 	async markRead(id: string, userId: string): Promise<{ id: string }> {
 		await this.assertWorkspaceMember(userId);
 		const updated = await this.db.agentConversation.updateMany({
@@ -875,14 +1027,19 @@ export class ConversationsService {
 			where: eventWhere,
 			orderBy: [{ emittedAt: "desc" }, { id: "desc" }],
 			take: input.limit,
-			select: { id: true, type: true, data: true, emittedAt: true },
+			select: {
+				id: true,
+				type: true,
+				data: true,
+				encryptedData: true,
+				conversationId: true,
+				emittedAt: true,
+				streamIndex: true,
+				deliveryIds: true,
+			},
 		});
 
-		return events.reverse().map((event) => ({
-			type: event.type,
-			data: event.data,
-			meta: { id: event.id, at: event.emittedAt.toISOString() },
-		}));
+		return events.reverse().map(publicConversationEvent);
 	}
 
 	async remove(id: string, userId: string): Promise<{ id: string }> {
@@ -1103,4 +1260,27 @@ function pendingBuilderQuestionOf(
 	value: Prisma.JsonValue,
 ): BuilderQuestion | null {
 	return builderQuestion.parse(value);
+}
+
+function pendingBuilderApprovalOf(
+	value: Prisma.JsonValue,
+): BuilderToolApproval | null {
+	return builderToolApproval.parse(value);
+}
+
+function permissionModeInput(
+	mode: AgentPermissionMode,
+): AgentConversationPermissionMode {
+	const parsed = agentPermissionMode.parse(mode);
+	if (parsed === "auto") return AgentConversationPermissionMode.AUTO;
+	if (parsed === "bypass") return AgentConversationPermissionMode.BYPASS;
+	return AgentConversationPermissionMode.MANUAL;
+}
+
+function permissionModeOutput(
+	mode: AgentConversationPermissionMode,
+): AgentPermissionMode {
+	if (mode === AgentConversationPermissionMode.AUTO) return "auto";
+	if (mode === AgentConversationPermissionMode.BYPASS) return "bypass";
+	return "manual";
 }

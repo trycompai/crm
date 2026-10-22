@@ -132,6 +132,7 @@ export const AGENT_TOOLS = [
 	"read_deal_history",
 	"record_fact",
 	"record_job_change",
+	"request_connection",
 	"research_company",
 	"research_person",
 	"resolve_linkedin_profile",
@@ -140,6 +141,8 @@ export const AGENT_TOOLS = [
 	"set_chat_title",
 	"set_contact_socials",
 	"set_field_value",
+	"web_fetch",
+	"web_search",
 	"write_brief",
 	"write_workspace_profile",
 ] as const;
@@ -153,8 +156,6 @@ export const EVE_TOOLS = [
 	"load_skill",
 	"read_file",
 	"todo",
-	"web_fetch",
-	"web_search",
 	"write_file",
 ] as const;
 

@@ -34,6 +34,7 @@
 		"radix-ui": "^1.6.0",
 		"react-day-picker": "^10.0.1",
 		"recharts": "3.8.0",
+		"simple-icons": "16.35.0",
 		"sonner": "^2.0.7",
 		"streamdown": "^2.7.1",
 		"tailwind-merge": "^3.6.0",

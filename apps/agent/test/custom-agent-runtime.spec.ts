@@ -336,8 +336,12 @@ describe("builder command routing", () => {
 		expect(chat).toContain("call ask_question");
 		expect(chat).toContain("one focused follow-up");
 		expect(chat).toContain(
-			"Do not restate or enumerate individual deal rows in prose, bullets, or tables",
+			"Do not narrate routine tool selection or announce a tool call",
 		);
+		expect(chat).toContain("Request at most 10 items");
+		expect(chat).toContain("Use pagination when the user requests more");
+		expect(chat).toContain("Omit provider terminology corrections");
+		expect(chat).toContain("If no prose adds value");
 		expect(builderTaskMarkdown(null)).toContain("private CRM assistant chat");
 	});
 

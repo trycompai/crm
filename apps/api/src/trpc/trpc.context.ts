@@ -1,4 +1,4 @@
-import { auth } from "@crm/auth";
+import { auth } from "@crm/auth/auth";
 import { Injectable } from "@nestjs/common";
 import { fromNodeHeaders } from "better-auth/node";
 import type { Request } from "express";

@@ -1,4 +1,4 @@
-import { type MailboxProviderId, mailboxGrantsNeeded } from "@crm/auth";
+import { type MailboxProviderId, mailboxGrantsNeeded } from "@crm/auth/scopes";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";

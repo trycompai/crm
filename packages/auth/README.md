@@ -24,7 +24,7 @@ or the cookie one writes will not verify in the other.
 ### Server
 
 ```ts
-import { auth } from "@crm/auth";
+import { auth } from "@crm/auth/auth";
 
 // Session for an incoming request
 const session = await auth.api.getSession({ headers: request.headers });
@@ -34,7 +34,7 @@ const session = await auth.api.getSession({ headers: request.headers });
 mounts anywhere. In a Next.js App Router route (`app/api/auth/[...all]/route.ts`):
 
 ```ts
-import { auth } from "@crm/auth";
+import { auth } from "@crm/auth/auth";
 
 export const GET = auth.handler;
 export const POST = auth.handler;

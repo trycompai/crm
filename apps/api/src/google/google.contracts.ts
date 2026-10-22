@@ -1,6 +1,6 @@
 import { EmailDirection, GoogleSyncStatus } from "@crm/db";
 import { z } from "zod";
-import { GOOGLE_SYNC_SOURCES } from "./google.constants";
+import { GOOGLE_SYNC_SOURCES } from "../mailbox/mailbox.constants";
 
 export const setAutoCreateInput = z.object({
 	source: z.enum(GOOGLE_SYNC_SOURCES),

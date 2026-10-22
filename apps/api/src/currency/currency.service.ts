@@ -1,4 +1,4 @@
-import { canManageCurrency, workspaceRoleOf } from "@crm/auth";
+import { canManageCurrency, workspaceRoleOf } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import { Prisma, RateSource } from "@crm/db";
 import { CURRENCIES, currencyName, normalizeCurrency } from "@crm/db/currency";

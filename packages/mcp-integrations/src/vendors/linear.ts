@@ -3,6 +3,12 @@ import { parseVendor } from "../vendor";
 export const linear = parseVendor({
 	slug: "linear",
 	name: "Linear",
+	presentation: {
+		description: "Let deployed agents read and update Linear",
+		bringsIn: "Issues, projects and teams selected by deployed agents",
+		sendsReadOnly: "Nothing",
+		sendsReadWrite: "Approved issue and project changes",
+	},
 	mcp: {
 		resource: "https://mcp.linear.app/mcp",
 		transport: "streamable-http",
@@ -23,7 +29,7 @@ export const linear = parseVendor({
 	},
 	docsHosts: ["linear.app"],
 	source: {
-		integrationsSh: "https://integrations.sh/linear.app/linear/",
+		providerDocs: "https://linear.app/docs/mcp",
 		tools: "https://linear.app/docs/mcp",
 		checkedAt: "2026-10-20",
 	},

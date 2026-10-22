@@ -1,7 +1,7 @@
 # Connections — rules for AI agents
 
 Covers `/settings/connections` and everything under it: the index, per-connection
-pages, the intake endpoint, the add-connection picker, and identity matching.
+pages, the add-connection picker, and identity matching.
 
 Read `docs/design.md` first. Read `docs/api.md` before touching `apps/api`, and
 `docs/agent.md` before touching `apps/agent`. The Paper file is
@@ -193,6 +193,7 @@ Page metrics are tokens. Never a literal.
 | `--container-page-wide` | 1120px | Two-column or table pages |
 | `--container-narrow` | 560px | Empty states, dialogs |
 | `--container-sheet` | 640px | Edit sheet over a page |
+| `--height-tool-panel` | 400–640px | Scrollable tool inventories |
 
 `--spacing-block-inline` is the one doing real work: a card sits flush at the
 column edge and carries 20px of its own padding, so card text lands in the same
@@ -209,7 +210,7 @@ pause on its own, a connection row with its own Manage button, a choice in a
 picker, a Questionnaire.
 
 Flat sections separated by a 1px `--color-dark-border` rule are for **a page
-describing one thing** — the intake page, the pre-connect page.
+describing one thing** — the pre-connect page.
 
 The split is by what the block *is*, not by page. Do not card a section; do not
 flatten a list of separately-actionable objects.
@@ -233,7 +234,7 @@ Docusign is spelled with a lowercase s since its 2024 rebrand. The note-taker is
 
 ## MCP connections
 
-Linear and Supabase use the shared MCP connection flow.
+Clerk, Cloudflare, Linear, Neon, PlanetScale, Prisma, Supabase, and Vercel use the shared MCP connection flow.
 An owner or admin chooses read-only or read-and-write access.
 The API stores OAuth tokens in encrypted form.
 The API never returns tokens to the browser.
@@ -248,9 +249,14 @@ The model never receives disconnected, changed, unreviewed, or undeployed tools.
 Model-facing results stop at 16 KiB.
 Archived results stop below 32 KiB.
 
+The chat compiles every connected provider result into the shared provider card.
+The compiler handles arrays, common collection objects, records, and short scalar results.
+The compiler removes secret fields, large text fields, unsafe links, and raw JSON walls.
+Known marks render automatically. Unknown marks use the approved initials fallback.
+Provider-specific result components are not required for new catalog entries.
+
 Supabase read-only access also uses the hosted server's `read_only=true` mode.
 Treat SQL execution, logs, keys, deployments, secrets, billing, and branch changes as risky.
 
-Vercel MCP is not in the catalog.
 Vercel accepts only reviewed MCP clients.
-Comp AI CRM needs Vercel approval before this connection can ship.
+Keep the Vercel connection unavailable in production until Comp AI CRM receives approval.

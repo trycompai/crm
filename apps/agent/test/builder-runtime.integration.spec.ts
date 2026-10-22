@@ -165,6 +165,63 @@ describe("builder persistence", () => {
 		).toBe(0);
 	});
 
+	it("persists a tool approval before a question from the same event", async () => {
+		const conversation = await db.agentConversation.create({
+			data: {
+				kind: "BUILDER",
+				userId,
+				sessionId: `builder-approval-session-${suffix}`,
+			},
+			select: { id: true },
+		});
+		conversationIds.push(conversation.id);
+		const approval = {
+			kind: "tool-approval" as const,
+			requestId: "approval-from-child",
+			prompt: "Archive the field?",
+			action: {
+				kind: "tool-call" as const,
+				callId: "approval-call",
+				toolName: "archive_field",
+				input: { fieldId: "field-1" },
+			},
+			options: [
+				{ id: "approve", label: "Approve" },
+				{ id: "cancel", label: "Decline" },
+			],
+		};
+		const question = {
+			kind: "question" as const,
+			requestId: "question-after-approval",
+			prompt: "Which field?",
+			action: {
+				kind: "tool-call" as const,
+				callId: "question-call",
+				toolName: "ask_question",
+				input: { prompt: "Which field?" },
+			},
+		};
+
+		expect(
+			await persistBuilderInputRequest(
+				{
+					requests: [question, approval],
+					sequence: 1,
+					stepIndex: 1,
+					turnId: "approval-turn",
+				},
+				undefined,
+				conversation.id,
+			),
+		).toBe(true);
+		expect(
+			await db.agentConversation.findUnique({
+				where: { id: conversation.id },
+				select: { pendingInputRequest: true },
+			}),
+		).toEqual({ pendingInputRequest: approval });
+	});
+
 	it("ignores a delayed question from a turn the session has already left", async () => {
 		const conversation = await db.agentConversation.create({
 			data: {

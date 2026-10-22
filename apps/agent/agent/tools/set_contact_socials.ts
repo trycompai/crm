@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { changeWrite } from "../lib/approval";
 import { personForVerification } from "../lib/crm";
 import type { Evidence } from "../lib/evidence";
 import { recordFact } from "../lib/facts";
@@ -23,6 +24,7 @@ export default defineTool({
 				"A candidate github.com profile URL from find_contact_socials.",
 			),
 	}),
+	approval: changeWrite(),
 	async execute({ contactId, twitterUrl, githubUrl }, ctx) {
 		assertResearchPurpose(ctx);
 		focusOn({ contactId });

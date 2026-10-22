@@ -1,13 +1,9 @@
--- CreateEnum
 CREATE TYPE "McpConnectionStatus" AS ENUM ('CONNECTING', 'CONNECTED', 'ERROR', 'DISCONNECTED');
 
--- CreateEnum
 CREATE TYPE "McpAccessMode" AS ENUM ('READ_ONLY', 'READ_WRITE');
 
--- CreateEnum
 CREATE TYPE "McpToolReviewState" AS ENUM ('PENDING', 'REVIEWED', 'CHANGED', 'REMOVED');
 
--- CreateTable
 CREATE TABLE "mcpConnection" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
@@ -28,7 +24,6 @@ CREATE TABLE "mcpConnection" (
     CONSTRAINT "mcpConnection_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
 CREATE TABLE "mcpClientRegistration" (
     "id" TEXT NOT NULL,
     "platformSlug" TEXT NOT NULL,
@@ -45,7 +40,6 @@ CREATE TABLE "mcpClientRegistration" (
     CONSTRAINT "mcpClientRegistration_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
 CREATE TABLE "mcpToolSnapshot" (
     "id" TEXT NOT NULL,
     "connectionId" TEXT NOT NULL,
@@ -62,7 +56,6 @@ CREATE TABLE "mcpToolSnapshot" (
     CONSTRAINT "mcpToolSnapshot_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
 CREATE TABLE "mcpOauthState" (
     "id" TEXT NOT NULL,
     "stateHash" TEXT NOT NULL,
@@ -79,44 +72,30 @@ CREATE TABLE "mcpOauthState" (
     CONSTRAINT "mcpOauthState_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
 CREATE INDEX "mcpConnection_status_updatedAt_idx" ON "mcpConnection"("status", "updatedAt");
 
--- CreateIndex
 CREATE UNIQUE INDEX "mcpConnection_organizationId_platformSlug_key" ON "mcpConnection"("organizationId", "platformSlug");
 
--- CreateIndex
 CREATE INDEX "mcpClientRegistration_clientSecretExpiresAt_idx" ON "mcpClientRegistration"("clientSecretExpiresAt");
 
--- CreateIndex
 CREATE UNIQUE INDEX "mcpClientRegistration_platformSlug_metadataFingerprint_key" ON "mcpClientRegistration"("platformSlug", "metadataFingerprint");
 
--- CreateIndex
 CREATE INDEX "mcpToolSnapshot_connectionId_name_lastSeenAt_idx" ON "mcpToolSnapshot"("connectionId", "name", "lastSeenAt");
 
--- CreateIndex
 CREATE INDEX "mcpToolSnapshot_reviewState_lastSeenAt_idx" ON "mcpToolSnapshot"("reviewState", "lastSeenAt");
 
--- CreateIndex
 CREATE UNIQUE INDEX "mcpToolSnapshot_connectionId_name_fingerprint_key" ON "mcpToolSnapshot"("connectionId", "name", "fingerprint");
 
--- CreateIndex
 CREATE UNIQUE INDEX "mcpOauthState_stateHash_key" ON "mcpOauthState"("stateHash");
 
--- CreateIndex
 CREATE INDEX "mcpOauthState_expiresAt_consumedAt_idx" ON "mcpOauthState"("expiresAt", "consumedAt");
 
--- AddForeignKey
 ALTER TABLE "mcpConnection" ADD CONSTRAINT "mcpConnection_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
 ALTER TABLE "mcpConnection" ADD CONSTRAINT "mcpConnection_connectedById_fkey" FOREIGN KEY ("connectedById") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
 ALTER TABLE "mcpToolSnapshot" ADD CONSTRAINT "mcpToolSnapshot_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "mcpConnection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
 ALTER TABLE "mcpOauthState" ADD CONSTRAINT "mcpOauthState_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
 ALTER TABLE "mcpOauthState" ADD CONSTRAINT "mcpOauthState_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;

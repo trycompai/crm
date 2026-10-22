@@ -7,7 +7,7 @@ import {
 	SLACK_USER_GRANT,
 	type SlackScope,
 	slackScopeDrift,
-} from "@crm/auth";
+} from "@crm/auth/slack-scopes";
 import {
 	Alert,
 	AlertAction,

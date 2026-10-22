@@ -1,6 +1,7 @@
 "use client";
 
 import { AsyncButtonContent } from "@crm/ui/components/async-action";
+import { CHAT_COMPOSER_SURFACE_CLASS_NAME } from "@crm/ui/components/chat-composer";
 import {
 	Questionnaire,
 	QuestionnaireActions,
@@ -15,7 +16,6 @@ import {
 } from "@crm/ui/components/questionnaire";
 import type { EveMessageInputRequest } from "eve/react";
 import { type FormEvent, useState } from "react";
-import { AGENT_COMPOSER_CLASS_NAME } from "./agent-composer-frame";
 
 const OPTION_VALUE_PREFIX = "option:";
 
@@ -79,7 +79,7 @@ export function AgentClarificationComposer({
 
 	return (
 		<Questionnaire
-			className={AGENT_COMPOSER_CLASS_NAME}
+			className={CHAT_COMPOSER_SURFACE_CLASS_NAME}
 			defaultItem="response"
 			items={items}
 			shortcuts="letters"
