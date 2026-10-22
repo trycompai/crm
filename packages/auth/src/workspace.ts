@@ -33,7 +33,19 @@ export function workspaceDomains(): readonly string[] {
 }
 
 export function primaryWorkspaceDomain(): string | undefined {
-	return allowList().domains[0];
+	const { domains, addresses } = allowList();
+
+	if (domains[0]) return domains[0];
+
+	// An address-only allow list still names a workspace domain, and a solo
+	// self-hoster on `me@acme.com` wants the same account chooser as one on
+	// `acme.com`. Only when every allowed address shares a domain: `hd` narrows
+	// the chooser to one, so sending it for one of several would hide the rest.
+	const hosts = new Set(
+		addresses.map((address) => address.split("@")[1]).filter(Boolean),
+	);
+
+	return hosts.size === 1 ? [...hosts][0] : undefined;
 }
 
 export function hasSignInAllowList(): boolean {
