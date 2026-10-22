@@ -114,6 +114,26 @@ describe("task list", () => {
 		expect(result.total).toBe(1);
 		expect(result.rows[0]?.subject).toBe("Past task");
 	});
+
+	it("sorts open tasks before completed tasks in ascending order", async () => {
+		const result = await activities.tasks({
+			...baseInput,
+			sort: "status",
+			dir: "asc",
+		});
+
+		expect(result.rows.at(-1)?.subject).toBe("Done task");
+	});
+
+	it("sorts completed tasks before open tasks in descending order", async () => {
+		const result = await activities.tasks({
+			...baseInput,
+			sort: "status",
+			dir: "desc",
+		});
+
+		expect(result.rows[0]?.subject).toBe("Done task");
+	});
 });
 
 describe("task editing", () => {

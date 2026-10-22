@@ -115,7 +115,12 @@ const TASK_SORTABLE: OrderByColumns<Prisma.ActivityOrderByWithRelationInput[]> =
 			{ createdAt: "desc" },
 		],
 		status: (dir) => [
-			{ completedAt: { sort: dir, nulls: "first" } },
+			{
+				completedAt: {
+					sort: dir,
+					nulls: dir === "asc" ? "first" : "last",
+				},
+			},
 			{ dueAt: { sort: "asc", nulls: "last" } },
 		],
 		company: (dir) => [
