@@ -7,7 +7,7 @@ import {
 } from "@crm/db";
 import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
-import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { lockIdempotencyKey, lockIdempotencyKeys } from "@crm/db/idempotency";
 import {
 	COMPANY_IMPORT,
 	type CompanyImportInput,
@@ -368,9 +368,10 @@ export class CompaniesService {
 					),
 				),
 			].toSorted();
-			for (const domain of domains) {
-				await lockIdempotencyKey(tx, `company-directory:${domain}`);
-			}
+			await lockIdempotencyKeys(
+				tx,
+				domains.map((domain) => `company-directory:${domain}`),
+			);
 
 			const existing = new Set(
 				(

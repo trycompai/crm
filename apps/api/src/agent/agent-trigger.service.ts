@@ -204,13 +204,16 @@ export class AgentTriggerService {
 			emit: (input: CrmEventInput) => Promise<void>,
 		) => Promise<Result>,
 	): Promise<Result> {
-		const queued: CrmEventInput[] = [];
-		const result = await this.db.$transaction((tx) =>
-			work(tx, async (input) => {
-				await this.createEventTask(tx, input);
-				queued.push(input);
-			}),
-		);
+		let queued: CrmEventInput[] = [];
+		const result = await this.db.$transaction(async (tx) => {
+			const pending: CrmEventInput[] = [];
+			const completed = await work(tx, async (input) => {
+				pending.push(input);
+			});
+			await this.createEventTasks(tx, pending);
+			queued = pending;
+			return completed;
+		});
 
 		for (const input of queued) {
 			this.logger.log({
@@ -223,6 +226,40 @@ export class AgentTriggerService {
 		if (queued.length > 0) this.poke();
 
 		return result;
+	}
+
+	async fieldBackfillNewRecords(
+		entity: FieldEntity,
+		keys: string[],
+		ids: string[],
+		reason: string,
+	): Promise<{ queued: number }> {
+		const recordIds = [...new Set(ids)];
+		if (recordIds.length === 0 || keys.length === 0) return { queued: 0 };
+
+		const column = RECORD_ID_COLUMNS[entity];
+		const dueAt = new Date();
+		const data: Prisma.AgentTaskCreateManyInput[] = recordIds.map((id) => ({
+			[column]: id,
+			kind: "field-backfill",
+			reason,
+			priority: PRIORITY.fieldBackfill,
+			budget: 8,
+			dueAt,
+			payload: { entity, keys } satisfies Prisma.InputJsonValue,
+		}));
+		const result = await this.db.agentTask.createMany({ data });
+
+		this.logger.log({
+			message: "Agent task queued",
+			kind: "field-backfill",
+			entity,
+			keys,
+			queued: result.count,
+		});
+		if (result.count > 0) this.poke();
+
+		return { queued: result.count };
 	}
 
 	async fieldBackfillRecords(
@@ -524,18 +561,17 @@ export class AgentTriggerService {
 		}
 	}
 
-	private async createEventTask(
+	private async createEventTasks(
 		tx: Prisma.TransactionClient,
-		input: CrmEventInput,
+		inputs: CrmEventInput[],
 	): Promise<void> {
-		const recordIds = {
-			contactId: input.record.kind === "contact" ? input.record.id : null,
-			companyId: input.record.kind === "company" ? input.record.id : null,
-			dealId: input.record.kind === "deal" ? input.record.id : null,
-		};
-		await tx.agentTask.create({
-			data: {
-				...recordIds,
+		if (inputs.length === 0) return;
+		const dueAt = new Date();
+		await tx.agentTask.createMany({
+			data: inputs.map((input) => ({
+				contactId: input.record.kind === "contact" ? input.record.id : null,
+				companyId: input.record.kind === "company" ? input.record.id : null,
+				dealId: input.record.kind === "deal" ? input.record.id : null,
 				kind: "agent-event",
 				reason: input.type,
 				payload: {
@@ -546,8 +582,8 @@ export class AgentTriggerService {
 				},
 				priority: PRIORITY.event,
 				budget: 1,
-				dueAt: new Date(),
-			},
+				dueAt,
+			})),
 		});
 	}
 

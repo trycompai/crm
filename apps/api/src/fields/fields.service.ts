@@ -356,7 +356,7 @@ export class FieldsService {
 
 		if (definitions.length === 0) return;
 
-		await this.agent.fieldBackfillRecords(
+		await this.agent.fieldBackfillNewRecords(
 			entity,
 			definitions.map((definition) => definition.key),
 			recordIds,
