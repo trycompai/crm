@@ -35,7 +35,6 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Markdown } from "@crm/ui/components/markdown";
 import { ProviderMark } from "@crm/ui/components/provider-mark";
-import { Reasoning } from "@crm/ui/components/reasoning";
 import { ThinkingIndicator } from "@crm/ui/components/thinking-indicator";
 import { ToolStep } from "@crm/ui/components/tool-step";
 import type { ProviderBrand } from "@crm/ui/lib/provider-brand";
@@ -1080,16 +1079,17 @@ function AssistantMessage({
 		<ChatMessage author="assistant">
 			{transcript.items.map((item) => {
 				if (item.kind === "reasoned") {
+					if (!item.streaming) return null;
+
 					return (
-						<Reasoning
+						<div
 							key={item.id}
-							isStreaming={item.streaming}
-							label="Reasoning"
+							role="status"
+							className="flex items-center gap-2 text-muted-foreground text-sm"
 						>
-							<Markdown className="wrap-break-word leading-5">
-								{displayMarkdown(item.text)}
-							</Markdown>
-						</Reasoning>
+							<ThinkingIndicator />
+							<span>Thinking…</span>
+						</div>
 					);
 				}
 

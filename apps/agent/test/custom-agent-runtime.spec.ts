@@ -325,12 +325,26 @@ describe("deployed action executors", () => {
 });
 
 describe("builder command routing", () => {
+	it("gives the builder a durable clarification tool", async () => {
+		const tool = Bun.file(
+			new URL(
+				"../agent/subagents/agent_builder/tools/ask_question.ts",
+				import.meta.url,
+			),
+		);
+
+		expect(await tool.exists()).toBe(true);
+		expect(await tool.text()).toContain("askQuestion");
+	});
+
 	it("delegates only the explicit creation command to the agent builder", () => {
 		const creation = builderTaskMarkdown("CREATE_AGENT");
 		expect(creation).toContain("Call agent_builder exactly once");
 		expect(creation).toContain("do not ask the user a clarification yourself");
 		expect(creation).toContain("Never retry agent_builder in the same turn");
 		expect(creation).toContain("asks any essential clarification directly");
+		expect(creation).toContain("Do not narrate the delegation");
+		expect(creation).toContain("without a preceding assistant message");
 		const chat = builderTaskMarkdown("CHAT");
 		expect(chat).toContain("Do not call agent_builder");
 		expect(chat).toContain("call ask_question");

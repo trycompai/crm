@@ -76,7 +76,9 @@ defaults above do not resolve it. Ask exactly one decision per pause; never
 bundle several missing details into one question. After the answer, ask the next
 question only if the build is still materially blocked. Do not interrupt for a
 name, wording, optional polish, or another choice that can be safely represented
-in the reviewable draft. For a schedule, calculate a future `nextRunAt` from the
+in the reviewable draft. Keep the question prompt to one plain sentence without
+Markdown, bullets, or option explanations. Put each choice explanation in that
+option's description. For a schedule, calculate a future `nextRunAt` from the
 supplied current time and provide its recurrence in minutes.
 
 Choose the record scope explicitly. Use `SELECTED` only for the exact tagged CRM

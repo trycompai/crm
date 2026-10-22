@@ -27,7 +27,7 @@ import { z } from "zod";
 
 export type TranscriptItem =
 	| { kind: "said"; id: string; mine: boolean; text: string }
-	| { kind: "reasoned"; id: string; streaming: boolean; text: string }
+	| { kind: "reasoned"; id: string; streaming: boolean }
 	| {
 			kind: "asked";
 			id: string;
@@ -318,7 +318,6 @@ export function toTranscript(
 							kind: "reasoned",
 							id,
 							streaming: part.state === "streaming",
-							text,
 						},
 					];
 				}
