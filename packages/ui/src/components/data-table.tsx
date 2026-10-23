@@ -366,6 +366,7 @@ export function DataTable<TRow, TSub = unknown>({
 							variant="ghost"
 							size="sm"
 							onClick={() => selection.state.clear()}
+							aria-label="Clear selection"
 						>
 							Clear
 						</Button>
@@ -387,6 +388,7 @@ export function DataTable<TRow, TSub = unknown>({
 						className="w-full justify-between sm:hidden"
 						aria-expanded={filtersOpen}
 						aria-controls={filtersId}
+						aria-label="Toggle filters"
 						onClick={() => setFiltersOpen((open) => !open)}
 					>
 						<span className="flex items-center gap-2">
@@ -424,6 +426,7 @@ export function DataTable<TRow, TSub = unknown>({
 									variant="outline"
 									size="sm"
 									className="w-full justify-between sm:w-auto sm:min-w-44"
+									aria-label={`Select tab: ${activeTabLabel}`}
 								>
 									<span className="truncate">{activeTabLabel}</span>
 									<ChevronDown className="shrink-0 opacity-60" />
@@ -463,6 +466,7 @@ export function DataTable<TRow, TSub = unknown>({
 										variant="outline"
 										size="sm"
 										className="justify-start sm:justify-center"
+										aria-label="Filter table"
 									>
 										<Filter data-icon="inline-start" />
 										Filters
@@ -492,6 +496,7 @@ export function DataTable<TRow, TSub = unknown>({
 										variant="outline"
 										size="sm"
 										className="justify-start sm:justify-center"
+										aria-label="Sort table"
 									>
 										<ArrowsVertical data-icon="inline-start" />
 										Sort
@@ -538,6 +543,7 @@ export function DataTable<TRow, TSub = unknown>({
 										variant="outline"
 										size="sm"
 										className="justify-start sm:justify-center"
+										aria-label="Toggle columns"
 									>
 										<Column data-icon="inline-start" />
 										Columns
