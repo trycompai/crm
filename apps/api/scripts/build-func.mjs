@@ -183,9 +183,13 @@ writeFileSync(
 
 console.log(`✓ built ${outDir}`);
 
-const isProductionDeployment = process.env.VERCEL_ENV === "production";
+const deploymentEnvironment =
+	process.env.VERCEL_TARGET_ENV || process.env.VERCEL_ENV;
+const appliesMigrations = ["production", "staging"].includes(
+	deploymentEnvironment,
+);
 
-const directDatabaseUrl = !isProductionDeployment
+const directDatabaseUrl = !appliesMigrations
 	? undefined
 	: process.env.DIRECT_DATABASE_URL ||
 		process.env.POSTGRES_URL_NON_POOLING ||
@@ -194,9 +198,9 @@ const directDatabaseUrl = !isProductionDeployment
 
 if (!process.env.VERCEL) {
 	console.log("• not a Vercel build — skipping migrations");
-} else if (!isProductionDeployment) {
+} else if (!appliesMigrations) {
 	console.log(
-		`• ${process.env.VERCEL_ENV || "non-production"} deployment — skipping migrations, only production applies them`,
+		`• ${deploymentEnvironment || "unknown"} deployment — skipping migrations`,
 	);
 } else if (!directDatabaseUrl) {
 	console.log("• no database URL at build time — skipping migrations");
@@ -232,7 +236,7 @@ if (!process.env.VERCEL) {
 		console.log("✓ schema matches");
 	} else if (drift.status === 2) {
 		console.log("");
-		console.log("!!  THE PRODUCTION SCHEMA DOES NOT MATCH schema.prisma  !!");
+		console.log("!!  THE DEPLOYED SCHEMA DOES NOT MATCH schema.prisma  !!");
 		console.log(
 			"    Every migration is recorded as applied, so `migrate deploy` will keep reporting",
 		);

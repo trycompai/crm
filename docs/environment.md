@@ -76,6 +76,9 @@ list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
   point the redirect silently becomes that host. `ssoCallbackBase()` is the
   pattern; `slackRedirectUri` in `auth.ts` once was not.
 - **`AUTH_COOKIE_DOMAIN`** only for API and app on different subdomains of one parent.
+- **`API_PROTECTION_BYPASS_SECRET`** lets the custom staging app call its protected
+  API. Set it only on the app project. Every server-side API request adds Vercel's
+  protection bypass header. The browser never receives this value.
 - **`AGENT_URL`** is the agent's deployment, server-side only, and **must include the
   scheme** — validated at boot, or it throws when a task is queued instead.
 - **`AUTH_COOKIE_PREFIX` is `crm`** (`@crm/auth/cookies`), set on **both**

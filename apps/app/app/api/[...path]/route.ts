@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { bufferedProxyResponse } from "@/lib/api-proxy-response";
+import { apiRequestHeaders } from "@/lib/api-request.server";
 import { API_URL } from "@/lib/env";
 
 async function handler(request: Request): Promise<Response> {
@@ -8,7 +9,7 @@ async function handler(request: Request): Promise<Response> {
 	const url = new URL(request.url);
 	const target = `${API_URL}${url.pathname}${url.search}`;
 
-	const headers = new Headers(request.headers);
+	const headers = apiRequestHeaders(request.headers);
 	for (const header of [
 		"host",
 		"x-forwarded-host",

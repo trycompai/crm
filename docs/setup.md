@@ -98,20 +98,25 @@ the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
    auto-loads the working directory's `.env` while Prisma's CLI only sees
    `@crm/env/load`.
 
-## Migrations run on the production deploy, and nowhere else
+## Migrations run on the production and staging deploys
 
 `apps/api/scripts/build-func.mjs` runs `prisma migrate deploy` during the crm-api
-build, gated on `VERCEL_ENV === "production"`. The schema therefore moves when the
-release pull request merges and `release` deploys — with the code that needs it,
-and once rather than once per branch.
+build. It reads `VERCEL_TARGET_ENV` first, then falls back to `VERCEL_ENV`.
+Production follows `release`. The custom `staging` environment follows `main`.
+Staging uses dedicated Neon, Upstash Redis, and Blob resources. Each schema
+therefore moves with the code that needs it, and each environment applies a
+migration once.
 
-Preview deploys share the production database: `DATABASE_URL` is a single value
-across production, preview and development. Until that changes, **a preview of a
-branch that adds a migration runs against a database without those tables** — it
-builds, and the pages that touch them fail. Test schema changes locally, where
-`bun run dev` migrates for you. Before the gate existed the reverse was true and
-worse: every preview applied its own migrations to the production database, so on
-2026-08-07 the live schema ran six migrations ahead of the live code all day.
+The staging app and API use separate Vercel protection boundaries. Enable
+Protection Bypass for Automation on the API project. Set its generated secret as
+`API_PROTECTION_BYPASS_SECRET` only on the app's custom `staging` environment.
+The app adds the bypass header to server-side API requests.
+
+Other preview deploys share the production database. They never apply migrations.
+A feature preview that adds a migration runs against a database without those
+tables. Test schema changes locally, where `bun run dev` migrates for you. Before
+the gate existed, every preview applied its migrations to production. On
+2026-08-07, the live schema ran six migrations ahead of the live code all day.
 
 ### `migrate deploy` is not proof the schema is right
 
