@@ -1,0 +1,9 @@
+# A ship checklist the agent (and a rep) can actually finish
+
+The agent can already research forever. What it cannot do is say, in a way a human can trust, that a contact or company is *done enough to act on*. I noticed this while watching an Agent tab keep scheduling rechecks: every pass found another weak signal, nothing was wrong, and nothing was ever "ready to call." The rep still had to invent the stopping rule in their head.
+
+What I want to change: give every contact / company / deal a small, versioned **ship checklist** — a list of *observed* evidence gates, not confidence scores. Each gate is `observed` (with its tool or source), `missing`, `blocked` (auth, empty mailbox), or `waived`. A `waived` gate records the human actor and rationale. The agent may mark a gate observed only from a tool result already on the ledger. Only a human can waive a gate. A waiver does not count as observed evidence. "Ready" means every required gate for that record type is observed or explicitly waived by a human — never because a model felt sure.
+
+Concrete gates I'd start with (contact): identity matched from a signature or LinkedIn URL already on the record; employer name observed (not inferred from email domain alone); at least one real thread or meeting on the ledger; next action has a why. Company and deal get their own short lists. Weak suggestions stay suggestions. Nothing about a person is guessed into a green check.
+
+What it breaks / does not do: it does not replace enrichment tools, the research budget, or the Agent tab transcript. It does not invent a knowledge base of prose (that's a different ADR). It adds a surface — and a stop condition — so the agent can stop and the rep can see why. Happy to keep this as an ADR until you want the schema; I can implement the smallest slice (contact-only, all four gates above) if the idea fits.
