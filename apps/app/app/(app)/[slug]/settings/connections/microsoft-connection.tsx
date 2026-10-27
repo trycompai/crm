@@ -41,7 +41,7 @@ const AUTO_CREATE = "Add the company and contact when you reply to someone new";
 
 const CONNECT_ERRORS = new Map([
 	[
-		"email_doesn't_match",
+		"email_does_not_match",
 		"That Microsoft account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Microsoft account that matches your sign-in address.",
 	],
 ]);

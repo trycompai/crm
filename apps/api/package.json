@@ -37,7 +37,7 @@
 		"@nestjs/swagger": "^11.4.7",
 		"@thallesp/nestjs-better-auth": "^2.8.0",
 		"@trpc/server": "^11.18.0",
-		"better-auth": "1.6.33",
+		"better-auth": "1.7.7",
 		"cache-manager": "^7.2.9",
 		"class-transformer": "^0.5.1",
 		"class-validator": "^0.15.1",

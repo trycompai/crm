@@ -175,3 +175,17 @@ A rebuild drops the database and re-runs every migration, and it says which of t
 two reasons fired. Force one with `bun run db:test --reset`. Nothing else in the
 repo may drop a database, and this may only because the `_test` suffix is checked
 first.
+
+
+## Better Auth 1.7 upgrade
+
+CRM uses Better Auth 1.7.7 and matching plugins.
+The account schema stays the same as 1.6.
+The existing Slack redirect URL stays valid through `slackOAuthCallback`.
+
+Microsoft accounts need an identity check before deployment.
+Version 1.7 uses the verified Microsoft `oid` instead of the previous `sub` account identifier.
+Existing Microsoft accounts need a verified mapping from the identity provider before sign-in resumes.
+Follow the [Microsoft account migration guide](https://better-auth.com/docs/guides/1-7-upgrade-guide#migrate-microsoft-account-identifiers).
+Do not decode stored tokens without signature verification or infer identifiers from email addresses.
+Google account identifiers stay the same.

@@ -15,7 +15,7 @@ const CONNECT_ERRORS = new Map([
 		"That Slack installer is already linked to another CRM account.",
 	],
 	[
-		"email_doesn't_match",
+		"email_does_not_match",
 		"The Slack installer's email must match the CRM account you are signed in with.",
 	],
 	[
@@ -30,8 +30,8 @@ const CONNECT_ERRORS = new Map([
 
 async function startSlackOAuth(slug: string) {
 	try {
-		const { error } = await authClient.oauth2.link({
-			providerId: "slack",
+		const { error } = await authClient.linkSocial({
+			provider: "slack",
 			callbackURL: `${window.location.origin}/${slug}/settings/connections/slack/people`,
 			errorCallbackURL: `${window.location.origin}/${slug}/settings/connections/slack?provider=slack`,
 		});

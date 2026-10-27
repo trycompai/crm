@@ -8,11 +8,15 @@ import {
 } from "bun:test";
 import { db } from "@crm/db";
 import { workspaceSlug } from "@crm/db/workspace";
-import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import {
+	callbackOAuth,
+	createAuthMiddleware,
+	linkSocialAccount,
+	signInSocial,
+} from "better-auth/api";
 import { applySetCookies } from "better-auth/cookies";
-import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import * as z from "zod";
 import {
 	DEFAULT_WORKSPACE_NAME,
@@ -21,6 +25,7 @@ import {
 } from "../src/organization";
 import { GOOGLE_PROVIDER_ID, SLACK_PROVIDER_ID } from "../src/scopes";
 import { slackConnectGuard } from "../src/slack-connect";
+import { slackOAuthCallback } from "../src/slack-oauth-callback";
 
 const suffix = process.env.TEST_RUN_ID ?? "slack-connect-spec";
 
@@ -31,32 +36,24 @@ const JSON_HEADERS = { "content-type": "application/json" };
 
 const reached = { reached: true };
 
-const probe = {
-	id: "slack-connect-probe",
-	endpoints: {
-		link: createAuthEndpoint("/oauth2/link", { method: "POST" }, async (ctx) =>
-			ctx.json(reached),
-		),
-		signIn: createAuthEndpoint(
-			"/sign-in/oauth2",
-			{ method: "POST" },
-			async (ctx) => ctx.json(reached),
-		),
-		callback: createAuthEndpoint(
-			"/oauth2/callback/:providerId",
-			{ method: "GET" },
-			async (ctx) => ctx.json(reached),
-		),
-	},
-} satisfies BetterAuthPlugin;
-
 const guarded = betterAuth({
 	baseURL: BASE_URL,
 	secret: "slack-connect-spec-secret",
 	database: prismaAdapter(db, { provider: "postgresql" }),
 	emailAndPassword: { enabled: false },
-	hooks: { before: slackConnectGuard },
-	plugins: [probe],
+	hooks: {
+		before: createAuthMiddleware(async (ctx) => {
+			await slackConnectGuard(ctx);
+			if (
+				ctx.path === "/link-social" ||
+				ctx.path === "/sign-in/social" ||
+				ctx.path.startsWith("/callback/")
+			) {
+				return ctx.json(reached);
+			}
+		}),
+	},
+	plugins: [slackOAuthCallback],
 });
 
 const arrival = z.object({ reached: z.literal(true) });
@@ -143,11 +140,11 @@ const startConnect = (
 		new Request(`${BASE_URL}/api/auth${path}`, {
 			method: "POST",
 			headers: cookie ? { ...JSON_HEADERS, cookie } : JSON_HEADERS,
-			body: JSON.stringify({ providerId, callbackURL: "/" }),
+			body: JSON.stringify({ provider: providerId, callbackURL: "/" }),
 		}),
 	);
 
-const linkSlack = (cookie?: string) => startConnect("/oauth2/link", cookie);
+const linkSlack = (cookie?: string) => startConnect("/link-social", cookie);
 
 const completeConnect = (
 	cookie?: string,
@@ -155,7 +152,7 @@ const completeConnect = (
 ) =>
 	guarded.handler(
 		new Request(
-			`${BASE_URL}/api/auth/oauth2/callback/${providerId}?code=test-code&state=test-state`,
+			`${BASE_URL}/api/auth/callback/${providerId}?code=test-code&state=test-state`,
 			{ headers: cookie ? { cookie } : undefined },
 		),
 	);
@@ -281,7 +278,7 @@ describe("the two paths that start a Slack connection", () => {
 	it("turns away a member who asks to sign in with Slack", async () => {
 		await seat("owner", "owner");
 		const response = await startConnect(
-			"/sign-in/oauth2",
+			"/sign-in/social",
 			await seat("rep", "member"),
 		);
 
@@ -307,7 +304,7 @@ describe("every provider that is not Slack", () => {
 	it("lets a member link Google", async () => {
 		await seat("owner", "owner");
 		const response = await startConnect(
-			"/oauth2/link",
+			"/link-social",
 			await seat("rep", "member"),
 			GOOGLE_PROVIDER_ID,
 		);
@@ -325,15 +322,25 @@ describe("every provider that is not Slack", () => {
 });
 
 describe("the paths the guard has to know about", () => {
-	it("is every path the generic OAuth plugin mounts", () => {
-		const paths = Object.values(genericOAuth({ config: [] }).endpoints)
+	it("matches the shared social OAuth endpoints", () => {
+		const paths = [callbackOAuth, linkSocialAccount, signInSocial()]
 			.map((endpoint) => endpoint.path)
 			.sort();
 
-		expect(paths).toEqual([
-			"/oauth2/callback/:providerId",
-			"/oauth2/link",
-			"/sign-in/oauth2",
-		]);
+		expect(paths).toEqual(["/callback/:id", "/link-social", "/sign-in/social"]);
+	});
+});
+
+describe("registered Slack callback", () => {
+	it("keeps the existing callback URL and passes its state to the guarded endpoint", async () => {
+		const response = await guarded.handler(
+			new Request(
+				`${BASE_URL}/api/auth/oauth2/callback/slack?code=callback-code&state=callback-state`,
+			),
+		);
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toBe(
+			`${BASE_URL}/api/auth/callback/slack?code=callback-code&state=callback-state`,
+		);
 	});
 });

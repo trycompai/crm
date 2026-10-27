@@ -128,7 +128,7 @@ function GoogleUnavailable() {
 
 const CONNECT_ERRORS = new Map([
 	[
-		"email_doesn't_match",
+		"email_does_not_match",
 		"That Google account has a different email address to the one you sign in with, so it cannot be attached to your account. Connect the Google account that matches your sign-in address.",
 	],
 ]);

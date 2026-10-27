@@ -72,8 +72,12 @@ export class MailboxTokenService {
 		source: SyncSource,
 	): Promise<TokenResult> {
 		const providerId = PROVIDER_FOR_SOURCE[source];
+		const account = await this.db.account.findFirst({
+			where: { userId, providerId },
+			select: { id: true, scope: true },
+		});
 
-		if (!(await this.isConnected(userId, source))) {
+		if (!account || !parseScopes(account.scope).has(SCOPE_FOR_SOURCE[source])) {
 			return {
 				outcome: "not-connected",
 				reason: `The ${source} scope has not been granted.`,
@@ -82,7 +86,7 @@ export class MailboxTokenService {
 
 		try {
 			const { accessToken } = await auth.api.getAccessToken({
-				body: { providerId, userId },
+				body: { accountId: account.id, userId },
 			});
 
 			if (!accessToken) {
