@@ -265,7 +265,7 @@ export async function saveBuilderDraft(
 		backend: "eve-default",
 		networkPolicy: "deny-all",
 		credentials: "app-runtime-only",
-		summary: "Isolated sandbox · deny-all network · bounded CRM tools",
+		summary: "Isolated sandbox with deny-all network and bounded CRM tools",
 	};
 	const files = artifactFiles(input, JSON.stringify(manifest, null, 2));
 	for (const file of files) assertSafeArtifact(file.content);
@@ -1009,5 +1009,5 @@ function scopeSummary(
 		(resource) => resource.kind !== "integration",
 	);
 	if (recordScope === "WORKSPACE") return "Workspace CRM records";
-	return records.map((resource) => resource.label).join(" · ");
+	return records.map((resource) => resource.label).join(", ");
 }

@@ -1,13 +1,19 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
 import { Button } from "@crm/ui/components/button";
 import {
 	Field,
 	FieldDescription,
-	FieldGroup,
+	FieldError,
 	FieldLabel,
 } from "@crm/ui/components/field";
+import {
+	FormSheet,
+	FormSheetContent,
+	FormSheetFooter,
+	FormSheetForm,
+	useFormSheetValidation,
+} from "@crm/ui/components/form-sheet";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
 import {
@@ -18,19 +24,16 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import {
-	Sheet,
-	SheetClose,
-	SheetContent,
 	SheetDescription,
-	SheetFooter,
 	SheetHeader,
 	SheetTitle,
 	SheetTrigger,
 } from "@crm/ui/components/sheet";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation } from "@tanstack/react-query";
+import { PlusIcon } from "lucide-react";
 import { parseAsBoolean, useQueryState } from "nuqs";
-import { type ComponentProps, Suspense, useId, useState } from "react";
+import { type ComponentProps, Suspense, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -54,7 +57,7 @@ type CreatedApiKey = RouterOutputs["apiKeys"]["create"];
 function NewApiKeyButton(props: ComponentProps<typeof Button>) {
 	return (
 		<Button {...props}>
-			<Icon icon={Add} data-icon="inline-start" />
+			<Icon icon={PlusIcon} data-icon="inline-start" />
 			New API key
 		</Button>
 	);
@@ -69,11 +72,13 @@ export function CreateApiKeySheet() {
 }
 
 function CreateApiKeyForm() {
+	const validation = useFormSheetValidation();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
 	const nameId = useId();
 	const expirationId = useId();
+	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	const [open, setOpen] = useQueryState(
 		SEARCH_PARAM.dialog.create,
@@ -88,22 +93,33 @@ function CreateApiKeyForm() {
 			onSuccess: async (apiKey) => {
 				await cache.apiKeys();
 				await setOpen(null);
-				setName("");
-				setExpiration("90");
+				reset();
 				setCreated(apiKey);
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
+	const reset = () => {
+		validation.reset();
+		setName("");
+		setExpiration("90");
+	};
+
 	return (
 		<>
-			<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
+			<FormSheet
+				dirty={name !== "" || expiration !== "90"}
+				pending={create.isPending}
+				onDiscard={reset}
+				open={open}
+				onOpenChange={(next) => setOpen(next || null)}
+			>
 				<SheetTrigger asChild>
-					<NewApiKeyButton />
+					<NewApiKeyButton ref={triggerRef} />
 				</SheetTrigger>
 
-				<SheetContent side="right">
+				<FormSheetContent side="right">
 					<SheetHeader>
 						<SheetTitle>New API key</SheetTitle>
 						<SheetDescription>
@@ -112,11 +128,13 @@ function CreateApiKeyForm() {
 						</SheetDescription>
 					</SheetHeader>
 
-					<form
+					<FormSheetForm
+						noValidate
+						onInput={validation.onInput}
 						id={FORM}
-						className="flex-1 overflow-y-auto px-4"
 						onSubmit={(event) => {
 							event.preventDefault();
+							if (!validation.validate(event.currentTarget)) return;
 							create.mutate({
 								name: name.trim(),
 								expiresInDays:
@@ -124,67 +142,70 @@ function CreateApiKeyForm() {
 							});
 						}}
 					>
-						<FieldGroup>
-							<Field>
-								<FieldLabel htmlFor={nameId}>Name</FieldLabel>
-								<Input
-									id={nameId}
-									value={name}
-									onChange={(event) => setName(event.target.value)}
-									placeholder="CI pipeline"
-									maxLength={64}
-									autoComplete="off"
-									autoCapitalize="off"
-									autoCorrect="off"
-									spellCheck={false}
-									required
-								/>
-								<FieldDescription>
-									Something you will recognise later, like where it runs.
-								</FieldDescription>
-							</Field>
+						<Field data-invalid={!!validation.errors[nameId]}>
+							<FieldLabel htmlFor={nameId}>Name</FieldLabel>
+							<Input
+								id={nameId}
+								aria-invalid={!!validation.errors[nameId]}
+								aria-describedby={
+									validation.errors[nameId] ? `${nameId}-error` : undefined
+								}
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+								placeholder="CI pipeline"
+								maxLength={64}
+								autoComplete="off"
+								autoCapitalize="off"
+								autoCorrect="off"
+								spellCheck={false}
+								pattern=".*\S.*"
+								required
+							/>
+							<FieldError id={`${nameId}-error`}>
+								{validation.errors[nameId]}
+							</FieldError>
+							<FieldDescription>
+								Something you will recognise later, like where it runs.
+							</FieldDescription>
+						</Field>
 
-							<Field>
-								<FieldLabel htmlFor={expirationId}>Expires</FieldLabel>
-								<Select
-									value={expiration}
-									onValueChange={(value) =>
-										setExpiration(value as ExpirationValue)
-									}
-								>
-									<SelectTrigger id={expirationId} className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{EXPIRATION_OPTIONS.map((option) => (
-											<SelectItem key={option.value} value={option.value}>
-												{option.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</Field>
-						</FieldGroup>
-					</form>
+						<Field data-invalid={!!validation.errors[expirationId]}>
+							<FieldLabel htmlFor={expirationId}>Expires</FieldLabel>
+							<Select
+								value={expiration}
+								onValueChange={(value) =>
+									setExpiration(value as ExpirationValue)
+								}
+							>
+								<SelectTrigger id={expirationId} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{EXPIRATION_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+					</FormSheetForm>
 
-					<SheetFooter>
-						<Button
-							type="submit"
-							form={FORM}
-							disabled={!name.trim() || create.isPending}
-						>
-							{create.isPending ? <Spinner /> : null}
+					<FormSheetFooter>
+						<Button type="submit" form={FORM} disabled={create.isPending}>
+							{create.isPending ? <Spinner data-icon="inline-start" /> : null}
 							Create key
 						</Button>
-						<SheetClose asChild>
-							<Button variant="outline">Cancel</Button>
-						</SheetClose>
-					</SheetFooter>
-				</SheetContent>
-			</Sheet>
+					</FormSheetFooter>
+				</FormSheetContent>
+			</FormSheet>
 
 			<CreatedApiKeyDialog
 				apiKey={created}
+				onCloseAutoFocus={(event) => {
+					event.preventDefault();
+					triggerRef.current?.focus();
+				}}
 				onOpenChange={(next) => {
 					if (!next) setCreated(null);
 				}}

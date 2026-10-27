@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { contactName } from "@/components/crm/contact-name";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
+import { ListEmpty } from "@/components/data-table/list-empty";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalDay, LocalRelativeTime } from "@/components/local-date-time";
@@ -85,7 +86,7 @@ export function TasksTable() {
 			label: "Status",
 			sortable: true,
 			hideable: false,
-			width: "w-12",
+			width: "12",
 			cell: (row) => (
 				<Checkbox
 					ref={(element) => {
@@ -104,12 +105,11 @@ export function TasksTable() {
 			header: "Task",
 			sortable: true,
 			hideable: false,
-			width: "w-[34%]",
 			cell: (row) =>
 				row.subject ? (
 					<span
 						className={cn(
-							"truncate font-medium",
+							"block truncate font-medium",
 							row.completedAt && "text-muted-foreground line-through",
 						)}
 					>
@@ -123,7 +123,7 @@ export function TasksTable() {
 			id: "company",
 			header: "Related to",
 			sortable: true,
-			width: "w-[24%]",
+			width: { sm: "56" },
 			cell: (row) => {
 				if (row.deal) {
 					return (
@@ -154,7 +154,7 @@ export function TasksTable() {
 			header: "Due",
 			sortable: true,
 			align: "right",
-			width: "w-32",
+			width: { sm: "32" },
 			cell: (row) =>
 				row.dueAt ? (
 					<span
@@ -173,7 +173,7 @@ export function TasksTable() {
 			id: "createdBy",
 			header: "Created by",
 			sortable: true,
-			width: "w-44",
+			width: "44",
 			hideBelow: "md",
 			cell: (row) => (
 				<span className="flex min-w-0 items-center gap-2">
@@ -194,7 +194,7 @@ export function TasksTable() {
 			header: "Created",
 			sortable: true,
 			align: "right",
-			width: "w-24",
+			width: "28",
 			defaultHidden: true,
 			cell: (row) => (
 				<span className="text-muted-foreground">
@@ -228,6 +228,7 @@ export function TasksTable() {
 				{announcement}
 			</span>
 			<DataTable
+				label="Tasks"
 				query={query}
 				search={<ListSearch inputRef={searchRef} placeholder="Search tasks…" />}
 				columns={columns}
@@ -237,6 +238,7 @@ export function TasksTable() {
 				facets={facets}
 				tabs={{
 					id: "status",
+					label: "Status",
 					allLabel: "All tasks",
 					options: [
 						{ value: "open", label: "Open" },
@@ -245,7 +247,17 @@ export function TasksTable() {
 				}}
 				getRowId={(row) => row.id}
 				loading={tasks.isFetching}
-				empty="No tasks match this view."
+				empty={
+					<ListEmpty
+						query={query}
+						noun="tasks"
+						blank={{
+							title: "No tasks yet",
+							description:
+								"Tasks you add to a company, contact or deal show here.",
+						}}
+					/>
+				}
 			/>
 		</>
 	);

@@ -1,7 +1,5 @@
 "use client";
 
-import ArrowUp from "@carbon/icons-react/es/ArrowUp";
-import StopFilled from "@carbon/icons-react/es/StopFilled";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import {
@@ -11,12 +9,36 @@ import {
 } from "@crm/ui/components/input-group";
 import { Spinner } from "@crm/ui/components/spinner";
 import { cn } from "@crm/ui/lib/utils";
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import type * as React from "react";
 
 export type ChatComposerSize = "page" | "panel";
 
 export const CHAT_COMPOSER_SURFACE_CLASS_NAME =
-	"flex w-full flex-col justify-between rounded-xl border border-border bg-background p-[11px] transition-[color,background-color,border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40";
+	"flex w-full flex-col justify-between rounded-xl border border-border bg-background p-[11px] transition-[color,background-color,border-color,box-shadow] hover:border-input focus-within:border-input";
+
+function SendButton({
+	label,
+	disabled = false,
+	loading = false,
+}: {
+	label: string;
+	disabled?: boolean;
+	loading?: boolean;
+}) {
+	return (
+		<Button
+			aria-busy={loading || undefined}
+			aria-label={label}
+			className="rounded-full"
+			disabled={disabled}
+			size="icon-sm"
+			type="submit"
+		>
+			{loading ? <Spinner /> : <Icon icon={ArrowUpIcon} size="md" />}
+		</Button>
+	);
+}
 
 export function ChatComposer({
 	value,
@@ -96,18 +118,26 @@ export function ChatComposer({
 				>
 					<div className="flex min-w-0 items-center gap-1">{tools}</div>
 					{busy && onStop ? (
-						<Button aria-label={stopLabel} onClick={onStop} size="icon-sm" type="button">
-							<Icon icon={StopFilled} motion="none" />
+						<Button
+							aria-label={stopLabel}
+							className="rounded-full"
+							onClick={onStop}
+							size="icon-sm"
+							type="button"
+						>
+							<Icon
+								className="fill-current"
+								icon={SquareIcon}
+								motion="none"
+								size="xs"
+							/>
 						</Button>
 					) : (
-						<Button
-							aria-label={busy ? busyLabel : sendLabel}
+						<SendButton
 							disabled={!canSend}
-							size="icon-sm"
-							type="submit"
-						>
-							{busy ? <Spinner /> : <Icon icon={ArrowUp} motion="none" />}
-						</Button>
+							label={busy ? busyLabel : sendLabel}
+							loading={busy}
+						/>
 					)}
 				</InputGroupAddon>
 			</InputGroup>

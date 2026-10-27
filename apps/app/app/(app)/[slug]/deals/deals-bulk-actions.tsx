@@ -1,7 +1,5 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
-import Undo from "@carbon/icons-react/es/Undo";
 import type { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -25,6 +23,7 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { Textarea } from "@crm/ui/components/textarea";
 import { formatCount } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArchiveIcon, Undo2Icon } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -126,7 +125,7 @@ export function DealsBulkActions({
 				<BulkActionsMenu pending={archivedPending}>
 					<DropdownMenuGroup>
 						<DropdownMenuItem onSelect={() => restore.mutate({ ids })}>
-							<Undo />
+							<Undo2Icon />
 							Restore
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
@@ -145,7 +144,7 @@ export function DealsBulkActions({
 					open={confirming}
 					onOpenChange={setConfirming}
 					title={`Delete ${deals(ids.length)} forever?`}
-					description="Everything filed against them — activity, notes, the amounts in your pipeline — goes too. This cannot be undone."
+					description="This deletes their activity, notes and pipeline amounts. You cannot undo this."
 					onConfirm={() => purge.mutate({ ids })}
 				/>
 			</>
@@ -188,7 +187,7 @@ export function DealsBulkActions({
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
 					<DropdownMenuItem onSelect={() => archive.mutate({ ids })}>
-						<Archive />
+						<ArchiveIcon />
 						Archive
 					</DropdownMenuItem>
 				</DropdownMenuGroup>

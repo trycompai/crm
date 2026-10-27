@@ -11,7 +11,7 @@ export function Hero() {
 
 				<p className="max-w-[640px] text-pretty text-center text-muted-foreground text-lg/[28px] md:text-xl/[30px]">
 					Humans shouldn't be manually moving pipeline. The first agentic CRM
-					experience — durable research agents that read your team's inbox,
+					experience. Durable research agents that read your team's inbox,
 					enrich companies and contacts, and create agentic workflows.
 				</p>
 

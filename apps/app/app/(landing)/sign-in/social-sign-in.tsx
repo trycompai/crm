@@ -2,10 +2,10 @@
 
 import { signIn } from "@crm/auth/client";
 import type { MailboxProviderId } from "@crm/auth/scopes";
+import { AuthButton } from "@crm/ui/components/auth-button";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
-import { Button } from "@crm/ui/components/button";
-import { Spinner } from "@crm/ui/components/spinner";
+import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 	}
 
 	return (
-		<Button
+		<AuthButton
 			className="w-full"
 			disabled={pending}
 			onClick={() => {
@@ -55,11 +55,11 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 			variant="outline"
 		>
 			{pending ? (
-				<Spinner data-icon="inline-start" />
+				<LogoSpinner data-icon="inline-start" />
 			) : (
 				<Logo data-icon="inline-start" className="size-4" />
 			)}
 			{label}
-		</Button>
+		</AuthButton>
 	);
 }

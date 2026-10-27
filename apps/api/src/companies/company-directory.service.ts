@@ -47,7 +47,7 @@ export class CompanyDirectoryService {
 
 		await this.agent.companyCreated(
 			outcome.id,
-			`Created from an email domain (${domain}) — it has no name but the domain`,
+			`Created from an email domain (${domain}). It has no name but the domain`,
 		);
 
 		this.logger.log({

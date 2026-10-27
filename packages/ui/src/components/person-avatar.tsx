@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
-import { initialsFromName } from "@crm/ui/lib/format";
+import { GeneratedAvatar } from "@crm/ui/components/generated-avatar";
 import type * as React from "react";
 
 export type PersonAvatarSize = "sm" | "default" | "lg";
@@ -19,12 +19,14 @@ export function PersonAvatar({
 	size?: PersonAvatarSize;
 }) {
 	const url = src?.trim() ? src : undefined;
-	const label = name?.trim() || email?.trim() || "";
+	const seed = email?.trim() || name?.trim() || "";
 
 	return (
 		<Avatar size={size} {...props}>
 			{url ? <AvatarImage src={url} alt="" /> : null}
-			<AvatarFallback>{initialsFromName(label)}</AvatarFallback>
+			<AvatarFallback>
+				<GeneratedAvatar seed={seed} size="fill" />
+			</AvatarFallback>
 		</Avatar>
 	);
 }

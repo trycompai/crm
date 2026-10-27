@@ -1,15 +1,6 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
 import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { CardTableEmpty } from "@crm/ui/components/card-table";
 import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
@@ -25,6 +16,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@crm/ui/components/select";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import {
 	SimpleTable,
 	type SimpleTableColumn,
@@ -33,6 +25,7 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { TableCell } from "@crm/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LocalRelativeTime } from "@/components/local-date-time";
@@ -75,22 +68,17 @@ export function AllowedDomains() {
 	const { domains, canManage } = tracking.data;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Allowed domains</CardTitle>
-				<CardDescription>
-					The script records page views on these hosts only.
-				</CardDescription>
-
-				<CardAction>
-					<AddDomain disabled={!canManage} />
-				</CardAction>
-			</CardHeader>
-
+		<SettingsCard
+			title="Allowed domains"
+			description="The script records page views on these hosts only."
+			hint={canManage ? null : "Only an owner or an admin can change this."}
+			action={<AddDomain disabled={!canManage} />}
+			control={domains.length === 0 ? "full" : "table"}
+		>
 			{domains.length === 0 ? (
-				<CardTableEmpty>
+				<p className="text-muted-foreground text-sm">
 					Add the domain your website runs on to get your tracking script.
-				</CardTableEmpty>
+				</p>
 			) : (
 				<SimpleTable columns={COLUMNS}>
 					{domains.map((domain) => (
@@ -108,7 +96,7 @@ export function AllowedDomains() {
 								{domain.lastSeenAt ? (
 									<LocalRelativeTime date={domain.lastSeenAt} />
 								) : (
-									"—"
+									""
 								)}
 							</TableCell>
 							<TableCell className={`${CELL} text-right`}>
@@ -127,7 +115,7 @@ export function AllowedDomains() {
 					))}
 				</SimpleTable>
 			)}
-		</Card>
+		</SettingsCard>
 	);
 }
 
@@ -160,7 +148,7 @@ function AddDomain({ disabled }: { disabled: boolean }) {
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button size="sm" disabled={disabled}>
-					<Icon icon={Add} data-icon="inline-start" />
+					<Icon icon={PlusIcon} data-icon="inline-start" />
 					Add domain
 				</Button>
 			</PopoverTrigger>

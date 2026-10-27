@@ -1,10 +1,9 @@
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
-import { Spinner } from "@crm/ui/components/spinner";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { ConnectionPage } from "../../connection-page";
+import { ConnectionPage, ConnectionPageLoading } from "../../connection-page";
 import { SlackPeopleMatches } from "./slack-people-matches";
 
 type SlackPeoplePageProps = {
@@ -13,13 +12,7 @@ type SlackPeoplePageProps = {
 
 export default function SlackPeoplePage(props: SlackPeoplePageProps) {
 	return (
-		<Suspense
-			fallback={
-				<ConnectionPage centered>
-					<Spinner size="lg" />
-				</ConnectionPage>
-			}
-		>
+		<Suspense fallback={<ConnectionPageLoading />}>
 			<SlackPeoplePageContent {...props} />
 		</Suspense>
 	);

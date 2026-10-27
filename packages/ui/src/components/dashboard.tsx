@@ -9,19 +9,29 @@ function StatGroup({
 	return (
 		<div
 			data-slot="stat-group"
-			className={cn("@container/stats overflow-hidden border", className)}
+			className={cn(
+				"@container/stats overflow-hidden rounded-md bg-card text-card-foreground shadow-border",
+				className,
+			)}
 			{...props}
 		>
-			<div
-				className={cn(
-					"grid grid-cols-2 @2xl/stats:grid-cols-4",
-					"[&:nth-child(2n)]:border-l [&:nth-child(n+3)]:border-t",
-					"@2xl/stats:[&>*]:border-t-0 @2xl/stats:[&>*]:border-l @2xl/stats:[&>*:first-child]:border-l-0",
-				)}
-			>
+			<div className="grid grid-cols-1 divide-y @xl/stats:grid-cols-2 @xl/stats:divide-y-0 @xl/stats:[&>*:nth-child(even)]:border-l @xl/stats:[&>*:nth-child(n+3)]:border-t @4xl/stats:grid-cols-4 @4xl/stats:[&>*:nth-child(n+3)]:border-t-0 @4xl/stats:[&>*:not(:first-child)]:border-l">
 				{children}
 			</div>
 		</div>
+	);
+}
+
+function DashboardPanel({ className, ...props }: React.ComponentProps<"div">) {
+	return (
+		<div
+			data-slot="dashboard-panel"
+			className={cn(
+				"flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md bg-card text-card-foreground text-sm shadow-border",
+				className,
+			)}
+			{...props}
+		/>
 	);
 }
 
@@ -86,7 +96,10 @@ function ChartCard({
 	return (
 		<div
 			data-slot="chart-card"
-			className={cn("flex flex-col border", className)}
+			className={cn(
+				"flex flex-col overflow-hidden rounded-md bg-card text-card-foreground shadow-border",
+				className,
+			)}
 			{...props}
 		>
 			{title || description || action ? (
@@ -127,7 +140,10 @@ function KpiCard({
 	return (
 		<div
 			data-slot="kpi-card"
-			className={cn("flex flex-col gap-4 border p-5 md:p-6", className)}
+			className={cn(
+				"flex flex-col gap-4 rounded-md bg-card p-5 text-card-foreground shadow-border md:p-6",
+				className,
+			)}
 			{...props}
 		>
 			<h3 className="truncate font-medium text-muted-foreground text-sm">
@@ -178,6 +194,7 @@ function DashboardSection({
 export {
 	ChartCard,
 	DashboardGrid,
+	DashboardPanel,
 	DashboardRow,
 	DashboardSection,
 	KpiCard,

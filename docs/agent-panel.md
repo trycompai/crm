@@ -44,8 +44,9 @@ claim minted, the field a conversation is filed under, the empty-thread question
 - **Nothing mounts until the list has loaded**, or a new session starts and remounts.
 - **The landed thread is captured once** (`resolveThread`), or the first save swaps the
   open conversation out from under a live answer. It lives in `?thread=`.
-- **`keepMounted` on the tab descriptor** (`detail-sheet.tsx`) — Radix drops an inactive
-  tab, aborting the stream mid-answer.
+- **Set `keepMounted` on the Agent tab descriptor.**
+  `packages/ui/src/components/record-sheet.tsx` keeps opened tabs mounted.
+  Radix otherwise removes inactive tabs and aborts the stream.
 - **`autoScroll` and nothing else**; `scrollAnchor` stops it following the bottom.
 - **One `MessageScrollerItem` per message, not per part**; ids prefer `toolCallId`.
 - **Scoped to the rep** — a session id in a body decides which row, never whose.

@@ -1,17 +1,21 @@
 "use client";
 
-import Chat from "@carbon/icons-react/es/Chat";
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Email from "@carbon/icons-react/es/Email";
-import Events from "@carbon/icons-react/es/Events";
-import Task from "@carbon/icons-react/es/Task";
-import Time from "@carbon/icons-react/es/Time";
 import { Button } from "@crm/ui/components/button";
-import type { CarbonIcon } from "@crm/ui/components/icon";
+import type { IconComponent } from "@crm/ui/components/icon";
+import { Skeleton } from "@crm/ui/components/skeleton";
 import { Spinner } from "@crm/ui/components/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
+import { SKELETON, skeletonRows } from "@crm/ui/lib/skeleton-config";
 import { cn } from "@crm/ui/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+	CalendarDaysIcon,
+	CheckIcon,
+	Clock3Icon,
+	MailIcon,
+	MessageSquareIcon,
+	SquareCheckIcon,
+} from "lucide-react";
 import { useQueryState } from "nuqs";
 import { DetailSheetEmpty, SECTION_TITLE } from "@/components/detail-sheet";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
@@ -49,7 +53,7 @@ const EMPTY_STATES = {
 	notes: {
 		title: "No notes",
 		description:
-			"Notes are what you write down for the next person to read — what they care about, who else is involved, what you promised.",
+			"Notes are what you write down for the next person to read: what they care about, who else is involved, what you promised.",
 	},
 	email: {
 		title: "No email",
@@ -73,13 +77,13 @@ const EMPTY_STATES = {
 } satisfies Record<TimelineTab, { title: string; description: string }>;
 
 const EMPTY_ICONS = {
-	all: Time,
-	notes: Chat,
-	email: Email,
-	meetings: Events,
-	upcoming: Task,
-	done: Checkmark,
-} satisfies Record<TimelineTab, CarbonIcon>;
+	all: Clock3Icon,
+	notes: MessageSquareIcon,
+	email: MailIcon,
+	meetings: CalendarDaysIcon,
+	upcoming: SquareCheckIcon,
+	done: CheckIcon,
+} satisfies Record<TimelineTab, IconComponent>;
 
 const dayFormat = new Intl.DateTimeFormat("en-US", {
 	weekday: "short",
@@ -186,7 +190,7 @@ export function Timeline({ anchor }: { anchor: TimelineAnchor }) {
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex shrink-0 flex-col gap-2 border-b px-5 py-3">
+			<div className="flex shrink-0 flex-col gap-2 border-b pb-3">
 				<ActivityComposer anchor={anchor} />
 
 				<ToggleGroup
@@ -212,9 +216,15 @@ export function Timeline({ anchor }: { anchor: TimelineAnchor }) {
 			</div>
 
 			{history.isPending ? (
-				<div className="flex min-h-0 flex-1 items-center justify-center">
-					<Spinner />
-				</div>
+				<ul aria-busy className="flex flex-col gap-3 pt-1">
+					{skeletonRows(SKELETON.rows.feed).map((row) => (
+						<li key={row} className="flex items-center gap-3">
+							<Skeleton className="size-6 shrink-0 rounded-full" />
+							<Skeleton className="h-4 flex-1" />
+							<Skeleton className="h-4 w-10" />
+						</li>
+					))}
+				</ul>
 			) : entries.length === 0 && pinnedEntries.length === 0 ? (
 				<DetailSheetEmpty
 					icon={EMPTY_ICONS[tab]}
@@ -222,7 +232,7 @@ export function Timeline({ anchor }: { anchor: TimelineAnchor }) {
 					description={EMPTY_STATES[tab].description}
 				/>
 			) : (
-				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-4">
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
 					{pinnedEntries.length > 0 ? (
 						<TimelineDay
 							label="Outstanding"

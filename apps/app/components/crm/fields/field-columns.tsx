@@ -56,10 +56,10 @@ export function useFieldColumns<Row extends WithFields>(
 			.map((field) => ({
 				id: `field:${field.key}`,
 				header: field.label,
-				width: "w-[12%]",
+				width: "36" as const,
 				hideBelow: "lg" as const,
 				cell: (row: Row) => (
-					<span className="truncate">
+					<span className="block truncate">
 						{render(field.type, row.fields[field.key] ?? null, byId)}
 					</span>
 				),

@@ -1,8 +1,8 @@
-import ArrowRight from "@carbon/icons-react/es/ArrowRight";
 import GitHubLogo from "@crm/ui/components/brand-logos/github";
 import StripeLogo from "@crm/ui/components/brand-logos/stripe";
 import VercelLogo from "@crm/ui/components/brand-logos/vercel";
 import { cn } from "@crm/ui/lib/utils";
+import { ArrowRightIcon } from "lucide-react";
 import type * as React from "react";
 import { AskCard } from "./ask-card";
 import {
@@ -117,7 +117,7 @@ function AgentBuilderCard() {
 			<CardTitle>Agents that build agents</CardTitle>
 			<CardBody>
 				Describe a process in a sentence and the agent writes another agent to
-				run it — on its own queue, on its own schedule.
+				run it on its own queue and schedule.
 			</CardBody>
 
 			<div className="flex select-none flex-col">
@@ -130,7 +130,10 @@ function AgentBuilderCard() {
 						<span className="min-w-0 grow font-medium text-[13px]/[18px]">
 							{agent}
 						</span>
-						<ArrowRight size={14} className="shrink-0 text-muted-foreground" />
+						<ArrowRightIcon
+							size={14}
+							className="shrink-0 text-muted-foreground"
+						/>
 					</div>
 				))}
 			</div>

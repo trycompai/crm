@@ -186,40 +186,31 @@ needs its guardrails legible to whoever turns it on.
 
 ## Layout
 
-Page metrics are tokens. Never a literal.
+Every connection page renders through `ConnectionPage`, which is `PageShell`
+with `width="narrow"`. The shell owns the gutters, the top and bottom padding
+and the column width, so connection pages line up with every other settings
+page. Do not add a page wrapper of your own.
+
+Metrics inside the column are tokens. Never a literal.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--spacing-page-top` | 40px | Top bar to first line of content |
-| `--spacing-page-bottom` | 40px | Below the last block |
-| `--spacing-page-inline` | 24px | Viewport gutters |
-| `--spacing-page-gap` | 24px | Between top-level blocks |
-| `--spacing-block-inline` | 20px | Inset on every block, **including the page title** |
-| `--container-page` | 820px | Content column |
+| `--spacing-page-gap` | 24px | Gap within flat sections |
+| `--spacing-block-inline` | 20px | Inset within legacy content blocks |
 | `--container-page-wide` | 1120px | Two-column or table pages |
 | `--container-narrow` | 560px | Empty states, dialogs |
 | `--container-sheet` | 640px | Edit sheet over a page |
 | `--height-tool-panel` | 400–640px | Scrollable tool inventories |
 
-`--spacing-block-inline` is the one doing real work: a card sits flush at the
-column edge and carries 20px of its own padding, so card text lands in the same
-lane as the title on a flat page. The two page types stay aligned without
-matching each other's chrome.
+Page headers and section headers align with the column edge.
+Shared `SettingsCard` components own their content padding and footer spacing.
+Shared component sizes take precedence over the legacy content tokens above.
+Use `SettingsColumn` between settings cards and `PageSection` for flat tool inventories.
+Do not add an inset to page headers to match card content.
 
-Short single-decision pages (empty state, pre-connect, match people) centre
-vertically. List pages top-align so nothing jumps when a row is added.
-
-## Cards versus flat
-
-Cards are for **discrete, independently-actionable objects** — an agent you can
-pause on its own, a connection row with its own Manage button, a choice in a
-picker, a Questionnaire.
-
-Flat sections separated by a 1px `--color-dark-border` rule are for **a page
-describing one thing** — the pre-connect page.
-
-The split is by what the block *is*, not by page. Do not card a section; do not
-flatten a list of separately-actionable objects.
+Connection status, synchronization choices, revocation, and deletion use separate settings cards.
+Tool access, permissions, and agent usage use flat page sections.
+Connection pickers retain cards for independent connection choices.
 
 ## Brand marks
 

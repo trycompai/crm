@@ -40,7 +40,7 @@ export const RETRY = "Try again";
 export const LABEL_LABEL = "Label";
 export const KEY_LABEL = "Key";
 export const KEY_HELP =
-	"What the API and your agents call it. Set from the label, fixed once saved — renaming the label later never breaks a caller.";
+	"What the API and your agents call it. Set from the label, fixed once saved. Renaming the label never breaks a caller.";
 export const AGENT_LABEL = "Let your agents fill this";
 export const AGENT_HELP =
 	"They propose a value with a source, and never overwrite yours.";

@@ -1,10 +1,5 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
-import ChevronUp from "@carbon/icons-react/es/ChevronUp";
-import Download from "@carbon/icons-react/es/Download";
-import Renew from "@carbon/icons-react/es/Renew";
-import WarningAlt from "@carbon/icons-react/es/WarningAlt";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -18,6 +13,13 @@ import {
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
+import {
+	ChevronDownIcon,
+	ChevronUpIcon,
+	DownloadIcon,
+	RefreshCwIcon,
+	TriangleAlertIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { runFailureReason } from "@/lib/agent-run-failure";
@@ -133,14 +135,15 @@ export function AgentRuns({
 										{humanStatus(run.status)}
 									</span>
 								</span>
-								<span className="mt-1 block wrap-break-word font-mono text-muted-foreground text-xs leading-5 sm:mt-0">
-									{humanStatus(run.triggerType)} · {formatDate(run.createdAt)} ·
-									Version {run.version.number}
+								<span className="mt-1 flex flex-wrap gap-x-3 font-mono text-muted-foreground text-xs leading-5 sm:mt-0">
+									<span>{humanStatus(run.triggerType)}</span>
+									<span>{formatDate(run.createdAt)}</span>
+									<span>Version {run.version.number}</span>
 								</span>
 								{run.status === "FAILED" || run.status === "CANCELLED" ? (
 									<span className="mt-1.5 flex min-w-0 items-start gap-2 rounded-md bg-destructive/10 px-2.5 py-1.5">
 										<Icon
-											icon={WarningAlt}
+											icon={TriangleAlertIcon}
 											className="mt-px size-3.5 shrink-0 text-destructive"
 										/>
 										<span className="min-w-0 wrap-break-word text-destructive text-xs leading-5">
@@ -156,7 +159,7 @@ export function AgentRuns({
 									{run.actions.length === 1 ? "action" : "actions"}
 								</span>
 								<Icon
-									icon={expanded === run.id ? ChevronUp : ChevronDown}
+									icon={expanded === run.id ? ChevronUpIcon : ChevronDownIcon}
 									className="size-3.5"
 								/>
 							</span>
@@ -170,7 +173,7 @@ export function AgentRuns({
 									disabled={retryingRunId === run.id}
 									onClick={() => onRetry(run.id)}
 								>
-									<Icon icon={Renew} data-icon="inline-start" />
+									<Icon icon={RefreshCwIcon} data-icon="inline-start" />
 									Retry
 								</Button>
 							</span>
@@ -203,8 +206,8 @@ export function AgentRuns({
 						<AlertDialogTitle>Stop this run?</AlertDialogTitle>
 						<AlertDialogDescription>
 							The agent stops where it is and the run is recorded as cancelled.
-							Anything it has already done — a note, a task, a Slack message —
-							stays done.
+							Anything it has already done, including notes, tasks and Slack
+							messages, stays done.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 
@@ -288,11 +291,12 @@ function ExpandedRun({ run }: { run: RunRow }) {
 								<span className="block wrap-break-word text-sm">
 									{entry.action.summary}
 								</span>
-								<span className="block wrap-break-word text-muted-foreground text-xs">
-									{entry.action.provider} · {humanStatus(entry.action.status)}
-									{entry.action.targetLabel
-										? ` · ${entry.action.targetLabel}`
-										: ""}
+								<span className="flex flex-wrap gap-x-3 wrap-break-word text-muted-foreground text-xs">
+									<span>{entry.action.provider}</span>
+									<span>{humanStatus(entry.action.status)}</span>
+									{entry.action.targetLabel ? (
+										<span>{entry.action.targetLabel}</span>
+									) : null}
 								</span>
 							</span>
 							<span className="col-start-2 min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:col-auto sm:shrink-0">
@@ -358,7 +362,7 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 					size="sm"
 					onClick={() => exportJson("agent-activity.json", visible)}
 				>
-					<Icon icon={Download} data-icon="inline-start" />
+					<Icon icon={DownloadIcon} data-icon="inline-start" />
 					Export
 				</Button>
 			</div>
@@ -388,13 +392,13 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 								</span>
 							) : null}
 						</span>
-						<span className="min-w-0 wrap-break-word text-xs sm:w-[140px] sm:shrink-0 sm:text-sm">
-							<span className="text-muted-foreground sm:hidden">Actor · </span>
+						<span className="flex min-w-0 flex-col wrap-break-word text-xs sm:block sm:w-[140px] sm:shrink-0 sm:text-sm">
+							<span className="text-muted-foreground sm:hidden">Actor</span>
 							{event.actorUser?.name ?? event.actorId ?? event.actorType}
 						</span>
-						<span className="min-w-0 wrap-break-word font-mono text-muted-foreground text-xs sm:w-[118px] sm:shrink-0 sm:text-right">
-							<span className="font-sans sm:hidden">Request · </span>
-							{event.requestId?.slice(0, 12) ?? "—"}
+						<span className="flex min-w-0 flex-col wrap-break-word font-mono text-muted-foreground text-xs sm:block sm:w-[118px] sm:shrink-0 sm:text-right">
+							<span className="font-sans sm:hidden">Request</span>
+							{event.requestId?.slice(0, 12) ?? ""}
 						</span>
 					</div>
 				))}
@@ -424,7 +428,7 @@ function formatTime(value: string): string {
 }
 
 function duration(startedAt: string | null, finishedAt: string | null): string {
-	if (!startedAt) return "—";
+	if (!startedAt) return "";
 	if (!finishedAt) return "In progress";
 
 	const milliseconds =

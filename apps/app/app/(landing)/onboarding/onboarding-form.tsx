@@ -1,21 +1,21 @@
 "use client";
 
 import { workspaceSlug } from "@crm/db/workspace";
-import { Button } from "@crm/ui/components/button";
+import { AuthButton } from "@crm/ui/components/auth-button";
 import {
-	Field,
-	FieldDescription,
-	FieldGroup,
-	FieldLabel,
-} from "@crm/ui/components/field";
-import { Input } from "@crm/ui/components/input";
+	AuthField,
+	AuthFieldDescription,
+	AuthFieldGroup,
+	AuthFieldLabel,
+} from "@crm/ui/components/auth-field";
+import { AuthInput } from "@crm/ui/components/auth-input";
 import {
-	InputGroup,
-	InputGroupAddon,
-	InputGroupInput,
-	InputGroupText,
-} from "@crm/ui/components/input-group";
-import { Spinner } from "@crm/ui/components/spinner";
+	AuthInputGroup,
+	AuthInputGroupAddon,
+	AuthInputGroupInput,
+	AuthInputGroupText,
+} from "@crm/ui/components/auth-input-group";
+import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
@@ -58,10 +58,10 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 			}}
 			className="flex flex-col gap-6"
 		>
-			<FieldGroup>
-				<Field>
-					<FieldLabel htmlFor={nameId}>Company name</FieldLabel>
-					<Input
+			<AuthFieldGroup>
+				<AuthField>
+					<AuthFieldLabel htmlFor={nameId}>Company name</AuthFieldLabel>
+					<AuthInput
 						id={nameId}
 						name="name"
 						value={name}
@@ -75,15 +75,15 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 						autoFocus
 						required
 					/>
-				</Field>
+				</AuthField>
 
-				<Field>
-					<FieldLabel htmlFor={slugId}>Workspace URL</FieldLabel>
-					<InputGroup>
-						<InputGroupAddon>
-							<InputGroupText>/</InputGroupText>
-						</InputGroupAddon>
-						<InputGroupInput
+				<AuthField>
+					<AuthFieldLabel htmlFor={slugId}>Workspace URL</AuthFieldLabel>
+					<AuthInputGroup>
+						<AuthInputGroupAddon>
+							<AuthInputGroupText>/</AuthInputGroupText>
+						</AuthInputGroupAddon>
+						<AuthInputGroupInput
 							id={slugId}
 							name="slug"
 							value={slug}
@@ -101,19 +101,19 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 							spellCheck={false}
 							required
 						/>
-					</InputGroup>
-					<FieldDescription>
+					</AuthInputGroup>
+					<AuthFieldDescription>
 						Your team will use this address to open the CRM.
-					</FieldDescription>
-				</Field>
+					</AuthFieldDescription>
+				</AuthField>
 
-				<Field>
-					<FieldLabel htmlFor={websiteId}>Website</FieldLabel>
-					<InputGroup>
-						<InputGroupAddon>
-							<InputGroupText>https://</InputGroupText>
-						</InputGroupAddon>
-						<InputGroupInput
+				<AuthField>
+					<AuthFieldLabel htmlFor={websiteId}>Website</AuthFieldLabel>
+					<AuthInputGroup>
+						<AuthInputGroupAddon>
+							<AuthInputGroupText>https://</AuthInputGroupText>
+						</AuthInputGroupAddon>
+						<AuthInputGroupInput
 							id={websiteId}
 							name="website"
 							placeholder="acme.com"
@@ -124,17 +124,17 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 							inputMode="url"
 							required
 						/>
-					</InputGroup>
-					<FieldDescription>
+					</AuthInputGroup>
+					<AuthFieldDescription>
 						Read once, so every answer afterwards knows what you sell.
-					</FieldDescription>
-				</Field>
-			</FieldGroup>
+					</AuthFieldDescription>
+				</AuthField>
+			</AuthFieldGroup>
 
-			<Button type="submit" disabled={save.isPending}>
-				{save.isPending ? <Spinner data-icon="inline-start" /> : null}
+			<AuthButton type="submit" disabled={save.isPending}>
+				{save.isPending ? <LogoSpinner data-icon="inline-start" /> : null}
 				Continue
-			</Button>
+			</AuthButton>
 		</form>
 	);
 }

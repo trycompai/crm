@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import {
 	parseAsArrayOf,
 	parseAsString,
@@ -15,9 +16,17 @@ import {
 	useContext,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import { timelineTabParser } from "@/components/crm/timeline/timeline-search-params";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
+import {
+	closeRecordNavigation,
+	getRecordNavigation,
+	moveRecordNavigation,
+	openRecordNavigation,
+	type RecordQueueContext,
+} from "./record-navigation";
 
 const RECORD_KINDS = ["company", "contact", "deal"] as const;
 
@@ -61,8 +70,14 @@ function parseRef(raw: string): RecordRef | null {
 
 function useRecordStackState() {
 	const [values, setParams] = useQueryStates(params);
+	const pathname = usePathname();
 	const record = values[SEARCH_PARAM.record.stack];
 	const returnFocus = useRef<HTMLElement | null>(null);
+	const [session, setSession] = useState<{
+		pathname: string;
+		queues: RecordQueueContext[];
+	}>({ pathname, queues: [] });
+	const queues = session.pathname === pathname ? session.queues : [];
 
 	const stack = useMemo(
 		() => record.map(parseRef).filter((ref): ref is RecordRef => ref !== null),
@@ -89,32 +104,40 @@ function useRecordStackState() {
 	);
 
 	const open = useCallback(
-		(ref: RecordRef) => {
+		(ref: RecordRef, orderedRecordRefs?: readonly RecordRef[]) => {
 			if (stack.length === 0 && document.activeElement instanceof HTMLElement) {
 				returnFocus.current = document.activeElement;
 			}
-			const key = recordKey(ref);
-			void write(
-				[...stack.filter((entry) => recordKey(entry) !== key), ref],
-				stack.length === 0 ? "push" : "replace",
-			);
+			const next = openRecordNavigation(stack, queues, ref, orderedRecordRefs);
+			setSession({ pathname, queues: next.queues });
+			void write(next.stack, next.history);
 		},
-		[stack, write],
+		[stack, queues, pathname, write],
 	);
 
 	const close = useCallback(() => {
-		const next = stack.slice(0, -1);
-		void write(next, "replace").then(() => {
-			if (next.length > 0) return;
-			requestAnimationFrame(() => returnFocus.current?.focus());
-		});
-	}, [stack, write]);
+		const next = closeRecordNavigation(stack, queues);
+		setSession({ pathname, queues: next.queues });
+		void write(next.stack, next.history);
+	}, [stack, queues, pathname, write]);
 
 	const closeAll = useCallback(() => {
-		void write([], "replace").then(() => {
-			requestAnimationFrame(() => returnFocus.current?.focus());
-		});
-	}, [write]);
+		setSession({ pathname, queues: [] });
+		void write([], "replace");
+	}, [pathname, write]);
+
+	const restoreFocus = useCallback(() => returnFocus.current?.focus(), []);
+
+	const move = useCallback(
+		(direction: -1 | 1) => {
+			const next = moveRecordNavigation(stack, queues, direction);
+			if (!next) return;
+			setSession({ pathname, queues: next.queues });
+			void write(next.stack, next.history);
+		},
+		[stack, queues, pathname, write],
+	);
+	const position = getRecordNavigation(stack, queues);
 
 	return {
 		stack,
@@ -122,6 +145,14 @@ function useRecordStackState() {
 		open,
 		close,
 		closeAll,
+		restoreFocus,
+		navigation: position
+			? {
+					...position,
+					onPrevious: () => move(-1),
+					onNext: () => move(1),
+				}
+			: undefined,
 	};
 }
 
@@ -135,6 +166,8 @@ const EMPTY_RECORD_STACK: RecordStackState = {
 	open: () => undefined,
 	close: () => undefined,
 	closeAll: () => undefined,
+	restoreFocus: () => undefined,
+	navigation: undefined,
 };
 
 function RecordStackFallbackProvider({ children }: { children: ReactNode }) {

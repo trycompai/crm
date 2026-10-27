@@ -1,14 +1,6 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
 import {
 	Command,
 	CommandEmpty,
@@ -17,13 +9,17 @@ import {
 	CommandItem,
 	CommandList,
 } from "@crm/ui/components/command";
+import { Field, FieldDescription } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
+import { MetaRow } from "@crm/ui/components/meta-row";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@crm/ui/components/popover";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -46,7 +42,7 @@ function perMillion(rate: number): string {
 
 function priceHint(model: CatalogModel): string | null {
 	if (!model.pricing) return null;
-	return `${perMillion(model.pricing.input)} in · ${perMillion(model.pricing.output)} out per 1M`;
+	return `${perMillion(model.pricing.input)} in, ${perMillion(model.pricing.output)} out per 1M`;
 }
 
 function contextHint(tokens: number): string {
@@ -98,7 +94,7 @@ export function AgentModel() {
 
 	const currentLabel = selectedId
 		? effectiveName
-		: `Default — ${effectiveName}`;
+		: `Default (${effectiveName})`;
 
 	const choose = (id: string) => {
 		setOpen(false);
@@ -107,15 +103,12 @@ export function AgentModel() {
 	};
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Research agent</CardTitle>
-				<CardDescription>
-					The model the agent thinks with, routed through the Vercel AI Gateway.
-				</CardDescription>
-			</CardHeader>
-
-			<CardContent>
+		<SettingsCard
+			title="Research agent"
+			description="The model the agent thinks with, routed through the Vercel AI Gateway."
+			hint="Changes save as you make them. The agent uses the new model from its next session."
+		>
+			<Field>
 				<Popover open={open} onOpenChange={setOpen}>
 					<PopoverTrigger asChild>
 						<Button
@@ -126,7 +119,7 @@ export function AgentModel() {
 							disabled={save.isPending || catalog.isPending || unavailable}
 						>
 							{currentLabel}
-							<Icon icon={ChevronDown} data-icon="inline-end" />
+							<Icon icon={ChevronDownIcon} data-icon="inline-end" />
 						</Button>
 					</PopoverTrigger>
 
@@ -142,7 +135,7 @@ export function AgentModel() {
 										data-checked={current === FOLLOW_DEFAULT}
 										onSelect={() => choose(FOLLOW_DEFAULT)}
 									>
-										Default — {defaultModel?.name ?? defaultId}
+										Default ({defaultModel?.name ?? defaultId})
 									</CommandItem>
 								</CommandGroup>
 
@@ -172,16 +165,23 @@ export function AgentModel() {
 					</PopoverContent>
 				</Popover>
 
-				<p className="text-muted-foreground text-xs">
-					{unavailable
-						? `Could not reach the AI Gateway to list models. The agent is still running ${effectiveId}.`
-						: effective
-							? `${effectiveId} · ${contextHint(effective.contextWindowTokens)}${
-									priceHint(effective) ? ` · ${priceHint(effective)}` : ""
-								}`
-							: effectiveId}
-				</p>
-			</CardContent>
-		</Card>
+				{unavailable ? (
+					<FieldDescription>
+						Could not reach the AI Gateway to list models. The agent is still
+						running {effectiveId}.
+					</FieldDescription>
+				) : (
+					<MetaRow className="text-13">
+						<span>{effectiveId}</span>
+						{effective ? (
+							<span>{contextHint(effective.contextWindowTokens)}</span>
+						) : null}
+						{effective && priceHint(effective) ? (
+							<span>{priceHint(effective)}</span>
+						) : null}
+					</MetaRow>
+				)}
+			</Field>
+		</SettingsCard>
 	);
 }

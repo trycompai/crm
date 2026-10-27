@@ -23,74 +23,97 @@ export const ICON_MOTIONS = [
 
 export type IconMotion = (typeof ICON_MOTIONS)[number];
 
-export type CarbonIconProps = React.SVGProps<SVGSVGElement> & {
+export type IconComponentProps = React.SVGProps<SVGSVGElement> & {
 	size?: number | string;
 };
 
-export type CarbonIcon = React.ComponentType<CarbonIconProps> & {
+export type IconComponent = React.ComponentType<IconComponentProps> & {
 	displayName?: string;
-	render?: { displayName?: string; name?: string };
 };
 
-const MOTION_BY_ICON: Record<string, IconMotion> = {
-	ArrowRight: "nudge-right",
-	ChevronRight: "nudge-right",
-	Play: "nudge-right",
-	SendAlt: "nudge-right",
-	Logout: "nudge-right",
-	ArrowLeft: "nudge-left",
-	ChevronLeft: "nudge-left",
-	ArrowUp: "nudge-up",
-	ArrowDown: "nudge-down",
-	ChevronDown: "nudge-down",
-	Download: "bounce",
-	Launch: "launch",
-	Settings: "spin",
-	Renew: "spin",
-	Restart: "spin",
-	RecentlyViewed: "spin",
-	Earth: "spin",
-	Add: "turn",
-	Close: "turn",
-	TrashCan: "wiggle",
-	Tools: "wiggle",
-	Locked: "wiggle",
-	Password: "wiggle",
-	MagicWand: "wiggle",
-	Search: "wiggle",
-	WarningAlt: "wiggle",
-	Misuse: "pulse",
-	Information: "pulse",
-	Security: "pulse",
-	Light: "pulse",
-	Ai: "pulse",
-	Chip: "pulse",
-	Asleep: "swing",
-};
+const MOTION_BY_ICON = new Map(
+	Object.entries({
+		ArrowRight: "nudge-right",
+		ChevronRight: "nudge-right",
+		LogOut: "nudge-right",
+		ArrowLeft: "nudge-left",
+		ChevronLeft: "nudge-left",
+		ArrowUp: "nudge-up",
+		ArrowDown: "nudge-down",
+		ChevronDown: "nudge-down",
+		Download: "bounce",
+		ExternalLink: "launch",
+		ArrowUpRight: "launch",
+		Settings: "spin",
+		RefreshCw: "spin",
+		Plus: "turn",
+		X: "turn",
+		Trash: "wiggle",
+		Lock: "wiggle",
+		Search: "wiggle",
+		TriangleAlert: "wiggle",
+		Info: "pulse",
+		CircleAlert: "pulse",
+		Shield: "pulse",
+		Sun: "pulse",
+		Moon: "swing",
+		ChevronUp: "nudge-up",
+		Play: "nudge-right",
+		WandSparkles: "wiggle",
+	} satisfies Record<string, IconMotion>),
+);
 
-function iconName(icon: CarbonIcon): string | undefined {
-	return icon.displayName ?? icon.render?.displayName ?? icon.render?.name;
+export function iconMotionFor(icon: IconComponent): IconMotion {
+	const name = icon.displayName;
+
+	return (name && MOTION_BY_ICON.get(name)) || "pop";
 }
 
-export function iconMotionFor(icon: CarbonIcon): IconMotion {
-	const name = iconName(icon);
-	return (name && MOTION_BY_ICON[name]) || "pop";
-}
-
-export type IconProps = CarbonIconProps & {
-	icon: CarbonIcon;
+export type IconProps = IconComponentProps & {
+	icon: IconComponent;
 	motion?: IconMotion;
+	tone?: "default" | "muted" | "destructive" | "success";
+	size?: number | string;
 };
 
-export function Icon({ icon: Glyph, motion, className, ...props }: IconProps) {
+const ICON_SIZES = {
+	xs: "size-3",
+	sm: "size-3.5",
+	md: "size-4",
+	lg: "size-5",
+} as const;
+
+const ICON_SIZE_CLASSES = new Map(Object.entries(ICON_SIZES));
+
+export function Icon({
+	icon: Glyph,
+	motion,
+	tone = "default",
+	size,
+	className,
+	...props
+}: IconProps) {
 	const resolved = motion ?? iconMotionFor(Glyph);
+	const sizeClass =
+		typeof size === "string" ? ICON_SIZE_CLASSES.get(size) : undefined;
+
 	return (
 		<Glyph
 			aria-hidden
 			focusable={false}
+			width={sizeClass ? undefined : (size ?? 16)}
+			height={sizeClass ? undefined : (size ?? 16)}
 			{...props}
+			size={sizeClass ? undefined : (size ?? 16)}
 			data-motion={resolved}
-			className={cn("cds-icon", className)}
+			className={cn(
+				"ds-icon",
+				tone === "muted" && "text-muted-foreground",
+				tone === "destructive" && "text-destructive",
+				tone === "success" && "text-status-success",
+				sizeClass,
+				className,
+			)}
 		/>
 	);
 }

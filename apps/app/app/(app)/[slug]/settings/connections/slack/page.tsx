@@ -1,5 +1,3 @@
-import Close from "@carbon/icons-react/es/Close";
-import Warning from "@carbon/icons-react/es/Warning";
 import {
 	describeSlackScopes,
 	SLACK_REQUESTED_SCOPES,
@@ -17,6 +15,16 @@ import {
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import { PageSection } from "@crm/ui/components/page-section";
+import {
+	PageShellActions,
+	PageShellDescription,
+	PageShellHeader,
+	PageShellHeading,
+	PageShellTitle,
+} from "@crm/ui/components/page-shell";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import { CircleAlertIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { NewAgentDialog } from "@/components/agent-builder/new-agent-dialog";
@@ -76,21 +84,23 @@ async function SlackConnectionPageContent({
 	return status.connected ? (
 		<ConnectedSlack slug={slug} status={status} />
 	) : (
-		<ConnectionPage centered className="max-w-(--container-page)">
-			<header className="flex flex-col gap-3 px-(--spacing-block-inline)">
-				<div className="flex items-center gap-3">
-					<SlackLogo className="size-6" />
-					<h1 className="font-medium text-xl">Slack</h1>
-					<span className="ml-auto text-muted-foreground text-sm">
-						Not connected
-					</span>
-				</div>
-				<p className="text-muted-foreground text-sm leading-relaxed">
-					Connecting Slack gives the CRM a way in and a way out. What it
-					actually does with that is up to you afterwards, one automation at a
-					time.
-				</p>
-			</header>
+		<ConnectionPage centered>
+			<PageShellHeader>
+				<PageShellHeading>
+					<PageShellTitle className="flex items-center gap-3">
+						<SlackLogo className="size-6" />
+						Slack
+					</PageShellTitle>
+					<PageShellDescription>
+						Connecting Slack gives the CRM a way in and a way out. What it
+						actually does with that is up to you afterwards, one automation at a
+						time.
+					</PageShellDescription>
+				</PageShellHeading>
+				<PageShellActions>
+					<StatusIndicator size="sm" tone="neutral" label="Not connected" />
+				</PageShellActions>
+			</PageShellHeader>
 			<SlackScopeGroups
 				groups={groupScopes([...SLACK_REQUESTED_SCOPES])}
 				title="What you are handing over"
@@ -99,41 +109,38 @@ async function SlackConnectionPageContent({
 			<PlainList
 				title="What it will never do"
 				items={never}
-				icon={Close}
+				icon={XIcon}
 				tone="text-muted-foreground"
 			/>
-			<div className="flex items-center gap-4 border-y px-(--spacing-block-inline) py-5">
+			<div className="flex flex-wrap items-center gap-4 border-y py-5">
 				<SlackConnectButton
 					slug={slug}
 					configured={status.configured}
 					connectError={connectErrorOf(query, "slack")}
 				/>
-				<p className="text-muted-foreground text-xs">
+				<p className="text-muted-foreground text-13">
 					You approve the workspace in Slack. You can disconnect it here at any
 					time.
 				</p>
 			</div>
-			<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-				<div>
-					<h2 className="font-medium text-sm">
-						Afterwards, most teams start with one of these
-					</h2>
-					<p className="text-muted-foreground text-xs">
-						Suggestions, not settings. None of them exist until you pick one and
-						switch it on.
-					</p>
-				</div>
+			<PageSection
+				title="Afterwards, most teams start with one of these"
+				description="Suggestions, not settings. None of them exist until you pick one and switch it on."
+			>
 				<div className="grid gap-3 md:grid-cols-3">
 					{suggestions.map(([name, description]) => (
-						<div className="rounded-lg border p-4" key={name}>
+						<div
+							className="flex flex-col gap-2 rounded-md p-4 shadow-border"
+							key={name}
+						>
 							<h3 className="font-medium text-sm">{name}</h3>
-							<p className="mt-2 text-muted-foreground text-xs leading-relaxed">
+							<p className="text-pretty text-13 text-muted-foreground">
 								{description}
 							</p>
 						</div>
 					))}
 				</div>
-			</section>
+			</PageSection>
 		</ConnectionPage>
 	);
 }
@@ -183,24 +190,30 @@ function ConnectedSlack({
 		: [...drift.missing, SLACK_USER_GRANT];
 	return (
 		<ConnectionPage>
-			<header className="flex flex-col gap-2 px-(--spacing-block-inline)">
-				<div className="flex items-center gap-3">
-					<SlackLogo className="size-6" />
-					<h1 className="font-medium text-xl">Slack</h1>
-					<span className="ml-auto text-muted-foreground text-sm">
-						{status.workspace ?? "Connected"}
-					</span>
+			<PageShellHeader>
+				<PageShellHeading>
+					<PageShellTitle className="flex items-center gap-3">
+						<SlackLogo className="size-6" />
+						Slack
+					</PageShellTitle>
+					<PageShellDescription>
+						{status.canManage
+							? "Here is what Slack gave us. Agents only post where their automation says."
+							: "Here is what Slack gave us. Only an owner or an admin can disconnect it."}
+					</PageShellDescription>
+				</PageShellHeading>
+				<PageShellActions>
+					<StatusIndicator
+						size="sm"
+						tone="success"
+						label={status.workspace ?? "Connected"}
+					/>
 					<SlackDisconnectButton
 						canManage={status.canManage}
 						workspace={status.workspace}
 					/>
-				</div>
-				<p className="text-muted-foreground text-sm">
-					{status.canManage
-						? "Here is what Slack gave us. Agents only post where their automation says."
-						: "Here is what Slack gave us. Only an owner or an admin can disconnect it."}
-				</p>
-			</header>
+				</PageShellActions>
+			</PageShellHeader>
 			<MissingGrant missing={missing} slug={slug} />
 			<SlackScopeGroups
 				groups={groupScopes(status.scopes)}
@@ -208,19 +221,16 @@ function ConnectedSlack({
 				withheld={missing.map(toLine)}
 			/>
 			<SlackChannels />
-			<section className="flex flex-col gap-3 border-y px-(--spacing-block-inline) py-5">
-				<div className="flex items-end justify-between gap-4">
-					<div>
-						<h2 className="font-medium text-sm">Agents that use Slack</h2>
-						<p className="text-muted-foreground text-xs">
-							Built in chat, not here. Open one to change it.
-						</p>
-					</div>
+			<PageSection
+				title="Agents that use Slack"
+				description="Built in chat, not here. Open one to change it."
+				action={
 					<NewAgentDialog>
 						<Button size="sm">New agent</Button>
 					</NewAgentDialog>
-				</div>
-				<div className="flex flex-col divide-y rounded-lg border">
+				}
+			>
+				<div className="flex flex-col divide-y rounded-md shadow-border">
 					{agents.length === 0 ? (
 						<p className="px-(--spacing-block-inline) py-4 text-muted-foreground text-sm">
 							No deployed agents use Slack yet.
@@ -240,11 +250,11 @@ function ConnectedSlack({
 							>
 								<div className="min-w-0 flex-1">
 									<h3 className="font-medium text-sm">{agent.name}</h3>
-									<p className="truncate text-muted-foreground text-xs">
+									<p className="truncate text-muted-foreground text-13">
 										{agent.description}
 									</p>
 								</div>
-								<span className="flex w-19 shrink-0 items-center gap-2 text-xs">
+								<span className="flex w-19 shrink-0 items-center gap-2 text-13">
 									<span
 										className={`size-2 rounded-full ${agent.status === "LIVE" ? "bg-success" : "bg-muted-foreground"}`}
 									/>
@@ -260,8 +270,8 @@ function ConnectedSlack({
 						Describe another agent in chat
 					</Link>
 				</div>
-			</section>
-			<div className="flex items-center justify-between gap-4 px-(--spacing-block-inline)">
+			</PageSection>
+			<div className="flex items-center justify-between gap-4">
 				<p className="text-sm">
 					{status.people.reviewed === 0
 						? "No workspace people have been reviewed yet."
@@ -291,9 +301,9 @@ function MissingGrant({
 	);
 
 	return (
-		<div className="px-(--spacing-block-inline)">
+		<div>
 			<Alert variant="warning">
-				<Icon icon={Warning} />
+				<Icon icon={CircleAlertIcon} />
 				<AlertTitle>
 					{privateChannels
 						? "Comp AI cannot reach private channels"
@@ -305,7 +315,7 @@ function MissingGrant({
 						{missing.map((entry) => (
 							<li className="flex items-start gap-2" key={entry.scope}>
 								<Icon
-									icon={Close}
+									icon={XIcon}
 									motion="none"
 									className="mt-0.5 size-3.5 shrink-0"
 								/>
@@ -334,8 +344,7 @@ function PlainList({
 	tone: string;
 }) {
 	return (
-		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<h2 className="font-medium text-sm">{title}</h2>
+		<PageSection title={title}>
 			<div className="flex flex-col gap-2">
 				{items.map((item) => (
 					<div className="flex items-start gap-3 text-sm" key={item}>
@@ -348,6 +357,6 @@ function PlainList({
 					</div>
 				))}
 			</div>
-		</section>
+		</PageSection>
 	);
 }

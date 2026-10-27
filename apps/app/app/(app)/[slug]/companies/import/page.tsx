@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellContent,
@@ -8,7 +6,9 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 	PageShellTitle,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 import { workspaceUrl } from "@/lib/workspace-url";
 import { ImportWizard } from "./import-wizard";
 

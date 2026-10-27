@@ -1,11 +1,10 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@crm/ui/components/tooltip";
-import { initialsFromName } from "@crm/ui/lib/format";
 
 export type Owner = {
 	id: string;
@@ -24,10 +23,12 @@ export function OwnerCell({
 	if (!owner) return compact ? null : <EmptyCellValue />;
 
 	const avatar = (
-		<Avatar size="sm">
-			{owner.image ? <AvatarImage src={owner.image} alt="" /> : null}
-			<AvatarFallback>{initialsFromName(owner.name)}</AvatarFallback>
-		</Avatar>
+		<PersonAvatar
+			src={owner.image}
+			name={owner.name}
+			email={owner.email}
+			size="sm"
+		/>
 	);
 
 	if (compact) {

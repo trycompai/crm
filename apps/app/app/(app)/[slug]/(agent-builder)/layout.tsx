@@ -1,9 +1,5 @@
 import { Suspense } from "react";
-import {
-	AgentBuilderShell,
-	AgentBuilderSidebarFallback,
-} from "@/components/agent-builder/agent-builder-shell";
-import { AgentBuilderSidebar } from "@/components/agent-builder/agent-builder-sidebar";
+import { AgentBuilderShell } from "@/components/agent-builder/agent-builder-shell";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
@@ -11,39 +7,23 @@ export default function AgentBuilderLayout({
 	children,
 }: Readonly<{ children: React.ReactNode }>) {
 	return (
-		<AgentBuilderShell
-			sidebar={
-				<Suspense fallback={<AgentBuilderSidebarFallback />}>
-					<PrefetchedAgentBuilderSidebar />
-				</Suspense>
-			}
-		>
+		<AgentBuilderShell>
+			<Suspense fallback={null}>
+				<PrefetchedAgentChatNav />
+			</Suspense>
 			{children}
 		</AgentBuilderShell>
 	);
 }
 
-async function PrefetchedAgentBuilderSidebar() {
+async function PrefetchedAgentChatNav() {
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
-	const conversationsQuery = trpc.conversations.builderList.queryOptions();
-	const agentsQuery = trpc.agents.list.queryOptions();
 
-	const [conversations, agents] = await Promise.all([
-		queryClient.fetchQuery(conversationsQuery),
-		queryClient.fetchQuery(agentsQuery),
+	await Promise.all([
+		queryClient.prefetchQuery(trpc.conversations.builderList.queryOptions()),
+		queryClient.prefetchQuery(trpc.agents.list.queryOptions()),
 	]);
-	const updatedAt = Math.min(
-		queryClient.getQueryState(conversationsQuery.queryKey)?.dataUpdatedAt ?? 0,
-		queryClient.getQueryState(agentsQuery.queryKey)?.dataUpdatedAt ?? 0,
-	);
 
-	return (
-		<HydrateClient>
-			<AgentBuilderSidebar
-				className="hidden w-[213px] flex-none border-r md:flex"
-				initialData={{ conversations, agents, updatedAt }}
-			/>
-		</HydrateClient>
-	);
+	return <HydrateClient>{null}</HydrateClient>;
 }

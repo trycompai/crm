@@ -1,5 +1,5 @@
 import { Button } from "@crm/ui/components/button";
-import type { CarbonIcon } from "@crm/ui/components/icon";
+import type { IconComponent } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
 import {
 	type CompanyLinks,
@@ -14,7 +14,7 @@ function SocialLinks({
 	rows: Array<{
 		key: PropertyKey;
 		label: string;
-		icon: CarbonIcon;
+		icon: IconComponent;
 		href: string;
 	}>;
 }) {

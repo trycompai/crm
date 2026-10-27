@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
+import { useRef, useState } from "react";
 
 export function useSearchInput(
 	committed: string,
@@ -16,12 +17,9 @@ export function useSearchInput(
 		setState({ committed, value: committed });
 	}
 
-	useEffect(
-		() => () => {
-			if (timer.current) clearTimeout(timer.current);
-		},
-		[],
-	);
+	useMountEffect(() => () => {
+		if (timer.current) clearTimeout(timer.current);
+	});
 
 	const change = (next: string) => {
 		setState({ committed, value: next });

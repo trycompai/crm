@@ -1,15 +1,15 @@
 "use client";
 
 import { CONTEXT_DEV_SIGNUP_URL } from "@crm/db/settings";
-import { Button } from "@crm/ui/components/button";
+import { AuthButton } from "@crm/ui/components/auth-button";
 import {
-	Field,
-	FieldDescription,
-	FieldGroup,
-	FieldLabel,
-} from "@crm/ui/components/field";
-import { Input } from "@crm/ui/components/input";
-import { Spinner } from "@crm/ui/components/spinner";
+	AuthField,
+	AuthFieldDescription,
+	AuthFieldGroup,
+	AuthFieldLabel,
+} from "@crm/ui/components/auth-field";
+import { AuthInput } from "@crm/ui/components/auth-input";
+import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useId } from "react";
@@ -41,10 +41,10 @@ export function ResearchForm() {
 			}}
 			className="flex flex-col gap-6"
 		>
-			<FieldGroup>
-				<Field>
-					<FieldLabel htmlFor={keyId}>Context API key</FieldLabel>
-					<Input
+			<AuthFieldGroup>
+				<AuthField>
+					<AuthFieldLabel htmlFor={keyId}>Context API key</AuthFieldLabel>
+					<AuthInput
 						id={keyId}
 						name="apiKey"
 						type="password"
@@ -56,7 +56,7 @@ export function ResearchForm() {
 						autoFocus
 						required
 					/>
-					<FieldDescription>
+					<AuthFieldDescription>
 						Don't have a Context API key?{" "}
 						<a
 							href={CONTEXT_DEV_SIGNUP_URL}
@@ -66,14 +66,14 @@ export function ResearchForm() {
 						>
 							Sign up here
 						</a>
-					</FieldDescription>
-				</Field>
-			</FieldGroup>
+					</AuthFieldDescription>
+				</AuthField>
+			</AuthFieldGroup>
 
-			<Button type="submit" disabled={save.isPending}>
-				{save.isPending ? <Spinner data-icon="inline-start" /> : null}
+			<AuthButton type="submit" disabled={save.isPending}>
+				{save.isPending ? <LogoSpinner data-icon="inline-start" /> : null}
 				Continue
-			</Button>
+			</AuthButton>
 		</form>
 	);
 }

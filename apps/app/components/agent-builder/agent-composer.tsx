@@ -1,23 +1,12 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
-import Application from "@carbon/icons-react/es/Application";
-import ArrowUp from "@carbon/icons-react/es/ArrowUp";
-import AttachmentIcon from "@carbon/icons-react/es/Attachment";
-import Building from "@carbon/icons-react/es/Building";
-import Calendar from "@carbon/icons-react/es/Calendar";
-import Email from "@carbon/icons-react/es/Email";
-import Partnership from "@carbon/icons-react/es/Partnership";
-import Search from "@carbon/icons-react/es/Search";
-import StopFilled from "@carbon/icons-react/es/StopFilled";
-import User from "@carbon/icons-react/es/User";
 import {
 	AsyncButtonContent,
 	useAsyncAction,
 } from "@crm/ui/components/async-action";
 import { Button } from "@crm/ui/components/button";
 import { CHAT_COMPOSER_SURFACE_CLASS_NAME } from "@crm/ui/components/chat-composer";
-import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
+import { Icon, type IconComponent } from "@crm/ui/components/icon";
 import {
 	InputGroup,
 	InputGroupAddon,
@@ -33,6 +22,19 @@ import { SkeletonSwap } from "@crm/ui/components/skeleton-swap";
 import { TokenField, TokenFieldEditable } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import {
+	AppWindowIcon,
+	ArrowUpIcon,
+	Building2Icon,
+	CalendarIcon,
+	HandshakeIcon,
+	MailIcon,
+	PaperclipIcon,
+	PlusIcon,
+	SearchIcon,
+	SquareIcon,
+	UserIcon,
+} from "lucide-react";
 import { type ReactNode, useReducer, useRef } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
@@ -561,7 +563,12 @@ export function AgentComposer({
 							successLabel={<span className="sr-only">Stopping</span>}
 							errorLabel={<span className="sr-only">Stop failed</span>}
 						>
-							<Icon icon={StopFilled} motion="none" />
+							<Icon
+								icon={SquareIcon}
+								motion="none"
+								size="xs"
+								className="fill-current"
+							/>
 						</AsyncButtonContent>
 					</Button>
 				) : (
@@ -592,7 +599,7 @@ export function AgentComposer({
 							successLabel={<span className="sr-only">Sent</span>}
 							errorLabel={<span className="sr-only">Send failed</span>}
 						>
-							<Icon icon={ArrowUp} />
+							<Icon icon={ArrowUpIcon} size="md" />
 						</AsyncButtonContent>
 					</Button>
 				)}
@@ -818,7 +825,7 @@ function ComposerContextToken({
 		content = (
 			<ChatCommandChip
 				label={state.command.label}
-				icon={Application}
+				icon={AppWindowIcon}
 				variant="composer"
 				onRemove={remove}
 			/>
@@ -858,7 +865,7 @@ function ComposerContextToken({
 			contentEditable={false}
 			data-composer-token-key={anchor.key}
 			data-composer-token-order={anchor.order}
-			className="inline-flex align-middle"
+			className="inline-flex max-w-full align-middle"
 		>
 			{content}
 		</span>
@@ -1299,7 +1306,7 @@ function ResourcePicker({
 					aria-label="Tag CRM records and integrations"
 					disabled={disabled}
 				>
-					<Icon icon={Add} />
+					<Icon icon={PlusIcon} />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent size="fit" align="start" side="top" className="w-80">
@@ -1318,7 +1325,7 @@ function ResourcePicker({
 							disabled={disabled}
 						/>
 						<InputGroupAddon>
-							<Icon icon={Search} className="size-3.5" />
+							<Icon icon={SearchIcon} className="size-3.5" />
 						</InputGroupAddon>
 					</InputGroup>
 				</div>
@@ -1329,7 +1336,7 @@ function ResourcePicker({
 						return (
 							<ResourceButton
 								key={source.source}
-								icon={calendar ? Calendar : Email}
+								icon={calendar ? CalendarIcon : MailIcon}
 								label={label}
 								disabled={disabled}
 								onSelect={() =>
@@ -1427,7 +1434,7 @@ function AttachmentPicker({
 				disabled={disabled}
 				onClick={() => input.current?.click()}
 			>
-				<Icon icon={AttachmentIcon} />
+				<Icon icon={PaperclipIcon} />
 			</Button>
 		</>
 	);
@@ -1477,7 +1484,7 @@ function CommandPicker({
 					className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:bg-muted"
 					disabled={disabled}
 				>
-					<Icon icon={Application} className="size-4 text-muted-foreground" />
+					<Icon icon={AppWindowIcon} className="size-4 text-muted-foreground" />
 					<span className="font-medium text-xs">
 						/{CREATE_AGENT_COMMAND.label}
 					</span>
@@ -1501,11 +1508,11 @@ function ResourceResultsSkeleton() {
 }
 
 const RESOURCE_ICONS = {
-	integration: Application,
-	company: Building,
-	contact: User,
-	deal: Partnership,
-} satisfies Record<BuilderResource["kind"], CarbonIcon>;
+	integration: AppWindowIcon,
+	company: Building2Icon,
+	contact: UserIcon,
+	deal: HandshakeIcon,
+} satisfies Record<BuilderResource["kind"], IconComponent>;
 
 function ResourceButton({
 	icon,
@@ -1514,7 +1521,7 @@ function ResourceButton({
 	disabled,
 	onSelect,
 }: {
-	icon: CarbonIcon;
+	icon: IconComponent;
 	label: string;
 	imageUrl?: string | null;
 	disabled: boolean;

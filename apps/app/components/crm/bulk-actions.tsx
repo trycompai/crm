@@ -1,6 +1,5 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -24,6 +23,7 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Spinner } from "@crm/ui/components/spinner";
+import { ChevronDownIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -47,7 +47,7 @@ export function reportBulk(
 		toast.error(
 			`${done(result.succeeded)} ${result.failed} ${
 				result.failed === 1 ? "was" : "were"
-			} left alone${result.message ? ` — ${result.message}` : "."}`,
+			} left alone${result.message ? `. ${result.message}` : "."}`,
 		);
 		return;
 	}
@@ -70,9 +70,12 @@ export function BulkActionsMenu({
 		<DropdownMenu open={open} onOpenChange={onOpenChange}>
 			<DropdownMenuTrigger asChild>
 				<Button variant="outline" size="sm" disabled={pending}>
-					{pending ? <Spinner /> : null}
 					Actions
-					<ChevronDown data-icon="inline-end" className="opacity-60" />
+					{pending ? (
+						<Spinner data-icon="inline-end" />
+					) : (
+						<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
+					)}
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="min-w-52">

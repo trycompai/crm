@@ -1,24 +1,16 @@
 "use client";
 
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
-import { Label } from "@crm/ui/components/label";
-import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
 } from "@crm/ui/components/select";
+import { SettingRow, SettingRows } from "@crm/ui/components/setting-rows";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useId } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -44,7 +36,6 @@ const TOGGLES = [
 export function TrackingCookies() {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
-	const lifetimeId = useId();
 
 	const tracking = useQuery(trpc.tracking.settings.queryOptions());
 
@@ -71,67 +62,56 @@ export function TrackingCookies() {
 	const busy = !canManage || setFlag.isPending || setLifetime.isPending;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Cookies</CardTitle>
-				<CardDescription>
-					How a returning visitor is recognised.
-				</CardDescription>
-			</CardHeader>
-
-			<CardContent>
+		<SettingsCard
+			title="Cookies"
+			description="How a returning visitor is recognised."
+			hint="Changes save as you make them."
+		>
+			<SettingRows>
 				{TOGGLES.map((toggle) => (
-					<div
+					<SettingRow
 						key={toggle.flag}
-						className="flex items-center justify-between gap-6"
-					>
-						<Label
-							htmlFor={`tracking-${toggle.flag}`}
-							className="flex flex-col items-start gap-1"
-						>
-							<span className="text-sm">{toggle.label}</span>
-							<span className="font-normal text-muted-foreground text-xs">
-								{toggle.hint}
-							</span>
-						</Label>
-
-						<Switch
-							id={`tracking-${toggle.flag}`}
-							checked={tracking.data[toggle.flag]}
-							disabled={busy}
-							onCheckedChange={(enabled) =>
-								setFlag.mutate({ flag: toggle.flag, enabled })
-							}
-						/>
-					</div>
+						title={toggle.label}
+						description={toggle.hint}
+						control={(id, describedBy) => (
+							<Switch
+								id={id}
+								aria-describedby={describedBy}
+								checked={tracking.data[toggle.flag]}
+								disabled={busy}
+								onCheckedChange={(enabled) =>
+									setFlag.mutate({ flag: toggle.flag, enabled })
+								}
+							/>
+						)}
+					/>
 				))}
 
-				<Field>
-					<FieldLabel htmlFor={lifetimeId}>Cookie lifetime</FieldLabel>
-					<Select
-						value={String(cookieDays)}
-						disabled={busy}
-						onValueChange={(value) =>
-							setLifetime.mutate({ days: Number(value) })
-						}
-					>
-						<SelectTrigger id={lifetimeId} className="w-full max-w-sm">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{cookieLifetimes.map((lifetime) => (
-								<SelectItem key={lifetime.days} value={String(lifetime.days)}>
-									{lifetime.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<FieldDescription>
-						After this a returning visitor counts as somebody new. Shorten it if
-						your policy asks you to.
-					</FieldDescription>
-				</Field>
-			</CardContent>
-		</Card>
+				<SettingRow
+					title="Cookie lifetime"
+					description="After this a returning visitor counts as somebody new. Shorten it if your policy asks you to."
+					control={(id, describedBy) => (
+						<Select
+							value={String(cookieDays)}
+							disabled={busy}
+							onValueChange={(value) =>
+								setLifetime.mutate({ days: Number(value) })
+							}
+						>
+							<SelectTrigger id={id} aria-describedby={describedBy} size="sm">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{cookieLifetimes.map((lifetime) => (
+									<SelectItem key={lifetime.days} value={String(lifetime.days)}>
+										{lifetime.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					)}
+				/>
+			</SettingRows>
+		</SettingsCard>
 	);
 }

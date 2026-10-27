@@ -1,6 +1,5 @@
 "use client";
 
-import CalendarGlyph from "@carbon/icons-react/es/Calendar";
 import { Button } from "@crm/ui/components/button";
 import { Calendar } from "@crm/ui/components/calendar";
 import { Icon } from "@crm/ui/components/icon";
@@ -11,6 +10,7 @@ import {
 	PopoverTrigger,
 } from "@crm/ui/components/popover";
 import { formatDay, fromDay, toDay } from "@crm/ui/lib/format";
+import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
 
 export function DueDateButton({
@@ -33,7 +33,7 @@ export function DueDateButton({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<InputGroupButton variant="ghost" size="xs" disabled={disabled}>
-					<Icon icon={CalendarGlyph} data-icon="inline-start" />
+					<Icon icon={CalendarIcon} data-icon="inline-start" />
 					{selected ? formatDay(value) : "Due date"}
 				</InputGroupButton>
 			</PopoverTrigger>

@@ -2,21 +2,9 @@
 
 import { CONTEXT_DEV_SIGNUP_URL } from "@crm/db/settings";
 import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import {
-	Field,
-	FieldDescription,
-	FieldGroup,
-	FieldLabel,
-} from "@crm/ui/components/field";
+import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -50,71 +38,60 @@ export function ResearchKey() {
 	const { configured, hint } = key.data;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Company research</CardTitle>
-				<CardDescription>
-					Enter your Context API key so our agents can research every company in
-					the CRM.
-				</CardDescription>
-
-				<CardAction>
-					<Button
-						type="submit"
-						form="research-key"
-						disabled={save.isPending || draft.trim() === ""}
-					>
-						{save.isPending ? <Spinner data-icon="inline-start" /> : null}
-						{configured ? "Replace key" : "Save key"}
-					</Button>
-				</CardAction>
-			</CardHeader>
-
-			<CardContent>
-				<form
-					id="research-key"
-					onSubmit={(event) => {
-						event.preventDefault();
-						save.mutate({ apiKey: draft.trim() });
-					}}
+		<SettingsCard
+			title="Company research"
+			description="Enter your Context API key so our agents can research every company in the CRM."
+			status={
+				<StatusIndicator
+					size="sm"
+					tone={configured ? "success" : "warning"}
+					label={configured ? "Connected" : "Not connected"}
+				/>
+			}
+			hint={
+				<>
+					Don't have a Context API key?{" "}
+					<a href={CONTEXT_DEV_SIGNUP_URL} target="_blank" rel="noreferrer">
+						Sign up here
+					</a>
+				</>
+			}
+			action={
+				<Button
+					type="submit"
+					form="research-key"
+					size="sm"
+					disabled={save.isPending || draft.trim() === ""}
 				>
-					<FieldGroup>
-						<Field>
-							<div className="flex items-center justify-between gap-3">
-								<FieldLabel htmlFor={keyId}>Context API key</FieldLabel>
-								<StatusIndicator
-									size="sm"
-									tone={configured ? "success" : "warning"}
-									label={configured ? "Connected" : "Not connected"}
-								/>
-							</div>
-							<Input
-								id={keyId}
-								type="password"
-								value={draft}
-								onChange={(event) => setDraft(event.target.value)}
-								placeholder={hint ?? "Paste the key"}
-								autoComplete="off"
-								autoCapitalize="off"
-								autoCorrect="off"
-								spellCheck={false}
-								disabled={save.isPending}
-							/>
-							<FieldDescription>
-								Don't have a Context API key?{" "}
-								<a
-									href={CONTEXT_DEV_SIGNUP_URL}
-									target="_blank"
-									rel="noreferrer"
-									className="underline underline-offset-4 hover:text-foreground"
-								>
-									Sign up here
-								</a>
-							</FieldDescription>
-						</Field>
-					</FieldGroup>
-				</form>
-			</CardContent>
-		</Card>
+					{save.isPending ? <Spinner data-icon="inline-start" /> : null}
+					{configured ? "Replace key" : "Save key"}
+				</Button>
+			}
+			control="compact"
+		>
+			<form
+				id="research-key"
+				onSubmit={(event) => {
+					event.preventDefault();
+					save.mutate({ apiKey: draft.trim() });
+				}}
+			>
+				<Field>
+					<FieldLabel htmlFor={keyId}>Context API key</FieldLabel>
+					<Input
+						id={keyId}
+						type="password"
+						value={draft}
+						onChange={(event) => setDraft(event.target.value)}
+						placeholder={hint ?? "Paste the key"}
+						autoComplete="off"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
+						disabled={save.isPending}
+					/>
+				</Field>
+			</form>
+		</SettingsCard>
 	);
 }

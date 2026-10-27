@@ -1,4 +1,5 @@
 import type { Db } from "@crm/db";
+import { QUICK_SEARCH } from "@crm/validation/search-config";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 
@@ -13,15 +14,13 @@ export type SearchHit = {
 	imageUrl: string | null;
 };
 
-const PER_KIND = 5;
-
 @Injectable()
 export class SearchService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async quick(q: string): Promise<{ hits: SearchHit[] }> {
 		const term = q.trim();
-		if (term.length < 2) return { hits: [] };
+		if (term.length < QUICK_SEARCH.query.minLength) return { hits: [] };
 
 		const [companies, contacts, deals] = await Promise.all([
 			this.db.company.findMany({
@@ -31,7 +30,7 @@ export class SearchService {
 						{ domain: { contains: term, mode: "insensitive" } },
 					],
 				},
-				take: PER_KIND,
+				take: QUICK_SEARCH.results.perKind,
 				orderBy: { name: "asc" },
 				select: {
 					id: true,
@@ -50,7 +49,7 @@ export class SearchService {
 						{ email: { contains: term, mode: "insensitive" } },
 					],
 				},
-				take: PER_KIND,
+				take: QUICK_SEARCH.results.perKind,
 				orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
 				select: {
 					id: true,
@@ -63,7 +62,7 @@ export class SearchService {
 			}),
 			this.db.deal.findMany({
 				where: { name: { contains: term, mode: "insensitive" } },
-				take: PER_KIND,
+				take: QUICK_SEARCH.results.perKind,
 				orderBy: [{ stage: "asc" }, { name: "asc" }],
 				select: {
 					id: true,

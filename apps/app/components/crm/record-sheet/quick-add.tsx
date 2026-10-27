@@ -4,6 +4,7 @@ import { Button } from "@crm/ui/components/button";
 import { DatePicker } from "@crm/ui/components/date-picker";
 import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
+import { OptionLabel } from "@crm/ui/components/option-label";
 import {
 	Select,
 	SelectContent,
@@ -36,7 +37,7 @@ function QuickAddForm({
 }) {
 	return (
 		<form
-			className="flex shrink-0 flex-col gap-4 border-b px-5 py-4"
+			className="flex shrink-0 flex-col gap-4 border-b pb-4"
 			action={onSubmit}
 		>
 			<div className="grid gap-4 sm:grid-cols-2">{children}</div>
@@ -218,8 +219,10 @@ export function AttachDealContact({
 					<SelectContent>
 						{candidates.map((candidate) => (
 							<SelectItem key={candidate.id} value={candidate.id}>
-								{contactName(candidate)}
-								{candidate.title ? ` · ${candidate.title}` : ""}
+								<OptionLabel
+									label={contactName(candidate)}
+									detail={candidate.title}
+								/>
 							</SelectItem>
 						))}
 					</SelectContent>
@@ -315,7 +318,7 @@ export function QuickAddDeal({
 					autoFocus
 					value={name}
 					onChange={(event) => setName(event.target.value)}
-					placeholder={`${companyName} — Comp AI`}
+					placeholder={`${companyName} Comp AI`}
 					autoComplete="off"
 				/>
 			</Field>

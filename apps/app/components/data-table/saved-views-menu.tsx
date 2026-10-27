@@ -1,7 +1,5 @@
 "use client";
 
-import Bookmark from "@carbon/icons-react/es/Bookmark";
-import Close from "@carbon/icons-react/es/Close";
 import { Button } from "@crm/ui/components/button";
 import {
 	Dialog,
@@ -22,6 +20,7 @@ import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { BookmarkIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { FieldEntity } from "@/components/crm/fields/fields-entity";
@@ -95,7 +94,7 @@ export function SavedViewsMenu({
 						size="sm"
 						className="justify-start sm:justify-center"
 					>
-						<Bookmark data-icon="inline-start" />
+						<BookmarkIcon data-icon="inline-start" />
 						Views
 					</Button>
 				</DropdownMenuTrigger>
@@ -199,7 +198,7 @@ function ViewItem({
 				className="shrink-0"
 				onSelect={onDelete}
 			>
-				<Close />
+				<XIcon />
 				<span className="sr-only">Delete {view.name}</span>
 			</DropdownMenuItem>
 		</div>

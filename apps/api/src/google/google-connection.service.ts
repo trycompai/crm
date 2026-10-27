@@ -187,7 +187,7 @@ export class GoogleConnectionService {
 		const ours = await this.match.internalIdentity();
 		if (ours.domains.has(normalised)) {
 			throw new NotFoundException(
-				"That is our own domain — it is already excluded.",
+				"That is our own domain. It is already excluded.",
 			);
 		}
 

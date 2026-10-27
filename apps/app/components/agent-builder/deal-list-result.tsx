@@ -62,7 +62,15 @@ export function DealListResultTable({ result }: { result: DealListResult }) {
 							<SimpleTableRow
 								key={deal.id}
 								clickable
-								onClick={() => openRecord(record)}
+								onClick={() =>
+									openRecord(
+										record,
+										result.deals.map((entry) => ({
+											kind: "deal",
+											id: entry.id,
+										})),
+									)
+								}
 								onFocus={() => prefetchRecord(record)}
 								onMouseEnter={() => prefetchRecord(record)}
 							>
@@ -117,7 +125,11 @@ export function DealListResultTable({ result }: { result: DealListResult }) {
 				)}
 			</SimpleTable>
 			<div className="flex flex-wrap items-center justify-between gap-3 text-muted-foreground text-xs">
-				<span>{tableMeta(result)}</span>
+				<span className="flex flex-wrap gap-x-3">
+					{tableMeta(result).map((detail) => (
+						<span key={detail}>{detail}</span>
+					))}
+				</span>
 				<span>
 					As of <LocalDay date={result.asOf} />
 				</span>
@@ -147,7 +159,7 @@ function tableTitle(result: DealListResult): string {
 		: `${count} ${stale}${status}deal${count === 1 ? "" : "s"}`;
 }
 
-function tableMeta(result: DealListResult): string {
+function tableMeta(result: DealListResult): string[] {
 	const details = [
 		`${result.deals.length} deal${result.deals.length === 1 ? "" : "s"}`,
 		pipelineTotal(result.deals),
@@ -157,7 +169,7 @@ function tableMeta(result: DealListResult): string {
 		result.hasMore ? "More results available" : null,
 	].filter((detail): detail is string => Boolean(detail));
 
-	return details.join(" · ");
+	return details;
 }
 
 function humaniseStage(stage: string): string {

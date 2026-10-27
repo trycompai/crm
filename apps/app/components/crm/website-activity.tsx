@@ -58,28 +58,27 @@ export function WebsiteActivity({
 					<span className="tabular-nums">
 						{activity.views.toLocaleString()}
 					</span>
-					{activity.lastSeenAt ? (
-						<span className="text-muted-foreground">
-							{" · last seen "}
-							<LocalRelativeTime date={activity.lastSeenAt} />
-						</span>
-					) : null}
 				</DetailSheetProperty>
+
+				{activity.lastSeenAt ? (
+					<DetailSheetProperty label="Last seen">
+						<LocalRelativeTime date={activity.lastSeenAt} />
+					</DetailSheetProperty>
+				) : null}
 
 				{first ? (
 					<DetailSheetProperty label="Original source">
-						{channel(first)}
+						<Channel touch={first} />
 					</DetailSheetProperty>
 				) : null}
 
 				{topPage ? (
 					<DetailSheetProperty label="Top page">
-						<span className="flex min-w-0 items-baseline gap-1">
+						<span className="flex min-w-0 items-baseline gap-3">
 							<span className="truncate font-mono" title={topPage.path}>
 								{topPage.path}
 							</span>
 							<span className="shrink-0 text-muted-foreground">
-								{"· "}
 								<span className="tabular-nums">{topPage.views}</span> views
 							</span>
 						</span>
@@ -88,7 +87,7 @@ export function WebsiteActivity({
 
 				{channelChanged ? (
 					<DetailSheetProperty label="Latest source">
-						{channel(last)}
+						<Channel touch={last} />
 					</DetailSheetProperty>
 				) : null}
 
@@ -109,5 +108,16 @@ export function WebsiteActivity({
 function channel(touch: Touch | null): string {
 	if (!touch) return "Unknown";
 	if (!touch.medium || touch.medium === "direct") return touch.source;
-	return `${touch.source} · ${touch.medium}`;
+	return `${touch.source}/${touch.medium}`;
+}
+
+function Channel({ touch }: { touch: Touch | null }) {
+	if (!touch) return "Unknown";
+	if (!touch.medium || touch.medium === "direct") return touch.source;
+	return (
+		<span className="flex min-w-0 items-baseline gap-3">
+			<span>{touch.source}</span>
+			<span className="text-muted-foreground">{touch.medium}</span>
+		</span>
+	);
 }

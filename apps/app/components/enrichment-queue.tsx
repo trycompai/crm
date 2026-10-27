@@ -1,6 +1,5 @@
 "use client";
 
-import ChevronRight from "@carbon/icons-react/es/ChevronRight";
 import { Button } from "@crm/ui/components/button";
 import {
 	Collapsible,
@@ -28,6 +27,7 @@ import {
 	ENRICHMENT_PAGE_MAX,
 } from "@crm/validation/enrichment-queue";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { elapsedLabel, queueFooter } from "@/lib/enrichment-queue";
@@ -72,6 +72,7 @@ export function EnrichmentQueue() {
 	const scheduled = queue.data?.scheduled ?? [];
 	const scheduledTotal = queue.data?.scheduledTotal ?? 0;
 	const visible = expanded ? rows : rows.slice(0, VISIBLE_ROWS);
+	const triggerLabel = total > 0 ? `Enriching ${total}` : "Enrichment";
 	const footer = queueFooter({
 		total,
 		fetched: rows.length,
@@ -96,11 +97,12 @@ export function EnrichmentQueue() {
 			onOpenChange={(next) => (next ? setOpen(true) : close())}
 		>
 			<PopoverTrigger asChild>
-				<Button variant="outline" size="sm">
+				<Button variant="outline" size="sm" aria-label={triggerLabel}>
 					<StatusIndicator
 						tone={total > 0 ? "primary" : "neutral"}
 						busy={total > 0}
-						label={total > 0 ? `Enriching ${total}` : "Enrichment"}
+						label={triggerLabel}
+						iconOnlyBelowSm
 					/>
 				</Button>
 			</PopoverTrigger>
@@ -237,7 +239,7 @@ function QueueRowButton({
 				<span className="font-mono text-muted-foreground text-xs group-hover:hidden">
 					{elapsedLabel(row.state, row.startedAt, now)}
 				</span>
-				<ChevronRight
+				<ChevronRightIcon
 					className="hidden size-3.5 text-muted-foreground group-hover:block"
 					aria-hidden="true"
 				/>

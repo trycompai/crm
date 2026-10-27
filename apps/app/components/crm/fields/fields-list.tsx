@@ -1,10 +1,5 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
-import ChevronRight from "@carbon/icons-react/es/ChevronRight";
-import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
-import Renew from "@carbon/icons-react/es/Renew";
-import Warning from "@carbon/icons-react/es/Warning";
 import { fieldKeyFromLabel, typeLabel } from "@crm/db/fields-shape";
 import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
@@ -29,10 +24,19 @@ import {
 	EmptyTitle,
 } from "@crm/ui/components/empty";
 import { Icon } from "@crm/ui/components/icon";
+import { Skeleton } from "@crm/ui/components/skeleton";
+import { SkeletonLine } from "@crm/ui/components/skeleton-lines";
 import { SortableItem, SortableList } from "@crm/ui/components/sortable-list";
-import { Spinner } from "@crm/ui/components/spinner";
+import { SKELETON, skeletonRows } from "@crm/ui/lib/skeleton-config";
 import { FIELD_TEMPLATES } from "@crm/validation/field-templates";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	ChevronRightIcon,
+	CircleAlertIcon,
+	EllipsisVerticalIcon,
+	PlusIcon,
+	RefreshCwIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -65,7 +69,7 @@ type Field = RouterOutputs["fields"]["list"][number];
 
 const ROW = "flex items-center gap-2.5 border-b px-5 py-2";
 
-function summaryOf(field: Field): string {
+function summaryOf(field: Field): string[] {
 	const parts: string[] = [];
 
 	if (field.agentFilled) {
@@ -83,7 +87,7 @@ function summaryOf(field: Field): string {
 	if (field.showOnTable) parts.push(TABLE_NOTE);
 	if (field.showOnFilter) parts.push(FILTER_NOTE);
 
-	return parts.join(" · ");
+	return parts;
 }
 
 function reordered(fields: Field[], ids: string[]): Field[] {
@@ -102,10 +106,12 @@ function reordered(fields: Field[], ids: string[]): Field[] {
 
 function DisclosureRow({
 	title,
+	count,
 	note,
 	children,
 }: {
 	title: string;
+	count: number;
 	note: string;
 	children: React.ReactNode;
 }) {
@@ -117,13 +123,16 @@ function DisclosureRow({
 					className="flex w-full items-center gap-2 border-b px-5 py-2.5 text-left"
 				>
 					<Icon
-						icon={ChevronRight}
+						icon={ChevronRightIcon}
 						className="shrink-0 text-muted-foreground"
 					/>
 					<span className="flex-1 font-medium text-foreground text-xs">
 						{title}
 					</span>
-					<span className="shrink-0 text-muted-foreground text-xs">{note}</span>
+					<span className="flex shrink-0 items-baseline gap-3 text-muted-foreground text-xs">
+						<span className="tabular-nums">{count}</span>
+						<span>{note}</span>
+					</span>
 				</button>
 			</CollapsibleTrigger>
 			<CollapsibleContent>{children}</CollapsibleContent>
@@ -206,7 +215,8 @@ export function FieldsList({
 			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 				<DisclosureRow
 					title={STANDARD_ROW}
-					note={`${standard.length} · ${STANDARD_NOTE}`}
+					count={standard.length}
+					note={STANDARD_NOTE}
 				>
 					<ul className="border-b bg-muted/40 py-1">
 						{standard.map((field) => (
@@ -223,7 +233,8 @@ export function FieldsList({
 				{suggestions.length > 0 && (
 					<DisclosureRow
 						title={SUGGESTED_ROW}
-						note={`${suggestions.length} · ${SUGGESTED_NOTE}`}
+						count={suggestions.length}
+						note={SUGGESTED_NOTE}
 					>
 						<ul className="border-b bg-muted/40 py-1">
 							{suggestions.map((template) => (
@@ -232,10 +243,14 @@ export function FieldsList({
 									className="flex items-center gap-2.5 px-5 py-1.5"
 								>
 									<span className="flex-1 truncate text-muted-foreground text-xs">
-										{template.label}
-										{template.options && template.options.length > 0
-											? ` · ${template.options.join(", ")}`
-											: ` · ${typeLabel(template.type)}`}
+										<span className="block truncate text-foreground">
+											{template.label}
+										</span>
+										<span className="block truncate">
+											{template.options && template.options.length > 0
+												? template.options.join(", ")
+												: typeLabel(template.type)}
+										</span>
 									</span>
 									<Button
 										variant="outline"
@@ -259,7 +274,7 @@ export function FieldsList({
 											})
 										}
 									>
-										<Icon icon={Add} data-icon="inline-start" />
+										<Icon icon={PlusIcon} data-icon="inline-start" />
 										{ADD}
 									</Button>
 								</li>
@@ -269,14 +284,22 @@ export function FieldsList({
 				)}
 
 				{query.isPending ? (
-					<div className="flex flex-1 items-center justify-center">
-						<Spinner />
-					</div>
+					<ul aria-busy className="flex flex-col pt-3.5">
+						{skeletonRows(SKELETON.rows.fields).map((row) => (
+							<li key={row} className={ROW}>
+								<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+									<SkeletonLine width="40" />
+									<SkeletonLine width="24" />
+								</div>
+								<Skeleton className="h-5 w-18 shrink-0" />
+							</li>
+						))}
+					</ul>
 				) : query.isError ? (
 					<Empty className="flex-1">
 						<EmptyHeader>
 							<EmptyMedia variant="icon">
-								<Icon icon={Warning} />
+								<Icon icon={CircleAlertIcon} />
 							</EmptyMedia>
 							<EmptyTitle>{ERROR_TITLE}</EmptyTitle>
 							<EmptyDescription>{ERROR_BODY}</EmptyDescription>
@@ -287,7 +310,7 @@ export function FieldsList({
 								disabled={query.isFetching}
 								onClick={() => query.refetch()}
 							>
-								<Icon icon={Renew} data-icon="inline-start" />
+								<Icon icon={RefreshCwIcon} data-icon="inline-start" />
 								{RETRY}
 							</Button>
 						</EmptyContent>
@@ -298,14 +321,14 @@ export function FieldsList({
 							<Empty className="flex-1">
 								<EmptyHeader>
 									<EmptyMedia variant="icon">
-										<Icon icon={Add} />
+										<Icon icon={PlusIcon} />
 									</EmptyMedia>
 									<EmptyTitle>{EMPTY_TITLE}</EmptyTitle>
 									<EmptyDescription>{EMPTY_BODY}</EmptyDescription>
 								</EmptyHeader>
 								<EmptyContent>
 									<Button onClick={onNew}>
-										<Icon icon={Add} data-icon="inline-start" />
+										<Icon icon={PlusIcon} data-icon="inline-start" />
 										{NEW_FIELD}
 									</Button>
 								</EmptyContent>
@@ -340,8 +363,10 @@ export function FieldsList({
 												<span className="w-full truncate font-medium text-foreground text-xs">
 													{field.label}
 												</span>
-												<span className="w-full truncate text-muted-foreground text-xs">
-													{summaryOf(field)}
+												<span className="flex w-full min-w-0 flex-wrap gap-x-3 text-muted-foreground text-xs">
+													{summaryOf(field).map((part) => (
+														<span key={part}>{part}</span>
+													))}
 												</span>
 											</button>
 
@@ -355,7 +380,7 @@ export function FieldsList({
 											<DropdownMenu>
 												<DropdownMenuTrigger asChild>
 													<Button variant="ghost" size="icon-xs">
-														<Icon icon={OverflowMenuVertical} />
+														<Icon icon={EllipsisVerticalIcon} />
 														<span className="sr-only">
 															More for {field.label}
 														</span>
@@ -382,7 +407,8 @@ export function FieldsList({
 						{archived.length > 0 ? (
 							<DisclosureRow
 								title={ARCHIVED_ROW}
-								note={`${archived.length} · ${ARCHIVED_NOTE}`}
+								count={archived.length}
+								note={ARCHIVED_NOTE}
 							>
 								<ul className="border-b">
 									{archived.map((field) => (
@@ -412,7 +438,7 @@ export function FieldsList({
 			{live.length > 0 ? (
 				<div className="flex shrink-0 items-center justify-between gap-3 border-t px-5 py-3">
 					<Button onClick={onNew}>
-						<Icon icon={Add} data-icon="inline-start" />
+						<Icon icon={PlusIcon} data-icon="inline-start" />
 						{NEW_FIELD}
 					</Button>
 					<span className="text-right text-muted-foreground text-xs">

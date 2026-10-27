@@ -1,10 +1,12 @@
-import Add from "@carbon/icons-react/es/Add";
-import ArrowsVertical from "@carbon/icons-react/es/ArrowsVertical";
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
-import ChevronLeft from "@carbon/icons-react/es/ChevronLeft";
-import ChevronRight from "@carbon/icons-react/es/ChevronRight";
-import Column from "@carbon/icons-react/es/Column";
-import Search from "@carbon/icons-react/es/Search";
+import {
+	ArrowUpDownIcon,
+	ChevronDownIcon,
+	ChevronLeftIcon,
+	ChevronRightIcon,
+	Columns3Icon,
+	PlusIcon,
+	SearchIcon,
+} from "lucide-react";
 import Image from "next/image";
 import { COMPANY_COLUMNS, MOCK_COMPANIES } from "./companies";
 import { CompanyMark } from "./company-mark";
@@ -37,7 +39,7 @@ export function CompaniesList() {
 			<p className="font-medium text-xl/[120%] tracking-[-0.5px]">Companies</p>
 
 			<div className="flex h-8 shrink-0 items-center rounded-md border border-border bg-muted px-2">
-				<Search size={14} className="shrink-0 text-muted-foreground" />
+				<SearchIcon size={14} className="shrink-0 text-muted-foreground" />
 				<span className="truncate pl-1.5 text-muted-foreground text-xs">
 					Search companies…
 				</span>
@@ -73,7 +75,7 @@ function PageHeader() {
 				Every account in the pipeline.
 			</p>
 			<span className="col-start-2 row-start-1 flex h-8 shrink-0 items-center justify-self-end rounded-md bg-primary pr-2.5 pl-2 text-primary-foreground shadow-2xs">
-				<Add size={16} />
+				<PlusIcon size={16} />
 				<span className="pl-1.5 font-medium text-xs/[133%]">New company</span>
 			</span>
 		</div>
@@ -84,7 +86,7 @@ function Toolbar() {
 	return (
 		<div className="flex flex-wrap items-center justify-between gap-2">
 			<div className="flex h-8 w-64 shrink-0 items-center rounded-md border border-border bg-muted pl-2">
-				<Search size={16} className="shrink-0 text-muted-foreground" />
+				<SearchIcon size={16} className="shrink-0 text-muted-foreground" />
 				<span className="truncate pl-1.5 text-muted-foreground text-xs">
 					Search companies by name or domain…
 				</span>
@@ -97,15 +99,15 @@ function Toolbar() {
 						className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-border bg-muted pr-1.5 pl-2.5 font-medium text-xs/[133%] shadow-2xs"
 					>
 						{facet}
-						<ChevronDown size={14} className="shrink-0 opacity-60" />
+						<ChevronDownIcon size={14} className="shrink-0 opacity-60" />
 					</span>
 				))}
 				<span className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-border bg-muted pr-2.5 pl-1.5 font-medium text-xs/[133%] shadow-2xs">
-					<ArrowsVertical size={14} className="shrink-0" />
+					<ArrowUpDownIcon size={14} className="shrink-0" />
 					Sort
 				</span>
 				<span className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-border bg-muted pr-2.5 pl-1.5 font-medium text-xs/[133%] shadow-2xs">
-					<Column size={14} className="shrink-0" />
+					<Columns3Icon size={14} className="shrink-0" />
 					Columns
 					<span className="opacity-60">(7)</span>
 				</span>
@@ -128,7 +130,7 @@ function CompaniesTable() {
 							>
 								<span className="-ml-2 inline-flex h-6 items-center gap-1 rounded-sm px-2 text-muted-foreground text-xs/[133%]">
 									{column.label}
-									<ArrowsVertical size={12} className="shrink-0 opacity-40" />
+									<ArrowUpDownIcon size={12} className="shrink-0 opacity-40" />
 								</span>
 							</th>
 						))}
@@ -197,7 +199,7 @@ function Pagination() {
 
 			<div className="flex items-center gap-2">
 				<span className="flex h-7 shrink-0 items-center gap-1 rounded-md pr-2.5 pl-1.5 font-medium text-xs/[133%] opacity-50">
-					<ChevronLeft size={14} className="shrink-0" />
+					<ChevronLeftIcon size={14} className="shrink-0" />
 					Previous
 				</span>
 				<span className="text-muted-foreground text-xs/[133%] tabular-nums">
@@ -205,7 +207,7 @@ function Pagination() {
 				</span>
 				<span className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-foreground pr-1.5 pl-2.5 font-medium text-background text-xs/[133%] shadow-2xs">
 					Next
-					<ChevronRight size={14} className="shrink-0" />
+					<ChevronRightIcon size={14} className="shrink-0" />
 				</span>
 			</div>
 		</div>

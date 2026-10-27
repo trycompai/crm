@@ -1,6 +1,5 @@
 "use client";
 
-import TrashCan from "@carbon/icons-react/es/TrashCan";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -17,6 +16,7 @@ import { Button } from "@crm/ui/components/button";
 import { DataTable, type DataTableColumn } from "@crm/ui/components/data-table";
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
@@ -42,7 +42,6 @@ function columns(
 			header: "Name",
 			sortable: true,
 			hideable: false,
-			width: "w-[28%]",
 			cell: (row) => (
 				<span className="truncate font-medium">
 					{row.name ?? "Untitled key"}
@@ -52,17 +51,17 @@ function columns(
 		{
 			id: "start",
 			header: "Key",
-			width: "w-[20%]",
+			width: "36",
 			hideBelow: "sm",
 			cell: (row) => (
-				<Badge variant="mono">{row.start ? `${row.start}…` : "—"}</Badge>
+				<Badge variant="mono">{row.start ? `${row.start}…` : ""}</Badge>
 			),
 		},
 		{
 			id: "createdAt",
 			header: "Created",
 			sortable: true,
-			width: "w-[16%]",
+			width: "28",
 			hideBelow: "md",
 			cell: (row) => (
 				<span className="text-muted-foreground">
@@ -75,7 +74,7 @@ function columns(
 			header: "Last used",
 			label: "Last used date",
 			sortable: true,
-			width: "w-[16%]",
+			width: "28",
 			hideBelow: "lg",
 			cell: (row) => (
 				<span className="text-muted-foreground">
@@ -91,7 +90,7 @@ function columns(
 			id: "expiresAt",
 			header: "Expires",
 			sortable: true,
-			width: "w-[14%]",
+			width: "24",
 			hideBelow: "lg",
 			cell: (row) =>
 				row.expiresAt ? (
@@ -114,12 +113,12 @@ function columns(
 			label: "Actions",
 			hideable: false,
 			align: "right",
-			width: "w-[6%]",
+			width: "12",
 			cell: (row) => (
 				<AlertDialog>
 					<AlertDialogTrigger asChild>
 						<Button variant="ghost" size="icon" disabled={pending}>
-							<Icon icon={TrashCan} />
+							<Icon icon={Trash2Icon} />
 							<span className="sr-only">
 								Revoke {row.name ?? "this API key"}
 							</span>
@@ -178,8 +177,9 @@ export function ApiKeysTable() {
 
 	return (
 		<DataTable
+			label="API keys"
 			query={query}
-			search={<ListSearch placeholder="Search by name…" />}
+			search={<ListSearch placeholder="Search API keys…" />}
 			columns={columns(
 				(apiKey) => revoke.mutate({ id: apiKey.id }),
 				revoke.isPending,

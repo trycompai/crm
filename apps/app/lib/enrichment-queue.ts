@@ -4,7 +4,7 @@ const SECOND_MS = 1_000;
 const MINUTE_S = 60;
 const HOUR_S = 60 * MINUTE_S;
 
-export const NO_ELAPSED = "—";
+export const NO_ELAPSED = "";
 
 export type QueueFooter = {
 	more: number;

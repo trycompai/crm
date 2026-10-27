@@ -6,10 +6,10 @@ import {
 	MICROSOFT_SYNC_SCOPES,
 	SYNC_SCOPES,
 } from "@crm/auth/scopes";
+import { AuthButton } from "@crm/ui/components/auth-button";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
-import { Button } from "@crm/ui/components/button";
-import { Spinner } from "@crm/ui/components/spinner";
+import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -69,7 +69,7 @@ export function GrantAccess({
 				const { label, Logo } = PROVIDERS[provider];
 
 				return (
-					<Button
+					<AuthButton
 						key={provider}
 						className="w-full"
 						disabled={pending !== null}
@@ -79,16 +79,16 @@ export function GrantAccess({
 						type="button"
 					>
 						{pending === provider ? (
-							<Spinner data-icon="inline-start" />
+							<LogoSpinner data-icon="inline-start" />
 						) : (
 							<Logo data-icon="inline-start" className="size-4" />
 						)}
 						{single ? "Grant access" : label}
-					</Button>
+					</AuthButton>
 				);
 			})}
 
-			<Button
+			<AuthButton
 				className="w-full"
 				onClick={() => {
 					signOutAndRedirect().catch(() => toast.error("Could not sign out."));
@@ -97,7 +97,7 @@ export function GrantAccess({
 				variant="ghost"
 			>
 				Sign out
-			</Button>
+			</AuthButton>
 		</div>
 	);
 }

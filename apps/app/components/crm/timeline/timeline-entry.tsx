@@ -1,6 +1,5 @@
 "use client";
 
-import Edit from "@carbon/icons-react/es/Edit";
 import { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
@@ -8,6 +7,7 @@ import { Icon } from "@crm/ui/components/icon";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
+import { PencilIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -162,8 +162,8 @@ export function TimelineEntry({
 						) : null}
 					</div>
 
-					<span className="shrink-0 text-muted-foreground">
-						<span className="hidden sm:inline">{author} · </span>
+					<span className="flex shrink-0 gap-x-3 text-muted-foreground">
+						<span className="hidden sm:inline">{author}</span>
 						<span className="tabular-nums">
 							<LocalDateTime date={when} options={TIME_OPTIONS} />
 						</span>
@@ -178,7 +178,7 @@ export function TimelineEntry({
 							disabled={complete.isPending}
 							onClick={() => setEditing(true)}
 						>
-							<Icon icon={Edit} />
+							<Icon icon={PencilIcon} />
 							<span className="sr-only">Edit task</span>
 						</Button>
 					) : null}

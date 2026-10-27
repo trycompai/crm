@@ -4,7 +4,6 @@ import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { Button } from "@crm/ui/components/button";
 import { ProviderMark } from "@crm/ui/components/provider-mark";
-import { Spinner } from "@crm/ui/components/spinner";
 import { providerBrand } from "@crm/ui/lib/provider-brand";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,6 +11,7 @@ import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { AddConnectionDialog } from "./add-connection-dialog";
+import { ConnectionPage, ConnectionPageLoading } from "./connection-page";
 
 export const metadata: Metadata = { title: "Connections" };
 
@@ -108,9 +108,9 @@ async function ConnectionsSettingsPageContent({
 	];
 
 	return (
-		<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-(--spacing-page-inline) pt-(--spacing-page-top) pb-(--spacing-page-bottom)">
+		<ConnectionPage centered={rows.length === 0}>
 			{rows.length > 0 ? (
-				<div className="mx-auto flex w-full max-w-(--container-page) flex-col gap-(--spacing-page-gap)">
+				<>
 					<header className="flex items-start justify-between gap-4 px-(--spacing-block-inline)">
 						<div className="flex flex-col gap-2">
 							<h1 className="font-medium text-2xl tracking-tight">
@@ -132,9 +132,9 @@ async function ConnectionsSettingsPageContent({
 							<ConnectionCard key={row.name} {...row} />
 						))}
 					</div>
-				</div>
+				</>
 			) : (
-				<div className="mx-auto flex w-full max-w-(--container-narrow) flex-1 flex-col justify-center gap-(--spacing-page-gap) text-center">
+				<div className="mx-auto flex w-full max-w-(--container-narrow) flex-col gap-(--spacing-page-gap) text-center">
 					<div className="flex flex-col gap-2 px-(--spacing-block-inline)">
 						<h1 className="font-medium text-2xl tracking-tight">
 							Nothing is connected yet
@@ -189,16 +189,12 @@ async function ConnectionsSettingsPageContent({
 					brand: providerBrand(vendor.slug, vendor.name),
 				}))}
 			/>
-		</main>
+		</ConnectionPage>
 	);
 }
 
 function ConnectionsFallback() {
-	return (
-		<main className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-(--spacing-page-inline) pt-(--spacing-page-top) pb-(--spacing-page-bottom)">
-			<Spinner size="lg" />
-		</main>
-	);
+	return <ConnectionPageLoading />;
 }
 
 function ConnectionCard({

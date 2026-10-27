@@ -1,15 +1,10 @@
 "use client";
 
 import { Skeleton } from "@crm/ui/components/skeleton";
+import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import { cn } from "@crm/ui/lib/utils";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
 const CROSSFADE = {
 	type: "spring",
@@ -75,7 +70,7 @@ export function SkeletonSwap({
 		[clear, delay, loading, minVisible, showSkeleton],
 	);
 
-	useEffect(() => clear, [clear]);
+	useMountEffect(() => clear);
 
 	return (
 		<LazyMotion features={domAnimation}>

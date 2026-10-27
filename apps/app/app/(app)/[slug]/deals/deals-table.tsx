@@ -1,6 +1,5 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
 import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
@@ -8,10 +7,12 @@ import {
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import { MetaRow } from "@crm/ui/components/meta-row";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { ArchiveIcon } from "lucide-react";
+import { useMemo } from "react";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -20,6 +21,7 @@ import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { DealStageMenu } from "@/components/crm/stage-change";
+import { ListEmpty } from "@/components/data-table/list-empty";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalDay, LocalRelativeTime } from "@/components/local-date-time";
@@ -37,21 +39,22 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		header: "Deal",
 		sortable: true,
 		hideable: false,
-		width: "w-[24%]",
-		cell: (row) => <span className="truncate font-medium">{row.name}</span>,
+		cell: (row) => (
+			<span className="block truncate font-medium">{row.name}</span>
+		),
 	},
 	{
 		id: "company",
 		header: "Company",
 		sortable: true,
-		width: "w-[18%]",
+		width: { sm: "40" },
 		cell: (row) => <CompanyCell company={row.company} />,
 	},
 	{
 		id: "stage",
 		header: "Stage",
 		sortable: true,
-		width: "w-[18%]",
+		width: { sm: "40" },
 		cell: (row) => <DealStageMenu dealId={row.id} stage={row.stage} />,
 	},
 	{
@@ -59,7 +62,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		header: "Amount",
 		sortable: true,
 		align: "right",
-		width: "w-[12%]",
+		width: "36",
 		hideBelow: "sm",
 		cell: (row) =>
 			row.amountCents === null ? (
@@ -74,7 +77,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		id: "owner",
 		header: "Owner",
 		sortable: true,
-		width: "w-[14%]",
+		width: "40",
 		hideBelow: "md",
 		cell: (row) => <OwnerCell owner={row.owner} />,
 	},
@@ -82,7 +85,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		id: "expectedCloseDate",
 		header: "Close date",
 		sortable: true,
-		width: "w-[12%]",
+		width: "32",
 		hideBelow: "lg",
 		cell: (row) =>
 			row.expectedCloseDate ? (
@@ -99,7 +102,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		label: "Created date",
 		sortable: true,
 		align: "right",
-		width: "w-[10%]",
+		width: "28",
 		defaultHidden: true,
 		cell: (row) => (
 			<span className="text-muted-foreground">
@@ -112,7 +115,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		header: "Last activity",
 		sortable: true,
 		align: "right",
-		width: "w-[12%]",
+		width: "32",
 		hideBelow: "lg",
 		cell: (row) => (
 			<span className="text-muted-foreground">
@@ -132,7 +135,7 @@ const ARCHIVED_COLUMN: DataTableColumn<DealRow> = {
 	label: "Archived date",
 	sortable: true,
 	align: "right",
-	width: "w-[12%]",
+	width: "32",
 	cell: (row) => (
 		<span className="text-muted-foreground">
 			{row.archivedAt ? (
@@ -168,11 +171,6 @@ export function DealsTable() {
 		);
 		return selection.ids.filter((id) => matching.has(id));
 	}, [rows, input.archived, selection.ids]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
-	useEffect(() => {
-		selection.clear();
-	}, [input.archived]);
 
 	const toggleArchived = (next: boolean) => {
 		selection.clear();
@@ -229,16 +227,17 @@ export function DealsTable() {
 
 	return (
 		<DataTable
+			label="Deals"
 			query={query}
-			search={<ListSearch placeholder="Search deals by name or company…" />}
+			search={<ListSearch placeholder="Search deals…" />}
 			actions={
 				<Button
 					variant={input.archived ? "contrast" : "outline"}
-					size="sm"
+					aria-pressed={input.archived}
 					className="justify-start sm:justify-center"
 					onClick={() => toggleArchived(!input.archived)}
 				>
-					<Archive data-icon="inline-start" />
+					<ArchiveIcon data-icon="inline-start" />
 					Archived
 				</Button>
 			}
@@ -249,6 +248,7 @@ export function DealsTable() {
 			facets={facets}
 			tabs={{
 				id: "status",
+				label: "Status",
 				allLabel: "All deals",
 				options: [
 					{ value: "open", label: "Open" },
@@ -269,26 +269,40 @@ export function DealsTable() {
 			getRowId={(row) => row.id}
 			loading={deals.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "deal", id: row.id })}
-			onRowClick={(row) => openRecord({ kind: "deal", id: row.id })}
+			onRowClick={(row, orderedRows) =>
+				openRecord(
+					{ kind: "deal", id: row.id },
+					orderedRows.map((entry) => ({ kind: "deal", id: entry.id })),
+				)
+			}
 			empty={
-				input.archived ? "No archived deals." : "No deals match this view."
+				<ListEmpty
+					query={query}
+					noun="deals"
+					archived={input.archived}
+					blank={{
+						title: "No deals yet",
+						description: "Add a deal to start tracking the pipeline.",
+					}}
+				/>
 			}
 			meta={
 				input.archived || openPipelineCents === null ? undefined : (
-					<span>
-						{deals.data?.total ?? 0} deals ·{" "}
-						<span className="tabular-nums">
-							{formatMoney(openPipelineCents, reportingCurrency)}
-						</span>{" "}
-						open pipeline
+					<MetaRow>
+						<span>{deals.data?.total ?? 0} deals</span>
+						<span>
+							<span className="tabular-nums">
+								{formatMoney(openPipelineCents, reportingCurrency)}
+							</span>{" "}
+							open pipeline
+						</span>
 						{unconverted && unconverted.count > 0 ? (
-							<span className="text-muted-foreground">
-								{" "}
-								· {unconverted.count} not counted (no{" "}
+							<span>
+								{unconverted.count} not counted (no{" "}
 								{unconverted.currencies.join(", ")} rate)
 							</span>
 						) : null}
-					</span>
+					</MetaRow>
 				)
 			}
 		/>

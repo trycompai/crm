@@ -1,18 +1,8 @@
 "use client";
 
-import CheckmarkFilled from "@carbon/icons-react/es/CheckmarkFilled";
-import Warning from "@carbon/icons-react/es/Warning";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
 import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
+import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
 import {
 	InputGroup,
@@ -20,9 +10,11 @@ import {
 	InputGroupInput,
 	InputGroupText,
 } from "@crm/ui/components/input-group";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { CircleAlertIcon, CircleCheckIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
@@ -51,33 +43,24 @@ export function VerifyInstallation() {
 	const { canManage, siteId } = tracking.data;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>
-					<div className="flex items-center gap-2">
-						Verify installation
-						{result ? <Indicator result={result} /> : null}
-					</div>
-				</CardTitle>
-				<CardDescription>
-					We load one page and look for the script, then read your Tag Manager
-					container if it is not in the HTML.
-				</CardDescription>
-
-				<CardAction>
-					<Button
-						size="sm"
-						type="submit"
-						form="verify-tracking"
-						disabled={!canManage || verify.isPending || url.trim() === ""}
-					>
-						{verify.isPending ? <Spinner data-icon="inline-start" /> : null}
-						Check now
-					</Button>
-				</CardAction>
-			</CardHeader>
-
-			<CardContent>
+		<SettingsCard
+			title="Verify installation"
+			status={result ? <Indicator result={result} /> : null}
+			description="We load one page and look for the script, then read your Tag Manager container if it is not in the HTML."
+			hint="The page has to be public. A page behind a login always fails this check."
+			action={
+				<Button
+					size="sm"
+					type="submit"
+					form="verify-tracking"
+					disabled={!canManage || verify.isPending || url.trim() === ""}
+				>
+					{verify.isPending ? <Spinner data-icon="inline-start" /> : null}
+					Check now
+				</Button>
+			}
+		>
+			<div className="flex flex-col gap-4">
 				<form
 					id="verify-tracking"
 					onSubmit={(event) => {
@@ -108,16 +91,12 @@ export function VerifyInstallation() {
 								disabled={!canManage || verify.isPending}
 							/>
 						</InputGroup>
-						<FieldDescription>
-							The page has to be public. A page behind a login always fails this
-							check.
-						</FieldDescription>
 					</Field>
 				</form>
 
 				{result && siteId ? <Outcome result={result} siteId={siteId} /> : null}
-			</CardContent>
-		</Card>
+			</div>
+		</SettingsCard>
 	);
 }
 
@@ -151,7 +130,7 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 	if (result.status === "unreachable") {
 		return (
 			<Alert variant="destructive">
-				<Icon icon={Warning} />
+				<Icon icon={CircleAlertIcon} />
 				<AlertTitle>Could not open {result.host}</AlertTitle>
 				<AlertDescription>
 					{result.detail} We only follow public pages, and we never follow a
@@ -164,7 +143,7 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 	if (result.status === "missing") {
 		return (
 			<Alert variant="destructive">
-				<Icon icon={Warning} />
+				<Icon icon={CircleAlertIcon} />
 				<AlertTitle>No script on {result.host}</AlertTitle>
 				<AlertDescription>
 					The page answered in {result.responseMs} ms, but the tag was not in
@@ -181,7 +160,7 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 	if (result.container && !result.container.carriesSiteId) {
 		return (
 			<Alert variant="destructive">
-				<Icon icon={Warning} />
+				<Icon icon={CircleAlertIcon} />
 				<AlertTitle>Tag Manager will drop the site ID</AlertTitle>
 				<AlertDescription>
 					Container {result.container.id} carries the tag, but the site ID is
@@ -199,7 +178,7 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 
 	return (
 		<Alert>
-			<Icon icon={CheckmarkFilled} className="text-success" />
+			<Icon icon={CircleCheckIcon} className="text-success" />
 			<AlertTitle>
 				{result.container
 					? `Script found in container ${result.container.id}`
@@ -209,11 +188,11 @@ function Outcome({ result, siteId }: { result: Result; siteId: string }) {
 				It answered in {result.responseMs} ms. Site ID {siteId} matched, and
 				this domain is {result.allowed ? "on" : "not on"} the allow list.
 				{result.container
-					? " The tag is not in the HTML, so it only runs once Tag Manager fires it — a page view is the proof."
+					? " Tag Manager runs the tag after page load. A recorded page view confirms the installation."
 					: ""}
 				{result.pageView
 					? " A page view arrived in the last five minutes."
-					: " No page view has arrived yet — open the page in a browser to send one."}
+					: " No page view has arrived yet. Open the page in a browser to send one."}
 			</AlertDescription>
 		</Alert>
 	);

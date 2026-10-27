@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DealStage, db, RateSource } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
 import { SETTINGS_ID, writeReportingCurrency } from "@crm/db/settings";
+import { AgentQueueService } from "../src/agent/agent-queue.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import { CompaniesService } from "../src/companies/companies.service";
+import { FaviconService } from "../src/companies/favicon.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DashboardService } from "../src/dashboard/dashboard.service";
@@ -27,6 +30,15 @@ const deals = new DealsService(
 	new FieldsService(db, { fieldBackfill: async () => undefined } as never),
 );
 const dashboard = new DashboardService(db, conversion);
+const companies = new CompaniesService(
+	db,
+	agent,
+	new AgentQueueService(db),
+	new FaviconService(db),
+	new ActivityStampService(db),
+	conversion,
+	new FieldsService(db, { fieldBackfill: async () => undefined } as never),
+);
 
 let companyId: string;
 let previousReportingCurrency: string | null = null;
@@ -516,5 +528,89 @@ describe("the dashboard only values what it can convert", () => {
 		).toBeNull();
 
 		await db.deal.deleteMany({ where: { id: { in: [open.id, unvalued.id] } } });
+	});
+});
+
+describe("record sheet money", () => {
+	it("excludes archived and stale amounts from a company's open pipeline", async () => {
+		await writeReportingCurrency(db, "USD");
+		const company = await db.company.create({
+			data: { name: `Record money ${suffix}` },
+		});
+
+		try {
+			const close = new Date("2027-02-01T00:00:00.000Z");
+			await db.deal.createMany({
+				data: [
+					{
+						companyId: company.id,
+						name: "Current conversion",
+						amount: 100,
+						currency: "EUR",
+						baseAmount: 110,
+						baseCurrency: "USD",
+						expectedCloseDate: close,
+					},
+					{
+						companyId: company.id,
+						name: "Stale conversion",
+						amount: 100,
+						currency: "EUR",
+						baseAmount: 9000,
+						baseCurrency: "JPY",
+					},
+					{
+						companyId: company.id,
+						name: "Unlabelled conversion",
+						amount: 100,
+						currency: "EUR",
+						baseAmount: 110,
+					},
+					{
+						companyId: company.id,
+						name: "Archived conversion",
+						amount: 1000,
+						currency: "USD",
+						baseAmount: 1000,
+						baseCurrency: "USD",
+						archivedAt: new Date(),
+						expectedCloseDate: new Date("2026-01-01T00:00:00.000Z"),
+					},
+					{
+						companyId: company.id,
+						name: "Closed conversion",
+						stage: DealStage.CLOSED_WON,
+						amount: 2000,
+						currency: "USD",
+						baseAmount: 2000,
+						baseCurrency: "USD",
+					},
+				].map((deal) => ({ ...deal, ownerId: userId })),
+			});
+
+			const record = await companies.byId(company.id);
+			expect(record.openPipeline).toEqual({
+				count: 3,
+				totalCents: 11000,
+				unconverted: 2,
+				nextClose: close.toISOString(),
+			});
+
+			const stale = record.deals.find(
+				(deal) => deal.name === "Stale conversion",
+			);
+			expect(stale?.baseAmountCents).toBeNull();
+			const staleDetail = await deals.byId(stale?.id ?? "missing");
+			expect(staleDetail.baseAmountCents).toBeNull();
+			expect(staleDetail.fxRate).toBeNull();
+
+			await db.deal.deleteMany({ where: { companyId: company.id } });
+			expect(
+				(await companies.byId(company.id)).openPipeline.totalCents,
+			).toBeNull();
+		} finally {
+			await db.deal.deleteMany({ where: { companyId: company.id } });
+			await db.company.delete({ where: { id: company.id } });
+		}
 	});
 });

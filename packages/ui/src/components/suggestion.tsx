@@ -1,10 +1,9 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Close from "@carbon/icons-react/es/Close";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { Spinner } from "@crm/ui/components/spinner";
+import { CheckIcon, XIcon } from "lucide-react";
 import type * as React from "react";
 
 export function Suggestion({
@@ -43,7 +42,7 @@ export function Suggestion({
 							onClick={onAccept}
 							aria-label="Accept"
 						>
-							<Icon icon={Checkmark} />
+							<Icon icon={CheckIcon} />
 						</Button>
 						<Button
 							variant="ghost"
@@ -51,7 +50,7 @@ export function Suggestion({
 							onClick={onDismiss}
 							aria-label="Dismiss"
 						>
-							<Icon icon={Close} />
+							<Icon icon={XIcon} />
 						</Button>
 					</>
 				)}

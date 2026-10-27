@@ -8,7 +8,7 @@ import { Dialog as SheetPrimitive } from "radix-ui";
 import type * as React from "react";
 
 const sheetContentVariants = cva(
-	"fixed z-50 flex flex-col bg-popover bg-clip-padding text-xs/relaxed text-popover-foreground shadow-lg duration-300 ease-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-open:animate-in data-[side=bottom]:data-open:slide-in-from-bottom-full data-[side=left]:data-open:slide-in-from-left-full data-[side=right]:data-open:slide-in-from-right-full data-[side=top]:data-open:slide-in-from-top-full data-closed:animate-out data-[side=bottom]:data-closed:slide-out-to-bottom-full data-[side=left]:data-closed:slide-out-to-left-full data-[side=right]:data-closed:slide-out-to-right-full data-[side=top]:data-closed:slide-out-to-top-full",
+	"sheet-motion fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-modal outline-none data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-full data-[side=right]:md:w-3/4 data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=right]:md:corner-cut data-[side=right]:md:shadow-none",
 	{
 		variants: {
 			size: {
@@ -18,6 +18,8 @@ const sheetContentVariants = cva(
 				xl: "data-[side=left]:sm:max-w-4xl data-[side=right]:sm:max-w-4xl",
 				"2xl":
 					"data-[side=left]:sm:max-w-5xl data-[side=right]:sm:max-w-5xl data-[side=left]:lg:w-[68vw] data-[side=right]:lg:w-[68vw]",
+				record:
+					"data-[side=right]:md:w-[calc(100%-3.5rem)] data-[side=right]:lg:w-[max(75%,calc(100%-(--spacing(86))))] data-[side=right]:md:max-w-274",
 			},
 		},
 		defaultVariants: {
@@ -60,7 +62,7 @@ function SheetOverlay({
 		<SheetPrimitive.Overlay
 			data-slot="sheet-overlay"
 			className={cn(
-				"fixed inset-0 z-50 bg-overlay text-xs/relaxed duration-300 ease-out supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+				"sheet-overlay-motion fixed inset-0 z-50 bg-overlay",
 				className,
 			)}
 			{...props}
@@ -89,12 +91,27 @@ function SheetContent({
 				className={cn(sheetContentVariants({ size }), className)}
 				{...props}
 			>
+				{side === "right" ? (
+					<svg
+						aria-hidden
+						data-slot="sheet-cut-edge"
+						className="pointer-events-none absolute inset-y-0 left-0 z-10 hidden h-full w-6 text-border md:block"
+					>
+						<path
+							d="M26 0.5Q22.17 0.5 19.15 2.85L3.47 15.03Q0.5 17.34 0.5 21.1V100000"
+							fill="none"
+							stroke="currentColor"
+							strokeLinejoin="round"
+							strokeWidth={1}
+						/>
+					</svg>
+				) : null}
 				{children}
 				{showCloseButton && (
 					<SheetPrimitive.Close data-slot="sheet-close" asChild>
 						<Button
 							variant="ghost"
-							className="absolute top-3 right-3"
+							className="absolute top-4.5 right-4"
 							size="icon-sm"
 						>
 							<XIcon />
@@ -111,7 +128,7 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
 	return (
 		<div
 			data-slot="sheet-header"
-			className={cn("flex flex-col gap-0.5 p-4", className)}
+			className={cn("flex flex-col gap-1 border-b px-6 py-5", className)}
 			{...props}
 		/>
 	);
@@ -121,23 +138,26 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
 	return (
 		<div
 			data-slot="sheet-footer"
-			className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+			className={cn("mt-auto flex flex-col gap-2 border-t bg-sidebar px-6 py-3", className)}
 			{...props}
 		/>
 	);
 }
 
-const sheetTitleVariants = cva("font-heading font-medium text-foreground", {
-	variants: {
-		size: {
-			default: "text-sm",
-			lg: "text-lg leading-tight tracking-tight",
+const sheetTitleVariants = cva(
+	"font-heading font-semibold tracking-tight text-balance text-foreground outline-none",
+	{
+		variants: {
+			size: {
+				default: "text-lg",
+				lg: "text-lg leading-tight",
+			},
+		},
+		defaultVariants: {
+			size: "default",
 		},
 	},
-	defaultVariants: {
-		size: "default",
-	},
-});
+);
 
 function SheetTitle({
 	className,
@@ -161,7 +181,7 @@ function SheetDescription({
 	return (
 		<SheetPrimitive.Description
 			data-slot="sheet-description"
-			className={cn("text-xs/relaxed text-muted-foreground", className)}
+			className={cn("text-sm text-pretty text-muted-foreground", className)}
 			{...props}
 		/>
 	);

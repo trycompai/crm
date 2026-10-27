@@ -1,5 +1,5 @@
 "use client";
-import Search from "@carbon/icons-react/es/Search";
+
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -20,7 +20,9 @@ import {
 	InputGroupAddon,
 	InputGroupInput,
 } from "@crm/ui/components/input-group";
+import { PageSection } from "@crm/ui/components/page-section";
 import { useMutation } from "@tanstack/react-query";
+import { SearchIcon } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -72,14 +74,10 @@ export function SlackChannels() {
 	const canInviteItself = channels.canInviteItself;
 
 	return (
-		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<div className="flex items-end justify-between gap-4">
-				<div>
-					<h2 className="font-medium text-sm">Channels Comp AI can reach</h2>
-					<p className="text-muted-foreground text-xs">
-						Agents pick from this list.
-					</p>
-				</div>
+		<PageSection
+			title="Channels Comp AI can reach"
+			description="Agents pick from this list."
+			action={
 				<Button
 					disabled={refreshing}
 					onClick={() => refresh.mutate()}
@@ -88,8 +86,8 @@ export function SlackChannels() {
 				>
 					{refreshing ? "Refreshing…" : "Refresh"}
 				</Button>
-			</div>
-
+			}
+		>
 			{channels.stalled ? (
 				<p className="text-warning text-xs">
 					Comp AI is not reading Slack right now. The list can be out of date.
@@ -99,9 +97,10 @@ export function SlackChannels() {
 			{rows.length > 0 || query ? (
 				<InputGroup>
 					<InputGroupAddon>
-						<Icon icon={Search} motion="none" className="size-4" />
+						<Icon icon={SearchIcon} motion="none" className="size-4" />
 					</InputGroupAddon>
 					<InputGroupInput
+						aria-label="Search channels"
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder="Search channels"
 						value={query}
@@ -144,7 +143,7 @@ export function SlackChannels() {
 				onConfirm={() => asking && void joinAction.run(asking.id)}
 				status={joinAction.status}
 			/>
-		</section>
+		</PageSection>
 	);
 }
 

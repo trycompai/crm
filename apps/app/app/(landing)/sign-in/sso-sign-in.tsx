@@ -1,8 +1,8 @@
 "use client";
 
 import { signIn } from "@crm/auth/client";
-import { Button } from "@crm/ui/components/button";
-import { Spinner } from "@crm/ui/components/spinner";
+import { AuthButton } from "@crm/ui/components/auth-button";
+import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,11 @@ export type SsoProvider = {
 
 export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
 	const [pending, setPending] = useState<string | null>(null);
+
+	function fail(message?: string) {
+		setPending(null);
+		toast.error(message ?? "Could not reach the sign-in service.");
+	}
 
 	async function handleClick(providerId: string) {
 		setPending(providerId);
@@ -25,28 +30,27 @@ export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
 			errorCallbackURL: `${origin}/sign-in`,
 		});
 
-		if (error) {
-			toast.error(error.message ?? "Could not reach the sign-in service.");
-			setPending(null);
-		}
+		if (error) fail(error.message);
 	}
 
 	return (
 		<>
 			{providers.map((provider) => (
-				<Button
+				<AuthButton
 					key={provider.providerId}
 					className="w-full"
 					disabled={pending !== null}
-					onClick={() => handleClick(provider.providerId)}
+					onClick={() => {
+						handleClick(provider.providerId).catch(() => fail());
+					}}
 					type="button"
 					variant="outline"
 				>
 					{pending === provider.providerId ? (
-						<Spinner data-icon="inline-start" />
+						<LogoSpinner data-icon="inline-start" />
 					) : null}
 					Continue with {provider.name}
-				</Button>
+				</AuthButton>
 			))}
 		</>
 	);

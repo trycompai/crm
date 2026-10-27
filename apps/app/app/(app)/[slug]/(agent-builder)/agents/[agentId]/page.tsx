@@ -1,8 +1,8 @@
+import { PageShellFallback } from "@crm/ui/components/page-shell";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { TeamAgentDetail } from "@/components/agent-builder/team-agent-detail";
-import { PageShellFallback } from "@/components/page-shell";
 import { getServerTrpcClient } from "@/lib/trpc/server";
 import { nullIfMissing } from "../../missing-record";
 

@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellActions,
@@ -9,7 +7,9 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 	PageShellTitle,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
@@ -25,13 +25,13 @@ export default function ApiKeysSettingsPage({
 	searchParams,
 }: PageProps<"/[slug]/settings/api-keys">) {
 	return (
-		<PageShell className="min-h-0">
+		<PageShell width="narrow" className="min-h-0">
 			<PageShellHeader>
 				<PageShellHeading>
 					<PageShellTitle>API Keys</PageShellTitle>
 					<PageShellDescription>
-						Personal keys for calling the CRM API. Each one acts as you —
-						anything it can read or change is exactly what you can.
+						Personal keys for calling the CRM API. Each key has the same access
+						as your account.
 					</PageShellDescription>
 				</PageShellHeading>
 
@@ -41,7 +41,7 @@ export default function ApiKeysSettingsPage({
 			</PageShellHeader>
 
 			<PageShellContent className="min-h-0">
-				<Suspense fallback={<PageShellLoading />}>
+				<Suspense fallback={<PageShellLoading shape="settings" />}>
 					<ApiKeys searchParams={searchParams} />
 				</Suspense>
 			</PageShellContent>

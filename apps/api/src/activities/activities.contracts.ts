@@ -72,7 +72,7 @@ export const activityCreateInput = z
 	.refine(
 		(input) => input.type !== ActivityType.TASK || Boolean(input.subject),
 		{
-			message: "A task needs a subject — it is the thing to do.",
+			message: "A task needs a subject. It is the thing to do.",
 			path: ["subject"],
 		},
 	);
@@ -82,7 +82,7 @@ export type ActivityCreateInput = z.infer<typeof activityCreateInput>;
 export const activityUpdateInput = z.object({
 	id: z.string(),
 	subject: z.string().trim().min(1, {
-		message: "A task needs a subject — it is the thing to do.",
+		message: "A task needs a subject. It is the thing to do.",
 	}),
 	dueAt: taskDueDayInput.nullable(),
 });

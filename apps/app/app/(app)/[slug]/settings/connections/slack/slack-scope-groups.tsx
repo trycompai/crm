@@ -1,8 +1,5 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Close from "@carbon/icons-react/es/Close";
-import Warning from "@carbon/icons-react/es/Warning";
 import {
 	Accordion,
 	AccordionContent,
@@ -10,6 +7,8 @@ import {
 	AccordionTrigger,
 } from "@crm/ui/components/accordion";
 import { Icon } from "@crm/ui/components/icon";
+import { PageSection } from "@crm/ui/components/page-section";
+import { CheckIcon, CircleAlertIcon, XIcon } from "lucide-react";
 
 export type ScopeLine = {
 	scope: string;
@@ -34,16 +33,11 @@ export function SlackScopeGroups({
 	withheld: ScopeLine[];
 }) {
 	return (
-		<section className="flex flex-col gap-3 px-(--spacing-block-inline)">
-			<div>
-				<h2 className="font-medium text-sm">{title}</h2>
-				<p className="text-muted-foreground text-xs">
-					Broad means the whole workspace, not one channel. Open a group to see
-					the details.
-				</p>
-			</div>
-
-			<Accordion className="rounded-lg border px-4" type="multiple">
+		<PageSection
+			title={title}
+			description="Broad means the whole workspace, not one channel. Open a group to see the details."
+		>
+			<Accordion className="rounded-md px-4 shadow-border" type="multiple">
 				{groups.map((group) => {
 					const broad = group.scopes.filter((entry) => entry.sensitive).length;
 
@@ -67,7 +61,7 @@ export function SlackScopeGroups({
 										<li className="flex items-start gap-2.5" key={entry.scope}>
 											<Icon
 												className={`mt-0.5 size-3.5 shrink-0 ${entry.sensitive ? "text-warning" : "text-success"}`}
-												icon={entry.sensitive ? Warning : Checkmark}
+												icon={entry.sensitive ? CircleAlertIcon : CheckIcon}
 												motion="none"
 											/>
 											<span className="text-sm">{entry.grant}</span>
@@ -88,7 +82,7 @@ export function SlackScopeGroups({
 							<span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
 								<Icon
 									className="size-3.5 shrink-0"
-									icon={Close}
+									icon={XIcon}
 									motion="none"
 								/>
 								{entry.grant}
@@ -103,6 +97,6 @@ export function SlackScopeGroups({
 					</div>
 				))}
 			</Accordion>
-		</section>
+		</PageSection>
 	);
 }

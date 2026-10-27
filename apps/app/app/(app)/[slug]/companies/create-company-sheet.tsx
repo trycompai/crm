@@ -1,13 +1,19 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
 import { Button } from "@crm/ui/components/button";
 import {
 	Field,
 	FieldDescription,
-	FieldGroup,
+	FieldError,
 	FieldLabel,
 } from "@crm/ui/components/field";
+import {
+	FormSheet,
+	FormSheetContent,
+	FormSheetFooter,
+	FormSheetForm,
+	useFormSheetValidation,
+} from "@crm/ui/components/form-sheet";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
 import {
@@ -18,17 +24,14 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import {
-	Sheet,
-	SheetClose,
-	SheetContent,
 	SheetDescription,
-	SheetFooter,
 	SheetHeader,
 	SheetTitle,
 	SheetTrigger,
 } from "@crm/ui/components/sheet";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { PlusIcon } from "lucide-react";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
@@ -42,7 +45,7 @@ const UNASSIGNED = "unassigned";
 function AddButton(props: ComponentProps<typeof Button>) {
 	return (
 		<Button {...props}>
-			<Icon icon={Add} data-icon="inline-start" />
+			<Icon icon={PlusIcon} data-icon="inline-start" />
 			New company
 		</Button>
 	);
@@ -58,6 +61,7 @@ export function CreateCompanySheet() {
 
 function CreateCompanyForm() {
 	const openRecord = useOpenRecord();
+	const validation = useFormSheetValidation();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -80,21 +84,32 @@ function CreateCompanyForm() {
 				await cache.company(company.id);
 				toast.success(`${company.name} added.`);
 				await setOpen(null);
-				setName("");
-				setDomain("");
-				setOwnerId(UNASSIGNED);
+				reset();
 				openRecord({ kind: "company", id: company.id });
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
+	const reset = () => {
+		validation.reset();
+		setName("");
+		setDomain("");
+		setOwnerId(UNASSIGNED);
+	};
+
 	return (
-		<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
+		<FormSheet
+			dirty={name !== "" || domain !== "" || ownerId !== UNASSIGNED}
+			pending={create.isPending}
+			onDiscard={reset}
+			open={open}
+			onOpenChange={(next) => setOpen(next || null)}
+		>
 			<SheetTrigger asChild>
 				<AddButton />
 			</SheetTrigger>
-			<SheetContent side="right">
+			<FormSheetContent side="right">
 				<SheetHeader>
 					<SheetTitle>New company</SheetTitle>
 					<SheetDescription>
@@ -103,11 +118,13 @@ function CreateCompanyForm() {
 					</SheetDescription>
 				</SheetHeader>
 
-				<form
+				<FormSheetForm
+					noValidate
+					onInput={validation.onInput}
 					id="create-company"
-					className="flex-1 overflow-y-auto px-4"
 					onSubmit={(event) => {
 						event.preventDefault();
+						if (!validation.validate(event.currentTarget)) return;
 						create.mutate({
 							name,
 							domain: domain || undefined,
@@ -115,68 +132,77 @@ function CreateCompanyForm() {
 						});
 					}}
 				>
-					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor={nameId}>Name</FieldLabel>
-							<Input
-								id={nameId}
-								value={name}
-								onChange={(event) => setName(event.target.value)}
-								placeholder="Stripe"
-								autoComplete="off"
-								required
-							/>
-						</Field>
+					<Field data-invalid={!!validation.errors[nameId]}>
+						<FieldLabel htmlFor={nameId}>Name</FieldLabel>
+						<Input
+							id={nameId}
+							aria-invalid={!!validation.errors[nameId]}
+							aria-describedby={
+								validation.errors[nameId] ? `${nameId}-error` : undefined
+							}
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							placeholder="Stripe"
+							autoComplete="off"
+							pattern=".*\S.*"
+							required
+						/>
+						<FieldError id={`${nameId}-error`}>
+							{validation.errors[nameId]}
+						</FieldError>
+					</Field>
 
-						<Field>
-							<FieldLabel htmlFor={domainId}>Domain</FieldLabel>
-							<Input
-								id={domainId}
-								value={domain}
-								onChange={(event) => setDomain(event.target.value)}
-								placeholder="stripe.com"
-								autoComplete="off"
-								inputMode="url"
-							/>
-							<FieldDescription>
-								A full URL is fine — it is reduced to the bare host, which has
-								to be unique.
-							</FieldDescription>
-						</Field>
+					<Field data-invalid={!!validation.errors[domainId]}>
+						<FieldLabel htmlFor={domainId}>Domain</FieldLabel>
+						<Input
+							id={domainId}
+							aria-invalid={!!validation.errors[domainId]}
+							aria-describedby={
+								validation.errors[domainId] ? `${domainId}-error` : undefined
+							}
+							value={domain}
+							onChange={(event) => setDomain(event.target.value)}
+							placeholder="stripe.com"
+							autoComplete="off"
+							inputMode="url"
+						/>
+						<FieldError id={`${domainId}-error`}>
+							{validation.errors[domainId]}
+						</FieldError>
+						<FieldDescription>
+							A full URL works. The CRM uses the host, which has to be unique.
+						</FieldDescription>
+					</Field>
 
-						<Field>
-							<FieldLabel htmlFor="create-company-owner">Owner</FieldLabel>
-							<Select value={ownerId} onValueChange={setOwnerId}>
-								<SelectTrigger id="create-company-owner">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-									{(users.data ?? []).map((user) => (
-										<SelectItem key={user.id} value={user.id}>
-											{user.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-					</FieldGroup>
-				</form>
+					<Field>
+						<FieldLabel htmlFor="create-company-owner">Owner</FieldLabel>
+						<Select value={ownerId} onValueChange={setOwnerId}>
+							<SelectTrigger id="create-company-owner">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+								{(users.data ?? []).map((user) => (
+									<SelectItem key={user.id} value={user.id}>
+										{user.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</Field>
+				</FormSheetForm>
 
-				<SheetFooter>
+				<FormSheetFooter>
 					<Button
 						type="submit"
 						form="create-company"
-						disabled={create.isPending || name.trim() === ""}
+						disabled={create.isPending}
 					>
-						{create.isPending ? <Spinner /> : null}
+						{create.isPending ? <Spinner data-icon="inline-start" /> : null}
 						Add company
 					</Button>
-					<SheetClose asChild>
-						<Button variant="outline">Cancel</Button>
-					</SheetClose>
-				</SheetFooter>
-			</SheetContent>
-		</Sheet>
+				</FormSheetFooter>
+			</FormSheetContent>
+		</FormSheet>
 	);
 }

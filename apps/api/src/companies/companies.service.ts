@@ -161,6 +161,7 @@ export class CompaniesService {
 	}
 
 	async byId(id: string) {
+		const reportingCurrency = await this.conversion.reportingCurrency();
 		const company = await this.db.company.findUnique({
 			where: { id },
 			select: {
@@ -226,6 +227,7 @@ export class CompaniesService {
 						amount: true,
 						currency: true,
 						baseAmount: true,
+						baseCurrency: true,
 						expectedCloseDate: true,
 						owner: { select: OWNER_SELECT },
 					},
@@ -236,6 +238,30 @@ export class CompaniesService {
 		if (!company) {
 			throw new NotFoundException(`No company with id ${id}.`);
 		}
+
+		const openWhere: Prisma.DealWhereInput = {
+			companyId: id,
+			archivedAt: null,
+			stage: { in: [...OPEN_DEAL_STAGES] },
+		};
+		const [openDeals, openValue, unconverted] = await Promise.all([
+			this.db.deal.aggregate({
+				where: openWhere,
+				_count: { _all: true },
+				_min: { expectedCloseDate: true },
+			}),
+			this.db.deal.aggregate({
+				where: {
+					AND: [openWhere, this.conversion.countedWhere(reportingCurrency)],
+				},
+				_sum: { baseAmount: true },
+			}),
+			this.db.deal.count({
+				where: {
+					AND: [openWhere, this.conversion.pendingWhere(reportingCurrency)],
+				},
+			}),
+		]);
 
 		const {
 			deals,
@@ -255,13 +281,23 @@ export class CompaniesService {
 			enrichedAt: enrichedAt?.toISOString() ?? null,
 			primaryContactId: primaryContact?.id ?? null,
 			primaryContact,
-			reportingCurrency: await this.conversion.reportingCurrency(),
+			reportingCurrency,
+			openPipeline: {
+				count: openDeals._count._all,
+				totalCents: toCents(openValue._sum.baseAmount),
+				unconverted,
+				nextClose: openDeals._min.expectedCloseDate?.toISOString() ?? null,
+			},
 			deals: deals.map((deal) => ({
 				...deal,
 				amount: undefined,
 				baseAmount: undefined,
+				baseCurrency: undefined,
 				amountCents: toCents(deal.amount),
-				baseAmountCents: toCents(deal.baseAmount),
+				baseAmountCents:
+					deal.baseCurrency === reportingCurrency
+						? toCents(deal.baseAmount)
+						: null,
 				expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			})),
 		};
@@ -474,7 +510,7 @@ export class CompaniesService {
 			const domain = normalizeDomain(input.domain);
 			if (input.domain.trim() && !domain) {
 				throw new BadRequestException(
-					`"${input.domain}" is not a domain — try something like "stripe.com".`,
+					`"${input.domain}" is not a domain. Try something like "stripe.com".`,
 				);
 			}
 			data.domain = domain;
@@ -507,7 +543,7 @@ export class CompaniesService {
 			if (data.enrichmentStatus === "PENDING") {
 				await this.agent.companyCreated(
 					id,
-					"Domain changed — anything we knew was about a different company",
+					"Domain changed. Anything we knew was about a different company",
 				);
 				void this.favicon.backfill(id, updated.domain);
 			}
@@ -713,7 +749,7 @@ export class CompaniesService {
 
 		if (!company.domain) {
 			throw new BadRequestException(
-				"There is nothing to read without a domain — add one first.",
+				"There is nothing to read without a domain. Add one first.",
 			);
 		}
 

@@ -218,6 +218,12 @@ export const companyDetailOutput = z.object({
 	primaryContactId: z.string().nullable(),
 	primaryContact: companyDetailPrimaryContactOutput.nullable(),
 	reportingCurrency: z.string(),
+	openPipeline: z.object({
+		count: z.number().int().nonnegative(),
+		totalCents: z.number().nullable(),
+		unconverted: z.number().int().nonnegative(),
+		nextClose: z.string().nullable(),
+	}),
 	deals: z.array(companyDetailDealOutput),
 });
 

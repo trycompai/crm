@@ -175,7 +175,10 @@ describe("the record sheet", () => {
 		}
 
 		const sheet = readFileSync(
-			new URL("../components/detail-sheet.tsx", import.meta.url),
+			new URL(
+				"../../../packages/ui/src/components/record-sheet.tsx",
+				import.meta.url,
+			),
 			"utf8",
 		);
 

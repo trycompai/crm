@@ -1,20 +1,5 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
-import Application from "@carbon/icons-react/es/Application";
-import ArrowRight from "@carbon/icons-react/es/ArrowRight";
-import Building from "@carbon/icons-react/es/Building";
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Copy from "@carbon/icons-react/es/Copy";
-import Partnership from "@carbon/icons-react/es/Partnership";
-import Play from "@carbon/icons-react/es/Play";
-import Renew from "@carbon/icons-react/es/Renew";
-import Reply from "@carbon/icons-react/es/Reply";
-import Security from "@carbon/icons-react/es/Security";
-import ThumbsDown from "@carbon/icons-react/es/ThumbsDown";
-import ThumbsUp from "@carbon/icons-react/es/ThumbsUp";
-import User from "@carbon/icons-react/es/User";
-import WarningAlt from "@carbon/icons-react/es/WarningAlt";
 import {
 	AsyncButtonContent,
 	useAsyncAction,
@@ -48,6 +33,23 @@ import {
 	type UseEveAgentStatus,
 	useEveAgent,
 } from "eve/react";
+import {
+	AppWindowIcon,
+	ArrowRightIcon,
+	Building2Icon,
+	CheckIcon,
+	CopyIcon,
+	HandshakeIcon,
+	PlayIcon,
+	PlusIcon,
+	RefreshCwIcon,
+	ReplyIcon,
+	ShieldIcon,
+	ThumbsDownIcon,
+	ThumbsUpIcon,
+	TriangleAlertIcon,
+	UserIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { Fragment, type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -935,7 +937,7 @@ function ChatHeader({
 				{working ? (
 					<span className="flex shrink-0 items-center gap-2 text-muted-foreground text-xs">
 						<Icon
-							icon={Renew}
+							icon={RefreshCwIcon}
 							className="size-3.5 animate-spin text-ring"
 							motion="none"
 						/>
@@ -948,7 +950,7 @@ function ChatHeader({
 			</div>
 			<Button asChild variant="ghost" size="icon-sm">
 				<Link href={workspaceUrl("/chat")} aria-label="Start a new chat">
-					<Icon icon={Add} />
+					<Icon icon={PlusIcon} />
 				</Link>
 			</Button>
 			<ShareChatDialog conversationId={conversation.id} title={title} />
@@ -1015,13 +1017,13 @@ function UserSubmission({
 			>
 				{response ? (
 					<div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-						<Icon icon={Reply} className="size-3.5" />
+						<Icon icon={ReplyIcon} className="size-3.5" />
 						<span>Answer to follow-up</span>
 					</div>
 				) : null}
 				{submission.commandType === "CREATE_AGENT" ? (
 					<div className="flex flex-wrap gap-1">
-						<ChatCommandChip label="Create agent" icon={Application} />
+						<ChatCommandChip label="Create agent" icon={AppWindowIcon} />
 					</div>
 				) : null}
 				<p className="wrap-break-word">{text}</p>
@@ -1211,7 +1213,7 @@ function PermissionModeMenu({
 					disabled={pending}
 					aria-label={`Permission mode: ${selected?.label ?? "Manual"}`}
 				>
-					<Icon icon={Security} data-icon="inline-start" />
+					<Icon icon={ShieldIcon} data-icon="inline-start" />
 					{selected?.label ?? "Manual"}
 				</Button>
 			</DropdownMenuTrigger>
@@ -1338,7 +1340,7 @@ function CopyResponseAction({ markdown }: { markdown: string }) {
 					toast.success("Response copied as Markdown.");
 				}}
 			>
-				<Icon icon={Copy} />
+				<Icon icon={CopyIcon} />
 			</Button>
 		</div>
 	);
@@ -1381,7 +1383,7 @@ function ResponseActions({
 					toast.success("Response copied as Markdown.");
 				}}
 			>
-				<Icon icon={Copy} />
+				<Icon icon={CopyIcon} />
 			</Button>
 			<Button
 				variant="ghost"
@@ -1391,7 +1393,7 @@ function ResponseActions({
 				className={cn(rating === "UP" && "bg-muted text-foreground")}
 				onClick={() => choose("UP")}
 			>
-				<Icon icon={ThumbsUp} />
+				<Icon icon={ThumbsUpIcon} />
 			</Button>
 			<Button
 				variant="ghost"
@@ -1401,7 +1403,7 @@ function ResponseActions({
 				className={cn(rating === "DOWN" && "bg-muted text-foreground")}
 				onClick={() => choose("DOWN")}
 			>
-				<Icon icon={ThumbsDown} />
+				<Icon icon={ThumbsDownIcon} />
 			</Button>
 		</div>
 	);
@@ -1457,7 +1459,7 @@ function BuildingAgentCard({
 										)}
 									>
 										{done ? (
-											<Icon icon={Checkmark} className="size-3.5" />
+											<Icon icon={CheckIcon} className="size-3.5" />
 										) : active ? (
 											<DotMatrix decorative />
 										) : (
@@ -1662,7 +1664,10 @@ function BuilderFailureCard({
 			className="flex flex-col items-stretch gap-3 rounded-lg border border-destructive/30 bg-card px-4 py-3 sm:flex-row sm:items-start"
 		>
 			<div className="flex min-w-0 flex-1 items-start gap-3">
-				<Icon icon={WarningAlt} className="mt-0.5 size-4 text-destructive" />
+				<Icon
+					icon={TriangleAlertIcon}
+					className="mt-0.5 size-4 text-destructive"
+				/>
 				<div className="min-w-0 flex-1">
 					<p className="font-medium text-sm">
 						{creatingAgent ? "Agent creation stopped" : "Response stopped"}
@@ -1725,14 +1730,14 @@ function ReviewAgentCard({
 						/>
 					</ReviewRow>
 				</div>
-				<AgentCardFooter note="Sandboxed · credentials never enter the sandbox">
+				<AgentCardFooter note="Runs in a sandbox. Credentials never enter it.">
 					<Button asChild size="sm">
 						<Link
 							href={workspaceUrl(`/agents/${agent.id}`)}
 							transitionTypes={["nav-forward"]}
 						>
 							View details
-							<Icon icon={ArrowRight} data-icon="inline-end" />
+							<Icon icon={ArrowRightIcon} data-icon="inline-end" />
 						</Link>
 					</Button>
 				</AgentCardFooter>
@@ -1834,7 +1839,7 @@ function DeployedAgentCard({
 	const nextRun =
 		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
 	const triggerSummary =
-		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
+		enabledTriggers.map((trigger) => trigger.name).join(", ") || "Manual only";
 
 	return (
 		<div className="flex flex-col gap-[18px]">
@@ -1865,8 +1870,9 @@ function DeployedAgentCard({
 							)
 						}
 					/>
-					<ReviewRow label="Runs in" value="Eve runtime · isolated sandbox" />
-					<ReviewRow label="Owner" value={`Team · ${agent.createdBy.name}`} />
+					<ReviewRow label="Runs in" value="Isolated Eve sandbox" />
+					<ReviewRow label="Visibility" value="Team" />
+					<ReviewRow label="Owner" value={agent.createdBy.name} />
 				</div>
 				<AgentCardFooter note="The chat stays private. The agent is team-owned.">
 					<div className="flex items-center gap-2">
@@ -1883,14 +1889,14 @@ function DeployedAgentCard({
 								successLabel="Queued"
 								errorLabel="Try again"
 							>
-								<Icon icon={Play} data-icon="inline-start" />
+								<Icon icon={PlayIcon} data-icon="inline-start" />
 								Run now
 							</AsyncButtonContent>
 						</Button>
 						<Button asChild size="sm">
 							<Link href={workspaceUrl(`/agents/${agent.id}`)}>
 								Open agent
-								<Icon icon={ArrowRight} data-icon="inline-end" />
+								<Icon icon={ArrowRightIcon} data-icon="inline-end" />
 							</Link>
 						</Button>
 					</div>
@@ -1911,7 +1917,10 @@ function DeployedAgentCard({
 						<span className="min-w-0 flex-1 wrap-break-word text-sm">
 							{suggestion}
 						</span>
-						<Icon icon={ArrowRight} className="size-4 text-muted-foreground" />
+						<Icon
+							icon={ArrowRightIcon}
+							className="size-4 text-muted-foreground"
+						/>
 					</button>
 				))}
 			</div>
@@ -1938,10 +1947,10 @@ function ChatUnavailable() {
 }
 
 const RESOURCE_ICONS = {
-	integration: Application,
-	company: Building,
-	contact: User,
-	deal: Partnership,
+	integration: AppWindowIcon,
+	company: Building2Icon,
+	contact: UserIcon,
+	deal: HandshakeIcon,
 } as const;
 
 function hasQueuedInputResponse(
@@ -2018,7 +2027,7 @@ function manifestOf(manifest: AgentManifestSummary) {
 								trigger.type === "EVENT" ? "On CRM event" : "On schedule",
 							),
 				)
-				.join(" · ") || "On demand",
+				.join(", ") || "On demand",
 		looksAt: textOf(
 			manifest.dataScope.summary,
 			"CRM records in the approved scope",

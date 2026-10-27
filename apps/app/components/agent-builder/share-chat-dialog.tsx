@@ -1,7 +1,5 @@
 "use client";
 
-import Close from "@carbon/icons-react/es/Close";
-import Copy from "@carbon/icons-react/es/Copy";
 import {
 	AsyncButtonContent,
 	useAsyncAction,
@@ -20,6 +18,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CopyIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
@@ -127,7 +126,7 @@ export function ShareChatDialog({
 							size="icon-sm"
 							className="absolute top-4 right-4"
 						>
-							<Icon icon={Close} />
+							<Icon icon={XIcon} />
 							<span className="sr-only">Close</span>
 						</Button>
 					</DialogClose>
@@ -211,7 +210,7 @@ export function ShareChatDialog({
 											errorLabel="Try again"
 										>
 											{shareToken ? (
-												<Icon icon={Copy} data-icon="inline-start" />
+												<Icon icon={CopyIcon} data-icon="inline-start" />
 											) : null}
 											{shareToken ? "Copy link" : "Replace link"}
 										</AsyncButtonContent>

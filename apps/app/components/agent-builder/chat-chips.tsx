@@ -1,5 +1,3 @@
-import Close from "@carbon/icons-react/es/Close";
-import Document from "@carbon/icons-react/es/Document";
 import {
 	Attachment,
 	AttachmentAction,
@@ -9,12 +7,13 @@ import {
 	AttachmentTitle,
 } from "@crm/ui/components/attachment";
 import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
-import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
+import { Icon, type IconComponent } from "@crm/ui/components/icon";
 import {
 	TokenFieldAction,
 	TokenFieldItem,
 } from "@crm/ui/components/token-field";
 import { cn } from "@crm/ui/lib/utils";
+import { FileTextIcon, XIcon } from "lucide-react";
 import Image from "next/image";
 
 type ChatChipVariant = "default" | "composer";
@@ -43,7 +42,7 @@ export function ChatReferenceChip({
 	variant = "default",
 }: {
 	resource: ChatChipResource;
-	icon: CarbonIcon;
+	icon: IconComponent;
 	onRemove?: () => void;
 	variant?: ChatChipVariant;
 }) {
@@ -65,7 +64,7 @@ export function ChatReferenceChip({
 						aria-label={`Remove ${resource.label}`}
 						onClick={onRemove}
 					>
-						<Icon icon={Close} className="size-3" />
+						<Icon icon={XIcon} className="size-3" />
 					</TokenFieldAction>
 				) : null}
 			</TokenFieldItem>
@@ -82,7 +81,7 @@ export function ChatReferenceChip({
 					onClick={onRemove}
 					className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
 				>
-					<Icon icon={Close} className="size-3" />
+					<Icon icon={XIcon} className="size-3" />
 				</button>
 			) : null}
 		</span>
@@ -96,7 +95,7 @@ export function ChatReferenceIdentity({
 	compact = false,
 }: {
 	resource: ChatChipResource;
-	icon: CarbonIcon;
+	icon: IconComponent;
 	showDetail?: boolean;
 	compact?: boolean;
 }) {
@@ -133,7 +132,6 @@ export function ChatAttachmentChip({
 	onRemove?: () => void;
 	variant?: ChatChipVariant;
 }) {
-	const label = `${attachment.name} · ${formatBytes(attachment.size)}`;
 	const image = isPreviewableImage(attachment.type)
 		? (attachment.previewUrl ??
 			(attachment.contentBase64
@@ -157,11 +155,16 @@ export function ChatAttachmentChip({
 						className="size-full object-cover"
 					/>
 				) : (
-					<Icon icon={Document} />
+					<Icon icon={FileTextIcon} />
 				)}
 			</AttachmentMedia>
-			<AttachmentContent>
-				<AttachmentTitle title={label}>{label}</AttachmentTitle>
+			<AttachmentContent className="flex items-baseline gap-1.5">
+				<AttachmentTitle title={attachment.name}>
+					{attachment.name}
+				</AttachmentTitle>
+				<span className="shrink-0 text-muted-foreground tabular-nums">
+					{formatBytes(attachment.size)}
+				</span>
 			</AttachmentContent>
 			{onRemove ? (
 				<AttachmentActions>
@@ -170,7 +173,7 @@ export function ChatAttachmentChip({
 						aria-label={`Remove ${attachment.name}`}
 						onClick={onRemove}
 					>
-						<Icon icon={Close} />
+						<Icon icon={XIcon} />
 					</AttachmentAction>
 				</AttachmentActions>
 			) : null}
@@ -185,7 +188,7 @@ export function ChatCommandChip({
 	variant = "default",
 }: {
 	label: string;
-	icon: CarbonIcon;
+	icon: IconComponent;
 	onRemove?: () => void;
 	variant?: ChatChipVariant;
 }) {
@@ -196,7 +199,7 @@ export function ChatCommandChip({
 				<span className="font-medium">{label}</span>
 				{onRemove ? (
 					<TokenFieldAction aria-label={`Remove ${label}`} onClick={onRemove}>
-						<Icon icon={Close} className="size-3" />
+						<Icon icon={XIcon} className="size-3" />
 					</TokenFieldAction>
 				) : null}
 			</TokenFieldItem>
@@ -214,7 +217,7 @@ export function ChatCommandChip({
 					onClick={onRemove}
 					className="-mr-1 flex size-5 items-center justify-center rounded-sm outline-none hover:bg-primary-foreground/15 focus-visible:ring-2 focus-visible:ring-primary-foreground/60"
 				>
-					<Icon icon={Close} className="size-3" />
+					<Icon icon={XIcon} className="size-3" />
 				</button>
 			) : null}
 		</span>

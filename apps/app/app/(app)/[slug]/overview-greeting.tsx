@@ -1,7 +1,10 @@
 "use client";
 
+import {
+	PageShellDescription,
+	PageShellTitle,
+} from "@crm/ui/components/page-shell";
 import { useQueryState } from "nuqs";
-import { PageShellDescription, PageShellTitle } from "@/components/page-shell";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { overviewParsers } from "./overview-search-params";
 

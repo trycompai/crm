@@ -231,7 +231,7 @@ export class TrackingService {
 
 		if (!trackingReady(row?.trackingLimitToDomains ?? true, domains)) {
 			throw new BadRequestException(
-				"Add the domain your website runs on first — there is no script to find yet.",
+				"Add the domain your website runs on first. There is no script to find yet.",
 			);
 		}
 

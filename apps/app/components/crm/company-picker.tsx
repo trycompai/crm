@@ -13,7 +13,7 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { type Ref, useId, useState } from "react";
+import { type AriaAttributes, type Ref, useId, useState } from "react";
 import { PROPERTY_LABEL, PROPERTY_ROW } from "@/components/detail-sheet";
 import { useTRPC } from "@/lib/trpc/client";
 
@@ -27,6 +27,8 @@ export function CompanyPicker({
 	disabled,
 	variant,
 	className,
+	"aria-invalid": ariaInvalid,
+	"aria-describedby": ariaDescribedBy,
 }: {
 	id?: string;
 	value: string;
@@ -37,6 +39,8 @@ export function CompanyPicker({
 	disabled?: boolean;
 	variant?: "default" | "ghost";
 	className?: string;
+	"aria-invalid"?: AriaAttributes["aria-invalid"];
+	"aria-describedby"?: string;
 }) {
 	const trpc = useTRPC();
 
@@ -69,6 +73,8 @@ export function CompanyPicker({
 	return (
 		<Combobox
 			id={id}
+			aria-invalid={ariaInvalid}
+			aria-describedby={ariaDescribedBy}
 			value={value}
 			onValueChange={(next) => {
 				setChosen(options.find((option) => option.value === next) ?? null);

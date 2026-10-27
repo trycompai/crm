@@ -1,0 +1,31 @@
+@utility shell-rail {
+	--sidebar-foreground: var(--rail-foreground, #f1f5f2);
+	--sidebar-accent: var(--rail-accent, oklch(1 0 0 / 7%));
+	--sidebar-accent-foreground: var(--rail-foreground, #f1f5f2);
+	--sidebar-border: var(--rail-border, oklch(1 0 0 / 14%));
+	--foreground: var(--rail-foreground, #f1f5f2);
+	--muted-foreground: var(--rail-muted, #93a59c);
+	--accent: var(--rail-accent, oklch(1 0 0 / 7%));
+	--accent-foreground: var(--rail-foreground, #f1f5f2);
+	--border: var(--rail-border, oklch(1 0 0 / 14%));
+	--muted: var(--rail-accent, oklch(1 0 0 / 7%));
+	--ring: var(--rail-foreground, #f1f5f2);
+	--sidebar: transparent;
+	position: relative;
+	z-index: 1;
+	color: var(--rail-foreground, #f1f5f2);
+}
+
+@utility corner-cut {
+	mask:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cpath d='M26 0H32V32H0V21.1Q0 17.1 3.16 14.64L18.84 2.46Q22 0 26 0Z'/%3E%3C/svg%3E")
+		left top / 32px 32px no-repeat,
+		linear-gradient(#000, #000) right top / calc(100% - 32px) 32px no-repeat,
+		linear-gradient(#000, #000) left bottom / 100% calc(100% - 32px) no-repeat;
+}
+
+@utility shell-cut {
+	position: relative;
+	z-index: 1;
+	@apply corner-cut;
+}

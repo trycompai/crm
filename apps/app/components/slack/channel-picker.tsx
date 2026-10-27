@@ -1,10 +1,9 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Locked from "@carbon/icons-react/es/Locked";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
+import { CheckIcon, LockIcon } from "lucide-react";
 
 export type PickerChannel = {
 	id: string;
@@ -67,7 +66,7 @@ export function ChannelPicker({
 
 						<span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
 							{channel.isPrivate ? (
-								<Icon className="size-3.5" icon={Locked} motion="none" />
+								<Icon className="size-3.5" icon={LockIcon} motion="none" />
 							) : (
 								"#"
 							)}
@@ -82,8 +81,13 @@ export function ChannelPicker({
 							>
 								{channel.name}
 							</span>
-							<span className="text-muted-foreground text-xs">
-								{describe(channel, canInviteItself)}
+							<span className="flex flex-wrap gap-x-3 text-muted-foreground text-xs">
+								<span>{describe(channel, canInviteItself)}</span>
+								{channel.memberCount === null ? null : (
+									<span className="tabular-nums">
+										{channel.memberCount} people
+									</span>
+								)}
 							</span>
 						</span>
 
@@ -91,7 +95,7 @@ export function ChannelPicker({
 							{selected || (value === null && channel.isMember) ? (
 								<Icon
 									className="size-4 text-success"
-									icon={Checkmark}
+									icon={CheckIcon}
 									motion="none"
 								/>
 							) : needsHuman && onRequest ? (
@@ -122,14 +126,10 @@ export function ChannelPicker({
 }
 
 function describe(channel: PickerChannel, canInviteItself: boolean): string {
-	const people =
-		channel.memberCount === null ? "" : ` · ${channel.memberCount} people`;
-
-	if (channel.isMember) return `Comp AI is in${people}`;
-	if (!channel.classified) return `Not read from Slack yet${people}`;
-	if (!channel.isPrivate) return `Comp AI can join this one${people}`;
-	if (canInviteItself) return `Private. Comp AI joins as you${people}`;
-	if (channel.inviteRequestedAt)
-		return `Private. Waiting on an invite${people}`;
-	return `Private. Someone inside has to invite Comp AI${people}`;
+	if (channel.isMember) return "Comp AI is in";
+	if (!channel.classified) return "Not read from Slack yet";
+	if (!channel.isPrivate) return "Comp AI can join this one";
+	if (canInviteItself) return "Private. Comp AI joins as you";
+	if (channel.inviteRequestedAt) return "Private. Waiting on an invite";
+	return "Private. Someone inside has to invite Comp AI";
 }

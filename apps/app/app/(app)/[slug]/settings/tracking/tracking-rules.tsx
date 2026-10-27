@@ -1,13 +1,7 @@
 "use client";
 
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { Label } from "@crm/ui/components/label";
+import { SettingRow, SettingRows } from "@crm/ui/components/setting-rows";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -45,41 +39,31 @@ export function TrackingRules() {
 	const { canManage } = tracking.data;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Tracking rules</CardTitle>
-				<CardDescription>
-					Where the script may run, and how it follows a visitor.
-				</CardDescription>
-			</CardHeader>
-
-			<CardContent>
+		<SettingsCard
+			title="Tracking rules"
+			description="Where the script may run, and how it follows a visitor."
+			hint="Changes save as you make them."
+		>
+			<SettingRows>
 				{RULES.map((rule) => (
-					<div
+					<SettingRow
 						key={rule.flag}
-						className="flex items-center justify-between gap-6"
-					>
-						<Label
-							htmlFor={`tracking-${rule.flag}`}
-							className="flex flex-col items-start gap-1"
-						>
-							<span className="text-sm">{rule.label}</span>
-							<span className="font-normal text-muted-foreground text-xs">
-								{rule.hint}
-							</span>
-						</Label>
-
-						<Switch
-							id={`tracking-${rule.flag}`}
-							checked={tracking.data[rule.flag]}
-							disabled={!canManage || setFlag.isPending}
-							onCheckedChange={(enabled) =>
-								setFlag.mutate({ flag: rule.flag, enabled })
-							}
-						/>
-					</div>
+						title={rule.label}
+						description={rule.hint}
+						control={(id, describedBy) => (
+							<Switch
+								id={id}
+								aria-describedby={describedBy}
+								checked={tracking.data[rule.flag]}
+								disabled={!canManage || setFlag.isPending}
+								onCheckedChange={(enabled) =>
+									setFlag.mutate({ flag: rule.flag, enabled })
+								}
+							/>
+						)}
+					/>
 				))}
-			</CardContent>
-		</Card>
+			</SettingRows>
+		</SettingsCard>
 	);
 }

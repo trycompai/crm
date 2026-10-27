@@ -1,12 +1,14 @@
-import Add from "@carbon/icons-react/es/Add";
-import ArrowRight from "@carbon/icons-react/es/ArrowRight";
-import ArrowUp from "@carbon/icons-react/es/ArrowUp";
-import Attachment from "@carbon/icons-react/es/Attachment";
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
-import Renew from "@carbon/icons-react/es/Renew";
-import Time from "@carbon/icons-react/es/Time";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import { cn } from "@crm/ui/lib/utils";
+import {
+	ArrowRightIcon,
+	ArrowUpIcon,
+	ChevronDownIcon,
+	Clock3Icon,
+	PaperclipIcon,
+	PlusIcon,
+	RefreshCwIcon,
+} from "lucide-react";
 import Image from "next/image";
 import type * as React from "react";
 import { Chip } from "./chip";
@@ -56,13 +58,13 @@ function Composer() {
 
 			<div className="flex items-center">
 				<div className="flex items-center gap-[14px] text-muted-foreground">
-					<Add size={16} />
-					<Attachment size={16} />
+					<PlusIcon size={16} />
+					<PaperclipIcon size={16} />
 					<span className="font-mono text-sm/4">/</span>
 				</div>
 				<div className="grow" />
 				<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary">
-					<ArrowUp size={14} className="text-primary-foreground" />
+					<ArrowUpIcon size={14} className="text-primary-foreground" />
 				</span>
 			</div>
 		</div>
@@ -74,7 +76,7 @@ function SuggestedActions() {
 		<div className="flex w-3xl max-w-full shrink-0 select-none flex-col pt-1">
 			<div className="flex h-7 shrink-0 items-center gap-1.5 text-muted-foreground">
 				<span className="text-[13px]/4">Suggested actions</span>
-				<ChevronDown size={12} />
+				<ChevronDownIcon size={12} />
 			</div>
 
 			<SuggestedAction>
@@ -106,12 +108,13 @@ function SuggestedActions() {
 			<SuggestedAction>
 				<span className="shrink-0">Every Monday,</span>
 				<Chip className="px-2">
-					<Renew size={13} className="shrink-0" />
+					<RefreshCwIcon size={13} className="shrink-0" />
 					re-enrich contacts
 				</Chip>
 				<span className="shrink-0">that haven't been contacted in</span>
 				<Chip className="px-2">
-					<Time size={13} className="shrink-0 text-muted-foreground" />4 weeks
+					<Clock3Icon size={13} className="shrink-0 text-muted-foreground" />4
+					weeks
 				</Chip>
 			</SuggestedAction>
 		</div>
@@ -135,7 +138,7 @@ function SuggestedAction({
 			>
 				{children}
 			</span>
-			<ArrowRight size={16} className="shrink-0 text-muted-foreground" />
+			<ArrowRightIcon size={16} className="shrink-0 text-muted-foreground" />
 		</div>
 	);
 }

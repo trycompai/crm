@@ -2,14 +2,6 @@
 
 import { Button } from "@crm/ui/components/button";
 import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import {
 	Field,
 	FieldDescription,
 	FieldGroup,
@@ -22,6 +14,7 @@ import {
 	InputGroupInput,
 	InputGroupText,
 } from "@crm/ui/components/input-group";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -73,89 +66,80 @@ export function WorkspaceForm() {
 		setDraft({ ...values, ...patch });
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Workspace</CardTitle>
-				<CardDescription>
-					The name and website of the company using this CRM.
-				</CardDescription>
-
-				<CardAction>
-					<Button
-						type="submit"
-						form="workspace"
-						disabled={
-							!canRename ||
-							save.isPending ||
-							!dirty ||
-							values.name.trim() === "" ||
-							values.website.trim() === ""
-						}
-					>
-						{save.isPending ? <Spinner data-icon="inline-start" /> : null}
-						Save
-					</Button>
-				</CardAction>
-			</CardHeader>
-
-			<CardContent>
-				<form
-					id="workspace"
-					onSubmit={(event) => {
-						event.preventDefault();
-						save.mutate({
-							name: values.name,
-							website: values.website.trim(),
-						});
-					}}
+		<SettingsCard
+			title="Workspace"
+			description="The name and website of the company using this CRM."
+			hint={
+				canRename
+					? "Shown wherever the CRM refers to your own company."
+					: "Only an owner or an admin can change this."
+			}
+			action={
+				<Button
+					type="submit"
+					form="workspace"
+					size="sm"
+					disabled={
+						!canRename ||
+						save.isPending ||
+						!dirty ||
+						values.name.trim() === "" ||
+						values.website.trim() === ""
+					}
 				>
-					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor={nameId}>Name</FieldLabel>
-							<Input
-								id={nameId}
-								value={values.name}
-								onChange={(event) => edit({ name: event.target.value })}
-								placeholder="Acme Inc."
-								autoComplete="organization"
+					{save.isPending ? <Spinner data-icon="inline-start" /> : null}
+					Save
+				</Button>
+			}
+			control="compact"
+		>
+			<form
+				id="workspace"
+				onSubmit={(event) => {
+					event.preventDefault();
+					save.mutate({
+						name: values.name,
+						website: values.website.trim(),
+					});
+				}}
+			>
+				<FieldGroup>
+					<Field>
+						<FieldLabel htmlFor={nameId}>Name</FieldLabel>
+						<Input
+							id={nameId}
+							value={values.name}
+							onChange={(event) => edit({ name: event.target.value })}
+							placeholder="Acme Inc."
+							autoComplete="organization"
+							disabled={!canRename || save.isPending}
+							required
+						/>
+					</Field>
+
+					<Field>
+						<FieldLabel htmlFor={websiteId}>Website</FieldLabel>
+						<InputGroup>
+							<InputGroupAddon>
+								<InputGroupText>https://</InputGroupText>
+							</InputGroupAddon>
+							<InputGroupInput
+								id={websiteId}
+								value={values.website}
+								onChange={(event) => edit({ website: event.target.value })}
+								placeholder="acme.com"
+								autoComplete="off"
+								autoCapitalize="off"
+								autoCorrect="off"
+								spellCheck={false}
+								inputMode="url"
 								disabled={!canRename || save.isPending}
-								required
 							/>
-							<FieldDescription>
-								Shown wherever the CRM refers to your own company.
-							</FieldDescription>
-						</Field>
-
-						<Field>
-							<FieldLabel htmlFor={websiteId}>Website</FieldLabel>
-							<InputGroup>
-								<InputGroupAddon>
-									<InputGroupText>https://</InputGroupText>
-								</InputGroupAddon>
-								<InputGroupInput
-									id={websiteId}
-									value={values.website}
-									onChange={(event) => edit({ website: event.target.value })}
-									placeholder="acme.com"
-									autoComplete="off"
-									autoCapitalize="off"
-									autoCorrect="off"
-									spellCheck={false}
-									inputMode="url"
-									disabled={!canRename || save.isPending}
-								/>
-							</InputGroup>
-							<FieldDescription>Your own company's website.</FieldDescription>
-						</Field>
-					</FieldGroup>
-				</form>
-
-				{canRename ? null : (
-					<p className="text-muted-foreground text-xs">
-						Only an owner or an admin can change this.
-					</p>
-				)}
-			</CardContent>
-		</Card>
+						</InputGroup>
+						<FieldDescription>Your own company's website.</FieldDescription>
+					</Field>
+				</FieldGroup>
+			</form>
+		</SettingsCard>
 	);
 }

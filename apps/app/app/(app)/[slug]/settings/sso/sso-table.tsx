@@ -1,6 +1,5 @@
 "use client";
 
-import TrashCan from "@carbon/icons-react/es/TrashCan";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -16,6 +15,7 @@ import { Button } from "@crm/ui/components/button";
 import { DataTable, type DataTableColumn } from "@crm/ui/components/data-table";
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
@@ -38,13 +38,14 @@ function columns(
 			header: "Provider",
 			sortable: true,
 			hideable: false,
-			width: "w-[30%]",
 			cell: (row) => (
 				<span className="flex min-w-0 flex-col">
 					<span className="truncate font-medium">{row.name}</span>
-					<span className="truncate text-muted-foreground text-xs">
-						{row.type === "saml" ? "SAML" : "OpenID Connect"}
-						{row.clientIdLastFour ? ` · client …${row.clientIdLastFour}` : ""}
+					<span className="flex min-w-0 flex-wrap gap-x-3 text-muted-foreground text-xs">
+						<span>{row.type === "saml" ? "SAML" : "OpenID Connect"}</span>
+						{row.clientIdLastFour ? (
+							<span>Client …{row.clientIdLastFour}</span>
+						) : null}
 					</span>
 				</span>
 			),
@@ -53,7 +54,7 @@ function columns(
 			id: "domain",
 			header: "Email domain",
 			sortable: true,
-			width: "w-[22%]",
+			width: "40",
 			hideBelow: "sm",
 			cell: (row) => (
 				<span className="truncate text-muted-foreground">
@@ -65,7 +66,7 @@ function columns(
 			id: "issuer",
 			header: "Issuer",
 			sortable: true,
-			width: "w-[22%]",
+			width: "40",
 			hideBelow: "md",
 			cell: (row) => (
 				<span className="truncate text-muted-foreground">{row.issuer}</span>
@@ -74,7 +75,7 @@ function columns(
 		{
 			id: "callbackURL",
 			header: "Redirect URI",
-			width: "w-[20%]",
+			width: "36",
 			hideBelow: "lg",
 			cell: (row) => (
 				<span className="flex min-w-0 items-center gap-1 text-muted-foreground">
@@ -89,13 +90,13 @@ function columns(
 			label: "Actions",
 			hideable: false,
 			align: "right",
-			width: "w-[6%]",
+			width: "12",
 			cell: (row) =>
 				canConfigure ? (
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
 							<Button variant="ghost" size="icon" disabled={pending}>
-								<Icon icon={TrashCan} />
+								<Icon icon={Trash2Icon} />
 								<span className="sr-only">Remove {row.name}</span>
 							</Button>
 						</AlertDialogTrigger>
@@ -148,8 +149,9 @@ export function SsoTable() {
 
 	return (
 		<DataTable
+			label="SSO providers"
 			query={query}
-			search={<ListSearch placeholder="Search by name, domain or issuer…" />}
+			search={<ListSearch placeholder="Search providers…" />}
 			columns={columns(
 				settings.data?.canConfigure ?? false,
 				(provider) => remove.mutate({ providerId: provider.providerId }),
@@ -159,7 +161,7 @@ export function SsoTable() {
 			total={providers.data?.total ?? 0}
 			getRowId={(row) => row.providerId}
 			loading={providers.isFetching}
-			empty="No identity provider yet — everyone signs in with Google."
+			empty="No identity provider yet. Everyone signs in with Google."
 		/>
 	);
 }

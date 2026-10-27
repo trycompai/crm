@@ -32,6 +32,7 @@ const ALIGN_CLASS = {
 const PANEL_SURFACE = {
 	popover: "bg-popover [&_th]:bg-popover",
 	page: "bg-background [&_th]:bg-background",
+	card: "bg-card [&_th]:bg-card",
 } as const;
 
 export function SimpleTable({
@@ -59,9 +60,14 @@ export function SimpleTable({
 
 	return (
 		<Table
-			className={cn("w-full", panel && "table-fixed", className)}
+			className={cn(
+				"w-full",
+				panel && "table-fixed [&_td>*]:max-w-full",
+				className,
+			)}
 			containerClassName={cn(
-				panel && "min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
+				panel &&
+					"@container/simple-table min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
 				!panel && "rounded-lg border bg-card",
 				containerClassName,
 			)}
@@ -109,8 +115,11 @@ export function SimpleTableRow({
 	return (
 		<TableRow
 			className={cn(
-				"hover:bg-transparent",
-				clickable && (expandable ? ROW_ACCENT_EXPANDABLE : ROW_ACCENT),
+				clickable
+					? expandable
+						? ROW_ACCENT_EXPANDABLE
+						: ROW_ACCENT
+					: "hover:bg-transparent",
 				className,
 			)}
 			{...props}

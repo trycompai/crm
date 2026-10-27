@@ -1,8 +1,5 @@
 "use client";
 
-import Email from "@carbon/icons-react/es/Email";
-import Partnership from "@carbon/icons-react/es/Partnership";
-import Star from "@carbon/icons-react/es/Star";
 import type { FieldValueJson } from "@crm/db/fields";
 import {
 	Accordion,
@@ -18,10 +15,16 @@ import {
 } from "@crm/ui/components/entity-logo";
 import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
+import {
+	RecordEmpty,
+	RecordSection,
+	type RecordSheetTab,
+} from "@crm/ui/components/record-sheet";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { HandshakeIcon, MailIcon, StarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { InlineCompanyField } from "@/components/crm/company-picker";
@@ -41,15 +44,12 @@ import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
 import { WebsiteActivity } from "@/components/crm/website-activity";
 import {
-	DetailSheetBody,
 	DetailSheetEmpty,
+	DetailSheetLoaded,
 	DetailSheetProperties,
 	DetailSheetProperty,
 	DetailSheetProse,
 	DetailSheetSection,
-	DetailSheetStat,
-	DetailSheetStats,
-	type DetailSheetTab,
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
 import { factsByField } from "@/lib/contact-facts";
@@ -60,7 +60,7 @@ import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { RecordActions } from "./record-actions";
-import { DealAmount, MetaLine, RecordSheetFrame } from "./record-parts";
+import { DealAmount, RecordSheetFrame } from "./record-parts";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
 type Contact = RouterOutputs["contacts"]["byId"];
@@ -74,7 +74,7 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 };
 
 const DEAL_COLUMNS = [
-	{ id: "deal", header: "Deal", width: "w-[32%]", className: "pl-5" },
+	{ id: "deal", header: "Deal", width: "w-[32%]", className: "pl-0" },
 	{ id: "role", header: "Role", width: "w-[16%]" },
 	{ id: "stage", header: "Stage", width: "w-[22%]" },
 	{
@@ -112,155 +112,137 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 		}),
 	);
 
-	const tabs: DetailSheetTab[] = contact
-		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <ContactOverview contact={contact} />,
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: contact.deals.length,
-					content: <ContactDeals contact={contact} />,
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ contactId: contact.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
-					keepMounted: true,
-				},
-			]
-		: [];
+	const tabs: RecordSheetTab[] = [
+		{
+			value: "overview",
+			label: "Overview",
+			content: contact ? <ContactOverview contact={contact} /> : null,
+		},
+		{
+			value: "deals",
+			label: "Deals",
+			count: contact?.deals.length,
+			fills: true,
+			content: contact ? <ContactDeals contact={contact} /> : null,
+		},
+		{
+			value: "activity",
+			label: "Activity",
+			fills: true,
+			content: contact ? <Timeline anchor={{ contactId: contact.id }} /> : null,
+		},
+		{
+			value: "agent",
+			label: "Agent",
+			fills: true,
+			content: contact ? (
+				<AgentPanel record={{ kind: "contact", id: contact.id }} />
+			) : null,
+			keepMounted: true,
+		},
+	];
 
 	return (
-		<RecordSheetFrame
-			loading={query.isPending}
-			error={query.error?.message ?? null}
-			title={contact ? contactName(contact) : "Contact"}
-			description={
-				contact ? (
-					<MetaLine parts={[contact.title, contact.company?.name]} />
-				) : undefined
+		<DetailSheetLoaded
+			record={
+				contact
+					? {
+							kind: "contact",
+							id: contact.id,
+							label: contactName(contact),
+							detail: contact.company?.name ?? contact.email,
+							iconUrl: null,
+							iconDarkUrl: null,
+							iconTone: null,
+							imageUrl: contact.imageUrl,
+						}
+					: null
 			}
-			note={
-				contact ? (
-					<>
-						{contact.isPrimaryContact ? (
-							<StatusIndicator
-								tone="success"
-								label={`Primary contact at ${contact.company?.name ?? "this company"}`}
-							/>
-						) : null}
-						{contact.enrichmentStatus !== "COMPLETE" ? (
-							<EnrichmentIndicator
-								status={contact.enrichmentStatus}
-								queued={contact.queued}
-								title={contact.enrichmentError}
-							/>
-						) : null}
-					</>
-				) : null
-			}
-			media={
-				<PersonAvatar
-					src={contact?.imageUrl}
-					name={contact ? contactName(contact) : "?"}
-					email={contact?.email}
-					size="lg"
-				/>
-			}
-			actions={
-				contact ? (
-					<>
-						<ContactEnrichmentAction contactId={contact.id} />
-						{contact.email ? (
-							<Button asChild variant="outline" size="sm">
-								<a href={`mailto:${contact.email}`}>
-									<Icon icon={Email} data-icon="inline-start" />
-									<span className="hidden sm:inline">Email</span>
-								</a>
-							</Button>
-						) : null}
-						{contact.company && !contact.isPrimaryContact ? (
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={setPrimary.isPending}
-								onClick={() =>
-									setPrimary.mutate({
-										companyId: contact.company?.id ?? "",
-										contactId: contact.id,
-									})
-								}
-							>
-								<Icon icon={Star} data-icon="inline-start" />
-								<span className="hidden sm:inline">Make primary</span>
-							</Button>
-						) : null}
-						<RecordActions
-							record={{ kind: "contact", id: contact.id }}
+		>
+			<RecordSheetFrame
+				kind="contact"
+				loading={query.isPending}
+				error={query.error?.message ?? null}
+				title={contact ? contactName(contact) : "Contact"}
+				media={
+					contact ? (
+						<PersonAvatar
+							src={contact.imageUrl}
 							name={contactName(contact)}
-							consequence={`Their notes, agent conversations and everything the agent found go too; emails and meetings stay filed against the company.${contact.email ? ` The sync will not bring ${contact.email} back — only adding them yourself will.` : ""}`}
-							archivedAt={contact.archivedAt}
+							email={contact.email}
+							size="sm"
 						/>
-					</>
-				) : null
-			}
-			stats={
-				contact ? (
-					<DetailSheetStats>
-						<DetailSheetStat label="Company">
+					) : null
+				}
+				pills={
+					contact ? (
+						<>
+							{contact.title ? (
+								<span className="text-foreground">{contact.title}</span>
+							) : null}
 							{contact.company ? (
-								<CompanyStat company={contact.company} />
-							) : (
-								<EmptyCellValue />
-							)}
-						</DetailSheetStat>
-						<DetailSheetStat label="Email">
+								<CompanyLink company={contact.company} />
+							) : null}
+							{contact.isPrimaryContact ? (
+								<StatusIndicator tone="success" label="Primary contact" />
+							) : null}
+							{contact.enrichmentStatus !== "COMPLETE" ? (
+								<EnrichmentIndicator
+									status={contact.enrichmentStatus}
+									queued={contact.queued}
+									title={contact.enrichmentError}
+								/>
+							) : null}
+						</>
+					) : null
+				}
+				actions={
+					contact ? (
+						<>
+							<ContactEnrichmentAction contactId={contact.id} />
 							{contact.email ? (
-								<a
-									href={`mailto:${contact.email}`}
-									className="underline-offset-2 hover:underline"
+								<Button asChild variant="outline" size="sm">
+									<a href={`mailto:${contact.email}`}>
+										<Icon icon={MailIcon} data-icon="inline-start" />
+										<span className="hidden sm:inline">Email</span>
+									</a>
+								</Button>
+							) : null}
+							{contact.company && !contact.isPrimaryContact ? (
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={setPrimary.isPending}
+									onClick={() =>
+										setPrimary.mutate({
+											companyId: contact.company?.id ?? "",
+											contactId: contact.id,
+										})
+									}
 								>
-									{contact.email}
-								</a>
-							) : (
-								<EmptyCellValue />
-							)}
-						</DetailSheetStat>
-						<DetailSheetStat label="Phone">
-							{contact.phone ? (
-								<a
-									href={`tel:${contact.phone}`}
-									className="underline-offset-2 hover:underline"
-								>
-									{contact.phone}
-								</a>
-							) : (
-								<EmptyCellValue />
-							)}
-						</DetailSheetStat>
-						<DetailSheetStat label="Owner">
-							<OwnerCell owner={contact.owner} />
-						</DetailSheetStat>
-					</DetailSheetStats>
-				) : null
-			}
-			tabs={tabs}
-			tab={tab}
-			onTabChange={setTab}
-		/>
+									<Icon icon={StarIcon} data-icon="inline-start" />
+									<span className="hidden sm:inline">Make primary</span>
+								</Button>
+							) : null}
+							<RecordActions
+								record={{ kind: "contact", id: contact.id }}
+								name={contactName(contact)}
+								consequence={`Their notes, agent conversations and everything the agent found go too. Emails and meetings stay filed against the company.${contact.email ? ` The sync will not bring ${contact.email} back. Only adding them yourself will.` : ""}`}
+								archivedAt={contact.archivedAt}
+							/>
+						</>
+					) : null
+				}
+				rail={contact ? <ContactRail contact={contact} /> : null}
+				tabs={tabs}
+				tab={tab}
+				onTabChange={setTab}
+			/>
+		</DetailSheetLoaded>
 	);
 }
 
-function CompanyStat({
+function CompanyLink({
 	company,
 }: {
 	company: NonNullable<Contact["company"]>;
@@ -271,7 +253,7 @@ function CompanyStat({
 		<button
 			type="button"
 			onClick={() => openRecord({ kind: "company", id: company.id })}
-			className="flex min-w-0 items-center gap-2 underline-offset-2 hover:underline"
+			className="flex min-w-0 items-center gap-1.5 rounded-sm text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:shadow-focus"
 		>
 			<EntityLogo
 				src={company.iconUrl}
@@ -286,6 +268,35 @@ function CompanyStat({
 }
 
 function ContactOverview({ contact }: { contact: Contact }) {
+	const hasRelationship =
+		contact.relationship.emails > 0 ||
+		contact.relationship.meetings > 0 ||
+		contact.relationship.colleagues.length > 0;
+
+	return (
+		<>
+			{contact.brief ? (
+				<Background brief={contact.brief} />
+			) : hasRelationship ? null : (
+				<RecordSection label="Background">
+					<RecordEmpty>
+						Nothing is known about {contactName(contact)} yet. Research, emails
+						and meetings show here as they arrive.
+					</RecordEmpty>
+				</RecordSection>
+			)}
+
+			<WeKnowThem
+				relationship={contact.relationship}
+				contactName={contactName(contact)}
+			/>
+
+			<WebsiteActivity contactId={contact.id} />
+		</>
+	);
+}
+
+function ContactRail({ contact }: { contact: Contact }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -322,9 +333,9 @@ function ContactOverview({ contact }: { contact: Contact }) {
 	const isSaving = savingField(update);
 
 	return (
-		<DetailSheetBody>
+		<>
 			<DetailSheetSection title="Details" action={<FieldsCog kind="contact" />}>
-				<DetailSheetProperties>
+				<DetailSheetProperties columns={1}>
 					<InlineField
 						label="First name"
 						value={contact.firstName}
@@ -414,21 +425,12 @@ function ContactOverview({ contact }: { contact: Contact }) {
 				</DetailSheetProperties>
 			</DetailSheetSection>
 
-			{contact.brief ? <Background brief={contact.brief} /> : null}
-
-			<WeKnowThem
-				relationship={contact.relationship}
-				contactName={contactName(contact)}
-			/>
-
 			{hasContactLinks(contact) ? (
 				<DetailSheetSection title="Links">
 					<ContactSocials contact={contact} />
 				</DetailSheetSection>
 			) : null}
-
-			<WebsiteActivity contactId={contact.id} />
-		</DetailSheetBody>
+		</>
 	);
 }
 
@@ -448,7 +450,7 @@ function Background({ brief }: { brief: NonNullable<Contact["brief"]> }) {
 		<DetailSheetSection
 			title="Background"
 			action={
-				<span className="text-muted-foreground text-xs">
+				<span className="flex items-baseline gap-x-3 text-13 text-muted-foreground">
 					{brief.sourceUrl ? (
 						<a
 							href={brief.sourceUrl}
@@ -459,7 +461,6 @@ function Background({ brief }: { brief: NonNullable<Contact["brief"]> }) {
 							Source
 						</a>
 					) : null}
-					{brief.sourceUrl ? " · " : null}
 					<LocalDateTime date={brief.refreshedAt} options={DATE_OPTIONS} />
 				</span>
 			}
@@ -522,16 +523,18 @@ function WeKnowThem({
 				{emails > 0 ? (
 					<DetailSheetProperty label="Emails">
 						<span className="tabular-nums">{emails}</span>
-						<span className="text-muted-foreground">
-							{" · "}
-							{lastReplyAt ? (
-								<>
-									last reply <LocalRelativeDate date={lastReplyAt} />
-								</>
-							) : (
-								`${first} has never replied`
-							)}
-						</span>
+					</DetailSheetProperty>
+				) : null}
+
+				{emails > 0 ? (
+					<DetailSheetProperty label="Last reply">
+						{lastReplyAt ? (
+							<LocalRelativeDate date={lastReplyAt} />
+						) : (
+							<span className="text-muted-foreground">
+								{first} has never replied
+							</span>
+						)}
 					</DetailSheetProperty>
 				) : null}
 
@@ -543,13 +546,14 @@ function WeKnowThem({
 
 				{nextMeeting ? (
 					<DetailSheetProperty label="Next meeting" wide>
-						{nextMeeting.title ?? "Meeting"}
-						<span className="text-muted-foreground">
-							{" · "}
-							<LocalDateTime
-								date={nextMeeting.startsAt}
-								options={DATE_OPTIONS}
-							/>
+						<span className="flex min-w-0 flex-col">
+							<span>{nextMeeting.title ?? "Meeting"}</span>
+							<span className="text-muted-foreground">
+								<LocalDateTime
+									date={nextMeeting.startsAt}
+									options={DATE_OPTIONS}
+								/>
+							</span>
 						</span>
 					</DetailSheetProperty>
 				) : null}
@@ -577,7 +581,12 @@ function Colleagues({
 				<button
 					key={colleague.id}
 					type="button"
-					onClick={() => openRecord({ kind: "contact", id: colleague.id })}
+					onClick={() =>
+						openRecord(
+							{ kind: "contact", id: colleague.id },
+							colleagues.map((entry) => ({ kind: "contact", id: entry.id })),
+						)
+					}
 					className="min-w-0 truncate underline-offset-2 hover:underline"
 				>
 					{colleague.name}
@@ -596,7 +605,7 @@ function ContactDeals({ contact }: { contact: Contact }) {
 	if (contact.deals.length === 0) {
 		return (
 			<DetailSheetEmpty
-				icon={Partnership}
+				icon={HandshakeIcon}
 				title="Not on any deals"
 				description={`${contactName(contact)} is not attached to anything being sold yet. Deals are opened on the company, then people are added to them.`}
 			/>
@@ -609,9 +618,14 @@ function ContactDeals({ contact }: { contact: Contact }) {
 				<SimpleTableRow
 					key={deal.id}
 					clickable
-					onClick={() => openRecord({ kind: "deal", id: deal.id })}
+					onClick={() =>
+						openRecord(
+							{ kind: "deal", id: deal.id },
+							contact.deals.map((entry) => ({ kind: "deal", id: entry.id })),
+						)
+					}
 				>
-					<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
+					<TableCell className="truncate py-2.5 pr-3 pl-0 font-medium">
 						{deal.name}
 					</TableCell>
 					<TableCell className="truncate px-3 py-2.5 text-muted-foreground">

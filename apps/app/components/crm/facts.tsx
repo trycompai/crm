@@ -41,7 +41,7 @@ export function FactSuggestion({
 				toast.success(
 					result.applied
 						? "Added to the record."
-						: "Dismissed — it won't be suggested again.",
+						: "Dismissed. This suggestion stays hidden.",
 				);
 				return cache.contact(contactId, { settle: "record" });
 			},
@@ -52,7 +52,11 @@ export function FactSuggestion({
 	return (
 		<Suggestion
 			value={fact.value}
-			rationale={fact.evidence.map((item) => item.detail).join(" · ")}
+			rationale={fact.evidence.map((item) => (
+				<span key={item.detail} className="block">
+					{item.detail}
+				</span>
+			))}
 			pending={decide.isPending}
 			onAccept={() => decide.mutate({ factId: fact.id, decision: "accept" })}
 			onDismiss={() => decide.mutate({ factId: fact.id, decision: "dismiss" })}

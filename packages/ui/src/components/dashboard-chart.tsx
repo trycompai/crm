@@ -1,35 +1,29 @@
 "use client";
 
+import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
+import {
+	CHART_CONFIG,
+	type ChartColor,
+	chartThemeColors,
+} from "../lib/chart-config";
+import { cn } from "../lib/utils";
+import { ChartSwatch } from "./chart-swatch";
 import {
 	type ChartConfig,
-	ChartContainer,
-	ChartLegend,
-	ChartLegendContent,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@crm/ui/components/chart";
-import { cn } from "@crm/ui/lib/utils";
-import * as React from "react";
-import {
-	Area,
-	AreaChart,
-	Bar,
-	BarChart,
-	CartesianGrid,
-	Cell,
-	Label,
-	LabelList,
-	Pie,
-	PieChart,
-	Text,
-	XAxis,
-} from "recharts";
+	EChartsAreaChart,
+} from "./evilcharts/charts/echarts-area-chart";
+import { EChartsBarChart } from "./evilcharts/charts/echarts-bar-chart";
+import { EChartsPieChart } from "./evilcharts/charts/echarts-pie-chart";
 
 type Datum = Record<string, number | string | null>;
 
+type SeriesConfig = Record<string, { label: string; color: ChartColor }>;
+
+type FormatValue = (value: number | string) => string;
+
 type CartesianProps = {
 	data: Datum[];
-	config: ChartConfig;
+	config: SeriesConfig;
 	xKey: string;
 	series?: string[];
 	className?: string;
@@ -37,167 +31,286 @@ type CartesianProps = {
 	showXAxis?: boolean;
 	showLegend?: boolean;
 	formatX?: (value: string) => string;
-	formatValue?: (value: number | string) => string;
+	formatValue?: FormatValue;
+	stacked?: boolean;
+	label?: string;
 };
 
-function seriesKeys(config: ChartConfig, series?: string[]) {
-	return series ?? Object.keys(config);
+type DonutSlice = {
+	key: string;
+	label: string;
+	value: number;
+	color: ChartColor;
+};
+
+type SeriesEntry = { key: string; label: string; color: ChartColor };
+
+const LABEL_KEY = "__label";
+const DEFAULT_LABEL = "Chart";
+
+function formatWith(formatValue: FormatValue | undefined, value: number) {
+	return formatValue ? formatValue(value) : value.toLocaleString();
 }
 
-const tooltip = (
-	formatX?: (value: string) => string,
-	formatValue?: (value: number | string) => string,
-) => (
-	<ChartTooltip
-		cursor={false}
-		content={
-			<ChartTooltipContent
-				indicator="dot"
-				labelFormatter={formatX ? (label) => formatX(String(label)) : undefined}
-				valueFormatter={formatValue}
-			/>
-		}
-	/>
-);
+function cellValue(
+	formatValue: FormatValue | undefined,
+	value: Datum[string] | undefined,
+) {
+	return typeof value === "number" ? formatWith(formatValue, value) : "None";
+}
 
-const X_AXIS_PROPS = {
-	tickLine: false,
-	axisLine: false,
-	tickMargin: 12,
-} as const;
-
-function EdgeTick({
-	x,
-	y,
-	payload,
-	index,
-	visibleTicksCount,
-	formatX,
-}: {
-	x?: number;
-	y?: number;
-	payload?: { value: string | number };
-	index?: number;
-	visibleTicksCount?: number;
-	formatX?: (value: string) => string;
-}) {
-	const isFirst = index === 0;
-	const isLast = index === (visibleTicksCount ?? 0) - 1;
-	const anchor = isFirst ? "start" : isLast ? "end" : "middle";
-	const raw = String(payload?.value ?? "");
-	return (
-		<Text
-			x={x}
-			y={y}
-			textAnchor={anchor}
-			verticalAnchor="start"
-			className="fill-muted-foreground text-xs"
-		>
-			{formatX ? formatX(raw) : raw}
-		</Text>
+function toChartConfig(entries: SeriesEntry[]): ChartConfig {
+	return Object.fromEntries(
+		entries.map(({ key, label, color }) => [
+			key,
+			{ label, colors: chartThemeColors(color) },
+		]),
 	);
 }
 
-type DitherVariant = "gradient" | "dotted" | "hatched" | "solid";
-type Bloom = "off" | "low" | "high" | "aura";
-
-function bloomFilter(bloom: Bloom, color: string) {
-	switch (bloom) {
-		case "low":
-			return `drop-shadow(0 0 2px ${color})`;
-		case "high":
-			return `drop-shadow(0 0 5px ${color})`;
-		case "aura":
-			return `drop-shadow(0 0 3px ${color}) drop-shadow(0 0 9px ${color})`;
-		default:
-			return undefined;
-	}
+function useSeries(config: SeriesConfig, series?: string[]) {
+	const keyList = (series ?? Object.keys(config)).join("\u0000");
+	return useMemo(() => {
+		const entries = keyList.split("\u0000").flatMap((key) => {
+			const entry = config[key];
+			return entry ? [{ key, ...entry }] : [];
+		});
+		return { entries, chartConfig: toChartConfig(entries) };
+	}, [config, keyList]);
 }
 
-function ditherPatternId(base: string, key: string) {
-	return `${base}-dither-${key}`;
+function useLabelledRows(
+	data: Datum[],
+	xKey: string,
+	formatX?: (value: string) => string,
+) {
+	return useMemo(
+		() =>
+			data.map((row) => ({
+				...row,
+				[LABEL_KEY]: formatX
+					? formatX(String(row[xKey] ?? ""))
+					: String(row[xKey] ?? ""),
+			})),
+		[data, xKey, formatX],
+	);
 }
 
-function ditherFadeId(base: string, key: string) {
-	return `${base}-fade-${key}`;
+function useKeyboardIndex(
+	length: number,
+	onActivate?: (index: number) => void,
+) {
+	const [keyIndex, setKeyIndex] = useState<number | null>(null);
+	const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (length === 0) return;
+		if ((event.key === "Enter" || event.key === " ") && onActivate) {
+			event.preventDefault();
+			if (keyIndex === null) return;
+			onActivate(keyIndex);
+			return;
+		}
+		const current = keyIndex ?? -1;
+		const next =
+			event.key === "ArrowRight" || event.key === "ArrowDown"
+				? Math.min(length - 1, current + 1)
+				: event.key === "ArrowLeft" || event.key === "ArrowUp"
+					? Math.max(0, current < 0 ? length - 1 : current - 1)
+					: event.key === "Home"
+						? 0
+						: event.key === "End"
+							? length - 1
+							: event.key === "Escape"
+								? null
+								: undefined;
+		if (next === undefined) return;
+		event.preventDefault();
+		setKeyIndex(next);
+	};
+
+	return {
+		keyIndex,
+		activeIndex: hoverIndex ?? keyIndex,
+		setHoverIndex,
+		onKeyDown,
+		onBlur: () => setKeyIndex(null),
+	};
 }
 
-function DitherDefs({
-	base,
-	keys,
-	variant,
+function useToggleSelection(onSelect?: (key: string) => void) {
+	const [selected, setSelected] = useState<string | null>(null);
+	if (!onSelect) return undefined;
+	return (key: string | null) => {
+		const clicked = key ?? selected;
+		setSelected(key);
+		if (clicked) onSelect(clicked);
+	};
+}
+
+function ChartAnnouncement({ text }: { text: string }) {
+	return (
+		<span aria-live="polite" aria-atomic="true" className="sr-only">
+			{text}
+		</span>
+	);
+}
+
+function sliceAnnouncement(
+	slice: DonutSlice | null,
+	formatValue: FormatValue | undefined,
+) {
+	return slice ? `${slice.label}: ${formatWith(formatValue, slice.value)}` : "";
+}
+
+function SeriesReadout({
+	entries,
+	row,
+	heading,
+	keyRow,
+	formatValue,
+	visible,
 }: {
-	base: string;
-	keys: string[];
-	variant: DitherVariant;
+	entries: SeriesEntry[];
+	row: Datum | null;
+	heading: string | null;
+	keyRow: (Datum & { [LABEL_KEY]: string }) | null;
+	formatValue?: FormatValue;
+	visible: boolean;
 }) {
-	if (variant === "solid") {
-		return null;
-	}
+	const announcement = keyRow
+		? [
+				keyRow[LABEL_KEY],
+				...entries.map(
+					(entry) =>
+						`${entry.label} ${cellValue(formatValue, keyRow[entry.key])}`,
+				),
+			].join(", ")
+		: "";
 	return (
 		<>
-			{keys.map((key) => {
-				const color = `var(--color-${key})`;
-				const id = ditherPatternId(base, key);
-				if (variant === "hatched") {
-					return (
-						<pattern
-							key={id}
-							id={id}
-							width={6}
-							height={6}
-							patternUnits="userSpaceOnUse"
-							patternTransform="rotate(45)"
-						>
-							<line
-								x1={0}
-								y1={0}
-								x2={0}
-								y2={6}
-								stroke={color}
-								strokeWidth={1.5}
-							/>
-						</pattern>
-					);
-				}
-				return (
-					<pattern
-						key={id}
-						id={id}
-						width={4}
-						height={4}
-						patternUnits="userSpaceOnUse"
-					>
-						<rect x={0} y={0} width={1.4} height={1.4} fill={color} />
-						<rect x={2} y={2} width={1.4} height={1.4} fill={color} />
-					</pattern>
-				);
-			})}
-			{variant === "gradient"
-				? keys.map((key) => {
-						const fadeId = ditherFadeId(base, key);
-						const fadeGradId = `${fadeId}-grad`;
-						return (
-							<React.Fragment key={fadeId}>
-								<linearGradient id={fadeGradId} x1="0" y1="0" x2="0" y2="1">
-									<stop offset="0%" stopColor="white" stopOpacity={0.06} />
-									<stop offset="55%" stopColor="white" stopOpacity={0.45} />
-									<stop offset="100%" stopColor="white" stopOpacity={0.95} />
-								</linearGradient>
-								<mask id={fadeId}>
-									<rect
-										x="0"
-										y="0"
-										width="100%"
-										height="100%"
-										fill={`url(#${fadeGradId})`}
-									/>
-								</mask>
-							</React.Fragment>
-						);
-					})
-				: null}
+			{visible ? (
+				<div className="flex min-h-5 flex-wrap items-center gap-x-4 gap-y-1 px-5 text-13 text-muted-foreground md:px-6">
+					{row && heading ? (
+						<span className="font-medium text-foreground">{heading}</span>
+					) : null}
+					{entries.map((entry) => (
+						<span key={entry.key} className="flex items-center gap-1.5">
+							<ChartSwatch color={entry.color} />
+							<span>{entry.label}</span>
+							{row ? (
+								<span className="text-foreground tabular-nums">
+									{cellValue(formatValue, row[entry.key])}
+								</span>
+							) : null}
+						</span>
+					))}
+				</div>
+			) : null}
+			<ChartAnnouncement text={announcement} />
 		</>
+	);
+}
+
+function SeriesTable({
+	label,
+	rows,
+	entries,
+	formatValue,
+}: {
+	label: string;
+	rows: (Datum & { [LABEL_KEY]: string })[];
+	entries: SeriesEntry[];
+	formatValue?: FormatValue;
+}) {
+	return (
+		<table className="sr-only">
+			<caption>{label}</caption>
+			<thead>
+				<tr>
+					<th scope="col">Period</th>
+					{entries.map((entry) => (
+						<th key={entry.key} scope="col">
+							{entry.label}
+						</th>
+					))}
+				</tr>
+			</thead>
+			<tbody>
+				{rows.map((row) => (
+					<tr key={row[LABEL_KEY]}>
+						<th scope="row">{row[LABEL_KEY]}</th>
+						{entries.map((entry) => (
+							<td key={entry.key}>{cellValue(formatValue, row[entry.key])}</td>
+						))}
+					</tr>
+				))}
+			</tbody>
+		</table>
+	);
+}
+
+function SliceTable({
+	label,
+	data,
+	formatValue,
+}: {
+	label: string;
+	data: DonutSlice[];
+	formatValue?: FormatValue;
+}) {
+	return (
+		<table className="sr-only">
+			<caption>{label}</caption>
+			<tbody>
+				{data.map((slice) => (
+					<tr key={slice.key}>
+						<th scope="row">{slice.label}</th>
+						<td>{formatWith(formatValue, slice.value)}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	);
+}
+
+function ChartFrame({
+	label,
+	hint,
+	height,
+	keyboard,
+	readout,
+	table,
+	className,
+	children,
+}: {
+	label: string;
+	hint: string;
+	height: number;
+	keyboard: ReturnType<typeof useKeyboardIndex>;
+	readout: ReactNode;
+	table: ReactNode;
+	className?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className={cn("flex w-full min-w-0 flex-col gap-3", className)}>
+			<div
+				role="group"
+				aria-label={`${label}. ${hint}`}
+				tabIndex={0}
+				onKeyDown={keyboard.onKeyDown}
+				onBlur={keyboard.onBlur}
+				className="relative rounded-md p-1 outline-none after:pointer-events-none after:absolute after:inset-1 after:rounded-sm focus-visible:after:shadow-focus [--focus-outline-offset:-2px]"
+				style={{ height }}
+			>
+				<div aria-hidden className="h-full w-full">
+					{children}
+				</div>
+			</div>
+			{readout}
+			{table}
+		</div>
 	);
 }
 
@@ -207,111 +320,80 @@ function AreaTrend({
 	xKey,
 	series,
 	className,
-	height = 200,
+	height = CHART_CONFIG.height.area,
 	showXAxis = true,
 	showLegend = false,
 	formatX,
 	formatValue,
 	stacked = false,
-	variant = "gradient",
-	bloom = "low",
-}: CartesianProps & {
-	stacked?: boolean;
-	variant?: DitherVariant;
-	bloom?: Bloom;
-}) {
-	const keys = seriesKeys(config, series);
-	const gradientId = React.useId().replace(/:/g, "");
-	const dithered = variant !== "solid";
+	label = DEFAULT_LABEL,
+}: CartesianProps) {
+	const { entries, chartConfig } = useSeries(config, series);
+	const rows = useLabelledRows(data, xKey, formatX);
+	const keyboard = useKeyboardIndex(rows.length);
+	const active =
+		keyboard.activeIndex === null ? null : (rows[keyboard.activeIndex] ?? null);
+	const parts = useMemo(
+		() => [
+			<EChartsAreaChart.Grid key="grid" />,
+			showXAxis ? <EChartsAreaChart.XAxis key="x" dataKey={LABEL_KEY} /> : null,
+			<EChartsAreaChart.Tooltip key="tooltip" valueFormatter={formatValue} />,
+			...entries.map(({ key }) => (
+				<EChartsAreaChart.Area
+					key={key}
+					dataKey={key}
+					variant="gradient"
+					strokeVariant={CHART_CONFIG.area.stroke}
+					strokeWidth={CHART_CONFIG.area.strokeWidth}
+				/>
+			)),
+		],
+		[entries, showXAxis, formatValue],
+	);
 
 	return (
-		<ChartContainer
-			config={config}
-			className={cn("aspect-auto w-full", className)}
-			style={{ height }}
-		>
-			<AreaChart data={data} margin={{ left: 0, right: 0, top: 10, bottom: 0 }}>
-				<defs>
-					{keys.map((key) => (
-						<linearGradient
-							key={key}
-							id={`${gradientId}-${key}`}
-							x1="0"
-							y1="0"
-							x2="0"
-							y2="1"
-						>
-							<stop
-								offset="5%"
-								stopColor={`var(--color-${key})`}
-								stopOpacity={0.3}
-							/>
-							<stop
-								offset="95%"
-								stopColor={`var(--color-${key})`}
-								stopOpacity={0}
-							/>
-						</linearGradient>
-					))}
-					<DitherDefs base={gradientId} keys={keys} variant={variant} />
-				</defs>
-				<CartesianGrid vertical={false} stroke="var(--border)" />
-				<XAxis
-					dataKey={xKey}
-					hide={!showXAxis}
-					tick={<EdgeTick formatX={formatX} />}
-					{...X_AXIS_PROPS}
+		<ChartFrame
+			label={label}
+			hint="Use the arrow keys to read each period."
+			height={height}
+			keyboard={keyboard}
+			className={className}
+			readout={
+				<SeriesReadout
+					entries={entries}
+					row={active}
+					heading={active ? active[LABEL_KEY] : null}
+					keyRow={
+						keyboard.keyIndex === null
+							? null
+							: (rows[keyboard.keyIndex] ?? null)
+					}
+					formatValue={formatValue}
+					visible={showLegend || keyboard.keyIndex !== null}
 				/>
-				{tooltip(formatX, formatValue)}
-				{keys.map((key) => (
-					<Area
-						key={key}
-						dataKey={key}
-						type="monotone"
-						stroke={`var(--color-${key})`}
-						strokeWidth={2}
-						fill={`url(#${gradientId}-${key})`}
-						stackId={stacked ? "stack" : undefined}
-						dot={false}
-						activeDot={{ r: 3, strokeWidth: 0 }}
-						style={
-							bloom === "off"
-								? undefined
-								: { filter: bloomFilter(bloom, `var(--color-${key})`) }
-						}
-					/>
-				))}
-				{dithered
-					? keys.map((key) => (
-							<Area
-								key={`dither-${key}`}
-								dataKey={key}
-								type="monotone"
-								stroke="none"
-								fill={`url(#${ditherPatternId(gradientId, key)})`}
-								fillOpacity={1}
-								mask={
-									variant === "gradient"
-										? `url(#${ditherFadeId(gradientId, key)})`
-										: undefined
-								}
-								stackId={stacked ? "dither-stack" : undefined}
-								dot={false}
-								activeDot={false}
-								isAnimationActive={false}
-								legendType="none"
-								tooltipType="none"
-							/>
-						))
-					: null}
-				{showLegend ? (
-					<ChartLegend
-						verticalAlign="bottom"
-						content={<ChartLegendContent />}
-					/>
-				) : null}
-			</AreaChart>
-		</ChartContainer>
+			}
+			table={
+				<SeriesTable
+					label={label}
+					rows={rows}
+					entries={entries}
+					formatValue={formatValue}
+				/>
+			}
+		>
+			<EChartsAreaChart
+				data={rows}
+				config={chartConfig}
+				xDataKey={LABEL_KEY}
+				className="h-full w-full"
+				curveType={CHART_CONFIG.area.curve}
+				stackType={stacked ? "stacked" : "default"}
+				activeIndex={keyboard.keyIndex}
+				onHoverIndexChange={keyboard.setHoverIndex}
+			>
+				{parts}
+			</EChartsAreaChart>
+		</ChartFrame>
 	);
 }
 
@@ -321,232 +403,293 @@ function BarTrend({
 	xKey,
 	series,
 	className,
-	height = 180,
+	height = CHART_CONFIG.height.bar,
 	showXAxis = true,
 	showLegend = false,
 	formatX,
 	formatValue,
 	stacked = false,
-}: CartesianProps & { stacked?: boolean }) {
-	const keys = seriesKeys(config, series);
+	label = DEFAULT_LABEL,
+}: CartesianProps) {
+	const { entries, chartConfig } = useSeries(config, series);
+	const rows = useLabelledRows(data, xKey, formatX);
+	const keyboard = useKeyboardIndex(rows.length);
+	const active =
+		keyboard.activeIndex === null ? null : (rows[keyboard.activeIndex] ?? null);
+	const parts = useMemo(
+		() => [
+			<EChartsBarChart.Grid key="grid" />,
+			showXAxis ? <EChartsBarChart.XAxis key="x" dataKey={LABEL_KEY} /> : null,
+			<EChartsBarChart.Tooltip key="tooltip" valueFormatter={formatValue} />,
+			...entries.map(({ key }) => (
+				<EChartsBarChart.Bar key={key} dataKey={key} variant="gradient" />
+			)),
+		],
+		[entries, showXAxis, formatValue],
+	);
 
 	return (
-		<ChartContainer
-			config={config}
-			className={cn("aspect-auto w-full", className)}
-			style={{ height }}
-		>
-			<BarChart data={data} margin={{ left: 0, right: 0, top: 10, bottom: 0 }}>
-				<CartesianGrid vertical={false} stroke="var(--border)" />
-				<XAxis
-					dataKey={xKey}
-					hide={!showXAxis}
-					tick={<EdgeTick formatX={formatX} />}
-					{...X_AXIS_PROPS}
+		<ChartFrame
+			label={label}
+			hint="Use the arrow keys to read each period."
+			height={height}
+			keyboard={keyboard}
+			className={className}
+			readout={
+				<SeriesReadout
+					entries={entries}
+					row={active}
+					heading={active ? active[LABEL_KEY] : null}
+					keyRow={
+						keyboard.keyIndex === null
+							? null
+							: (rows[keyboard.keyIndex] ?? null)
+					}
+					formatValue={formatValue}
+					visible={showLegend || keyboard.keyIndex !== null}
 				/>
-				{tooltip(formatX, formatValue)}
-				{keys.map((key) => (
-					<Bar
-						key={key}
-						dataKey={key}
-						fill={`var(--color-${key})`}
-						radius={0}
-						stackId={stacked ? "stack" : undefined}
-						maxBarSize={40}
-					/>
-				))}
-				{showLegend ? (
-					<ChartLegend
-						verticalAlign="bottom"
-						content={<ChartLegendContent />}
-					/>
-				) : null}
-			</BarChart>
-		</ChartContainer>
+			}
+			table={
+				<SeriesTable
+					label={label}
+					rows={rows}
+					entries={entries}
+					formatValue={formatValue}
+				/>
+			}
+		>
+			<EChartsBarChart
+				data={rows}
+				config={chartConfig}
+				xDataKey={LABEL_KEY}
+				className="h-full w-full"
+				barRadius={CHART_CONFIG.bar.radius}
+				stackType={stacked ? "stacked" : "default"}
+				activeIndex={keyboard.keyIndex}
+			>
+				{parts}
+			</EChartsBarChart>
+		</ChartFrame>
 	);
 }
-
-type DonutSlice = { key: string; label: string; value: number; color: string };
 
 function BarStat({
 	data,
 	className,
-	height = 200,
+	height = CHART_CONFIG.height.bar,
 	onBarClick,
 	formatValue,
+	label = DEFAULT_LABEL,
 }: {
 	data: DonutSlice[];
 	className?: string;
 	height?: number;
 	onBarClick?: (key: string) => void;
-	formatValue?: (value: number | string) => string;
+	formatValue?: FormatValue;
+	label?: string;
 }) {
-	const config: ChartConfig = Object.fromEntries(
-		data.map((d) => [d.key, { label: d.label, color: d.color }]),
+	const chartConfig = useMemo(() => toChartConfig(data), [data]);
+	const rows = useMemo(
+		() =>
+			data.map((slice) => ({
+				[LABEL_KEY]: slice.label,
+				[slice.key]: slice.value,
+			})),
+		[data],
 	);
+	const keyboard = useKeyboardIndex(
+		data.length,
+		onBarClick
+			? (index) => {
+					const slice = data[index];
+					if (slice) onBarClick(slice.key);
+				}
+			: undefined,
+	);
+	const onSelectionChange = useToggleSelection(onBarClick);
+	const clickable = Boolean(onBarClick);
+	const parts = useMemo(
+		() => [
+			<EChartsBarChart.Grid key="grid" />,
+			<EChartsBarChart.XAxis key="x" dataKey={LABEL_KEY} />,
+			<EChartsBarChart.Tooltip key="tooltip" valueFormatter={formatValue} />,
+			...data.map((slice) => (
+				<EChartsBarChart.Bar
+					key={slice.key}
+					dataKey={slice.key}
+					variant="gradient"
+					isClickable={clickable}
+				/>
+			)),
+		],
+		[data, clickable, formatValue],
+	);
+	const active =
+		keyboard.activeIndex === null ? null : (data[keyboard.activeIndex] ?? null);
+	const focused =
+		keyboard.keyIndex === null ? null : (data[keyboard.keyIndex] ?? null);
 
 	return (
-		<ChartContainer
-			config={config}
-			className={cn("aspect-auto w-full", className)}
-			style={{ height }}
+		<ChartFrame
+			label={label}
+			hint={
+				onBarClick
+					? "Use the arrow keys to read each bar and Enter to open it."
+					: "Use the arrow keys to read each bar."
+			}
+			height={height}
+			keyboard={keyboard}
+			className={className}
+			readout={
+				<>
+					<ul className="flex flex-wrap gap-x-4 gap-y-1 px-5 text-13 text-muted-foreground md:px-6">
+						{data.map((slice) => (
+							<li
+								key={slice.key}
+								className={cn(
+									"flex items-center gap-1.5 transition-opacity",
+									active && active.key !== slice.key && "opacity-40",
+								)}
+							>
+								<ChartSwatch color={slice.color} />
+								<span>{slice.label}</span>
+								<span className="text-foreground tabular-nums">
+									{formatWith(formatValue, slice.value)}
+								</span>
+							</li>
+						))}
+					</ul>
+					<ChartAnnouncement text={sliceAnnouncement(focused, formatValue)} />
+				</>
+			}
+			table={<SliceTable label={label} data={data} formatValue={formatValue} />}
 		>
-			<BarChart data={data} margin={{ left: 0, right: 0, top: 24, bottom: 0 }}>
-				<CartesianGrid vertical={false} stroke="var(--border)" />
-				<XAxis
-					dataKey="label"
-					tickLine={false}
-					axisLine={false}
-					tickMargin={12}
-					tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-				/>
-				<ChartTooltip
-					cursor={false}
-					content={
-						<ChartTooltipContent
-							hideLabel
-							nameKey="key"
-							valueFormatter={formatValue}
-						/>
-					}
-				/>
-				<Bar
-					dataKey="value"
-					radius={0}
-					maxBarSize={40}
-					className={onBarClick ? "cursor-pointer" : undefined}
-					onClick={
-						onBarClick
-							? (_, index) => {
-									const slice = data[index];
-									if (slice) onBarClick(slice.key);
-								}
-							: undefined
-					}
-				>
-					<LabelList
-						dataKey="value"
-						position="top"
-						className="fill-foreground"
-						fontSize={12}
-					/>
-					{data.map((slice) => (
-						<Cell key={slice.key} fill={slice.color} />
-					))}
-				</Bar>
-			</BarChart>
-		</ChartContainer>
+			<EChartsBarChart
+				data={rows}
+				config={chartConfig}
+				xDataKey={LABEL_KEY}
+				className="h-full w-full"
+				barRadius={CHART_CONFIG.bar.radius}
+				stackType="stacked"
+				activeIndex={keyboard.keyIndex}
+				onSelectionChange={onSelectionChange}
+			>
+				{parts}
+			</EChartsBarChart>
+		</ChartFrame>
 	);
 }
 
 function DonutStat({
 	data,
 	className,
-	height = 200,
+	height = CHART_CONFIG.height.donut,
 	centerValue,
 	centerLabel,
 	onSliceClick,
 	formatValue,
+	label = DEFAULT_LABEL,
 }: {
 	data: DonutSlice[];
 	className?: string;
 	height?: number;
-	centerValue?: React.ReactNode;
-	centerLabel?: React.ReactNode;
+	centerValue?: ReactNode;
+	centerLabel?: ReactNode;
 	onSliceClick?: (key: string) => void;
-	formatValue?: (value: number | string) => string;
+	formatValue?: FormatValue;
+	label?: string;
 }) {
-	const config: ChartConfig = Object.fromEntries(
-		data.map((d) => [d.key, { label: d.label, color: d.color }]),
+	const chartConfig = useMemo(() => toChartConfig(data), [data]);
+	const chartRows = useMemo(
+		() => data.map(({ key, label, value }) => ({ key, label, value })),
+		[data],
 	);
+	const keyboard = useKeyboardIndex(
+		data.length,
+		onSliceClick
+			? (index) => {
+					const slice = data[index];
+					if (slice) onSliceClick(slice.key);
+				}
+			: undefined,
+	);
+	const onToggle = useToggleSelection(onSliceClick);
+	const clickable = Boolean(onSliceClick);
+	const parts = useMemo(
+		() => [
+			<EChartsPieChart.Tooltip
+				key="tooltip"
+				position="bottom"
+				valueFormatter={formatValue}
+			/>,
+			<EChartsPieChart.Pie
+				key="pie"
+				variant="gradient"
+				innerRadius={CHART_CONFIG.donut.innerRadius}
+				outerRadius={CHART_CONFIG.donut.outerRadius}
+				cornerRadius={CHART_CONFIG.donut.cornerRadius}
+				paddingAngle={CHART_CONFIG.donut.paddingAngle}
+				isClickable={clickable}
+			/>,
+		],
+		[clickable, formatValue],
+	);
+	const focused =
+		keyboard.keyIndex === null ? null : (data[keyboard.keyIndex] ?? null);
 	const hasCenter = centerValue != null || centerLabel != null;
-	const innerRadius = Math.round(height * 0.34);
-	const outerRadius = Math.round(height * 0.46);
 
 	return (
-		<ChartContainer
-			config={config}
-			className={cn("mx-auto aspect-square", className)}
-			style={{ height }}
-		>
-			<PieChart>
-				<ChartTooltip
-					cursor={false}
-					content={
-						<ChartTooltipContent
-							hideLabel
-							nameKey="key"
-							valueFormatter={formatValue}
-						/>
-					}
-				/>
-				<Pie
-					data={[{ value: 1 }]}
-					dataKey="value"
-					innerRadius={innerRadius}
-					outerRadius={outerRadius}
-					fill="var(--muted)"
-					fillOpacity={0.45}
-					stroke="none"
-					isAnimationActive={false}
-				/>
-				<Pie
-					data={data}
-					dataKey="value"
-					nameKey="key"
-					innerRadius={innerRadius}
-					outerRadius={outerRadius}
-					paddingAngle={data.length > 1 ? 2 : 0}
-					className={onSliceClick ? "cursor-pointer" : undefined}
-					onClick={
-						onSliceClick
-							? (_, index) => {
-									const slice = data[index];
-									if (slice) onSliceClick(slice.key);
-								}
-							: undefined
-					}
-				>
-					{data.map((slice) => (
-						<Cell key={slice.key} fill={slice.color} stroke="none" />
-					))}
-					{hasCenter ? (
-						<Label
-							content={({ viewBox }) => {
-								if (!viewBox || !("cx" in viewBox)) return null;
-								return (
-									<text
-										x={viewBox.cx}
-										y={viewBox.cy}
-										textAnchor="middle"
-										dominantBaseline="middle"
-									>
-										<tspan
-											x={viewBox.cx}
-											y={viewBox.cy}
-											className="fill-foreground font-medium text-2xl tabular-nums"
-										>
-											{String(centerValue ?? "")}
-										</tspan>
-										{centerLabel != null ? (
-											<tspan
-												x={viewBox.cx}
-												y={(viewBox.cy ?? 0) + 20}
-												className="fill-muted-foreground text-xs"
-											>
-												{String(centerLabel)}
-											</tspan>
-										) : null}
-									</text>
-								);
-							}}
-						/>
-					) : null}
-				</Pie>
-			</PieChart>
-		</ChartContainer>
+		<div className={cn("flex w-full min-w-0 flex-col items-center", className)}>
+			<div
+				role="group"
+				aria-label={`${label}. ${
+					onSliceClick
+						? "Use the arrow keys to read each slice and Enter to open it."
+						: "Use the arrow keys to read each slice."
+				}`}
+				tabIndex={0}
+				onKeyDown={keyboard.onKeyDown}
+				onBlur={keyboard.onBlur}
+				className="relative aspect-square max-w-full rounded-full outline-none focus-visible:shadow-focus"
+				style={{ height }}
+			>
+				<div aria-hidden className="h-full w-full">
+					<EChartsPieChart
+						data={chartRows}
+						config={chartConfig}
+						dataKey="value"
+						nameKey="key"
+						className="h-full w-full"
+						activeSector={focused?.key ?? null}
+						onSelectionChange={
+							onToggle
+								? (selection) => onToggle(selection?.dataKey ?? null)
+								: undefined
+						}
+					>
+						{parts}
+					</EChartsPieChart>
+				</div>
+				{hasCenter ? (
+					<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+						{centerValue != null ? (
+							<span className="font-medium text-2xl text-foreground tabular-nums">
+								{centerValue}
+							</span>
+						) : null}
+						{centerLabel != null ? (
+							<span className="text-13 text-muted-foreground">
+								{centerLabel}
+							</span>
+						) : null}
+					</div>
+				) : null}
+				<ChartAnnouncement text={sliceAnnouncement(focused, formatValue)} />
+			</div>
+			<SliceTable label={label} data={data} formatValue={formatValue} />
+		</div>
 	);
 }
 
-export type { Datum, DonutSlice };
+export type { Datum, DonutSlice, SeriesConfig };
 export { AreaTrend, BarStat, BarTrend, DonutStat };

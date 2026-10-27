@@ -1,7 +1,5 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import Renew from "@carbon/icons-react/es/Renew";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
 import { File, MultiFileDiff } from "@pierre/diffs/react";
@@ -10,6 +8,7 @@ import {
 	useFileTree,
 	useFileTreeSelection,
 } from "@pierre/trees/react";
+import { CheckIcon, RefreshCwIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { latestBuilderArtifacts } from "@/lib/agent-builder-state";
@@ -114,7 +113,7 @@ function AgentCodeWorkspaceSurface({
 					role={working ? "status" : undefined}
 				>
 					<Icon
-						icon={working ? Renew : Checkmark}
+						icon={working ? RefreshCwIcon : CheckIcon}
 						className={
 							working ? "size-3.5 animate-spin text-ring" : "size-3.5 text-ring"
 						}

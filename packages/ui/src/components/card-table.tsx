@@ -27,7 +27,7 @@ export function CardTable({
 
 export function CardTableEmpty({ children }: { children: ReactNode }) {
 	return (
-		<p className="border-t py-6 text-center text-muted-foreground text-xs">
+		<p className="border-t py-6 text-center text-muted-foreground text-sm">
 			{children}
 		</p>
 	);

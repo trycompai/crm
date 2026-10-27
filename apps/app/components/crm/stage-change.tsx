@@ -1,6 +1,5 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import type { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -23,6 +22,7 @@ import { Icon } from "@crm/ui/components/icon";
 import { Spinner } from "@crm/ui/components/spinner";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation } from "@tanstack/react-query";
+import { ChevronDownIcon } from "lucide-react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -75,14 +75,14 @@ export function DealStageMenu({
 						onClick={(event) => event.stopPropagation()}
 					>
 						<DealStageIndicator stage={stage} className="text-foreground" />
-						<Icon icon={ChevronDown} className="text-muted-foreground" />
+						<Icon icon={ChevronDownIcon} className="text-muted-foreground" />
 					</Button>
 				) : (
 					<button
 						type="button"
 						onClick={(event) => event.stopPropagation()}
 						disabled={setStage.isPending}
-						className="flex min-w-0 items-center text-left hover:text-foreground disabled:opacity-50"
+						className="flex max-w-full min-w-0 items-center text-left hover:text-foreground disabled:opacity-50"
 					>
 						<DealStageIndicator stage={stage} />
 					</button>

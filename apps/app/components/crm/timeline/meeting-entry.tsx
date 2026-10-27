@@ -46,9 +46,10 @@ export function MeetingEntry({
 		<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
 			<span className="text-muted-foreground text-xs">
 				{isAllDay ? (
-					<>
-						<LocalDateTime date={startsAt} options={DAY_OPTIONS} /> · All day
-					</>
+					<span className="flex gap-x-3">
+						<LocalDateTime date={startsAt} options={DAY_OPTIONS} />
+						<span>All day</span>
+					</span>
 				) : (
 					<LocalDateTimeRange
 						start={startsAt}

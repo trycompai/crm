@@ -1,11 +1,11 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
 import { Questionnaire as QuestionnairePrimitive } from "@shadcn/react/questionnaire";
+import { CheckIcon } from "lucide-react";
 import type * as React from "react";
-import { buttonVariants, type Button } from "./button";
-import { Icon } from "./icon";
 import { cn } from "../lib/utils";
+import { type Button, buttonVariants } from "./button";
+import { Icon } from "./icon";
 
 function Questionnaire({
 	className,
@@ -125,7 +125,7 @@ function QuestionnaireChoice({
 					className="hidden size-2 rounded-full bg-primary-foreground group-data-[type=checkbox]/questionnaire-choice:hidden group-data-checked/questionnaire-choice:block"
 				/>
 				<Icon
-					icon={Checkmark}
+					icon={CheckIcon}
 					motion="none"
 					data-slot="questionnaire-choice-indicator-check"
 					className="hidden group-data-[type=radio]/questionnaire-choice:hidden group-data-checked/questionnaire-choice:block"

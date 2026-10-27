@@ -1,6 +1,5 @@
 "use client";
 
-import Warning from "@carbon/icons-react/es/Warning";
 import { authClient } from "@crm/auth/client";
 import { MICROSOFT_SYNC_SCOPES } from "@crm/auth/scopes";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
@@ -17,22 +16,20 @@ import {
 } from "@crm/ui/components/alert-dialog";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
 import { Icon } from "@crm/ui/components/icon";
-import { Label } from "@crm/ui/components/label";
+import {
+	PageShellDescription,
+	PageShellHeader,
+	PageShellHeading,
+	PageShellTitle,
+} from "@crm/ui/components/page-shell";
+import { SettingRow, SettingRows } from "@crm/ui/components/setting-rows";
+import { SettingsCard, SettingsColumn } from "@crm/ui/components/settings-card";
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import Link from "next/link";
+import { CircleAlertIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { LocalRelativeTime } from "@/components/local-date-time";
@@ -49,22 +46,29 @@ const CONNECT_ERRORS = new Map([
 	],
 ]);
 
+function MicrosoftHeader() {
+	return (
+		<PageShellHeader>
+			<PageShellHeading>
+				<PageShellTitle>Microsoft</PageShellTitle>
+				<PageShellDescription>
+					Read-only Outlook mail. Only conversations with companies in the CRM
+					are stored.
+				</PageShellDescription>
+			</PageShellHeading>
+		</PageShellHeader>
+	);
+}
+
 function MicrosoftUnavailable() {
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>
-					<div className="flex items-center gap-2">
-						Microsoft
-						<StatusIndicator size="sm" tone="neutral" label="Not configured" />
-					</div>
-				</CardTitle>
-				<CardDescription>
-					Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET in the root .env
-					file and restart.
-				</CardDescription>
-			</CardHeader>
-		</Card>
+		<SettingsCard
+			title="Connection"
+			status={
+				<StatusIndicator size="sm" tone="neutral" label="Not configured" />
+			}
+			description="Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET in the root .env file and restart."
+		/>
 	);
 }
 
@@ -98,51 +102,41 @@ function ConnectMicrosoft({
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>
-					<div className="flex items-center gap-2">
-						Microsoft
-						<StatusIndicator size="sm" tone="neutral" label="Not connected" />
-					</div>
-				</CardTitle>
-				<CardDescription>
-					Read-only Outlook mail. Only conversations with companies in the CRM
-					are stored.
-				</CardDescription>
-
-				<CardAction>
-					<Button
-						size="sm"
-						disabled={pending}
-						onClick={() => {
-							handleConnect().catch(() => fail());
-						}}
-						type="button"
-					>
-						{pending ? (
-							<Spinner data-icon="inline-start" />
-						) : (
-							<MicrosoftLogo data-icon="inline-start" className="size-4" />
-						)}
-						Connect
-					</Button>
-				</CardAction>
-			</CardHeader>
-
+		<SettingsCard
+			title="Connection"
+			status={
+				<StatusIndicator size="sm" tone="neutral" label="Not connected" />
+			}
+			description="Connect the Microsoft account you sign in with."
+			action={
+				<Button
+					size="sm"
+					disabled={pending}
+					onClick={() => {
+						handleConnect().catch(() => fail());
+					}}
+					type="button"
+				>
+					{pending ? (
+						<Spinner data-icon="inline-start" />
+					) : (
+						<MicrosoftLogo data-icon="inline-start" className="size-4" />
+					)}
+					Connect
+				</Button>
+			}
+		>
 			{connectError ? (
-				<CardContent>
-					<Alert variant="destructive">
-						<Icon icon={Warning} />
-						<AlertTitle>Microsoft did not finish connecting</AlertTitle>
-						<AlertDescription>
-							{CONNECT_ERRORS.get(connectError) ??
-								"Microsoft returned an error before the connection was made. Try again."}
-						</AlertDescription>
-					</Alert>
-				</CardContent>
+				<Alert variant="destructive">
+					<Icon icon={CircleAlertIcon} />
+					<AlertTitle>Microsoft did not finish connecting</AlertTitle>
+					<AlertDescription>
+						{CONNECT_ERRORS.get(connectError) ??
+							"Microsoft returned an error before the connection was made. Try again."}
+					</AlertDescription>
+				</Alert>
 			) : null}
-		</Card>
+		</SettingsCard>
 	);
 }
 
@@ -198,14 +192,26 @@ export function MicrosoftConnection({
 		}),
 	);
 
-	if (!status.data) return null;
+	if (!status.data) return <MicrosoftHeader />;
 
 	const { sources, hasRefreshToken, configured, linked, required } =
 		status.data;
 
-	if (!configured) return <MicrosoftUnavailable />;
+	if (!configured) {
+		return (
+			<>
+				<MicrosoftHeader />
+				<MicrosoftUnavailable />
+			</>
+		);
+	}
 	if (!linked) {
-		return <ConnectMicrosoft slug={slug} connectError={connectError} />;
+		return (
+			<>
+				<MicrosoftHeader />
+				<ConnectMicrosoft slug={slug} connectError={connectError} />
+			</>
+		);
 	}
 
 	const failing = sources.filter(
@@ -220,94 +226,146 @@ export function MicrosoftConnection({
 	const healthy = failing.length === 0 && hasRefreshToken;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>
-					<div className="flex items-center gap-2">
-						Microsoft
+		<>
+			<MicrosoftHeader />
+			<SettingsColumn>
+				<SettingsCard
+					title="Connection"
+					status={
 						<StatusIndicator
 							size="sm"
 							tone={healthy ? "success" : "warning"}
 							label={healthy ? "Connected" : "Needs attention"}
 						/>
-					</div>
-				</CardTitle>
-				<CardDescription>
-					Email threads land on the matching company as they happen.
-				</CardDescription>
-
-				<CardAction>
-					<Button
-						variant="contrast"
-						size="sm"
-						disabled={syncNow.isPending}
-						onClick={() => syncNow.mutate()}
-					>
-						{syncNow.isPending ? "Checking…" : "Check now"}
-					</Button>
-				</CardAction>
-			</CardHeader>
-
-			<CardContent>
-				{!hasRefreshToken ? (
-					<Alert variant="destructive">
-						<Icon icon={Warning} />
-						<AlertTitle>Microsoft did not return a refresh token</AlertTitle>
-						<AlertDescription>Sign out and back in.</AlertDescription>
-					</Alert>
-				) : failing.length > 0 ? (
-					failing.map((source) => (
-						<Alert key={source.source} variant="destructive">
-							<Icon icon={Warning} />
-							<AlertTitle>Email sync failed</AlertTitle>
-							<AlertDescription>
-								{source.lastError ?? "Microsoft needs reconnecting."}
-							</AlertDescription>
-						</Alert>
-					))
-				) : (
-					<p className="text-muted-foreground text-xs">
-						{lastSyncedAt ? (
+					}
+					description="Email threads land on the matching company as they happen."
+					hint={
+						lastSyncedAt ? (
 							<>
 								Last checked <LocalRelativeTime date={lastSyncedAt} />
 							</>
 						) : (
 							"Waiting for the first check"
-						)}
-					</p>
-				)}
-
-				{sources.map((source) => (
-					<div
-						key={source.source}
-						className="flex items-center justify-between gap-6"
-					>
-						<Label
-							htmlFor={`auto-create-${source.source}`}
-							className="flex flex-col items-start gap-1"
+						)
+					}
+					action={
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={syncNow.isPending}
+							onClick={() => syncNow.mutate()}
 						>
-							<span className="text-sm">Email</span>
-							<span className="font-normal text-muted-foreground text-xs">
-								{AUTO_CREATE}
-							</span>
-						</Label>
+							{syncNow.isPending ? "Checking…" : "Check now"}
+						</Button>
+					}
+				>
+					{!hasRefreshToken ? (
+						<Alert variant="destructive">
+							<Icon icon={CircleAlertIcon} />
+							<AlertTitle>Microsoft did not return a refresh token</AlertTitle>
+							<AlertDescription>Sign out and back in.</AlertDescription>
+						</Alert>
+					) : failing.length > 0 ? (
+						<div className="flex flex-col gap-3">
+							{failing.map((source) => (
+								<Alert key={source.source} variant="destructive">
+									<Icon icon={CircleAlertIcon} />
+									<AlertTitle>Email sync failed</AlertTitle>
+									<AlertDescription>
+										{source.lastError ?? "Microsoft needs reconnecting."}
+									</AlertDescription>
+								</Alert>
+							))}
+						</div>
+					) : null}
+				</SettingsCard>
 
-						<Switch
-							id={`auto-create-${source.source}`}
-							checked={source.autoCreate}
-							disabled={setAutoCreate.isPending}
-							onCheckedChange={(enabled) =>
-								setAutoCreate.mutate({ source: source.source, enabled })
-							}
-						/>
-					</div>
-				))}
+				<SettingsCard
+					title="New companies and contacts"
+					description="Add them to the CRM when someone new shows up in a synced source."
+					hint="Changes save as you make them."
+				>
+					<SettingRows>
+						{sources.map((source) => (
+							<SettingRow
+								key={source.source}
+								title="Email"
+								description={AUTO_CREATE}
+								control={(id, describedBy) => (
+									<Switch
+										id={id}
+										aria-describedby={describedBy}
+										checked={source.autoCreate}
+										disabled={setAutoCreate.isPending}
+										onCheckedChange={(enabled) =>
+											setAutoCreate.mutate({ source: source.source, enabled })
+										}
+									/>
+								)}
+							/>
+						))}
+					</SettingRows>
+				</SettingsCard>
 
-				<CardFooter>
-					<div className="-ml-2 flex flex-wrap items-center gap-1 text-muted-foreground">
+				<SettingsCard
+					title="Microsoft access"
+					description="Stop new email from arriving."
+					hint={
+						<a
+							href="https://myapplications.microsoft.com"
+							target="_blank"
+							rel="noreferrer"
+						>
+							Manage in your Microsoft account
+						</a>
+					}
+					action={
 						<AlertDialog>
 							<AlertDialogTrigger asChild>
-								<Button variant="ghost" size="xs" disabled={purge.isPending}>
+								<Button variant="outline" size="sm" disabled={revoke.isPending}>
+									Disconnect Microsoft
+								</Button>
+							</AlertDialogTrigger>
+
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Disconnect Microsoft?</AlertDialogTitle>
+									<AlertDialogDescription>
+										{required
+											? "You will be signed out, and you cannot use the CRM again until you grant access."
+											: "New email stops arriving. Everything already synced stays, and you can connect Microsoft again from this page."}{" "}
+										Remove this app from your Microsoft account to withdraw
+										consent.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction
+										variant="destructive"
+										onClick={() => revoke.mutate()}
+									>
+										Disconnect
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					}
+				/>
+
+				<SettingsCard
+					tone="destructive"
+					title="Delete synced data"
+					description="Remove every email brought in from Outlook."
+					hint="This can't be undone."
+					action={
+						<AlertDialog>
+							<AlertDialogTrigger asChild>
+								<Button
+									variant="destructive"
+									size="sm"
+									disabled={purge.isPending}
+								>
 									Delete synced data
 								</Button>
 							</AlertDialogTrigger>
@@ -333,50 +391,9 @@ export function MicrosoftConnection({
 								</AlertDialogFooter>
 							</AlertDialogContent>
 						</AlertDialog>
-
-						<AlertDialog>
-							<AlertDialogTrigger asChild>
-								<Button variant="ghost" size="xs" disabled={revoke.isPending}>
-									Disconnect Microsoft
-								</Button>
-							</AlertDialogTrigger>
-
-							<AlertDialogContent>
-								<AlertDialogHeader>
-									<AlertDialogTitle>Disconnect Microsoft?</AlertDialogTitle>
-									<AlertDialogDescription>
-										{required
-											? "You will be signed out, and you cannot use the CRM again until you grant access."
-											: "New email stops arriving. Everything already synced stays, and you can connect Microsoft again from this page."}{" "}
-										Microsoft has no way for us to withdraw the consent itself —
-										remove this app from your Microsoft account to do that.
-									</AlertDialogDescription>
-								</AlertDialogHeader>
-
-								<AlertDialogFooter>
-									<AlertDialogCancel>Cancel</AlertDialogCancel>
-									<AlertDialogAction
-										variant="destructive"
-										onClick={() => revoke.mutate()}
-									>
-										Disconnect
-									</AlertDialogAction>
-								</AlertDialogFooter>
-							</AlertDialogContent>
-						</AlertDialog>
-
-						<Button variant="ghost" size="xs" asChild>
-							<Link
-								href="https://myapplications.microsoft.com"
-								target="_blank"
-								rel="noreferrer"
-							>
-								Manage in your Microsoft account
-							</Link>
-						</Button>
-					</div>
-				</CardFooter>
-			</CardContent>
-		</Card>
+					}
+				/>
+			</SettingsColumn>
+		</>
 	);
 }

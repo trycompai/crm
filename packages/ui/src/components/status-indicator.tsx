@@ -1,5 +1,5 @@
 import { Spinner } from "@crm/ui/components/spinner";
-import { type Bloom, bloomClass } from "@crm/ui/lib/dither";
+import { type Bloom, bloomClass } from "@crm/ui/lib/bloom";
 import { cn } from "@crm/ui/lib/utils";
 import type * as React from "react";
 
@@ -73,6 +73,7 @@ function StatusIndicator({
 	busy = false,
 	bloom = "low",
 	size = "default",
+	iconOnlyBelowSm = false,
 	className,
 	...props
 }: Omit<React.ComponentProps<"span">, "color"> & {
@@ -83,6 +84,7 @@ function StatusIndicator({
 	busy?: boolean;
 	bloom?: Bloom;
 	size?: StatusSize;
+	iconOnlyBelowSm?: boolean;
 }) {
 	return (
 		<span
@@ -106,7 +108,14 @@ function StatusIndicator({
 					aria-hidden="true"
 				/>
 			)}
-			<span className="truncate">{label}</span>
+			<span
+				className={cn(
+					"min-w-0 truncate",
+					iconOnlyBelowSm && "hidden sm:inline",
+				)}
+			>
+				{label}
+			</span>
 		</span>
 	);
 }

@@ -1,20 +1,22 @@
-import Building from "@carbon/icons-react/es/Building";
-import Dashboard from "@carbon/icons-react/es/Dashboard";
-import Group from "@carbon/icons-react/es/Group";
-import Partnership from "@carbon/icons-react/es/Partnership";
-import Settings from "@carbon/icons-react/es/Settings";
 import Logo from "@crm/ui/components/logo";
+import {
+	Building2Icon,
+	HandshakeIcon,
+	LayoutDashboardIcon,
+	SettingsIcon,
+	UsersIcon,
+} from "lucide-react";
 import Image from "next/image";
 import { BuiltWith } from "../built-with";
 import { CompaniesList, CompaniesPage } from "./companies-page";
 import { CompanyDrawer, CompanySheet } from "./company-sheet";
 
 const RAIL = [
-	{ icon: Dashboard, label: "Overview", active: false },
-	{ icon: Building, label: "Companies", active: true },
-	{ icon: Group, label: "Contacts", active: false },
-	{ icon: Partnership, label: "Deals", active: false },
-	{ icon: Settings, label: "Settings", active: false },
+	{ icon: LayoutDashboardIcon, label: "Overview", active: false },
+	{ icon: Building2Icon, label: "Companies", active: true },
+	{ icon: UsersIcon, label: "Contacts", active: false },
+	{ icon: HandshakeIcon, label: "Deals", active: false },
+	{ icon: SettingsIcon, label: "Settings", active: false },
 ];
 
 export function ProductShot() {

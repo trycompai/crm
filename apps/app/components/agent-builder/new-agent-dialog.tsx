@@ -1,6 +1,5 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
 import { Button } from "@crm/ui/components/button";
 import {
 	Dialog,
@@ -24,6 +23,7 @@ import {
 import { Textarea } from "@crm/ui/components/textarea";
 import { InvalidInput, type Permission, parse, schemas } from "@crm/validation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CheckIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -181,7 +181,7 @@ export function NewAgentDialog({ children }: { children: React.ReactNode }) {
 										{on ? (
 											<Icon
 												className="size-3.5 text-primary"
-												icon={Checkmark}
+												icon={CheckIcon}
 												motion="none"
 											/>
 										) : null}

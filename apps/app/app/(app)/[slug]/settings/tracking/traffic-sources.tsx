@@ -1,12 +1,6 @@
 "use client";
 
-import {
-	Card,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { CardTableEmpty } from "@crm/ui/components/card-table";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import {
 	SimpleTable,
 	type SimpleTableColumn,
@@ -32,27 +26,23 @@ export function TrafficSources() {
 	if (!sources.data) return null;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Traffic sources</CardTitle>
-				<CardDescription>
-					Where your visitors come from. Only people who have submitted a form
-					are attributed to a record.
-				</CardDescription>
-			</CardHeader>
-
+		<SettingsCard
+			title="Traffic sources"
+			description="Where your visitors come from. Only people who have submitted a form are attributed to a record."
+			control={sources.data.length === 0 ? "full" : "table"}
+		>
 			{sources.data.length === 0 ? (
-				<CardTableEmpty>
+				<p className="text-muted-foreground text-sm">
 					No sources yet. They appear once the script records its first page
 					view.
-				</CardTableEmpty>
+				</p>
 			) : (
 				<SimpleTable columns={COLUMNS}>
 					{sources.data.map((row) => (
 						<SimpleTableRow key={`${row.source}-${row.medium ?? ""}`}>
 							<TableCell className={CELL}>{row.source}</TableCell>
 							<TableCell className={`${CELL} text-muted-foreground`}>
-								{row.medium ?? "—"}
+								{row.medium ?? ""}
 							</TableCell>
 							<TableCell className={`${CELL} text-right tabular-nums`}>
 								{row.views.toLocaleString()}
@@ -64,6 +54,6 @@ export function TrafficSources() {
 					))}
 				</SimpleTable>
 			)}
-		</Card>
+		</SettingsCard>
 	);
 }

@@ -1,12 +1,5 @@
 "use client";
 
-import Checkmark from "@carbon/icons-react/es/Checkmark";
-import CircleDash from "@carbon/icons-react/es/CircleDash";
-import Document from "@carbon/icons-react/es/Document";
-import LogoGithub from "@carbon/icons-react/es/LogoGithub";
-import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
-import Send from "@carbon/icons-react/es/Send";
-import Warning from "@carbon/icons-react/es/Warning";
 import {
 	Attachment,
 	AttachmentContent,
@@ -15,18 +8,16 @@ import {
 	AttachmentTitle,
 	AttachmentTrigger,
 } from "@crm/ui/components/attachment";
+import GitHubLogo from "@crm/ui/components/brand-logos/github";
+import LinkedInLogo from "@crm/ui/components/brand-logos/linkedin";
 import { Bubble, BubbleContent } from "@crm/ui/components/bubble";
 import { Button } from "@crm/ui/components/button";
+import { ChatComposer } from "@crm/ui/components/chat-composer";
 import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "@crm/ui/components/empty";
-import { type CarbonIcon, Icon } from "@crm/ui/components/icon";
-import { Input } from "@crm/ui/components/input";
+	ChatEmptyState,
+	ChatSuggestions,
+} from "@crm/ui/components/chat-thread";
+import { Icon, type IconComponent } from "@crm/ui/components/icon";
 import Logo from "@crm/ui/components/logo";
 import { Markdown } from "@crm/ui/components/markdown";
 import { Marker, MarkerContent, MarkerIcon } from "@crm/ui/components/marker";
@@ -43,10 +34,19 @@ import {
 	MessageScrollerProvider,
 	MessageScrollerViewport,
 } from "@crm/ui/components/message-scroller";
+import { SkeletonField, SkeletonLine } from "@crm/ui/components/skeleton-lines";
 import { Spinner } from "@crm/ui/components/spinner";
+import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
+import { SKELETON, skeletonRows } from "@crm/ui/lib/skeleton-config";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEveAgent } from "eve/react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+	CheckIcon,
+	CircleAlertIcon,
+	CircleDashedIcon,
+	FileTextIcon,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { AgentClarificationComposer } from "@/components/agent-clarification-composer";
 import {
 	type Conversation,
@@ -75,6 +75,7 @@ import {
 	type TranscriptItem,
 	toTranscript,
 } from "@/lib/agent-transcript";
+import { claimCursor, conversationCursor } from "@/lib/conversation-cursor";
 import { useTRPC } from "@/lib/trpc/client";
 import { useRecordSheetView } from "./record-sheet/record-stack";
 
@@ -185,8 +186,18 @@ function ThreadWithHistory({
 
 function Loading() {
 	return (
-		<div className="flex flex-1 items-center justify-center">
-			<Spinner />
+		<div aria-busy className="flex min-h-0 flex-1 flex-col">
+			<div className="flex flex-1 flex-col gap-3 py-4">
+				{skeletonRows(SKELETON.rows.messages).map((row) => (
+					<div key={row} className="flex flex-col gap-2">
+						<SkeletonLine width="two-thirds" />
+						<SkeletonLine width="40" />
+					</div>
+				))}
+			</div>
+			<div className="border-t py-3">
+				<SkeletonField />
+			</div>
 		</div>
 	);
 }
@@ -213,14 +224,6 @@ function Thread({
 
 	const opening = useRef<string | null>(conversation?.title ?? null);
 
-	useSavedConversation({
-		record: recordFilter(record),
-		conversation,
-		opening,
-		session: agent.session ?? null,
-		messages: agent.data.messages.length,
-	});
-
 	const busy = agent.status === "submitted" || agent.status === "streaming";
 	const messages = toTranscript(agent.data.messages);
 	const question = pendingQuestion(agent.data.messages);
@@ -236,44 +239,53 @@ function Thread({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<MessageScrollerProvider autoScroll defaultScrollPosition="end">
-				<MessageScroller className="flex-1">
-					<MessageScrollerViewport>
-						<MessageScrollerContent className="gap-3 px-4 py-4 sm:px-5">
-							{messages.length === 0 && !busy ? (
-								<Idle kind={record.kind} onAsk={ask} />
-							) : null}
+			<SavedConversation
+				record={recordFilter(record)}
+				conversation={conversation}
+				opening={opening}
+				session={agent.session ?? null}
+				messages={agent.data.messages.length}
+			/>
 
-							{messages.map((message) => (
-								<MessageScrollerItem key={message.id} messageId={message.id}>
-									<div className="space-y-3">
-										{message.items.map((item) =>
-											item.kind === "asked" &&
-											item.question.requestId === question?.requestId ? null : (
-												<Item key={item.id} item={item} />
-											),
-										)}
-									</div>
-								</MessageScrollerItem>
-							))}
-						</MessageScrollerContent>
-					</MessageScrollerViewport>
+			{messages.length === 0 && !busy ? (
+				<Idle kind={record.kind} onAsk={ask} />
+			) : (
+				<MessageScrollerProvider autoScroll defaultScrollPosition="end">
+					<MessageScroller className="flex-1">
+						<MessageScrollerViewport>
+							<MessageScrollerContent className="gap-3 py-4">
+								{messages.map((message) => (
+									<MessageScrollerItem key={message.id} messageId={message.id}>
+										<div className="space-y-3">
+											{message.items.map((item) =>
+												item.kind === "asked" &&
+												item.question.requestId ===
+													question?.requestId ? null : (
+													<Item key={item.id} item={item} />
+												),
+											)}
+										</div>
+									</MessageScrollerItem>
+								))}
+							</MessageScrollerContent>
+						</MessageScrollerViewport>
 
-					<MessageScrollerButton />
-				</MessageScroller>
-			</MessageScrollerProvider>
+						<MessageScrollerButton />
+					</MessageScroller>
+				</MessageScrollerProvider>
+			)}
 
 			{agent.error ? <Failure message={agent.error.message} /> : null}
 
 			{thread?.status === "working" && !busy ? (
-				<p className="border-t px-4 py-2 text-pretty text-muted-foreground text-xs sm:px-5">
+				<p className="border-t py-2 text-pretty text-muted-foreground text-xs">
 					Still working on the last question. Your next one can go in when it
 					finishes.
 				</p>
 			) : null}
 
 			{ended ? (
-				<div className="flex flex-col items-start gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-2">
+				<div className="flex flex-col items-start gap-3 border-t py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2">
 					<p className="text-pretty text-muted-foreground text-xs">
 						This conversation has ended.
 					</p>
@@ -283,7 +295,7 @@ function Thread({
 				</div>
 			) : null}
 
-			<div className="border-t px-4 py-3 sm:px-5">
+			<div className="border-t py-3">
 				{question ? (
 					<AgentClarificationComposer
 						key={question.requestId}
@@ -292,29 +304,16 @@ function Thread({
 						onSubmit={(response) => agent.respond([response])}
 					/>
 				) : (
-					<form
-						className="flex min-w-0 items-center gap-2"
-						onSubmit={(event) => {
-							event.preventDefault();
-							ask(draft);
-						}}
-					>
-						<Input
-							value={draft}
-							onChange={(event) => setDraft(event.target.value)}
-							placeholder={copy.placeholder}
-							disabled={locked}
-						/>
-						<Button
-							type="submit"
-							size="icon-sm"
-							variant="outline"
-							disabled={locked}
-						>
-							{busy ? <Spinner /> : <Icon icon={Send} />}
-							<span className="sr-only">Ask</span>
-						</Button>
-					</form>
+					<ChatComposer
+						busy={busy}
+						disabled={locked}
+						onSubmit={ask}
+						onValueChange={setDraft}
+						placeholder={copy.placeholder}
+						sendLabel="Ask"
+						size="panel"
+						value={draft}
+					/>
 				)}
 			</div>
 		</div>
@@ -331,30 +330,14 @@ function Idle({
 	const copy = recordCopy(kind);
 
 	return (
-		<Empty width="wide">
-			<EmptyHeader>
-				<EmptyMedia>
-					<span className="flex size-8 items-center justify-center bg-foreground text-background">
-						<Logo className="size-4" />
-					</span>
-				</EmptyMedia>
-				<EmptyTitle>{copy.title}</EmptyTitle>
-				<EmptyDescription>{copy.blurb}</EmptyDescription>
-			</EmptyHeader>
-
-			<EmptyContent layout="row">
-				{copy.suggestions.map((suggestion) => (
-					<Button
-						key={suggestion}
-						variant="outline"
-						size="sm"
-						onClick={() => onAsk(suggestion)}
-					>
-						{suggestion}
-					</Button>
-				))}
-			</EmptyContent>
-		</Empty>
+		<div className="flex min-h-0 flex-1 flex-col justify-center gap-5 overflow-y-auto py-4">
+			<ChatEmptyState
+				size="panel"
+				title={copy.title}
+				description={copy.blurb}
+			/>
+			<ChatSuggestions suggestions={copy.suggestions} onSelect={onAsk} />
+		</div>
 	);
 }
 
@@ -366,7 +349,7 @@ function Failure({ message }: { message: string }) {
 			: null;
 
 	return (
-		<div className="border-t px-4 py-3 text-xs sm:px-5">
+		<div className="border-t py-3 text-xs">
 			<p className="wrap-break-word text-destructive">{message}</p>
 			{hint ? (
 				<p className="wrap-break-word text-muted-foreground text-xs">{hint}</p>
@@ -376,16 +359,16 @@ function Failure({ message }: { message: string }) {
 }
 
 const TONE_ICONS = {
-	neutral: CircleDash,
-	success: Checkmark,
-	warning: Warning,
-} satisfies Record<Tone, CarbonIcon>;
+	neutral: CircleDashedIcon,
+	success: CheckIcon,
+	warning: CircleAlertIcon,
+} satisfies Record<Tone, IconComponent>;
 
 const SOURCE_ICONS = {
-	linkedin: LogoLinkedin,
-	github: LogoGithub,
-	web: Document,
-} satisfies Record<Source["network"], CarbonIcon>;
+	linkedin: LinkedInLogo,
+	github: GitHubLogo,
+	web: FileTextIcon,
+} satisfies Record<Source["network"], IconComponent>;
 
 function Item({ item }: { item: TranscriptItem }) {
 	if (item.kind === "said") {
@@ -471,7 +454,7 @@ function AgentAvatar() {
 	);
 }
 
-function useSavedConversation({
+function SavedConversation({
 	record,
 	conversation,
 	opening,
@@ -491,16 +474,19 @@ function useSavedConversation({
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 	const save = useMutation(trpc.conversations.save.mutationOptions({}));
+	const written = useRef<string | null>(null);
 
 	const sessionId = session?.sessionId ?? null;
 	const token = session?.continuationToken ?? null;
 	const streamIndex = session?.streamIndex ?? 0;
-	const { contactId, companyId, dealId } = record;
+	const cursor = conversationCursor({ sessionId, token, messages });
+	if (!cursor) return null;
 
+	const { contactId, companyId, dealId } = record;
 	const isNew = conversation === null || conversation.sessionId !== sessionId;
 
-	const written = useRef<string | null>(null);
-	const persist = useEffectEvent(() => {
+	const persist = () => {
+		if (!claimCursor(written, cursor)) return;
 		save.mutate(
 			{
 				contactId: contactId || undefined,
@@ -521,14 +507,12 @@ function useSavedConversation({
 				},
 			},
 		);
-	});
+	};
 
-	useEffect(() => {
-		if (!sessionId) return;
+	return <SaveCursor key={cursor} onMount={persist} />;
+}
 
-		const cursor = `${sessionId}:${token ?? ""}:${messages}`;
-		if (written.current === cursor) return;
-		written.current = cursor;
-		persist();
-	}, [sessionId, token, messages]);
+function SaveCursor({ onMount }: { onMount: () => void }) {
+	useMountEffect(onMount);
+	return null;
 }

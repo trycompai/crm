@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellActions,
@@ -6,7 +5,8 @@ import {
 	PageShellHeader,
 	PageShellHeading,
 	PageShellLoading,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
@@ -38,7 +38,7 @@ export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
 			</PageShellHeader>
 
 			<PageShellContent>
-				<Suspense fallback={<PageShellLoading />}>
+				<Suspense fallback={<PageShellLoading shape="dashboard" />}>
 					<Summary searchParams={searchParams} />
 				</Suspense>
 			</PageShellContent>

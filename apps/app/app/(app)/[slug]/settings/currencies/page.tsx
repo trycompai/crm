@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellContent,
@@ -8,7 +6,9 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 	PageShellTitle,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 export default function CurrenciesSettingsPage() {
 	return (
-		<PageShell>
+		<PageShell width="narrow">
 			<PageShellHeader>
 				<PageShellHeading>
 					<PageShellTitle>Currencies</PageShellTitle>
@@ -32,7 +32,7 @@ export default function CurrenciesSettingsPage() {
 			</PageShellHeader>
 
 			<PageShellContent>
-				<Suspense fallback={<PageShellLoading />}>
+				<Suspense fallback={<PageShellLoading shape="settings" />}>
 					<Currencies />
 				</Suspense>
 			</PageShellContent>
@@ -50,9 +50,7 @@ async function Currencies() {
 
 	return (
 		<HydrateClient>
-			<div className="flex max-w-3xl flex-col gap-6">
-				<CurrencySettings />
-			</div>
+			<CurrencySettings />
 		</HydrateClient>
 	);
 }

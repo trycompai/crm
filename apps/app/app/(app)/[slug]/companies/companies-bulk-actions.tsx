@@ -1,8 +1,5 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
-import Renew from "@carbon/icons-react/es/Renew";
-import Undo from "@carbon/icons-react/es/Undo";
 import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
@@ -10,6 +7,7 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import { formatCount } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArchiveIcon, RefreshCwIcon, Undo2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -58,7 +56,8 @@ export function CompaniesBulkActions({
 				await cache.company();
 				reportBulk(
 					result,
-					(count) => `Looking up ${companies(count)} — the table will update.`,
+					(count) =>
+						`Looking up ${companies(count)}. The table updates when complete.`,
 				);
 				onDone();
 			},
@@ -108,7 +107,7 @@ export function CompaniesBulkActions({
 				<BulkActionsMenu pending={pending}>
 					<DropdownMenuGroup>
 						<DropdownMenuItem onSelect={() => restore.mutate({ ids })}>
-							<Undo />
+							<Undo2Icon />
 							Restore
 						</DropdownMenuItem>
 					</DropdownMenuGroup>
@@ -146,14 +145,14 @@ export function CompaniesBulkActions({
 			/>
 			<DropdownMenuGroup>
 				<DropdownMenuItem onSelect={() => enrich.mutate({ ids })}>
-					<Renew />
+					<RefreshCwIcon />
 					Re-enrich
 				</DropdownMenuItem>
 			</DropdownMenuGroup>
 			<DropdownMenuSeparator />
 			<DropdownMenuGroup>
 				<DropdownMenuItem onSelect={() => archive.mutate({ ids })}>
-					<Archive />
+					<ArchiveIcon />
 					Archive
 				</DropdownMenuItem>
 			</DropdownMenuGroup>

@@ -1,7 +1,5 @@
 "use client";
 
-import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
-import Warning from "@carbon/icons-react/es/Warning";
 import {
 	Accordion,
 	AccordionContent,
@@ -22,19 +20,12 @@ import {
 import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
 	CardPanel,
 	CardPanelDetail,
 	CardPanelGroup,
 	CardPanelGroupContent,
 	CardPanelGroupHeader,
 	CardPanelScroll,
-	CardTitle,
 	CardToolbar,
 } from "@crm/ui/components/card";
 import { CodeBlock } from "@crm/ui/components/code-block";
@@ -45,18 +36,29 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
+import { FieldLegend, FieldSet } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
 import { InlineReferenceText } from "@crm/ui/components/inline-reference-text";
+import { PageSection } from "@crm/ui/components/page-section";
+import {
+	PageShellActions,
+	PageShellDescription,
+	PageShellHeader,
+	PageShellHeading,
+	PageShellTitle,
+} from "@crm/ui/components/page-shell";
 import { ProviderMark } from "@crm/ui/components/provider-mark";
+import { SettingsCard } from "@crm/ui/components/settings-card";
 import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
 import type { ProviderBrand } from "@crm/ui/lib/provider-brand";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CircleAlertIcon, EllipsisVerticalIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { MCP_CONNECTION_STATUS } from "@/lib/mcp-connection-status";
 import { useTRPC } from "@/lib/trpc/client";
@@ -157,6 +159,7 @@ export function McpConnection({
 	);
 	const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
 	const [toolFilter, setToolFilter] = useState<ToolFilter>("all");
+	const accessLegendId = useId();
 	const start = useMutation(
 		trpc.mcp.start.mutationOptions({
 			onSuccess: ({ authorizationUrl }) => {
@@ -201,48 +204,50 @@ export function McpConnection({
 	return (
 		<ConnectionPage centered={!connected}>
 			{connecting ? <ConnectionPendingRefresh /> : null}
-			<div className="flex items-start justify-between gap-4">
-				<div className="flex min-w-0 flex-col gap-2">
-					<Button asChild variant="link" size="inline">
-						<Link href={`/${slug}/settings/connections`}>
-							Back to connections
-						</Link>
-					</Button>
-					<h1 className="flex items-center gap-3 font-medium text-2xl tracking-tight">
-						<ProviderMark
-							slug={entry.slug}
-							name={entry.name}
-							brand={brand}
-							className="size-6"
-						/>
-						{entry.name}
-					</h1>
-					<p className="text-muted-foreground text-sm">
-						Deployed agents receive only reviewed tools.
-					</p>
-				</div>
-				{connected && canManage ? (
-					<div>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon-sm">
-									<Icon icon={OverflowMenuVertical} />
-									<span className="sr-only">More {entry.name} actions</span>
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuGroup>
-									<DropdownMenuItem
-										variant="destructive"
-										onSelect={() => setConfirmingDisconnect(true)}
-									>
-										Disconnect {entry.name}
-									</DropdownMenuItem>
-								</DropdownMenuGroup>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				) : null}
+			<div className="flex flex-col gap-2">
+				<Button asChild variant="link" size="inline" className="self-start">
+					<Link href={`/${slug}/settings/connections`}>
+						Back to connections
+					</Link>
+				</Button>
+				<PageShellHeader>
+					<PageShellHeading>
+						<PageShellTitle className="flex items-center gap-3">
+							<ProviderMark
+								slug={entry.slug}
+								name={entry.name}
+								brand={brand}
+								className="size-6"
+							/>
+							{entry.name}
+						</PageShellTitle>
+						<PageShellDescription>
+							Deployed agents receive only reviewed tools.
+						</PageShellDescription>
+					</PageShellHeading>
+					{connected && canManage ? (
+						<PageShellActions>
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant="ghost" size="icon-sm">
+										<Icon icon={EllipsisVerticalIcon} />
+										<span className="sr-only">More {entry.name} actions</span>
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end">
+									<DropdownMenuGroup>
+										<DropdownMenuItem
+											variant="destructive"
+											onSelect={() => setConfirmingDisconnect(true)}
+										>
+											Disconnect {entry.name}
+										</DropdownMenuItem>
+									</DropdownMenuGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</PageShellActions>
+					) : null}
+				</PageShellHeader>
 			</div>
 
 			{presentation.overview ? (
@@ -250,121 +255,127 @@ export function McpConnection({
 			) : null}
 
 			{connecting ? (
-				<Card>
-					<CardContent>
+				<SettingsCard
+					title="Access"
+					status={
 						<StatusIndicator
 							busy
+							size="sm"
 							tone="primary"
 							label={`Connecting to ${entry.name}`}
 						/>
-					</CardContent>
-				</Card>
+					}
+					description={`Waiting for ${entry.name} to confirm the connection.`}
+				/>
 			) : null}
 
 			{!connected && !connecting ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Access</CardTitle>
-						<CardDescription>
-							Choose what deployed agents can do.
-						</CardDescription>
-					</CardHeader>
-
-					{!configured ? (
-						<CardContent>
-							<Alert>
-								<Icon icon={Warning} />
-								<AlertTitle>MCP connections are not configured</AlertTitle>
-								<AlertDescription>
-									Set MCP_ENCRYPTION_KEY in the root .env file. Then restart the
-									API.
-								</AlertDescription>
-							</Alert>
-						</CardContent>
-					) : null}
-
-					{connection?.status === "error" ? (
-						<CardContent>
-							<Alert variant="destructive">
-								<Icon icon={Warning} />
-								<AlertTitle>{entry.name} needs authorization</AlertTitle>
-								<AlertDescription>
-									Reconnect {entry.name}. The stored access is no longer usable.
-								</AlertDescription>
-							</Alert>
-						</CardContent>
-					) : null}
-
-					{!connected && configured && canManage ? (
-						<CardContent>
-							<p className="font-medium text-sm">
-								What can agents do in {entry.name}?
-							</p>
-							<ToggleGroup
-								type="single"
-								variant="outline"
-								spacing={0}
-								value={mode}
-								onValueChange={(value) => {
-									if (value === "read_only" || value === "read_write")
-										setMode(value);
-								}}
-							>
-								<ToggleGroupItem value="read_only">Read only</ToggleGroupItem>
-								<ToggleGroupItem value="read_write">
-									Read and write
-								</ToggleGroupItem>
-							</ToggleGroup>
-							<p className="text-muted-foreground text-sm">
-								{mode === "read_only"
-									? `Agents read ${entry.name} and change nothing.`
-									: `Agents read ${entry.name} and make approved changes.`}
-							</p>
-						</CardContent>
-					) : null}
-
-					<CardFooter align="end" divider="none">
-						{!connected && configured && canManage ? (
-							<Button disabled={start.isPending} onClick={connect}>
+				<SettingsCard
+					title="Access"
+					description="Choose what deployed agents can do."
+					hint={
+						configured && canManage
+							? mode === "read_only"
+								? `Agents read ${entry.name} and change nothing.`
+								: `Agents read ${entry.name} and make approved changes.`
+							: configured
+								? `Only an owner or an admin can connect ${entry.name}.`
+								: undefined
+					}
+					action={
+						configured && canManage ? (
+							<Button size="sm" disabled={start.isPending} onClick={connect}>
 								{start.isPending ? <Spinner data-icon="inline-start" /> : null}
 								Continue to {entry.name}
 							</Button>
-						) : null}
-					</CardFooter>
-				</Card>
+						) : undefined
+					}
+				>
+					{!configured ||
+					connection?.status === "error" ||
+					(configured && canManage) ? (
+						<div className="flex flex-col gap-4">
+							{!configured ? (
+								<Alert>
+									<Icon icon={CircleAlertIcon} />
+									<AlertTitle>MCP connections are not configured</AlertTitle>
+									<AlertDescription>
+										Set MCP_ENCRYPTION_KEY in the root .env file. Then restart
+										the API.
+									</AlertDescription>
+								</Alert>
+							) : null}
+
+							{connection?.status === "error" ? (
+								<Alert variant="destructive">
+									<Icon icon={CircleAlertIcon} />
+									<AlertTitle>{entry.name} needs authorization</AlertTitle>
+									<AlertDescription>
+										Reconnect {entry.name}. The stored access is no longer
+										usable.
+									</AlertDescription>
+								</Alert>
+							) : null}
+
+							{configured && canManage ? (
+								<FieldSet>
+									<FieldLegend id={accessLegendId} variant="label">
+										What can agents do in {entry.name}?
+									</FieldLegend>
+									<ToggleGroup
+										aria-labelledby={accessLegendId}
+										type="single"
+										variant="outline"
+										spacing={0}
+										value={mode}
+										onValueChange={(value) => {
+											if (value === "read_only" || value === "read_write")
+												setMode(value);
+										}}
+									>
+										<ToggleGroupItem value="read_only">
+											Read only
+										</ToggleGroupItem>
+										<ToggleGroupItem value="read_write">
+											Read and write
+										</ToggleGroupItem>
+									</ToggleGroup>
+								</FieldSet>
+							) : null}
+						</div>
+					) : null}
+				</SettingsCard>
 			) : null}
 
 			{connected ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Tool access</CardTitle>
-						<CardDescription>
-							{presentation.pendingReviewCount > 0
-								? `${presentation.pendingReviewCount} tools need review. Open a tool to inspect it.`
-								: "All tools are reviewed. Open a tool to inspect it."}
-						</CardDescription>
-						{presentation.pendingReadTools.length > 0 && canManage ? (
-							<CardAction>
-								<Button
-									size="sm"
-									disabled={review.isPending}
-									onClick={() =>
-										review.mutate({
-											platformSlug: entry.slug,
-											tools: presentation.pendingReadTools,
-										})
-									}
-								>
-									{review.isPending ? (
-										<Spinner data-icon="inline-start" />
-									) : null}
-									Review {presentation.pendingReadTools.length} read tools
-								</Button>
-							</CardAction>
-						) : null}
-					</CardHeader>
+				<PageSection
+					title="Tool access"
+					description={
+						presentation.pendingReviewCount > 0
+							? `${presentation.pendingReviewCount} tools need review. Open a tool to inspect it.`
+							: "All tools are reviewed. Open a tool to inspect it."
+					}
+					action={
+						presentation.pendingReadTools.length > 0 && canManage ? (
+							<Button
+								size="sm"
+								disabled={review.isPending}
+								onClick={() =>
+									review.mutate({
+										platformSlug: entry.slug,
+										tools: presentation.pendingReadTools,
+									})
+								}
+							>
+								{review.isPending ? <Spinner data-icon="inline-start" /> : null}
+								Review {presentation.pendingReadTools.length} read tools
+							</Button>
+						) : undefined
+					}
+				>
 					<CardToolbar>
 						<ToggleGroup
+							aria-label={`Filter ${entry.name} tools`}
 							type="single"
 							variant="outline"
 							size="sm"
@@ -473,7 +484,7 @@ export function McpConnection({
 							))}
 						</CardPanelScroll>
 					</CardPanel>
-				</Card>
+				</PageSection>
 			) : null}
 
 			<AlertDialog
@@ -535,7 +546,7 @@ function ConnectionDetails({
 		<>
 			{overview.failure ? (
 				<Alert variant="destructive">
-					<Icon icon={Warning} />
+					<Icon icon={CircleAlertIcon} />
 					<AlertTitle>{overview.failure.title}</AlertTitle>
 					<AlertDescription>
 						<Badge variant="mono">{overview.failure.code}</Badge>
@@ -543,15 +554,14 @@ function ConnectionDetails({
 				</Alert>
 			) : null}
 			{overview.scopeGroups.length > 0 ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Permissions</CardTitle>
-						<CardAction>
-							<span className="text-muted-foreground text-xs tabular-nums">
-								{overview.scopeCount} scopes
-							</span>
-						</CardAction>
-					</CardHeader>
+				<PageSection
+					title="Permissions"
+					action={
+						<span className="text-muted-foreground text-sm tabular-nums">
+							{overview.scopeCount} scopes
+						</span>
+					}
+				>
 					<CardPanel
 						role="region"
 						aria-label="Granted permissions"
@@ -590,37 +600,32 @@ function ConnectionDetails({
 							</CardPanelGroupContent>
 						</CardPanelScroll>
 					</CardPanel>
-				</Card>
+				</PageSection>
 			) : null}
 			{overview.agents.length > 0 ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Used by</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="flex flex-col divide-y rounded-md border">
-							{overview.agents.map((agent) => (
-								<Link
-									className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50"
-									href={`/${slug}/agents/${agent.id}`}
-									key={agent.id}
-								>
-									<span className="min-w-0 flex-1">
-										<span className="block truncate font-medium text-xs">
-											{agent.name}
-										</span>
-										{agent.description ? (
-											<span className="block truncate text-muted-foreground text-xs">
-												{agent.description}
-											</span>
-										) : null}
+				<PageSection title="Used by">
+					<div className="flex flex-col divide-y rounded-md shadow-border">
+						{overview.agents.map((agent) => (
+							<Link
+								className="flex items-center gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:shadow-focus"
+								href={`/${slug}/agents/${agent.id}`}
+								key={agent.id}
+							>
+								<span className="min-w-0 flex-1">
+									<span className="block truncate font-medium text-sm">
+										{agent.name}
 									</span>
-									<Badge variant="outline">{agent.statusLabel}</Badge>
-								</Link>
-							))}
-						</div>
-					</CardContent>
-				</Card>
+									{agent.description ? (
+										<span className="block truncate text-13 text-muted-foreground">
+											{agent.description}
+										</span>
+									) : null}
+								</span>
+								<Badge variant="outline">{agent.statusLabel}</Badge>
+							</Link>
+						))}
+					</div>
+				</PageSection>
 			) : null}
 		</>
 	);

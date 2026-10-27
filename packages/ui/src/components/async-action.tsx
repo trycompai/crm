@@ -1,15 +1,10 @@
 "use client";
 
-import { CircleAlertIcon, CheckIcon } from "lucide-react";
-import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
 import { Spinner } from "@crm/ui/components/spinner";
+import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
+import { CheckIcon, CircleAlertIcon } from "lucide-react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
 const TRANSITION = {
 	type: "spring",
@@ -92,13 +87,13 @@ export function useAsyncAction<TArgs extends unknown[], TResult>({
 		[action, clear, onError, onSuccess, resetAfter],
 	);
 
-	useEffect(() => {
+	useMountEffect(() => {
 		alive.current = true;
 		return () => {
 			alive.current = false;
 			clear();
 		};
-	}, [clear]);
+	});
 
 	return {
 		status,

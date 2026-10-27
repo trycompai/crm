@@ -1,18 +1,17 @@
 "use client";
 
-import { CURRENCIES } from "@crm/db/currency";
+import { CURRENCIES, isCurrencyCode } from "@crm/db/currency";
+import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { CardTableEmpty } from "@crm/ui/components/card-table";
-import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@crm/ui/components/field";
+import { useFormSheetValidation } from "@crm/ui/components/form-sheet";
 import { Input } from "@crm/ui/components/input";
+import { OptionLabel } from "@crm/ui/components/option-label";
 import {
 	Select,
 	SelectContent,
@@ -20,6 +19,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@crm/ui/components/select";
+import { SettingsCard, SettingsColumn } from "@crm/ui/components/settings-card";
 import {
 	SimpleTable,
 	type SimpleTableColumn,
@@ -53,6 +53,7 @@ const USAGE_COLUMNS: SimpleTableColumn[] = [
 ];
 
 export function CurrencySettings() {
+	const validation = useFormSheetValidation();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -83,6 +84,7 @@ export function CurrencySettings() {
 		trpc.currency.setManualRate.mutationOptions({
 			onSuccess: async () => {
 				await invalidate();
+				validation.reset();
 				setDraftCurrency("");
 				setDraftRate("");
 				toast.success("Rate saved.");
@@ -130,135 +132,80 @@ export function CurrencySettings() {
 		refresh.isPending;
 
 	return (
-		<div className="flex flex-col gap-6">
-			<Card>
-				<CardHeader>
-					<CardTitle>Reporting currency</CardTitle>
-					<CardDescription>
-						Every total, chart and average in the CRM is expressed in this
-						currency. Each deal keeps the currency it was sold in.
-					</CardDescription>
-				</CardHeader>
-
-				<CardContent>
-					<Field>
-						<FieldLabel htmlFor={baseId}>Report totals in</FieldLabel>
-						<Select
-							value={reportingCurrency}
-							disabled={busy}
-							onValueChange={(currency) => setBase.mutate({ currency })}
-						>
-							<SelectTrigger id={baseId} className="w-full max-w-sm">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{CURRENCIES.map((entry) => (
-									<SelectItem key={entry.code} value={entry.code}>
-										{entry.code} · {entry.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<FieldDescription>
-							{canManage
-								? "Changing this re-converts every deal at today's rates. Figures already reported will move."
-								: "Only an owner or an admin can change how money is reported."}
-						</FieldDescription>
-					</Field>
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Exchange rates</CardTitle>
-					<CardDescription>
-						How many {reportingCurrency} one unit of each currency buys. Fetched
-						daily from open.er-api.com; a rate you enter here wins.
-					</CardDescription>
-					<CardAction>
-						<Button
-							variant="contrast"
-							size="sm"
-							disabled={busy}
-							onClick={() => refresh.mutate()}
-						>
-							{refresh.isPending ? <Spinner data-icon="inline-start" /> : null}
-							Refresh
-						</Button>
-					</CardAction>
-				</CardHeader>
-
-				<CardContent>
-					<form
-						className="flex flex-wrap items-end gap-3"
-						onSubmit={(event) => {
-							event.preventDefault();
-							const rate = Number.parseFloat(draftRate);
-							if (!Number.isFinite(rate) || rate <= 0) {
-								toast.error("A rate has to be a number greater than zero.");
-								return;
-							}
-							setRate.mutate({ currency: draftCurrency, rate });
-						}}
+		<SettingsColumn>
+			<SettingsCard
+				title="Reporting currency"
+				description="Every total, chart and average in the CRM is expressed in this currency. Each deal keeps the currency it was sold in."
+				hint={
+					canManage
+						? "Changes save as you make them. Every deal is re-converted at today's rates, so figures already reported move."
+						: "Only an owner or an admin can change how money is reported."
+				}
+				control="compact"
+			>
+				<Field>
+					<FieldLabel htmlFor={baseId}>Report totals in</FieldLabel>
+					<Select
+						value={reportingCurrency}
+						disabled={busy}
+						onValueChange={(currency) => setBase.mutate({ currency })}
 					>
-						<Field className="w-48">
-							<FieldLabel htmlFor={rateCurrencyId}>Currency</FieldLabel>
-							<Select
-								value={draftCurrency}
-								disabled={busy}
-								onValueChange={setDraftCurrency}
-							>
-								<SelectTrigger id={rateCurrencyId} className="w-full">
-									<SelectValue placeholder="Pick one" />
-								</SelectTrigger>
-								<SelectContent>
-									{CURRENCIES.filter(
-										(entry) => entry.code !== reportingCurrency,
-									).map((entry) => (
-										<SelectItem key={entry.code} value={entry.code}>
-											{entry.code} · {entry.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
+						<SelectTrigger id={baseId} className="w-full">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{CURRENCIES.map((entry) => (
+								<SelectItem key={entry.code} value={entry.code}>
+									<OptionLabel label={entry.code} detail={entry.name} />
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</Field>
+			</SettingsCard>
 
-						<Field className="w-48">
-							<FieldLabel htmlFor={rateValueId}>
-								1 {draftCurrency || "unit"} = ? {reportingCurrency}
-							</FieldLabel>
-							<Input
-								id={rateValueId}
-								value={draftRate}
-								inputMode="decimal"
-								placeholder="1.09"
-								disabled={busy}
-								onChange={(event) => setDraftRate(event.target.value)}
-							/>
-						</Field>
-
-						<Button
-							type="submit"
-							disabled={busy || draftCurrency === "" || draftRate.trim() === ""}
-						>
-							{setRate.isPending ? <Spinner data-icon="inline-start" /> : null}
-							Save rate
-						</Button>
-					</form>
-				</CardContent>
-
+			<SettingsCard
+				title="Exchange rates"
+				description={`How many ${reportingCurrency} one unit of each currency buys.`}
+				hint={
+					refreshedAt ? (
+						<>
+							Fetched daily from open.er-api.com. Last fetched{" "}
+							<LocalRelativeTime date={refreshedAt} />.
+						</>
+					) : (
+						"Fetched daily from open.er-api.com."
+					)
+				}
+				action={
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onClick={() => refresh.mutate()}
+					>
+						{refresh.isPending ? <Spinner data-icon="inline-start" /> : null}
+						Refresh rates
+					</Button>
+				}
+				control={rates.length === 0 ? "full" : "table"}
+			>
 				{rates.length === 0 ? (
-					<CardTableEmpty>
+					<p className="text-muted-foreground text-sm">
 						No rates yet. Refresh to fetch them, or enter one by hand.
-					</CardTableEmpty>
+					</p>
 				) : (
 					<SimpleTable columns={RATE_COLUMNS}>
 						{rates.map((rate) => (
 							<SimpleTableRow key={rate.currency}>
 								<TableCell className={CELL}>
-									<span className="font-medium">{rate.currency}</span>
-									<span className="text-muted-foreground">
-										{rate.name ? ` · ${rate.name}` : ""}
+									<span className="flex min-w-0 flex-col">
+										<span className="font-medium">{rate.currency}</span>
+										{rate.name ? (
+											<span className="truncate text-muted-foreground">
+												{rate.name}
+											</span>
+										) : null}
 									</span>
 								</TableCell>
 								<TableCell className={`${CELL} text-right tabular-nums`}>
@@ -294,41 +241,137 @@ export function CurrencySettings() {
 						))}
 					</SimpleTable>
 				)}
-			</Card>
+			</SettingsCard>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Currencies in use</CardTitle>
-					<CardDescription>
-						{unconverted.count === 0
-							? "Every deal with an amount can be converted into the reporting currency."
-							: `${formatCount(unconverted.count, "deal")} cannot be converted, so ${unconverted.count === 1 ? "it is" : "they are"} left out of every total.`}
-						{refreshedAt ? (
-							<>
-								{" "}
-								Rates last fetched <LocalRelativeTime date={refreshedAt} />.
-							</>
-						) : null}
-					</CardDescription>
-				</CardHeader>
+			<SettingsCard
+				title="Rate by hand"
+				description="A rate you enter here wins over the fetched one."
+				hint="Use a number greater than zero."
+				control="compact"
+				action={
+					<Button type="submit" form="manual-rate" size="sm" disabled={busy}>
+						{setRate.isPending ? <Spinner data-icon="inline-start" /> : null}
+						Save rate
+					</Button>
+				}
+			>
+				<form
+					id="manual-rate"
+					noValidate
+					onInput={validation.onInput}
+					onSubmit={(event) => {
+						event.preventDefault();
+						if (busy) return;
+						const rate = Number.parseFloat(draftRate);
+						const errors: Record<string, string> = {};
+						if (!isCurrencyCode(draftCurrency))
+							errors[rateCurrencyId] = "Choose a currency.";
+						else if (draftCurrency === reportingCurrency)
+							errors[rateCurrencyId] =
+								`${reportingCurrency} is the reporting currency. Its rate is always 1.`;
+						if (!Number.isFinite(rate) || rate <= 0)
+							errors[rateValueId] =
+								"A rate has to be a number greater than zero.";
+						if (!validation.validate(event.currentTarget, errors)) return;
+						setRate.mutate({ currency: draftCurrency, rate });
+					}}
+				>
+					<FieldGroup>
+						<Field data-invalid={!!validation.errors[rateCurrencyId]}>
+							<FieldLabel htmlFor={rateCurrencyId}>Currency</FieldLabel>
+							<Select
+								value={draftCurrency}
+								disabled={busy}
+								onValueChange={(currency) => {
+									setDraftCurrency(currency);
+									validation.clearError(rateCurrencyId);
+								}}
+							>
+								<SelectTrigger
+									id={rateCurrencyId}
+									className="w-full"
+									aria-invalid={!!validation.errors[rateCurrencyId]}
+									aria-describedby={
+										validation.errors[rateCurrencyId]
+											? `${rateCurrencyId}-error`
+											: undefined
+									}
+								>
+									<SelectValue placeholder="Pick one" />
+								</SelectTrigger>
+								<SelectContent>
+									{CURRENCIES.filter(
+										(entry) => entry.code !== reportingCurrency,
+									).map((entry) => (
+										<SelectItem key={entry.code} value={entry.code}>
+											<OptionLabel label={entry.code} detail={entry.name} />
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<FieldError id={`${rateCurrencyId}-error`}>
+								{validation.errors[rateCurrencyId]}
+							</FieldError>
+						</Field>
 
+						<Field data-invalid={!!validation.errors[rateValueId]}>
+							<FieldLabel htmlFor={rateValueId}>
+								1 {draftCurrency || "unit"} = ? {reportingCurrency}
+							</FieldLabel>
+							<Input
+								id={rateValueId}
+								aria-invalid={!!validation.errors[rateValueId]}
+								aria-describedby={
+									validation.errors[rateValueId]
+										? `${rateValueId}-error`
+										: undefined
+								}
+								required
+								value={draftRate}
+								inputMode="decimal"
+								placeholder="1.09"
+								disabled={busy}
+								onChange={(event) => setDraftRate(event.target.value)}
+							/>
+							<FieldError id={`${rateValueId}-error`}>
+								{validation.errors[rateValueId]}
+							</FieldError>
+						</Field>
+					</FieldGroup>
+				</form>
+			</SettingsCard>
+
+			<SettingsCard
+				title="Currencies in use"
+				description={
+					unconverted.count === 0
+						? "Every deal with an amount can be converted into the reporting currency."
+						: `${formatCount(unconverted.count, "deal")} cannot be converted, so ${unconverted.count === 1 ? "it is" : "they are"} left out of every total.`
+				}
+				control={inUse.length === 0 ? "full" : "table"}
+			>
 				{inUse.length === 0 ? (
-					<CardTableEmpty>No deals have an amount yet.</CardTableEmpty>
+					<p className="text-muted-foreground text-sm">
+						No deals have an amount yet.
+					</p>
 				) : (
 					<SimpleTable columns={USAGE_COLUMNS}>
 						{inUse.map((row) => (
 							<SimpleTableRow key={row.currency}>
 								<TableCell className={CELL}>
-									<span className="font-medium">{row.currency}</span>
-									<span className="text-muted-foreground">
-										{row.name ? ` · ${row.name}` : ""}
-									</span>
-									{row.currency === reportingCurrency ? (
-										<span className="text-muted-foreground">
-											{" "}
-											· reporting currency
+									<span className="flex min-w-0 flex-col">
+										<span className="flex items-center gap-2">
+											<span className="font-medium">{row.currency}</span>
+											{row.currency === reportingCurrency ? (
+												<Badge variant="secondary">Reporting currency</Badge>
+											) : null}
 										</span>
-									) : null}
+										{row.name ? (
+											<span className="truncate text-muted-foreground">
+												{row.name}
+											</span>
+										) : null}
+									</span>
 								</TableCell>
 								<TableCell className={`${CELL} text-right tabular-nums`}>
 									{row.deals}
@@ -344,7 +387,7 @@ export function CurrencySettings() {
 						))}
 					</SimpleTable>
 				)}
-			</Card>
-		</div>
+			</SettingsCard>
+		</SettingsColumn>
 	);
 }

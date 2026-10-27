@@ -27,7 +27,7 @@ const COPY: RecordCopyByKind = {
 		field: "contactId",
 		title: "Ask about this person",
 		blurb:
-			"Every step is shown as it happens — including the leads it throws away.",
+			"Every step is shown as it happens, including the leads it throws away.",
 		placeholder: "Are they still there?",
 		suggestions: [
 			"Who is this person?",

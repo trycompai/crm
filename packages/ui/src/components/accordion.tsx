@@ -36,16 +36,16 @@ function AccordionItem({
 }
 
 const accordionTriggerVariants = cva(
-	"group/accordion-trigger relative flex items-start rounded-md border border-transparent text-left outline-none transition-all focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:after:border-ring disabled:pointer-events-none disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:text-muted-foreground",
+	"group/accordion-trigger relative flex items-start rounded-md border border-transparent text-left outline-none transition-[color,box-shadow,text-decoration-color] focus-visible:shadow-focus disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:text-muted-foreground",
 	{
 		variants: {
 			variant: {
 				default:
-					"flex-1 justify-between py-2.5 font-medium text-sm hover:underline **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4",
+					"flex-1 justify-between py-4 font-medium text-sm hover:underline **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4",
 				plain:
 					"flex-1 justify-between py-2.5 text-left **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4",
 				subtle:
-					"w-fit max-w-full items-center gap-1 py-1 text-muted-foreground text-xs hover:text-foreground **:data-[slot=accordion-trigger-icon]:size-3",
+					"w-fit max-w-full items-center gap-1 py-1 text-muted-foreground text-13 hover:text-foreground **:data-[slot=accordion-trigger-icon]:size-3",
 			},
 		},
 		defaultVariants: { variant: "default" },
@@ -81,7 +81,7 @@ function AccordionTrigger({
 }
 
 const accordionContentVariants = cva(
-	"pt-0 pb-2.5 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+	"pt-0 pb-4 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
 	{
 		variants: {
 			layout: {
@@ -139,7 +139,7 @@ const MotionAccordionContent = forwardRef<
 				transition={reducedMotion ? UI_MOTION.instant : UI_MOTION.accordion}
 				aria-hidden={!open}
 				inert={open ? undefined : true}
-				className={cn("overflow-hidden text-xs", className)}
+				className={cn("overflow-hidden text-sm", className)}
 			/>
 		</LazyMotion>
 	);

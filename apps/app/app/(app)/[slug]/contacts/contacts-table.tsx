@@ -1,6 +1,5 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
 import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
@@ -12,7 +11,8 @@ import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { ArchiveIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { useFieldColumns } from "@/components/crm/fields/field-columns";
@@ -20,6 +20,7 @@ import { useFieldFacets } from "@/components/crm/fields/field-facets";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { ListEmpty } from "@/components/data-table/list-empty";
 import { ListSearch } from "@/components/data-table/list-search";
 import { SavedViewsMenu } from "@/components/data-table/saved-views-menu";
 import { useTableQuery } from "@/components/data-table/use-table-query";
@@ -38,7 +39,6 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		header: "Name",
 		sortable: true,
 		hideable: false,
-		width: "w-[22%]",
 		cell: (row) => (
 			<span className="flex min-w-0 items-center gap-2">
 				<PersonAvatar
@@ -55,11 +55,11 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		id: "title",
 		header: "Title",
 		sortable: true,
-		width: "w-[20%]",
+		width: "40",
 		hideBelow: "lg",
 		cell: (row) =>
 			row.title ? (
-				<span className="truncate">{row.title}</span>
+				<span className="block truncate">{row.title}</span>
 			) : (
 				<EmptyCellValue />
 			),
@@ -68,11 +68,13 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		id: "email",
 		header: "Email",
 		sortable: true,
-		width: "w-[24%]",
+		width: "56",
 		hideBelow: "md",
 		cell: (row) =>
 			row.email ? (
-				<span className="truncate text-muted-foreground">{row.email}</span>
+				<span className="block truncate text-muted-foreground">
+					{row.email}
+				</span>
 			) : (
 				<EmptyCellValue />
 			),
@@ -81,14 +83,14 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		id: "company",
 		header: "Company",
 		sortable: true,
-		width: "w-[18%]",
+		width: "40",
 		cell: (row) => <CompanyCell company={row.company} />,
 	},
 	{
 		id: "owner",
 		header: "Owner",
 		sortable: true,
-		width: "w-[16%]",
+		width: "40",
 		hideBelow: "md",
 		cell: (row) => <OwnerCell owner={row.owner} />,
 	},
@@ -98,7 +100,7 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		label: "Created date",
 		sortable: true,
 		align: "right",
-		width: "w-[10%]",
+		width: "28",
 		defaultHidden: true,
 		cell: (row) => (
 			<span className="text-muted-foreground">
@@ -111,7 +113,7 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		header: "Last activity",
 		sortable: true,
 		align: "right",
-		width: "w-[12%]",
+		width: "32",
 		hideBelow: "sm",
 		cell: (row) => (
 			<span className="text-muted-foreground">
@@ -131,7 +133,7 @@ const ARCHIVED_COLUMN: DataTableColumn<ContactRow> = {
 	label: "Archived date",
 	sortable: true,
 	align: "right",
-	width: "w-[12%]",
+	width: "32",
 	cell: (row) => (
 		<span className="text-muted-foreground">
 			{row.archivedAt ? (
@@ -178,11 +180,6 @@ export function ContactsTable() {
 		);
 		return selection.ids.filter((id) => matching.has(id));
 	}, [rows, input.archived, selection.ids]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
-	useEffect(() => {
-		selection.clear();
-	}, [input.archived]);
 
 	const toggleArchived = (next: boolean) => {
 		selection.clear();
@@ -265,18 +262,19 @@ export function ContactsTable() {
 
 	return (
 		<DataTable
+			label="Contacts"
 			query={query}
-			search={<ListSearch placeholder="Search by name, email or company…" />}
+			search={<ListSearch placeholder="Search contacts…" />}
 			actions={
 				<>
 					<SavedViewsMenu entity="CONTACT" table={table} />
 					<Button
 						variant={input.archived ? "contrast" : "outline"}
-						size="sm"
+						aria-pressed={input.archived}
 						className="justify-start sm:justify-center"
 						onClick={() => toggleArchived(!input.archived)}
 					>
-						<Archive data-icon="inline-start" />
+						<ArchiveIcon data-icon="inline-start" />
 						Archived
 					</Button>
 				</>
@@ -300,11 +298,23 @@ export function ContactsTable() {
 			getRowId={(row) => row.id}
 			loading={contacts.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "contact", id: row.id })}
-			onRowClick={(row) => openRecord({ kind: "contact", id: row.id })}
+			onRowClick={(row, orderedRows) =>
+				openRecord(
+					{ kind: "contact", id: row.id },
+					orderedRows.map((entry) => ({ kind: "contact", id: entry.id })),
+				)
+			}
 			empty={
-				input.archived
-					? "No archived contacts."
-					: "No contacts match this view."
+				<ListEmpty
+					query={query}
+					noun="contacts"
+					archived={input.archived}
+					blank={{
+						title: "No contacts yet",
+						description:
+							"Add a contact to keep track of the people you sell to.",
+					}}
+				/>
 			}
 		/>
 	);

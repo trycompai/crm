@@ -1,9 +1,5 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
-import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
-import TrashCan from "@carbon/icons-react/es/TrashCan";
-import Undo from "@carbon/icons-react/es/Undo";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -23,6 +19,12 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation } from "@tanstack/react-query";
+import {
+	ArchiveIcon,
+	EllipsisVerticalIcon,
+	Trash2Icon,
+	Undo2Icon,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -127,7 +129,7 @@ export function RecordActions({
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="ghost" size="icon-sm" disabled={pending}>
-						<Icon icon={OverflowMenuVertical} />
+						<Icon icon={EllipsisVerticalIcon} />
 						<span className="sr-only">More actions</span>
 					</Button>
 				</DropdownMenuTrigger>
@@ -137,14 +139,14 @@ export function RecordActions({
 							<DropdownMenuItem
 								onSelect={() => restore.mutate({ id: record.id })}
 							>
-								<Icon icon={Undo} />
+								<Icon icon={Undo2Icon} />
 								Restore {NOUN[record.kind]}
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								variant="destructive"
 								onSelect={() => setConfirming(true)}
 							>
-								<Icon icon={TrashCan} />
+								<Icon icon={Trash2Icon} />
 								Delete {NOUN[record.kind]} forever
 							</DropdownMenuItem>
 						</>
@@ -152,7 +154,7 @@ export function RecordActions({
 						<DropdownMenuItem
 							onSelect={() => archive.mutate({ id: record.id })}
 						>
-							<Icon icon={Archive} />
+							<Icon icon={ArchiveIcon} />
 							Archive {NOUN[record.kind]}
 						</DropdownMenuItem>
 					)}

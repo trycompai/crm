@@ -118,7 +118,7 @@ function Combobox({
 										{option.label}
 									</span>
 									{option.hint ? (
-										<span className="shrink-0 truncate text-muted-foreground text-xs">
+										<span className="shrink-0 truncate text-muted-foreground text-13">
 											{option.hint}
 										</span>
 									) : null}

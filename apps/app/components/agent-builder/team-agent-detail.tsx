@@ -1,9 +1,5 @@
 "use client";
 
-import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
-import Pause from "@carbon/icons-react/es/Pause";
-import Play from "@carbon/icons-react/es/Play";
-import TrashCan from "@carbon/icons-react/es/TrashCan";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -25,12 +21,6 @@ import {
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
-import { SaveBarViewport } from "@crm/ui/components/save-bar";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
-import { toast } from "sonner";
 import {
 	PageShell,
 	PageShellActions,
@@ -39,7 +29,19 @@ import {
 	PageShellHeader,
 	PageShellHeading,
 	PageShellTitle,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import { SaveBarViewport } from "@crm/ui/components/save-bar";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	EllipsisVerticalIcon,
+	PauseIcon,
+	PlayIcon,
+	Trash2Icon,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
@@ -200,7 +202,7 @@ export function TeamAgentDetail({
 	const nextRun =
 		enabledTriggers.length === 1 ? enabledTriggers[0]?.nextRunAt : null;
 	const triggerSummary =
-		enabledTriggers.map((trigger) => trigger.name).join(" · ") || "Manual only";
+		enabledTriggers.map((trigger) => trigger.name).join(", ") || "Manual only";
 
 	return (
 		<PageShell className="min-h-0" contained>
@@ -211,10 +213,10 @@ export function TeamAgentDetail({
 					</PageShellTitle>
 					<PageShellDescription className="wrap-break-word leading-6">
 						<span className="block">{displayedDescription}</span>
-						<span className="mt-2 block text-xs">
-							Created by {data.createdBy.name} ·{" "}
-							{isDraft ? "Private draft" : "Team agent"} · Version{" "}
-							{displayedVersionNumber ?? "—"}
+						<span className="mt-2 flex flex-wrap gap-x-3 text-xs">
+							<span>Created by {data.createdBy.name}</span>
+							<span>{isDraft ? "Private draft" : "Team agent"}</span>
+							<span>Version {displayedVersionNumber ?? ""}</span>
 						</span>
 					</PageShellDescription>
 				</PageShellHeading>
@@ -259,7 +261,7 @@ export function TeamAgentDetail({
 										successLabel="Queued"
 										errorLabel="Try again"
 									>
-										<Icon icon={Play} data-icon="inline-start" />
+										<Icon icon={PlayIcon} data-icon="inline-start" />
 										Run now
 									</AsyncButtonContent>
 								</Button>
@@ -277,7 +279,7 @@ export function TeamAgentDetail({
 										successLabel="Paused"
 										errorLabel="Try again"
 									>
-										<Icon icon={Pause} data-icon="inline-start" />
+										<Icon icon={PauseIcon} data-icon="inline-start" />
 										Pause
 									</AsyncButtonContent>
 								</Button>
@@ -295,7 +297,7 @@ export function TeamAgentDetail({
 										successLabel="Resumed"
 										errorLabel="Try again"
 									>
-										<Icon icon={Play} data-icon="inline-start" />
+										<Icon icon={PlayIcon} data-icon="inline-start" />
 										Resume
 									</AsyncButtonContent>
 								</Button>
@@ -464,7 +466,7 @@ function DeleteAgentAction({
 						size="icon-sm"
 						disabled={removeAction.pending}
 					>
-						<Icon icon={OverflowMenuVertical} />
+						<Icon icon={EllipsisVerticalIcon} />
 						<span className="sr-only">More agent actions</span>
 					</Button>
 				</DropdownMenuTrigger>
@@ -473,7 +475,7 @@ function DeleteAgentAction({
 						variant="destructive"
 						onSelect={() => setConfirming(true)}
 					>
-						<Icon icon={TrashCan} />
+						<Icon icon={Trash2Icon} />
 						Delete agent
 					</DropdownMenuItem>
 				</DropdownMenuContent>

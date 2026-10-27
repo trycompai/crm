@@ -1,78 +1,127 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
 import { Button } from "@crm/ui/components/button";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { Icon } from "@crm/ui/components/icon";
+import {
+	RecordSheetBar,
+	RecordSheetBody,
+	RecordSheetHeader,
+	RecordSheetLoading,
+	type RecordSheetTab,
+} from "@crm/ui/components/record-sheet";
 import { SimpleTableRow } from "@crm/ui/components/simple-table";
-import { Spinner } from "@crm/ui/components/spinner";
 import { TableCell } from "@crm/ui/components/table";
 import { formatMoney } from "@crm/ui/lib/format";
+import { useQueryClient } from "@tanstack/react-query";
+import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { contactName } from "@/components/crm/contact-name";
+import { useTRPC } from "@/lib/trpc/client";
 import {
-	DetailSheetHeader,
-	type DetailSheetTab,
-	DetailSheetTabs,
-} from "@/components/detail-sheet";
-import { useRecordStack } from "./record-stack";
+	type RecordKind,
+	type RecordRef,
+	useRecordStack,
+} from "./record-stack";
+
+const KIND_LABEL = {
+	company: "Company",
+	contact: "Contact",
+	deal: "Deal",
+} satisfies Record<RecordKind, string>;
+
+function useRecordName(ref: RecordRef | undefined): string | null {
+	const trpc = useTRPC();
+	const client = useQueryClient();
+
+	if (!ref) return null;
+
+	if (ref.kind === "company") {
+		return (
+			client.getQueryData(trpc.companies.byId.queryKey({ id: ref.id }))?.name ??
+			null
+		);
+	}
+
+	if (ref.kind === "contact") {
+		const contact = client.getQueryData(
+			trpc.contacts.byId.queryKey({ id: ref.id }),
+		);
+		return contact ? contactName(contact) : null;
+	}
+
+	return (
+		client.getQueryData(trpc.deals.byId.queryKey({ id: ref.id }))?.name ?? null
+	);
+}
 
 export function RecordSheetFrame({
+	kind,
 	loading,
 	error,
 	title,
-	description,
-	note,
 	media,
+	pills,
 	actions,
-	stats,
 	tabs,
 	tab,
 	onTabChange,
+	rail,
 }: {
+	kind: RecordKind;
 	loading: boolean;
 	error: string | null;
 	title: string;
-	description?: ReactNode;
-	note?: ReactNode;
 	media?: ReactNode;
+	pills?: ReactNode;
 	actions?: ReactNode;
-	stats?: ReactNode;
-	tabs: DetailSheetTab[];
+	tabs: RecordSheetTab[];
 	tab: string;
 	onTabChange: (tab: string) => void;
+	rail?: ReactNode;
 }) {
-	const { stack, close, closeAll } = useRecordStack();
+	const { stack, close, closeAll, navigation } = useRecordStack();
+	const previous = stack.length > 1 ? stack.at(-2) : undefined;
+	const previousName = useRecordName(previous);
 
 	return (
 		<>
-			<DetailSheetHeader
-				media={media}
-				title={title}
-				description={description}
-				note={note}
-				actions={actions}
-				onBack={stack.length > 1 ? close : undefined}
+			<RecordSheetBar
+				label={KIND_LABEL[kind]}
+				navigation={navigation}
+				back={
+					previous
+						? {
+								label: previousName ? `Back to ${previousName}` : "Back",
+								onBack: close,
+							}
+						: undefined
+				}
 				onClose={closeAll}
 			/>
 
+			<RecordSheetHeader
+				title={loading || error ? KIND_LABEL[kind] : title}
+				loading={loading}
+				media={media}
+				pills={pills}
+				actions={actions}
+			/>
+
 			{loading ? (
-				<div className="flex min-h-0 flex-1 items-center justify-center">
-					<Spinner />
-				</div>
+				<RecordSheetLoading tabs={tabs.length} />
 			) : error ? (
 				<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center">
 					<p className="font-medium text-sm">This record could not be loaded</p>
-					<p className="text-muted-foreground text-xs">{error}</p>
+					<p className="text-muted-foreground text-sm">{error}</p>
 				</div>
 			) : (
-				<>
-					{stats}
-					<DetailSheetTabs
-						tabs={tabs}
-						value={tab}
-						onValueChange={onTabChange}
-					/>
-				</>
+				<RecordSheetBody
+					tabs={tabs}
+					value={tab}
+					onValueChange={onTabChange}
+					rail={rail}
+				/>
 			)}
 		</>
 	);
@@ -94,9 +143,9 @@ export function AddRow({
 					variant="ghost"
 					size="sm"
 					onClick={onClick}
-					className="h-9 w-full justify-start px-5 font-normal text-muted-foreground"
+					className="h-9 w-full justify-start px-0 font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
 				>
-					<Icon icon={Add} data-icon="inline-start" />
+					<Icon icon={PlusIcon} data-icon="inline-start" />
 					{label}
 				</Button>
 			</TableCell>
@@ -139,15 +188,12 @@ export function MetaLine({
 	}
 
 	return (
-		<>
+		<span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
 			{lead}
-			{rest.map((part, index) => (
-				<span key={part}>
-					{index === 0 && !lead ? null : " · "}
-					{part}
-				</span>
+			{rest.map((part) => (
+				<span key={part}>{part}</span>
 			))}
-		</>
+		</span>
 	);
 }
 

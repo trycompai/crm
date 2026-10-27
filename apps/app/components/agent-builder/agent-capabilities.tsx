@@ -1,8 +1,5 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
-import Close from "@carbon/icons-react/es/Close";
-import Warning from "@carbon/icons-react/es/Warning";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
@@ -14,6 +11,7 @@ import {
 import { SaveBar } from "@crm/ui/components/save-bar";
 import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleAlertIcon, PlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -92,7 +90,7 @@ export function AgentCapabilities({
 	if (!capabilities.readable) {
 		return (
 			<Alert variant="warning">
-				<Icon icon={Warning} />
+				<Icon icon={CircleAlertIcon} />
 				<AlertTitle>This version's manifest cannot be read</AlertTitle>
 				<AlertDescription>
 					{capabilities.problem ?? "The manifest is not in a shape we know."}
@@ -235,8 +233,9 @@ export function AgentCapabilities({
 								>
 									<div className="min-w-0 flex-1">
 										<p className="text-sm">{tool.summary}</p>
-										<p className="font-mono text-muted-foreground text-xs">
-											{grant.platformSlug} · {tool.name}
+										<p className="flex flex-wrap gap-x-3 font-mono text-muted-foreground text-xs">
+											<span>{grant.platformSlug}</span>
+											<span>{tool.name}</span>
 										</p>
 									</div>
 									<span className="rounded-md border px-2 py-1 text-xs">
@@ -286,7 +285,7 @@ export function AgentCapabilities({
 									}
 									type="button"
 								>
-									<Icon className="size-3" icon={Close} motion="none" />
+									<Icon className="size-3" icon={XIcon} motion="none" />
 								</button>
 							) : null}
 						</span>
@@ -362,7 +361,7 @@ function ResourcePicker({ onPick }: { onPick: (resource: Resource) => void }) {
 					className="flex h-7 items-center gap-1.5 rounded-md border border-dashed px-2.5 text-muted-foreground text-sm hover:text-foreground"
 					type="button"
 				>
-					<Icon className="size-3" icon={Add} motion="none" />
+					<Icon className="size-3" icon={PlusIcon} motion="none" />
 					Add a record type
 				</button>
 			</PopoverTrigger>

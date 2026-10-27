@@ -1,7 +1,6 @@
 "use client";
 
-import ArrowRight from "@carbon/icons-react/es/ArrowRight";
-import { Icon } from "@crm/ui/components/icon";
+import { ChatSuggestions } from "@crm/ui/components/chat-thread";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -67,27 +66,13 @@ export function AgentBuilderHome({ name }: { name: string }) {
 					it available to the whole team.
 				</p>
 
-				<div className="pt-1">
-					<p className="flex h-7 items-center text-muted-foreground text-xs">
-						Suggested agents
-					</p>
-					{SUGGESTIONS.map((suggestion) => (
-						<button
-							key={suggestion}
-							type="button"
-							onClick={() => setInitialPrompt(`/Create agent ${suggestion}`)}
-							className="flex h-[42px] w-full items-center border-t text-left outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50"
-						>
-							<span className="min-w-0 flex-1 font-medium text-sm">
-								{suggestion}
-							</span>
-							<Icon
-								icon={ArrowRight}
-								className="size-4 text-muted-foreground"
-							/>
-						</button>
-					))}
-				</div>
+				<ChatSuggestions
+					label="Suggested agents"
+					suggestions={SUGGESTIONS}
+					onSelect={(suggestion) =>
+						setInitialPrompt(`/Create agent ${suggestion}`)
+					}
+				/>
 			</div>
 		</main>
 	);

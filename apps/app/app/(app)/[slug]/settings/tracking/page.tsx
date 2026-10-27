@@ -1,5 +1,3 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellContent,
@@ -8,7 +6,10 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 	PageShellTitle,
-} from "@/components/page-shell";
+} from "@crm/ui/components/page-shell";
+import { SettingsColumn } from "@crm/ui/components/settings-card";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function TrackingSettingsPage() {
 	return (
-		<PageShell>
+		<PageShell width="narrow">
 			<PageShellHeader>
 				<PageShellHeading>
 					<PageShellTitle>Tracking &amp; Analytics</PageShellTitle>
@@ -32,7 +33,7 @@ export default function TrackingSettingsPage() {
 			</PageShellHeader>
 
 			<PageShellContent>
-				<Suspense fallback={<PageShellLoading />}>
+				<Suspense fallback={<PageShellLoading shape="settings" />}>
 					<Tracking />
 				</Suspense>
 			</PageShellContent>
@@ -56,9 +57,9 @@ async function Tracking() {
 
 	return (
 		<HydrateClient>
-			<div className="flex max-w-3xl flex-col gap-6">
+			<SettingsColumn>
 				<TrackingSections />
-			</div>
+			</SettingsColumn>
 		</HydrateClient>
 	);
 }

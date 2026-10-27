@@ -21,6 +21,6 @@ describe("day strings", () => {
 		expect(fromDay(null)).toBeUndefined();
 		expect(fromDay("")).toBeUndefined();
 		expect(fromDay("someday")).toBeUndefined();
-		expect(formatDay(null)).toBe("—");
+		expect(formatDay(null)).toBe("");
 	});
 });

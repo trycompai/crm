@@ -1,11 +1,10 @@
-import LogoGithub from "@carbon/icons-react/es/LogoGithub";
-import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
-import LogoX from "@carbon/icons-react/es/LogoX";
-import Money from "@carbon/icons-react/es/Money";
-import UserMultiple from "@carbon/icons-react/es/UserMultiple";
-import type { CarbonIcon } from "@crm/ui/components/icon";
+import GitHubLogo from "@crm/ui/components/brand-logos/github";
+import LinkedInLogo from "@crm/ui/components/brand-logos/linkedin";
+import XLogo from "@crm/ui/components/brand-logos/x";
+import type { IconComponent } from "@crm/ui/components/icon";
+import { BanknoteIcon, UsersIcon } from "lucide-react";
 
-type SocialLink<T> = { key: keyof T; label: string; icon: CarbonIcon };
+type SocialLink<T> = { key: keyof T; label: string; icon: IconComponent };
 
 export type CompanyLinks = {
 	linkedinUrl: string | null;
@@ -22,17 +21,17 @@ export type ContactLinks = {
 };
 
 const COMPANY_LINKS: SocialLink<CompanyLinks>[] = [
-	{ key: "linkedinUrl", label: "LinkedIn", icon: LogoLinkedin },
-	{ key: "twitterUrl", label: "X", icon: LogoX },
-	{ key: "githubUrl", label: "GitHub", icon: LogoGithub },
-	{ key: "pricingUrl", label: "Pricing", icon: Money },
-	{ key: "careersUrl", label: "Careers", icon: UserMultiple },
+	{ key: "linkedinUrl", label: "LinkedIn", icon: LinkedInLogo },
+	{ key: "twitterUrl", label: "X", icon: XLogo },
+	{ key: "githubUrl", label: "GitHub", icon: GitHubLogo },
+	{ key: "pricingUrl", label: "Pricing", icon: BanknoteIcon },
+	{ key: "careersUrl", label: "Careers", icon: UsersIcon },
 ];
 
 const CONTACT_LINKS: SocialLink<ContactLinks>[] = [
-	{ key: "linkedinUrl", label: "LinkedIn", icon: LogoLinkedin },
-	{ key: "twitterUrl", label: "X", icon: LogoX },
-	{ key: "githubUrl", label: "GitHub", icon: LogoGithub },
+	{ key: "linkedinUrl", label: "LinkedIn", icon: LinkedInLogo },
+	{ key: "twitterUrl", label: "X", icon: XLogo },
+	{ key: "githubUrl", label: "GitHub", icon: GitHubLogo },
 ];
 
 function present<T extends Record<string, string | null>>(

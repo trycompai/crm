@@ -1,6 +1,5 @@
 "use client";
 
-import ArrowRight from "@carbon/icons-react/es/ArrowRight";
 import { Icon } from "@crm/ui/components/icon";
 import {
 	MessageScroller,
@@ -11,6 +10,7 @@ import {
 	MessageScrollerViewport,
 } from "@crm/ui/components/message-scroller";
 import { cn } from "@crm/ui/lib/utils";
+import { ArrowRightIcon } from "lucide-react";
 import { createContext, type ReactNode, useContext } from "react";
 
 export type ChatThreadSize = "page" | "panel";
@@ -37,25 +37,26 @@ export function ChatThread({
 	label?: string;
 }) {
 	const page = size === "page";
-	const footer = composer || notice ? (
-		<div
-			className={cn(
-				"flex shrink-0 flex-col gap-2",
-				page ? "pb-4 sm:pb-6" : "border-t p-3",
-			)}
-			data-slot="chat-thread-composer"
-		>
+	const footer =
+		composer || notice ? (
 			<div
 				className={cn(
-					"flex w-full flex-col gap-2",
-					page && "mx-auto max-w-3xl px-4 sm:px-6",
+					"flex shrink-0 flex-col gap-2",
+					page ? "pb-4 sm:pb-6" : "border-t p-3",
 				)}
+				data-slot="chat-thread-composer"
 			>
-				{notice}
-				{composer}
+				<div
+					className={cn(
+						"flex w-full flex-col gap-2",
+						page && "mx-auto max-w-3xl px-4 sm:px-6",
+					)}
+				>
+					{notice}
+					{composer}
+				</div>
 			</div>
-		</div>
-	) : null;
+		) : null;
 
 	if (empty && page) {
 		return (
@@ -142,12 +143,14 @@ export function ChatThreadItem({
 export function ChatEmptyState({
 	title,
 	description,
+	size,
 }: {
 	title: string;
 	description?: string;
+	size?: ChatThreadSize;
 }) {
-	const size = useContext(SizeContext);
-	const page = size === "page";
+	const threadSize = useContext(SizeContext);
+	const page = (size ?? threadSize) === "page";
 
 	return (
 		<div
@@ -199,14 +202,14 @@ export function ChatSuggestions({
 				{suggestions.map((suggestion) => (
 					<li className="border-t" key={suggestion}>
 						<button
-							className="group/suggestion flex min-h-10 w-full items-center gap-3 rounded-sm py-2 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/60"
+							className="group/suggestion flex min-h-10 w-full items-center gap-3 rounded-sm py-2 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:shadow-focus"
 							onClick={() => onSelect(suggestion)}
 							type="button"
 						>
 							<span className="min-w-0 flex-1 font-medium text-sm">
 								{suggestion}
 							</span>
-							<Icon className="text-muted-foreground" icon={ArrowRight} />
+							<Icon icon={ArrowRightIcon} size="md" tone="muted" />
 						</button>
 					</li>
 				))}

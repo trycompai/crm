@@ -1,6 +1,5 @@
 "use client";
 
-import Upload from "@carbon/icons-react/es/Upload";
 import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
 import { Button } from "@crm/ui/components/button";
 import {
@@ -40,6 +39,7 @@ import {
 } from "@crm/ui/components/table";
 import { COMPANY_IMPORT } from "@crm/validation/company-import";
 import { useMutation } from "@tanstack/react-query";
+import { UploadIcon } from "lucide-react";
 import Link from "next/link";
 import { useId, useReducer, useState } from "react";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -441,7 +441,7 @@ function ResultStep({
 					<Link href={companiesUrl}>View companies</Link>
 				</Button>
 				<Button variant="outline" onClick={onRestart}>
-					<Icon icon={Upload} data-icon="inline-start" />
+					<Icon icon={UploadIcon} data-icon="inline-start" />
 					Import another file
 				</Button>
 			</CardFooter>

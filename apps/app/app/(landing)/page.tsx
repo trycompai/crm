@@ -11,7 +11,7 @@ import { ProductShot } from "@/components/landing/product-shot/product-shot";
 export const metadata: Metadata = {
 	title: "The CRM for agents",
 	description:
-		"The first agentic CRM experience — durable research agents that read your inbox, keep every record current and book their own follow-ups.",
+		"The first agentic CRM experience. Durable research agents that read your inbox, keep every record current and book their own follow-ups.",
 };
 
 export default function Home() {

@@ -192,6 +192,7 @@ export class DealsService {
 	}
 
 	async byId(id: string) {
+		const reportingCurrency = await this.conversion.reportingCurrency();
 		const deal = await this.db.deal.findUnique({
 			where: { id },
 			select: {
@@ -203,6 +204,7 @@ export class DealsService {
 				amount: true,
 				currency: true,
 				baseAmount: true,
+				baseCurrency: true,
 				fxRate: true,
 				fxRateAt: true,
 				expectedCloseDate: true,
@@ -227,6 +229,7 @@ export class DealsService {
 			contacts,
 			amount,
 			baseAmount,
+			baseCurrency,
 			fxRate,
 			fxRateAt,
 			archivedAt,
@@ -237,10 +240,17 @@ export class DealsService {
 			...rest,
 			fields: await this.fields.valuesFor("DEAL", id),
 			amountCents: toCents(amount),
-			baseAmountCents: toCents(baseAmount),
-			reportingCurrency: await this.conversion.reportingCurrency(),
-			fxRate: fxRate?.toNumber() ?? null,
-			fxRateAt: fxRateAt?.toISOString() ?? null,
+			baseAmountCents:
+				baseCurrency === reportingCurrency ? toCents(baseAmount) : null,
+			reportingCurrency,
+			fxRate:
+				baseCurrency === reportingCurrency
+					? (fxRate?.toNumber() ?? null)
+					: null,
+			fxRateAt:
+				baseCurrency === reportingCurrency
+					? (fxRateAt?.toISOString() ?? null)
+					: null,
 			stageChangedAt: deal.stageChangedAt.toISOString(),
 			expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			closedAt: deal.closedAt?.toISOString() ?? null,
@@ -497,7 +507,7 @@ export class DealsService {
 			}
 			if (LOSING.has(input.stage) && !closedReason) {
 				throw new BadRequestException(
-					"Say why it was lost — a closed-lost deal with no reason teaches nobody anything.",
+					"Say why it was lost. A closed-lost deal with no reason teaches nobody anything.",
 				);
 			}
 
@@ -701,7 +711,7 @@ export class DealsService {
 
 		if (LOSING.has(input.stage) && !closedReason) {
 			throw new BadRequestException(
-				"Say why they were lost — a closed-lost deal with no reason teaches nobody anything.",
+				"Say why they were lost. A closed-lost deal with no reason teaches nobody anything.",
 			);
 		}
 

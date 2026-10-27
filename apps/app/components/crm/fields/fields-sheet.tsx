@@ -1,7 +1,8 @@
 "use client";
 
-import { Spinner } from "@crm/ui/components/spinner";
+import { SkeletonField, SkeletonLine } from "@crm/ui/components/skeleton-lines";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
+import { SKELETON, skeletonRows } from "@crm/ui/lib/skeleton-config";
 import { useQuery } from "@tanstack/react-query";
 import {
 	type RecordKind,
@@ -58,16 +59,31 @@ function FieldsSheetBody({
 				<DetailSheetHeader
 					title={editing?.label ?? (editingKey ? "" : NEW_FIELD)}
 					description={
-						filled
-							? `${entityLabel} · ${filled.filled} of ${filled.total} filled`
-							: entityLabel
+						filled ? (
+							<span className="flex flex-wrap gap-x-3">
+								<span>{entityLabel}</span>
+								<span>
+									{filled.filled} of {filled.total} filled
+								</span>
+							</span>
+						) : (
+							entityLabel
+						)
 					}
 					onBack={() => onEdit(null)}
 					onClose={onClose}
 				/>
 				{editingKey && query.isPending ? (
-					<div className="flex min-h-0 flex-1 items-center justify-center">
-						<Spinner />
+					<div
+						aria-busy
+						className="flex min-h-0 flex-1 flex-col gap-6 px-5 py-4"
+					>
+						{skeletonRows(SKELETON.rows.editor).map((row) => (
+							<div key={row} className="flex flex-col gap-2">
+								<SkeletonLine width="24" />
+								<SkeletonField />
+							</div>
+						))}
 					</div>
 				) : (
 					<FieldEditor

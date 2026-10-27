@@ -39,7 +39,7 @@ function StatDeltaText({
 		<span className={cn("inline-flex items-baseline gap-1.5", className)}>
 			<span
 				className={cn(
-					"inline-flex items-baseline gap-0.5 font-medium text-xs tabular-nums",
+					"inline-flex items-baseline gap-0.5 font-medium text-13 tabular-nums",
 					TREND_COLOR[direction],
 				)}
 			>
@@ -49,7 +49,7 @@ function StatDeltaText({
 				{delta.value}
 			</span>
 			{delta.label ? (
-				<span className="text-muted-foreground text-xs">{delta.label}</span>
+				<span className="text-muted-foreground text-13">{delta.label}</span>
 			) : null}
 		</span>
 	);
@@ -72,24 +72,24 @@ function StatCard({
 	return (
 		<div
 			data-slot="stat-card"
-			className={cn("flex flex-col gap-2.5 p-4 md:p-6", className)}
+			className={cn("flex min-w-0 flex-col gap-1 p-4 md:p-6", className)}
 			{...props}
 		>
 			{label != null ? (
-				<span className="truncate text-sm font-medium text-muted-foreground">
+				<span className="truncate text-13 text-muted-foreground">
 					{label}
 				</span>
 			) : null}
 			<div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-				<span className="font-medium text-3xl tracking-tight tabular-nums">
+				<span className="font-semibold text-2xl tracking-tight tabular-nums">
 					{value}
 				</span>
 				{delta ? <StatDeltaText delta={delta} /> : null}
 			</div>
 			{description ? (
-				<p className="text-pretty text-muted-foreground text-xs/relaxed">
+				<div className="text-pretty text-muted-foreground text-13">
 					{description}
-				</p>
+				</div>
 			) : null}
 			{children}
 		</div>
