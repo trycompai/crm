@@ -199,6 +199,22 @@ describe("retireExhausted", () => {
 		});
 		expect(open).toBe(0);
 	});
+
+	it("keeps a limited retirement bounded beside a full sweep", async () => {
+		for (let row = 0; row < 40; row++) await queue();
+
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			const claimed = await claimDue(40, TEST_TASKS);
+			for (const task of claimed) await expire(task.id);
+		}
+
+		const [limited] = await Promise.all([
+			retireExhausted(2),
+			retireExhausted(),
+		]);
+
+		expect(limited.length).toBeLessThanOrEqual(2);
+	});
 });
 
 describe("completeTask", () => {

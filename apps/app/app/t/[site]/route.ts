@@ -1,4 +1,5 @@
 import { CONFIG_MAX_AGE_SECONDS, isSiteId } from "@crm/db/tracking";
+import { apiRequestHeaders } from "@/lib/api-request.server";
 import { API_URL } from "@/lib/env";
 import { trackerSource } from "@/lib/tracking/tracker";
 
@@ -17,7 +18,7 @@ export async function GET(
 
 	try {
 		const upstream = await fetch(`${API_URL}/api/t/config/${siteId}`, {
-			headers: { accept: "application/json" },
+			headers: apiRequestHeaders({ accept: "application/json" }),
 		});
 
 		if (upstream.ok) {

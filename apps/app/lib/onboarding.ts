@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { apiRequestHeaders } from "@/lib/api-request.server";
 import { API_URL } from "@/lib/env";
 
 export const ONBOARDING_PATH = "/onboarding";
@@ -33,7 +34,7 @@ async function read(request: NextRequest, procedure: string) {
 
 	try {
 		const response = await fetch(`${API_URL}/api/trpc/${procedure}`, {
-			headers: { cookie },
+			headers: apiRequestHeaders({ cookie }),
 			cache: "no-store",
 			signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
 		});

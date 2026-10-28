@@ -7,6 +7,7 @@ import {
 import type { AppRouter } from "api/app-router";
 import { cookies } from "next/headers";
 import { cache } from "react";
+import { apiRequestHeaders } from "@/lib/api-request.server";
 import { API_URL } from "@/lib/env";
 import { makeQueryClient } from "./query-client";
 
@@ -19,7 +20,7 @@ export function getServerTrpcClient(): TRPCClient<AppRouter> {
 				url: `${API_URL}/api/trpc`,
 				headers: async () => {
 					const cookie = (await cookies()).toString();
-					return cookie ? { cookie } : {};
+					return apiRequestHeaders(cookie ? { cookie } : undefined);
 				},
 			}),
 		],

@@ -8,6 +8,7 @@
 			"outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"],
 			"env": ["$TURBO_EXTENDS$", "NEXT_PUBLIC_AUTH_URL"],
 			"passThroughEnv": [
+				"API_PROTECTION_BYPASS_SECRET",
 				"AGENT_BRIDGE_SECRET",
 				"AGENT_URL",
 				"AUTH_COOKIE_DOMAIN",
@@ -31,6 +32,7 @@
 			"cache": false,
 			"persistent": true,
 			"passThroughEnv": [
+				"API_PROTECTION_BYPASS_SECRET",
 				"AGENT_BRIDGE_SECRET",
 				"AGENT_URL",
 				"AUTH_COOKIE_DOMAIN",
