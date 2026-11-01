@@ -27,7 +27,7 @@
 		"@trpc/server": "^11.18.0",
 		"@trpc/tanstack-react-query": "^11.18.0",
 		"api": "workspace:*",
-		"better-auth": "1.6.33",
+		"better-auth": "1.7.7",
 		"eve": "^0.69.0",
 		"graphql": "^17.0.2",
 		"next": "16.3.8",
