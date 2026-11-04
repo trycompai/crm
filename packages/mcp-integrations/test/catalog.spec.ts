@@ -14,6 +14,7 @@ describe("MCP catalog", () => {
 			"notion",
 			"planetscale",
 			"prisma",
+			"specstream",
 			"supabase",
 			"vercel",
 		]);
@@ -30,6 +31,24 @@ describe("MCP catalog", () => {
 			"https://mcp.notion.com",
 		]);
 		expect(vendorAccess(notion, "read_only").scopes).toEqual(["default"]);
+	});
+
+	test("registers SpecStream with spend gated behind its own scope", () => {
+		const specstream = vendorBySlug("specstream");
+		expect(specstream).toBeDefined();
+		if (!specstream) throw new Error("SpecStream is missing");
+
+		expect(specstream.mcp.resource).toBe("https://api.specstream.ai/mcp");
+		expect(specstream.auth.authorizationServers).toEqual([
+			"https://specstream.ai",
+		]);
+		expect(vendorAccess(specstream, "read_only").scopes).not.toContain(
+			"finds:spend",
+		);
+		expect(vendorAccess(specstream, "read_write").scopes).toContain(
+			"finds:spend",
+		);
+		expect(specstream.riskyTools).toContain("authorize_capacity_work");
 	});
 
 	test("keeps every provider on an HTTPS hosted server", () => {

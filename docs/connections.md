@@ -234,7 +234,7 @@ Docusign is spelled with a lowercase s since its 2024 rebrand. The note-taker is
 
 ## MCP connections
 
-Clerk, Cloudflare, Linear, Neon, PlanetScale, Prisma, Supabase, and Vercel use the shared MCP connection flow.
+Clerk, Cloudflare, Linear, Neon, PlanetScale, Prisma, SpecStream, Supabase, and Vercel use the shared MCP connection flow.
 An owner or admin chooses read-only or read-and-write access.
 The API stores OAuth tokens in encrypted form.
 The API never returns tokens to the browser.

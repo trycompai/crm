@@ -5,6 +5,7 @@ import { neon } from "./neon";
 import { notion } from "./notion";
 import { planetscale } from "./planetscale";
 import { prisma } from "./prisma";
+import { specstream } from "./specstream";
 import { supabase } from "./supabase";
 import { vercel } from "./vercel";
 
@@ -16,6 +17,7 @@ export const vendors = [
 	notion,
 	planetscale,
 	prisma,
+	specstream,
 	supabase,
 	vercel,
 ] as const;
