@@ -49,7 +49,8 @@
 		"eve>undici": "8.12.2",
 		"guarded-fetch>undici": "7.30.1",
 		"@nestjs/platform-express>multer": "2.5.0",
-		"@vercel/cli-config>zod": "4.6.7"
+		"@vercel/cli-config>zod": "4.6.7",
+		"@modelcontextprotocol/sdk>@hono/node-server": "2.1.5"
 	},
 	"catalog": {
 		"vite-plus": "1.3.0"
