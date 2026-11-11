@@ -156,7 +156,7 @@ function resolveEmail(map: TerritoryMap, repCode: string): string | null {
 
 /**
  * Cascade: exception → US/CA geo → international → null (shared pool).
- * Skips reps without an email (KEN until confirmed). MCA multi-rep → null.
+ * Skips reps without an email. MCA multi-rep → null.
  */
 export function assignRep(
 	map: TerritoryMap,

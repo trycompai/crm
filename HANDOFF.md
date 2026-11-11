@@ -481,6 +481,35 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-11-11 — Territory map updated to Ken's 2026-11-10 version
+
+**What was completed**
+- `data/sales-territory.json`: Nino Barker (NB) removed from the map; his
+  Central US states (AR, IA, KS, LA, MN, MO, NE, ND, OK, SD, TX) and the
+  MCE Connectronics distributor now route to Bryant Cloud (`BC`,
+  `bcloud@mobilemark.com`). Ken's name and email (`ken@mobilemark.com`)
+  filled in from the 2026 Sales Team sheet; "Syynex" alias added. Every
+  other state, province, international region and exception is unchanged
+  (checked line by line against the PDF).
+- `packages/db/src/sales-territory.test.ts`: Central US → BC, MCE → BC,
+  no NB left (18 pass).
+
+**How and why**
+- Same edit applied to the Doc Scanner, Blue Folder and MM-Analytics
+  copies the same day so all four agree.
+
+**Deviations**
+- Bryant has no MM-CRM `User` yet, so `assignRep` returns his email and
+  webform leads for Central US land unassigned (shared pool, logged
+  "Territory rep has no local User") until his account exists. Before
+  this change they would have gone to Nino's still-existing user.
+- Nino still owns 1,203 companies in MM-CRM (account owner, not territory);
+  not changed here.
+
+**What's next**
+- Create Bryant's MM-CRM user when Jordan prepares his accounts; then add
+  his Sage / Django user IDs to the map.
+
 ### 2026-10-01 — Sage cursor time zone fix shipped + catch-up
 
 Plan: `docs/plans/sage-crm-sync.md` §6 (incremental), corrected note

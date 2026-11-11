@@ -1,14 +1,16 @@
 {
 	"source": "Mobile Mark Sales Territory Map",
 	"source_pdf": "data/Mobile_Mark_Sales_Territory_Map.pdf",
-	"updated": "2026-04-14",
+	"source_pdf_title": "Territory Map 2026 - 111026 (Updated 11/10/2026 - KL)",
+	"updated": "2026-11-10",
 	"updated_by": "KL",
 	"notes": [
 		"Ops rule (Nicole): derive Rep from BILL-TO geography via this territory map — not CRM account owner (stale) and not ship-to (drop-ships go to the customer's end user).",
 		"Cascade: exception (key account / distributor / gateway MFR by CUST# or name) → bill-to state/province/country → unmatched.",
 		"django_user_id / sage_user_id from Railway Postgres mobilemarkdata (prod) — users with Sage ID synced 2026-07-27.",
 		"Initials = first+last (email local-part pattern). Demo Sales (Django 1 / Sage 27) is excluded from matching.",
-		"Ken (MCA shared with Jose) — Django 3 / Sage 27. Full name / initials / email still TBD. Demo Sales also on Sage 27 — clear that link."
+		"2026-11-10 map (KL): Nino Barker left Mobile Mark; Central US (AR, IA, KS, LA, MN, MO, NE, ND, OK, SD, TX) and MCE Connectronics moved to Bryant Cloud (BC, Regional Account Manager). Everything else unchanged. Bryant has no Sage / Django / MM-CRM user ID yet; Jordan confirmed his rep code is BC.",
+		"Ken Lukowski (VP Sales; MCA shared with Jose) — Django 3 / Sage 27; email ken@mobilemark.com from the 2026 Sales Team sheet. Demo Sales also on Sage 27 — clear that link."
 	],
 	"geo_rule": "bill_to",
 	"reps": {
@@ -20,13 +22,12 @@
 			"django_user_id": 10,
 			"initials_confirmed": true
 		},
-		"NB": {
-			"rep_code": "NB",
-			"rep_name": "Nino Barker",
-			"email": "nbarker@mobilemark.com",
-			"sage_user_id": "36",
-			"django_user_id": 9,
-			"initials_confirmed": true
+		"BC": {
+			"rep_code": "BC",
+			"rep_name": "Bryant Cloud",
+			"email": "bcloud@mobilemark.com",
+			"initials_confirmed": true,
+			"notes": "Regional Account Manager, Central US (from 2026-11-10 map; replaces Nino Barker). No Sage / Django user ID yet."
 		},
 		"DS": {
 			"rep_code": "DS",
@@ -72,15 +73,22 @@
 		},
 		"KEN": {
 			"rep_code": "KEN",
-			"rep_name": "Ken",
-			"email": null,
+			"rep_name": "Ken Lukowski",
+			"email": "ken@mobilemark.com",
 			"sage_user_id": "27",
 			"django_user_id": 3,
 			"initials_confirmed": false,
-			"notes": "MCA shared with Jose. Sage 27 / Django 3. WARNING: Demo Sales (Django 1) is also linked to Sage 27 in prod — clear that link; confirm Ken's full name / initials / email."
+			"notes": "VP Sales. MCA shared with Jose. Sage 27 / Django 3. Sage salesperson codes KL / KL*I. WARNING: Demo Sales (Django 1) is also linked to Sage 27 in prod — clear that link."
 		}
 	},
 	"other_sage_users_not_on_map": [
+		{
+			"rep_name": "Nino Barker",
+			"email": "nbarker@mobilemark.com",
+			"sage_user_id": "36",
+			"django_user_id": 9,
+			"notes": "Former rep code NB (left Mobile Mark 2026-10). Territory moved to Bryant Cloud (BC) on the 2026-11-10 map."
+		},
 		{
 			"rep_name": "Demo Sales",
 			"email": "sales@antenna.com",
@@ -105,7 +113,7 @@
 		"AL": "JL",
 		"AK": "RM",
 		"AZ": "RM",
-		"AR": "NB",
+		"AR": "BC",
 		"CA": "RM",
 		"CO": "RM",
 		"CT": "SW",
@@ -118,36 +126,36 @@
 		"ID": "RM",
 		"IL": "DS",
 		"IN": "DS",
-		"IA": "NB",
-		"KS": "NB",
+		"IA": "BC",
+		"KS": "BC",
 		"KY": "JL",
-		"LA": "NB",
+		"LA": "BC",
 		"ME": "SW",
 		"MD": "SW",
 		"MA": "SW",
 		"MI": "DS",
-		"MN": "NB",
+		"MN": "BC",
 		"MS": "JL",
-		"MO": "NB",
+		"MO": "BC",
 		"MT": "RM",
-		"NE": "NB",
+		"NE": "BC",
 		"NV": "RM",
 		"NH": "SW",
 		"NJ": "SW",
 		"NM": "RM",
 		"NY": "SW",
 		"NC": "JL",
-		"ND": "NB",
+		"ND": "BC",
 		"OH": "DS",
-		"OK": "NB",
+		"OK": "BC",
 		"OR": "RM",
 		"PA": "SW",
 		"PR": "SW",
 		"RI": "SW",
 		"SC": "JL",
-		"SD": "NB",
+		"SD": "BC",
 		"TN": "JL",
-		"TX": "NB",
+		"TX": "BC",
 		"UT": "RM",
 		"VT": "SW",
 		"VA": "SW",
@@ -249,7 +257,7 @@
 			{
 				"name": "MCE Connectronics",
 				"aliases": ["MCE"],
-				"rep_code": "NB",
+				"rep_code": "BC",
 				"mas_customer_nos": []
 			},
 			{
@@ -260,10 +268,10 @@
 			},
 			{
 				"name": "Syynnex",
-				"aliases": ["Synnex", "TD Synnex", "SYNNEX", "Syyynnex"],
+				"aliases": ["Syynex", "Synnex", "TD Synnex", "SYNNEX", "Syyynnex"],
 				"rep_code": "CT",
 				"mas_customer_nos": [],
-				"notes": "Map spelling 'Syynnex'."
+				"notes": "Map spelling 'Syynnex' (2026-04-14) / 'Syynex' (2026-11-10)."
 			},
 			{
 				"name": "Talley",

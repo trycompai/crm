@@ -54,6 +54,37 @@ describe("assignRep", () => {
 		).toBe("SW");
 	});
 
+	it("routes Central US to BC (Bryant Cloud)", () => {
+		for (const stateCode of [
+			"AR",
+			"IA",
+			"KS",
+			"LA",
+			"MN",
+			"MO",
+			"NE",
+			"ND",
+			"OK",
+			"SD",
+			"TX",
+		]) {
+			const result = assignRep(map, { stateCode, countryCode: "US" });
+			expect(result?.repCode).toBe("BC");
+			expect(result?.email).toBe("bcloud@mobilemark.com");
+		}
+	});
+
+	it("routes MCE Connectronics distributor to BC", () => {
+		expect(assignRep(map, { companyName: "MCE Connectronics" })?.repCode).toBe(
+			"BC",
+		);
+	});
+
+	it("no longer routes anything to Nino Barker (NB)", () => {
+		expect(map.reps.NB).toBeUndefined();
+		expect(Object.values(map.us_states)).not.toContain("NB");
+	});
+
 	it("leaves MCA ambiguous (shared pool)", () => {
 		expect(assignRep(map, { companyName: "MCA" })).toBeNull();
 	});
