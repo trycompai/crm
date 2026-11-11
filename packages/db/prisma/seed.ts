@@ -426,6 +426,12 @@ async function seedIcons(
 }
 
 const ACCOUNT_TYPES = ["Prospect", "Customer", "Partner", "Churned"] as const;
+const ACCOUNT_TYPE_OPTIONS = [
+	...ACCOUNT_TYPES,
+	"Competitor",
+	"Investor",
+] as const;
+const LANGUAGES = ["Português", "Inglês", "Espanhol"] as const;
 const SEGMENT_TIERS = ["Enterprise", "Mid-Market", "SMB"] as const;
 const TERRITORIES = ["AMER", "EMEA", "APAC"] as const;
 const LIFECYCLE_STAGES = [
@@ -459,6 +465,8 @@ async function upsertField(
 	type: FieldType,
 	position: number,
 	options: readonly string[] = [],
+	agentFilled: boolean = type !== "USER" && type !== "NUMBER",
+	showOnFilter = false,
 ): Promise<SeededField> {
 	const key = fieldKeyFromLabel(label);
 	const definition = await db.fieldDefinition.upsert({
@@ -469,8 +477,8 @@ async function upsertField(
 			label,
 			type,
 			showOnTable: false,
-			showOnFilter: false,
-			agentFilled: type !== "USER" && type !== "NUMBER",
+			showOnFilter,
+			agentFilled,
 			position,
 			options: {
 				create: options.map((optionLabel, index) => ({
@@ -479,15 +487,120 @@ async function upsertField(
 				})),
 			},
 		},
-		update: {},
+		// `showOnFilter` is admin metadata, safe to resync on every reseed. `type`
+		// is not: it reshapes how existing FieldValue rows are read, so it is only
+		// changed here when the field is brand new (the `create` branch above) or,
+		// below, when a later seed run asks for a different type and no value has
+		// been written against it yet (the same "safe to change" rule
+		// `FieldsService.update` enforces for an admin editing it by hand).
+		update: { showOnFilter },
 		include: { options: true },
 	});
+
+	if (definition.type !== type) {
+		const valueCount = await db.fieldValue.count({
+			where: { fieldId: definition.id },
+		});
+		if (valueCount === 0) {
+			await db.fieldDefinition.update({
+				where: { id: definition.id },
+				data: { type },
+			});
+			definition.type = type;
+		} else {
+			console.warn(
+				`Seed wants "${label}" (${entity}) to be ${type}, but it is ${definition.type} ` +
+					`and already has ${valueCount} value(s) — leaving it as is.`,
+			);
+		}
+	}
 
 	return {
 		id: definition.id,
 		key: definition.key,
 		options: definition.options,
 	};
+}
+
+/**
+ * `upsertField`'s `update: {}` means a field that already exists never gains
+ * the options created alongside it elsewhere - only a brand-new field gets
+ * its full option list. This patches an existing field's option set so
+ * re-running the seed after adding new option labels (e.g. "Competitor",
+ * "Investor" on "Account type") is not a no-op on a database that already
+ * has that field.
+ */
+async function ensureFieldOptions(
+	entity: FieldEntity,
+	label: string,
+	labels: readonly string[],
+): Promise<void> {
+	const key = fieldKeyFromLabel(label);
+	const field = await db.fieldDefinition.findUnique({
+		where: { entity_key: { entity, key } },
+		include: { options: true },
+	});
+	if (!field) return;
+
+	const existing = new Set(field.options.map((option) => option.label));
+	const missing = labels.filter((option) => !existing.has(option));
+	if (missing.length === 0) return;
+
+	const lastPosition = field.options.reduce(
+		(max, option) => Math.max(max, option.position),
+		-1,
+	);
+
+	await db.fieldOption.createMany({
+		data: missing.map((optionLabel, index) => ({
+			fieldId: field.id,
+			label: optionLabel,
+			position: lastPosition + 1 + index,
+		})),
+	});
+}
+
+const EVENTS = ["Web Summit Lisboa 2026"] as const;
+
+async function seedContactCustomFields(): Promise<void> {
+	await Promise.all([
+		upsertField(
+			"CONTACT",
+			"Idioma",
+			FieldType.SELECT,
+			0,
+			LANGUAGES,
+			false,
+			true,
+		),
+		upsertField(
+			"CONTACT",
+			"Evento de origem",
+			FieldType.SELECT,
+			1,
+			EVENTS,
+			false,
+			true,
+		),
+		upsertField(
+			"CONTACT",
+			"Mensagem gancho",
+			FieldType.LONG_TEXT,
+			2,
+			[],
+			false,
+		),
+		upsertField(
+			"CONTACT",
+			"Abordagem sugerida",
+			FieldType.LONG_TEXT,
+			3,
+			[],
+			false,
+		),
+	]);
+
+	await ensureFieldOptions("CONTACT", "Evento de origem", EVENTS);
 }
 
 async function seedCompanyFields(): Promise<SeededFieldSet> {
@@ -500,7 +613,13 @@ async function seedCompanyFields(): Promise<SeededFieldSet> {
 		icpFitScore,
 		bdrOwner,
 	] = await Promise.all([
-		upsertField("COMPANY", "Account type", FieldType.SELECT, 0, ACCOUNT_TYPES),
+		upsertField(
+			"COMPANY",
+			"Account type",
+			FieldType.SELECT,
+			0,
+			ACCOUNT_TYPE_OPTIONS,
+		),
 		upsertField("COMPANY", "Segment", FieldType.SELECT, 1, SEGMENT_TIERS),
 		upsertField("COMPANY", "Territory", FieldType.SELECT, 2, TERRITORIES),
 		upsertField(
@@ -1000,11 +1119,13 @@ async function main() {
 	const activities = await seedActivities(companies, contacts, deals, ownerIds);
 	const companyFields = await seedCompanyFields();
 	await seedCompanyFieldValues(companyFields, companies, ownerIds);
+	await ensureFieldOptions("COMPANY", "Account type", ACCOUNT_TYPE_OPTIONS);
+	await seedContactCustomFields();
 
 	console.log(
 		`Seeded ${companies.length} companies, ${contacts.length} contacts, ` +
 			`${deals.length} deals, ${activities} activities, ${rates} exchange rates, ` +
-			"7 company fields.",
+			"7 company fields, 4 contact fields.",
 	);
 }
 

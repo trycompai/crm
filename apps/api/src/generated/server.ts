@@ -26,6 +26,7 @@ import { enrichmentQueueInput } from "@crm/validation/enrichment-queue";
 import { fieldListInput, fieldListOutput, fieldByKeyInput, serializedFieldOutput, fieldEntityInput, fieldFiltersOutput, fieldIdInput, fieldCoverageOutput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput, fieldReorderOutput, fieldDeleteOutput, fieldBackfillOutput } from "../fields/fields.contracts";
 import { googleConnectionStatusOutput, setAutoCreateInput, suppressDomainInput, suppressDomainOutput, threadInput, emailThreadOutput, calendarEventInput, calendarEventOutput } from "../google/google.contracts";
 import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOutput, setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
+import { importRequestInput, importPreviewOutput, importCommitOutput } from "../import/import.contracts";
 import { accessOutput, issuersOutput, createIssuerInput, idInput, updateIssuerInput, okOutput, uploadTemplateInput, templateOutput, fileOutput, companyInput, companyProfileOutput, setCompanyIssuerInput, setClientLogoInput, listServicesInput, servicesOutput, serviceOutput, saveServiceInput, dealInput, dealProposalsOutput, draftInput, draftOutput, generateInput, generateOutput, downloadInput, uploadFinalInput, setStatusInput, setStatusOutput } from "../proposals/proposals.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
 import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOutput, setResearchKeyInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
@@ -558,6 +559,16 @@ const appRouter = t.router({
       .input(calendarEventInput)
       .output(calendarEventOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
+  import: t.router({
+    preview: publicProcedure
+      .input(importRequestInput)
+      .output(importPreviewOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    commit: publicProcedure
+      .input(importRequestInput)
+      .output(importCommitOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   microsoft: t.router({
     status: publicProcedure
