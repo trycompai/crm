@@ -1,5 +1,8 @@
 import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import { Readable } from "node:stream";
 
 const MAX_REDIRECTS = 3;
 
@@ -85,12 +88,18 @@ function expandIPv6(ip: string): number[] | null {
 	return groups;
 }
 
-export async function resolvesToPublicHost(
+type ResolvedAddress = { address: string; family: number };
+
+async function publicAddresses(
 	hostname: string,
-	timeoutMs: number = DEFAULT_TIMEOUT_MS,
-): Promise<boolean> {
+	timeoutMs: number,
+): Promise<ResolvedAddress[] | null> {
 	const literal = hostname.replace(/^\[|\]$/g, "");
-	if (net.isIP(literal)) return !isBlockedAddress(literal);
+	const literalFamily = net.isIP(literal);
+	if (literalFamily)
+		return isBlockedAddress(literal)
+			? null
+			: [{ address: literal, family: literalFamily }];
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -104,15 +113,91 @@ export async function resolvesToPublicHost(
 			}),
 		]);
 
-		return (
-			addresses.length > 0 &&
-			addresses.every((address) => !isBlockedAddress(address.address))
-		);
+		if (
+			addresses.length === 0 ||
+			addresses.some((address) => isBlockedAddress(address.address))
+		)
+			return null;
+		return addresses;
 	} catch {
-		return false;
+		return null;
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+export async function resolvesToPublicHost(
+	hostname: string,
+	timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<boolean> {
+	return (await publicAddresses(hostname, timeoutMs)) !== null;
+}
+
+function pinnedLookup(addresses: ResolvedAddress[]) {
+	return (
+		_hostname: string,
+		options: { all?: boolean } | null | undefined,
+		callback: (
+			err: NodeJS.ErrnoException | null,
+			address: string | ResolvedAddress[],
+			family?: number,
+		) => void,
+	) =>
+		options?.all
+			? callback(null, addresses)
+			: callback(null, addresses[0]?.address ?? "", addresses[0]?.family ?? 4);
+}
+
+function requestOnce(
+	target: URL,
+	method: "GET" | "HEAD",
+	timeoutMs: number,
+	addresses: ResolvedAddress[],
+	headers: Record<string, string> | undefined,
+): Promise<http.IncomingMessage | null> {
+	const agent = target.protocol === "https:" ? https : http;
+	return new Promise((resolve) => {
+		const request = agent.request(
+			{
+				protocol: target.protocol,
+				hostname: target.hostname,
+				port: target.port || (target.protocol === "https:" ? 443 : 80),
+				path: `${target.pathname}${target.search}`,
+				method,
+				servername: target.protocol === "https:" ? target.hostname : undefined,
+				lookup: pinnedLookup(addresses),
+				headers: {
+					"user-agent": "Mozilla/5.0 (compatible; CRM/1.0)",
+					...headers,
+				},
+				timeout: timeoutMs,
+			},
+			resolve,
+		);
+		request.on("error", () => resolve(null));
+		request.on("timeout", () => {
+			request.destroy();
+			resolve(null);
+		});
+		request.end();
+	});
+}
+
+function toResponse(message: http.IncomingMessage, method: "GET" | "HEAD"): Response {
+	const responseHeaders = new Headers();
+	for (const [key, value] of Object.entries(message.headers)) {
+		if (Array.isArray(value)) for (const item of value) responseHeaders.append(key, item);
+		else if (value !== undefined) responseHeaders.append(key, value);
+	}
+	const body =
+		method === "HEAD" || message.statusCode === 204 || message.statusCode === 304
+			? null
+			: (Readable.toWeb(message) as ReadableStream<Uint8Array>);
+	return new Response(body, {
+		status: message.statusCode ?? 0,
+		statusText: message.statusMessage ?? "",
+		headers: responseHeaders,
+	});
 }
 
 export async function safeFetch(
@@ -137,26 +222,16 @@ export async function safeFetch(
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
 		if (target.protocol !== "https:" && target.protocol !== "http:")
 			return null;
-		if (!(await resolvesToPublicHost(target.hostname, timeoutMs))) return null;
+		const addresses = await publicAddresses(target.hostname, timeoutMs);
+		if (!addresses) return null;
 
-		let response: Response;
-		try {
-			response = await fetch(target, {
-				method,
-				signal: AbortSignal.timeout(timeoutMs),
-				redirect: "manual",
-				headers: {
-					"user-agent": "Mozilla/5.0 (compatible; CRM/1.0)",
-					...headers,
-				},
-			});
-		} catch {
-			return null;
-		}
+		const message = await requestOnce(target, method, timeoutMs, addresses, headers);
+		if (!message) return null;
 
-		const location = response.headers.get("location");
-		if (response.status >= 300 && response.status < 400 && location) {
-			await response.body?.cancel();
+		const status = message.statusCode ?? 0;
+		const location = message.headers.location;
+		if (status >= 300 && status < 400 && location) {
+			message.resume();
 			try {
 				target = new URL(location, target);
 			} catch {
@@ -165,7 +240,7 @@ export async function safeFetch(
 			continue;
 		}
 
-		return { response, url: target };
+		return { response: toResponse(message, method), url: target };
 	}
 
 	return null;
