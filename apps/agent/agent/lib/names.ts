@@ -127,6 +127,14 @@ function words(value: string | null): string[] {
 		.filter((word) => word.length > 1);
 }
 
+// Optional Arabic vowel marks; do not fold distinct letters.
+const ARABIC_VOCALISATION = /[\u064B-\u0652\u0670]/g;
+
 export function normalise(value: string): string {
-	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+	const result = value
+		.normalize("NFC")
+		.toLowerCase()
+		.replace(ARABIC_VOCALISATION, "")
+		.replace(/[^\p{L}\p{M}\p{Nd}]/gu, "");
+	return /[\p{L}\p{Nd}]/u.test(result) ? result : "";
 }
