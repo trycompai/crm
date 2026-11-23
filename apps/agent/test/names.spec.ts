@@ -3,9 +3,30 @@ import { describe, expect, it } from "bun:test";
 import {
 	looksLikeSameCompany,
 	nameMatchesLocalPart,
+	namesMatch,
+	normalise,
 	sameDomain,
 	searchTerms,
 } from "../agent/lib/names";
+
+describe("Unicode name matching", () => {
+	it("matches Arabic names with or without optional vowel marks", () => {
+		expect(namesMatch("سَلْمَى حَسَن", "سلمى حسن")).toBe(true);
+		expect(namesMatch("سلمى حسن", "سلمى حسان")).toBe(false);
+	});
+
+	it("recognises non-Latin company names without changing domain matching", () => {
+		expect(looksLikeSameCompany("شركة الندى", "الندى", "example.test")).toBe(true);
+		expect(looksLikeSameCompany("شركة الندى", "الربيع", "example.test")).toBe(false);
+	});
+
+	it("preserves meaningful accents and letter distinctions", () => {
+		expect(normalise("Jose\u0301")).toBe("josé");
+		expect(normalise("अमित")).toBe("अमित");
+		expect(normalise("أمل")).not.toBe(normalise("امل"));
+		expect(normalise("\u0301! ")).toBe("");
+	});
+});
 
 describe("searchTerms", () => {
 	it("strips the initial off a run-together handle", () => {
