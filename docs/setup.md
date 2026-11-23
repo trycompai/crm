@@ -146,8 +146,21 @@ never reuse one from an example, a tutorial, or another environment.
 
 ```sh
 bun run --filter=api test
-bun run --filter=agent test    # integration specs need DATABASE_URL + real Postgres
+bun run --filter=agent test    # integration specs need TEST_DATABASE_URL and Postgres
 ```
+
+Run the 256 title scoring and writeback cases from the repository root:
+
+```sh
+bun run test:title-scoring
+```
+
+With PostgreSQL running, set `TEST_DATABASE_URL` in the root `.env` or the
+environment. Use a dedicated database with a name ending in `_test`. The
+command prepares the database, generates the Prisma client, and runs the
+matrix. The tests use synthetic CRM evidence and verify the stored title, score,
+and sources. They run without model API calls or keys. The regular test suite
+also includes this matrix.
 
 ### The test database rebuilds itself when it drifts
 

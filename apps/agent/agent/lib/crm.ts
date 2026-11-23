@@ -1,4 +1,5 @@
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { isPastMeeting } from "./evidence";
 import { domainOf, isDerivedName } from "./names";
 import type { Person } from "./socials";
 
@@ -133,6 +134,7 @@ export type CrmHistory = {
 		messageCount: number;
 		lastMessageAt: string;
 		messages: {
+			id: string;
 			direction: string;
 			from: string;
 			fromName: string | null;
@@ -141,8 +143,10 @@ export type CrmHistory = {
 		}[];
 	}[];
 	meetings: {
+		id: string;
 		title: string | null;
 		startsAt: string;
+		accepted: boolean;
 		attended: boolean;
 		attendees: { email: string; name: string | null }[];
 	}[];
@@ -214,6 +218,7 @@ export async function readCrmHistory(
 							orderBy: { sentAt: "desc" },
 							take: options.messagesPerThread ?? 6,
 							select: {
+								id: true,
 								direction: true,
 								fromEmail: true,
 								fromName: true,
@@ -233,8 +238,11 @@ export async function readCrmHistory(
 					orderBy: { startsAt: "desc" },
 					take: 10,
 					select: {
+						id: true,
 						title: true,
 						startsAt: true,
+						endsAt: true,
+						status: true,
 						attendees: {
 							select: {
 								email: true,
@@ -288,6 +296,7 @@ export async function readCrmHistory(
 			messageCount: thread.messageCount,
 			lastMessageAt: thread.lastMessageAt.toISOString(),
 			messages: thread.messages.map((message) => ({
+				id: message.id,
 				direction: message.direction,
 				from: message.fromEmail,
 				fromName: message.fromName,
@@ -295,19 +304,24 @@ export async function readCrmHistory(
 				body: message.body ?? message.snippet,
 			})),
 		})),
-		meetings: meetings.map((meeting) => ({
-			title: meeting.title,
-			startsAt: meeting.startsAt.toISOString(),
-			attended: meeting.attendees.some(
+		meetings: meetings.map((meeting) => {
+			const accepted = meeting.attendees.some(
 				(attendee) =>
 					attendee.contactId === contactId &&
 					attendee.responseStatus === "accepted",
-			),
-			attendees: meeting.attendees.map((attendee) => ({
-				email: attendee.email,
-				name: attendee.name,
-			})),
-		})),
+			);
+			return {
+				id: meeting.id,
+				title: meeting.title,
+				startsAt: meeting.startsAt.toISOString(),
+				accepted,
+				attended: accepted && isPastMeeting(meeting, now),
+				attendees: meeting.attendees.map((attendee) => ({
+					email: attendee.email,
+					name: attendee.name,
+				})),
+			};
+		}),
 		stats: {
 			emails: threads.reduce((total, thread) => total + thread.messageCount, 0),
 			theyReplied: inbound.length > 0,

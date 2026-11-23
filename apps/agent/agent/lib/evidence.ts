@@ -1,4 +1,6 @@
-import { FactBand } from "@crm/db";
+import { db, FactBand } from "@crm/db";
+import { z } from "zod";
+import { emailTitleEvidence } from "./email-title";
 
 export type EvidenceKind =
 	| "profile.email-match"
@@ -48,7 +50,7 @@ export const WEIGHTS = {
 	"crm.meeting-attendance": {
 		weight: 0.7,
 		primary: true,
-		label: "they attended a meeting on our calendar",
+		label: "they accepted a past meeting on our calendar",
 	},
 	"web.cited-claim": {
 		weight: 0.4,
@@ -77,18 +79,36 @@ export const WEIGHTS = {
 	},
 } satisfies Record<EvidenceKind, Weighting>;
 
-export type Evidence = {
-	kind: EvidenceKind;
-	detail: string;
-	sourceUrl?: string;
-};
+export const evidenceInput = z.object({
+	kind: z
+		.enum(Object.keys(WEIGHTS) as [EvidenceKind, ...EvidenceKind[]])
+		.describe("What you observed. Use contradiction when sources disagree."),
+	detail: z.string().describe("What the source actually said."),
+	sourceId: z
+		.string()
+		.optional()
+		.describe(
+			"For CRM email or meeting evidence, copy the message id or meeting id from read_crm_history. Reuse the message id for a reply and its signature.",
+		),
+	sourceUrl: z.string().optional(),
+});
+
+export type Evidence = z.infer<typeof evidenceInput>;
 
 export type Scored = {
 	score: number;
 	band: FactBand | null;
 	hasPrimary: boolean;
 	rationale: string;
+	evidence: Evidence[];
 };
+
+type EvidenceSources = {
+	email: ReadonlySet<string>;
+	meeting: ReadonlySet<string>;
+};
+
+const NO_SOURCES: EvidenceSources = { email: new Set(), meeting: new Set() };
 
 const CEILING = 0.99;
 
@@ -96,13 +116,184 @@ const CONTRADICTED = 0.45;
 
 export const BAND_FLOOR = { VERIFIED: 0.85, PROBABLE: 0.55, POSSIBLE: 0.3 };
 
-export function scoreEvidence(evidence: Evidence[]): Scored {
+export function isPastMeeting(
+	meeting: { startsAt: Date; endsAt: Date; status: string },
+	now: Date,
+): boolean {
+	return (
+		meeting.status !== "cancelled" &&
+		meeting.startsAt <= now &&
+		meeting.endsAt <= now
+	);
+}
+
+function isEmailEvidence(kind: EvidenceKind): boolean {
+	return kind === "crm.thread-reply" || kind === "crm.signature-block";
+}
+
+export async function scoreContactEvidence(
+	contactId: string,
+	evidence: Evidence[],
+	title?: string,
+): Promise<Scored> {
+	const emailIds = new Set<string>();
+	const meetingIds = new Set<string>();
+	for (const { kind, sourceId } of evidence) {
+		if (!sourceId) continue;
+		if (isEmailEvidence(kind)) emailIds.add(sourceId);
+		if (kind === "crm.meeting-attendance") meetingIds.add(sourceId);
+	}
+
+	const [messages, meetings] = await Promise.all([
+		emailIds.size
+			? db.emailMessage.findMany({
+					where: {
+						id: { in: [...emailIds] },
+						direction: "INBOUND",
+						thread: { contactId },
+					},
+					select: {
+						id: true,
+						threadId: true,
+						fromEmail: true,
+						fromName: title !== undefined,
+						body: title !== undefined,
+						thread: { select: { contact: { select: { email: true } } } },
+					},
+				})
+			: [],
+		meetingIds.size
+			? db.calendarEvent.findMany({
+					where: {
+						id: { in: [...meetingIds] },
+						attendees: { some: { contactId, responseStatus: "accepted" } },
+					},
+					select: { id: true, startsAt: true, endsAt: true, status: true },
+				})
+			: [],
+	]);
+
+	const validMessages = messages.filter(
+		(message) =>
+			message.fromEmail.toLowerCase() ===
+			message.thread.contact?.email?.toLowerCase(),
+	);
+	const observations =
+		title === undefined
+			? evidence
+			: await groundTitle(contactId, evidence, validMessages, title);
+	const email = new Set(
+		title === undefined
+			? validMessages.map(({ id }) => id)
+			: observations.flatMap(({ kind, sourceId }) =>
+					isEmailEvidence(kind) && sourceId ? [sourceId] : [],
+				),
+	);
+	const now = new Date();
+	return scoreEvidence(observations, {
+		email,
+		meeting: new Set(
+			meetings
+				.filter((meeting) => isPastMeeting(meeting, now))
+				.map(({ id }) => id),
+		),
+	});
+}
+
+async function groundTitle(
+	contactId: string,
+	evidence: Evidence[],
+	messages: {
+		id: string;
+		threadId: string;
+		fromEmail: string;
+		body: string | null;
+		fromName: string | null;
+	}[],
+	title: string,
+): Promise<Evidence[]> {
+	const claims = new Map(
+		messages.map((message) => [message.id, emailTitleEvidence(message, title)]),
+	);
+
+	const grounded = evidence.flatMap((item): Evidence[] => {
+		if (!isEmailEvidence(item.kind)) return [item];
+		const proof = claims.get(item.sourceId ?? "");
+		if (!proof) return [];
+		if (proof.reply) {
+			return [{ ...item, kind: "crm.thread-reply", detail: proof.reply }];
+		}
+		return proof.signature
+			? [{ ...item, kind: "crm.signature-block", detail: proof.signature }]
+			: [];
+	});
+
+	const senderEmail = messages[0]?.fromEmail.toLowerCase();
+	if (senderEmail === undefined) return grounded;
+
+	const siblings = await db.emailMessage.findMany({
+		where: {
+			id: { notIn: messages.map(({ id }) => id) },
+			direction: "INBOUND",
+			threadId: { in: [...new Set(messages.map(({ threadId }) => threadId))] },
+			thread: { contactId },
+			body: { not: null },
+		},
+		select: { id: true, body: true, fromEmail: true, fromName: true },
+		orderBy: [{ sentAt: "asc" }, { id: "asc" }],
+	});
+	for (const sibling of siblings) {
+		if (sibling.fromEmail.toLowerCase() !== senderEmail) continue;
+
+		const { reply } = emailTitleEvidence(sibling, title);
+		if (reply) {
+			grounded.push({
+				kind: "crm.thread-reply",
+				sourceId: sibling.id,
+				detail: reply,
+			});
+		}
+	}
+	return grounded;
+}
+
+function strongestPerSource(
+	evidence: Evidence[],
+	sources: EvidenceSources,
+): Evidence[] {
+	const counted = new Map<string | number, Evidence>();
+	for (const [index, item] of evidence.entries()) {
+		const { kind, sourceId } = item;
+		let key: string | number = index;
+		if (isEmailEvidence(kind)) {
+			if (sourceId ? !sources.email.has(sourceId) : sources.email.size > 0) {
+				continue;
+			}
+			key = `email:${sourceId ?? ""}`;
+		} else if (kind === "crm.meeting-attendance") {
+			if (!sourceId || !sources.meeting.has(sourceId)) continue;
+			key = `meeting:${sourceId}`;
+		}
+		const previous = counted.get(key);
+		if (!previous || WEIGHTS[kind].weight > WEIGHTS[previous.kind].weight) {
+			counted.set(key, item);
+		}
+	}
+	return [...counted.values()];
+}
+
+export function scoreEvidence(
+	observations: Evidence[],
+	sources: EvidenceSources = NO_SOURCES,
+): Scored {
+	const evidence = strongestPerSource(observations, sources);
 	if (evidence.length === 0) {
 		return {
 			score: 0,
 			band: null,
 			hasPrimary: false,
 			rationale: "No evidence.",
+			evidence,
 		};
 	}
 
@@ -122,6 +313,7 @@ export function scoreEvidence(evidence: Evidence[]): Scored {
 		band: bandFor(score, hasPrimary),
 		hasPrimary,
 		rationale: rationaleFor(evidence, contradicted, hasPrimary),
+		evidence,
 	};
 }
 

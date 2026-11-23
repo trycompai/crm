@@ -1,8 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { changeWrite } from "../lib/approval";
-import type { Evidence, EvidenceKind } from "../lib/evidence";
-import { WEIGHTS } from "../lib/evidence";
+import { evidenceInput } from "../lib/evidence";
 import { writeBrief } from "../lib/facts";
 import { focusOn } from "../lib/focus";
 import { assertResearchPurpose } from "../lib/session-purpose";
@@ -36,17 +35,7 @@ export default defineTool({
 				.describe('e.g. "Executive", "Security", "Finance"'),
 			location: z.string().optional(),
 		}),
-		evidence: z
-			.array(
-				z.object({
-					kind: z.enum(
-						Object.keys(WEIGHTS) as [EvidenceKind, ...EvidenceKind[]],
-					),
-					detail: z.string(),
-					sourceUrl: z.string().optional(),
-				}),
-			)
-			.min(1),
+		evidence: z.array(evidenceInput).min(1),
 		sourceUrl: z.string().optional(),
 	}),
 	approval: changeWrite(),
@@ -68,7 +57,7 @@ export default defineTool({
 			contactId: input.contactId,
 			narrative,
 			sections: input.sections,
-			evidence: input.evidence as Evidence[],
+			evidence: input.evidence,
 			sourceUrl: input.sourceUrl,
 		});
 
