@@ -1,5 +1,5 @@
 import { db, FactBand, FactStatus, type Prisma } from "@crm/db";
-import { type Evidence, scoreEvidence } from "./evidence";
+import { type Evidence, scoreContactEvidence } from "./evidence";
 import { currentFocus } from "./focus";
 import { isDerivedName, splitName } from "./names";
 
@@ -67,7 +67,11 @@ export async function recordFact(
 	const { contactId, field, value } = input;
 	const trimmed = value.trim();
 
-	const scored = scoreEvidence(input.evidence);
+	const scored = await scoreContactEvidence(
+		contactId,
+		input.evidence,
+		field === "title" ? trimmed : undefined,
+	);
 	const base = {
 		score: scored.score,
 		band: scored.band,
@@ -199,7 +203,7 @@ export async function recordFact(
 				value: trimmed,
 				score: scored.score,
 				band: scored.band as FactBand,
-				evidence: input.evidence as Prisma.InputJsonValue,
+				evidence: scored.evidence,
 				method: input.method,
 				sourceUrl: input.sourceUrl ?? null,
 				sessionId,
@@ -279,7 +283,7 @@ export async function writeBrief(input: {
 	evidence: Evidence[];
 	sourceUrl?: string;
 }): Promise<{ written: boolean; score: number; reason?: string }> {
-	const scored = scoreEvidence(input.evidence);
+	const scored = await scoreContactEvidence(input.contactId, input.evidence);
 
 	if (scored.band === null) {
 		return {

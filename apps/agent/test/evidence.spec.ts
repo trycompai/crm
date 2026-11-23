@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { emailTitleEvidence } from "../agent/lib/email-title";
 import {
 	BAND_FLOOR,
 	bandFor,
@@ -8,6 +9,38 @@ import {
 
 const of = (...kinds: Evidence["kind"][]): Evidence[] =>
 	kinds.map((kind) => ({ kind, detail: `saw ${kind}` }));
+
+describe("email title evidence", () => {
+	const title = "Director of Procurement";
+
+	it("finds a title below the sender name and leaves role responsibilities in the reply", () => {
+		const message = {
+			fromName: "Mira Vale",
+			body: "I lead the procurement evaluation.\n\nMira Vale\nDirector of Procurement · Example",
+		};
+		expect(emailTitleEvidence(message, title)).toEqual({
+			reply: undefined,
+			signature: "Director of Procurement · Example",
+		});
+	});
+
+	it("checks direct declarations and ignores longer, third-party and quoted titles", () => {
+		const message = (body: string) => ({ fromName: null, body });
+		expect(
+			emailTitleEvidence(
+				message("I serve as Director of Procurement at Example."),
+				title,
+			).reply,
+		).toBe("I serve as Director of Procurement");
+		for (const body of [
+			"I am the Director of Procurement Operations.",
+			"Our Director of Procurement will lead the meeting.",
+			"I can join.\nOn Tuesday, Mira wrote:\nI am the Director of Procurement.",
+		]) {
+			expect(emailTitleEvidence(message(body), title).reply).toBeUndefined();
+		}
+	});
+});
 
 describe("scoreEvidence", () => {
 	it("writes a fact when a primary source names them", () => {
@@ -20,11 +53,35 @@ describe("scoreEvidence", () => {
 		expect(scoreEvidence(of("crm.thread-reply")).band).toBe("VERIFIED");
 	});
 
-	it("writes a title a signature block states on a thread they replied to", () => {
+	it("uses the strongest mail evidence once when legacy observations have no ids", () => {
 		expect(scoreEvidence(of("crm.signature-block")).band).toBe("PROBABLE");
-		expect(
-			scoreEvidence(of("crm.thread-reply", "crm.signature-block")).band,
-		).toBe("VERIFIED");
+		const scored = scoreEvidence(of("crm.thread-reply", "crm.signature-block"));
+		expect(scored.band).toBe("VERIFIED");
+		expect(scored.score).toBeCloseTo(0.85);
+		expect(scored.evidence.map(({ kind }) => kind)).toEqual([
+			"crm.thread-reply",
+		]);
+	});
+
+	it("counts different validated message ids separately", () => {
+		const scored = scoreEvidence(
+			[
+				{ kind: "crm.signature-block", detail: "first", sourceId: "message-1" },
+				{ kind: "crm.thread-reply", detail: "same", sourceId: "message-1" },
+				{
+					kind: "crm.signature-block",
+					detail: "second",
+					sourceId: "message-2",
+				},
+				{ kind: "crm.thread-reply", detail: "no message id" },
+			],
+			{ email: new Set(["message-1", "message-2"]), meeting: new Set() },
+		);
+		expect(scored.score).toBeCloseTo(0.97);
+		expect(scored.evidence.map(({ detail }) => detail)).toEqual([
+			"same",
+			"second",
+		]);
 	});
 
 	it("refuses to write anything without a primary source, however much of it there is", () => {

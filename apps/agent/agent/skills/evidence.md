@@ -20,7 +20,7 @@ identifying *this person*, not merely being consistent with them.
 | `crm.thread-reply` | They replied, from that address, on a thread we synced. Proof of identity. |
 | `crm.signature-block` | Their own signature states it. The best source there is for a job title. |
 | `github.account-identity` | The GitHub account's own `name` (or name plus company) matches. |
-| `crm.meeting-attendance` | They accepted a calendar invite we have. |
+| `crm.meeting-attendance` | The CRM shows an accepted invite for a past, non-cancelled meeting. Use the meeting ID only when `read_crm_history` returns `attended: true`. A calendar RSVP does not confirm that someone joined. |
 
 **Supporting — true, but not enough alone.**
 
@@ -44,6 +44,16 @@ observation, not two: a GitHub profile whose name and company both match is one
 `github.account-identity`, not a name match plus a company match. Splitting it
 would double-count a single page into false certainty, which is exactly the
 arithmetic this system exists to avoid.
+
+For CRM mail, copy the message ID from `read_crm_history` into `sourceId`.
+A reply and its signature use the same ID and contribute a single weight per
+claim. Copy the meeting ID into `sourceId` for eligible meeting evidence.
+Future and ongoing meetings can inform a brief about what is planned.
+
+For a title, use `crm.thread-reply` when the sender explicitly states that
+exact title in the reply. When the title appears in their signature, use
+`crm.signature-block`. A description of responsibilities does not establish a
+title. Title evidence from email requires the original message ID.
 
 `detail` is read by a rep in a tooltip. Write it for them:
 

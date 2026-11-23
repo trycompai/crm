@@ -1,8 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { changeWrite } from "../lib/approval";
-import type { Evidence, EvidenceKind } from "../lib/evidence";
-import { WEIGHTS } from "../lib/evidence";
+import { evidenceInput } from "../lib/evidence";
 import { FACT_FIELDS, type FactField, recordFact } from "../lib/facts";
 import { focusOn } from "../lib/focus";
 import { assertResearchPurpose } from "../lib/session-purpose";
@@ -19,23 +18,11 @@ export default defineTool({
 			.string()
 			.describe("The claim itself, exactly as the source states it."),
 		evidence: z
-			.array(
-				z.object({
-					kind: z
-						.enum(Object.keys(WEIGHTS) as [EvidenceKind, ...EvidenceKind[]])
-						.describe(
-							"What kind of thing you saw. Use `contradiction` when two sources disagree.",
-						),
-					detail: z
-						.string()
-						.describe(
-							"What it actually said, in one line a rep would understand.",
-						),
-					sourceUrl: z.string().optional(),
-				}),
-			)
+			.array(evidenceInput)
 			.min(1)
-			.describe("Everything you observed. One entry per independent source."),
+			.describe(
+				"One observation per independent source. For a title, cite a message ID and use crm.thread-reply only when the sender states that exact title in the reply. Use crm.signature-block when it appears in the signature.",
+			),
 		method: z
 			.string()
 			.describe(
@@ -55,7 +42,7 @@ export default defineTool({
 			contactId: input.contactId,
 			field: input.field,
 			value: input.value,
-			evidence: input.evidence as Evidence[],
+			evidence: input.evidence,
 			method: input.method,
 			sourceUrl: input.sourceUrl,
 		});

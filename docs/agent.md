@@ -179,6 +179,19 @@ report what they *observed* (`crm.signature-block`, `github.account-identity`) a
 `lib/evidence.ts` prices it. A model asked to grade its own certainty will, and will be
 wrong in the direction that looks useful.
 
+- CRM evidence tools return message and meeting IDs. The ledger validates those
+  IDs for the contact and takes the strongest observation per message.
+  ID-less mail evidence contributes at most one source, and only when no
+  identified message contributes. Meeting evidence requires an accepted,
+  non-cancelled event that has ended. Calendar acceptance is an RSVP signal.
+- For title claims, the ledger checks the stored message. An explicit
+  self-description in the reply earns the reply weight even when the agent
+  cites the signature. A title that appears only in the signature earns the
+  signature weight. A valid cited message also anchors a check of other replies
+  from the contact in the same thread. An uncited reply counts only when its
+  body explicitly states the same current title. Each message counts once.
+  Email title evidence requires a message ID.
+
 - **`lib/facts.ts` is the only write path to a contact's fields.** Applies at
   `VERIFIED`, proposes below it, and enforces three things a prompt cannot: never
   overwrite a human, never re-offer a dismissal, never write without a primary source.

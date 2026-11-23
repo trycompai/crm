@@ -25,7 +25,7 @@ export default defineTool({
 		const evidence =
 			history.stats.emails === 0 && history.stats.meetings === 0
 				? "We have never actually spoken to this person. Nothing here is evidence of anything."
-				: "A signature block or a reply from their own address is primary evidence — record it as `crm.signature-block` or `crm.thread-reply`.";
+				: "For a reply or signature from their own address, use its message id as sourceId. The reply and signature from one message are one source. A meeting with accepted=true and attended=false is an RSVP only. Use a meeting id for crm.meeting-attendance only when attended=true.";
 
 		const reach = history.contact.company
 			? ` Their company is \`${history.contact.company.id}\` — read_company_history or enrich_company take that id directly.`
